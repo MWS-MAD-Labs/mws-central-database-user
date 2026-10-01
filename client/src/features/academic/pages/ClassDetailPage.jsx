@@ -24,6 +24,8 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
+import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
+import { AssignmentDurationCell } from "../components/AssignmentDurationCell.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
@@ -110,6 +112,8 @@ export function ClassDetailPage() {
         sort_order: studentSort.sort_order,
       }),
     enabled: Boolean(classId) && hasStudentAccess,
+    // Keep the current rows on screen while the next page loads.
+    placeholderData: (previous) => previous,
   });
 
   const optionsQuery = useQuery({
@@ -661,6 +665,11 @@ export function ClassDetailPage() {
     );
   }
 
+  function sortStudents(sort_by, sort_order) {
+    setStudentSort({ sort_by, sort_order });
+    setStudentPage(1);
+  }
+
   function toggleOne(enrollmentId, checked) {
     setSelectedEnrollmentIds((current) => {
       const next = new Set(current);
@@ -753,7 +762,7 @@ export function ClassDetailPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6">
         <section className="rounded-2xl border border-(--mws-line) bg-white p-5">
           {hasWorkforceAccess ? <TeacherAssignmentsSection
             assignments={teachers}
@@ -1055,205 +1064,173 @@ export function ClassDetailPage() {
                   </ActionsMenu>
                 </BulkActionBar>
               ) : null}
-              <div className="space-y-3 md:hidden">
-                {pagedStudents.map((enrollment) => (
-                  <StudentEnrollmentCard
-                    key={enrollment.id}
-                    enrollment={enrollment}
-                    canWrite={canWrite}
-                    isSelected={selectedEnrollmentIds.has(enrollment.id)}
-                    onToggle={(checked) => toggleOne(enrollment.id, checked)}
-                    activeSupportQuery={activeSupportQuery}
-                    activeSupportByStudentId={activeSupportByStudentId}
-                    isMixedClass={isMixedClass}
-                    isClassPlaceholder={isClassPlaceholder}
-                  />
-                ))}
-              </div>
-
-              <div className="hidden w-full overflow-x-auto md:block">
-                <table className="w-full text-left text-sm">
-                  <thead className="text-xs font-bold text-(--mws-muted)">
-                    <tr>
-                      {canWrite ? (
-                        <th className="w-10 px-2 py-2">
-                          <input
-                            type="checkbox"
-                            aria-label="Select All Active Enrollments"
-                            checked={allSelected}
-                            disabled={selectableEnrollments.length === 0}
-                            onChange={(event) => toggleAll(event.target.checked)}
-                            className="h-4 w-4 accent-(--mws-burgundy)"
-                          />
-                        </th>
-                      ) : null}
-                      <th className="px-2 py-2">
-                        <div className="flex flex-col items-start gap-0.5">
-                          <SortableHeader
-                            label="Name"
-                            column="name"
-                            sortBy={studentSort.sort_by}
-                            sortOrder={studentSort.sort_order}
-                             onSort={(sort_by, sort_order) =>
-                               {
-                                 setStudentSort({ sort_by, sort_order });
-                                 setStudentPage(1);
-                               }
-                             }
-                          />
-                          {isMixedClass ? (
-                            <SortableHeader
-                              label="Grade"
-                              column="grade"
-                              sortBy={studentSort.sort_by}
-                              sortOrder={studentSort.sort_order}
-                               onSort={(sort_by, sort_order) =>
-                                 {
-                                   setStudentSort({ sort_by, sort_order });
-                                   setStudentPage(1);
-                                 }
-                               }
-                            />
-                          ) : null}
-                        </div>
-                      </th>
-                      <th className="px-2 py-2">
-                        <SortableHeader
-                          label="NIS"
-                          column="nis"
-                          sortBy={studentSort.sort_by}
-                          sortOrder={studentSort.sort_order}
-                           onSort={(sort_by, sort_order) =>
-                             {
-                               setStudentSort({ sort_by, sort_order });
-                               setStudentPage(1);
-                             }
-                           }
+              <DenseTable
+                dimmed={enrollmentsQuery.isPlaceholderData}
+                minWidth={1000}
+                head={
+                  <>
+                    {canWrite ? (
+                      <th className="w-12 px-4 py-2.5">
+                        <input
+                          type="checkbox"
+                          aria-label="Select All Active Enrollments"
+                          checked={allSelected}
+                          disabled={selectableEnrollments.length === 0}
+                          onChange={(event) => toggleAll(event.target.checked)}
+                          className="h-4 w-4 accent-(--mws-burgundy)"
                         />
                       </th>
-                      <th className="px-2 py-2">Status</th>
-                      <th className="px-2 py-2">SE Teacher</th>
-                      {canWrite ? <th className="w-10 px-2 py-2" /> : null}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagedStudents.map((enrollment) => (
-                      <tr
-                        key={enrollment.id}
-                        className="border-t border-(--mws-line)"
-                      >
-                        {canWrite ? (
-                          <td className="px-2 py-2">
-                            <input
-                              type="checkbox"
-                              aria-label={`Select ${enrollment.student.full_name}`}
-                              checked={selectedEnrollmentIds.has(enrollment.id)}
-                              onChange={(event) =>
-                                toggleOne(enrollment.id, event.target.checked)
-                              }
-                              className="h-4 w-4 accent-(--mws-burgundy)"
-                            />
-                          </td>
-                        ) : null}
-                        <td className="px-2 py-2 font-semibold">
-                          <Link
-                            to={`/students/${enrollment.student.id}`}
-                            title={
-                              !isClassPlaceholder &&
-                              enrollment.student.has_unresolved_placeholder_class
-                                ? "This student has an unfixed placeholder class somewhere in their history. Check Class History on their profile."
-                                : undefined
+                    ) : null}
+                    <th className="px-4 py-2.5">
+                      <SortableHeader label="Student" column="name" sortBy={studentSort.sort_by} sortOrder={studentSort.sort_order} onSort={sortStudents} />
+                    </th>
+                    <th className="px-4 py-2.5">
+                      <SortableHeader label="NIS" column="nis" sortBy={studentSort.sort_by} sortOrder={studentSort.sort_order} onSort={sortStudents} />
+                    </th>
+                    <th className="px-4 py-2.5">
+                      <SortableHeader label="Grade" column="grade" sortBy={studentSort.sort_by} sortOrder={studentSort.sort_order} onSort={sortStudents} />
+                    </th>
+                    <th className="px-4 py-2.5">Gender</th>
+                    <th className="px-4 py-2.5">Status</th>
+                    <th className="px-4 py-2.5">SE Teacher</th>
+                    <th className="px-4 py-2.5">
+                      <SortableHeader label="Duration" column="start_date" sortBy={studentSort.sort_by} sortOrder={studentSort.sort_order} onSort={sortStudents} />
+                    </th>
+                    {canWrite ? <th className="px-4 py-2.5 text-right">Actions</th> : null}
+                  </>
+                }
+                footer={
+                  studentPaging.total_item > 0 ? (
+                    <PaginationBar
+                      paging={studentPaging}
+                      itemLabel="students"
+                      isLoading={enrollmentsQuery.isFetching}
+                      onPrevious={() => setStudentPage((page) => Math.max(page - 1, 1))}
+                      onNext={() => setStudentPage((page) => page + 1)}
+                      onPageChange={setStudentPage}
+                      onPageSizeChange={(size) => {
+                        setStudentPageSize(size);
+                        setStudentPage(1);
+                      }}
+                    />
+                  ) : null
+                }
+              >
+                {pagedStudents.map((enrollment) => {
+                  const support = activeSupportByStudentId.get(enrollment.student.id);
+                  const hasUnresolvedPlaceholder =
+                    !isClassPlaceholder &&
+                    enrollment.student.has_unresolved_placeholder_class;
+                  return (
+                    <tr key={enrollment.id} className={denseRowClass}>
+                      {canWrite ? (
+                        <td className={denseCellClass}>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${enrollment.student.full_name}`}
+                            checked={selectedEnrollmentIds.has(enrollment.id)}
+                            onChange={(event) =>
+                              toggleOne(enrollment.id, event.target.checked)
                             }
-                            className={cn(
-                              "hover:underline",
-                              !isClassPlaceholder &&
-                                enrollment.student.has_unresolved_placeholder_class
-                                ? "text-[#b45309]"
-                                : "text-(--mws-charcoal)",
-                            )}
-                          >
-                            {enrollment.student.full_name}
-                          </Link>
-                          {isMixedClass ? (
-                            <span className="block text-xs font-normal text-(--mws-muted)">
-                              {enrollment.grade_level}
-                            </span>
+                            className="h-4 w-4 accent-(--mws-burgundy)"
+                          />
+                        </td>
+                      ) : null}
+                      <td className={cn(denseCellClass, "max-w-56 truncate font-semibold")}>
+                        <Link
+                          to={`/students/${enrollment.student.id}`}
+                          title={
+                            hasUnresolvedPlaceholder
+                              ? "This student has an unfixed placeholder class somewhere in their history. Check Class History on their profile."
+                              : enrollment.student.full_name
+                          }
+                          className={cn(
+                            "hover:underline",
+                            hasUnresolvedPlaceholder
+                              ? "text-[#b45309]"
+                              : "text-(--mws-charcoal)",
+                          )}
+                        >
+                          {enrollment.student.full_name}
+                        </Link>
+                      </td>
+                      <td className={cn(denseCellClass, "whitespace-nowrap text-(--mws-muted)")}>
+                        {enrollment.student.nis || "-"}
+                      </td>
+                      <td className={cn(denseCellClass, "whitespace-nowrap text-(--mws-muted)")}>
+                        {enrollment.grade_level}
+                      </td>
+                      <td className={cn(denseCellClass, "whitespace-nowrap text-(--mws-muted)")}>
+                        {enrollment.student.gender ? formatStatus(enrollment.student.gender) : "-"}
+                      </td>
+                      <td className={denseCellClass}>
+                        <div className="flex items-center gap-x-2 whitespace-nowrap">
+                          <StatusBadge tone={statusTone(enrollment.enrollment_status)}>
+                            {formatStatus(enrollment.enrollment_status)}
+                          </StatusBadge>
+                          {enrollment.enrollment_status === "ACTIVE" &&
+                          enrollment.student.status === "INACTIVE" ? (
+                            <StatusBadge variant="text" tone="amber">
+                              Student inactive
+                            </StatusBadge>
                           ) : null}
-                        </td>
-                        <td className="px-2 py-2">
-                          {enrollment.student.nis || "-"}
-                        </td>
-                        {canWrite ? (
-                          <td className="px-2 py-2 text-right">
-                            <StudentEnrollmentActions
-                              enrollment={enrollment}
-                              isPlaceholder={isClassPlaceholder}
-                              onPromote={() => setBulkDialog({ mode: "bulk-promote", records: [enrollment] })}
-                              onTransfer={() => setBulkDialog({ mode: "bulk-transfer", records: [enrollment] })}
-                              onClose={() => setBulkDialog({ mode: "bulk-close", records: [enrollment] })}
-                              onEditDate={() => setStartDateDialog({ records: [enrollment] })}
-                              onFixClass={() => {
-                                setSelectedEnrollmentIds(new Set([enrollment.id]));
-                                setFixClassDialogOpen(true);
-                              }}
-                            />
-                          </td>
-                        ) : null}
-                        <td className="px-2 py-2">
-                          <div className="flex flex-wrap items-center gap-2">
+                          {enrollment.is_retention ? (
                             <StatusBadge
                               variant="text"
-                              tone={statusTone(enrollment.enrollment_status)}
+                              tone="neutral"
+                              title={enrollment.retention_reason || "Retained"}
                             >
-                              {formatStatus(enrollment.enrollment_status)}
+                              Retained
                             </StatusBadge>
-                            {enrollment.enrollment_status === "ACTIVE" &&
-                            enrollment.student.status === "INACTIVE" ? (
-                              <StatusBadge variant="text" tone="amber">
-                                · Student inactive
-                              </StatusBadge>
-                            ) : null}
-                          </div>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className={cn(denseCellClass, "max-w-44 truncate")}>
+                        {activeSupportQuery.isLoading ? (
+                          <span className="text-(--mws-muted)">…</span>
+                        ) : support ? (
+                          <Link
+                            to={support.type === "INTERN" ? `/interns/${support.id}` : `/employees/${support.id}`}
+                            title={support.full_name}
+                            className="text-(--mws-charcoal) hover:underline"
+                          >
+                            {support.full_name}
+                          </Link>
+                        ) : (
+                          <span className="text-(--mws-muted)">Not assigned</span>
+                        )}
+                      </td>
+                      <td className={denseCellClass}>
+                        {enrollment.start_date ? (
+                          <AssignmentDurationCell
+                            compact
+                            startDate={enrollment.start_date}
+                            endDate={enrollment.end_date}
+                          />
+                        ) : (
+                          <span className="text-(--mws-muted)">-</span>
+                        )}
+                      </td>
+                      {canWrite ? (
+                        <td className={cn(denseCellClass, "text-right")}>
+                          <StudentEnrollmentActions
+                            enrollment={enrollment}
+                            isPlaceholder={isClassPlaceholder}
+                            onPromote={() => setBulkDialog({ mode: "bulk-promote", records: [enrollment] })}
+                            onTransfer={() => setBulkDialog({ mode: "bulk-transfer", records: [enrollment] })}
+                            onClose={() => setBulkDialog({ mode: "bulk-close", records: [enrollment] })}
+                            onEditDate={() => setStartDateDialog({ records: [enrollment] })}
+                            onFixClass={() => {
+                              setSelectedEnrollmentIds(new Set([enrollment.id]));
+                              setFixClassDialogOpen(true);
+                            }}
+                          />
                         </td>
-                        <td className="px-2 py-2">
-                          {activeSupportQuery.isLoading ? (
-                            <span className="text-(--mws-muted)">…</span>
-                          ) : activeSupportByStudentId.has(enrollment.student.id) ? (
-                            <Link
-                              to={activeSupportByStudentId.get(enrollment.student.id).type === "INTERN" ? `/interns/${activeSupportByStudentId.get(enrollment.student.id).id}` : `/employees/${activeSupportByStudentId.get(enrollment.student.id).id}`}
-                              className="text-(--mws-charcoal) hover:underline"
-                            >
-                              {
-                                activeSupportByStudentId.get(enrollment.student.id)
-                                  .full_name
-                              }
-                            </Link>
-                          ) : (
-                            <span className="text-(--mws-muted)">
-                              Not assigned
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {studentPaging.total_item > 0 ? (
-                <PaginationBar
-                  paging={studentPaging}
-                  itemLabel="students"
-                  isLoading={enrollmentsQuery.isFetching}
-                  onPrevious={() => setStudentPage((page) => Math.max(page - 1, 1))}
-                  onNext={() => setStudentPage((page) => page + 1)}
-                  onPageChange={setStudentPage}
-                  onPageSizeChange={(size) => {
-                    setStudentPageSize(size);
-                    setStudentPage(1);
-                  }}
-                />
-              ) : null}
+                      ) : null}
+                    </tr>
+                  );
+                })}
+              </DenseTable>
             </>
           )}
         </section>
@@ -1375,92 +1352,6 @@ export function ClassDetailPage() {
           }
         />
       ) : null}
-    </div>
-  );
-}
-
-function StudentEnrollmentCard({
-  enrollment,
-  canWrite,
-  isSelected,
-  onToggle,
-  activeSupportQuery,
-  activeSupportByStudentId,
-  isMixedClass,
-  isClassPlaceholder,
-}) {
-  const supportEmployee = activeSupportByStudentId.get(enrollment.student.id);
-
-  return (
-    <div className="rounded-xl border border-(--mws-line) bg-white p-4">
-      <div className="flex items-start gap-3">
-        {canWrite ? (
-          <input
-            type="checkbox"
-            aria-label={`Select ${enrollment.student.full_name}`}
-            checked={isSelected}
-            onChange={(event) => onToggle(event.target.checked)}
-            className="mt-1 h-4 w-4 shrink-0 accent-(--mws-burgundy)"
-          />
-        ) : null}
-        <div className="min-w-0 flex-1">
-          <Link
-            to={`/students/${enrollment.student.id}`}
-            title={
-              !isClassPlaceholder &&
-              enrollment.student.has_unresolved_placeholder_class
-                ? "This student has an unfixed placeholder class somewhere in their history. Check Class History on their profile."
-                : undefined
-            }
-            className={cn(
-              "font-semibold hover:underline",
-              !isClassPlaceholder &&
-                enrollment.student.has_unresolved_placeholder_class
-                ? "text-[#b45309]"
-                : "text-(--mws-charcoal)",
-            )}
-          >
-            {enrollment.student.full_name}
-          </Link>
-          <p className="text-xs text-(--mws-muted)">
-            {enrollment.student.nis || "No NIS yet"}
-            {isMixedClass ? ` · ${enrollment.grade_level}` : ""}
-          </p>
-
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <StatusBadge
-              variant="text"
-              tone={statusTone(enrollment.enrollment_status)}
-            >
-              {formatStatus(enrollment.enrollment_status)}
-            </StatusBadge>
-            {enrollment.enrollment_status === "ACTIVE" &&
-            enrollment.student.status === "INACTIVE" ? (
-              <StatusBadge variant="text" tone="amber">
-                · Student inactive
-              </StatusBadge>
-            ) : null}
-          </div>
-
-          <div className="mt-2 flex items-center gap-1">
-            <span className="text-xs text-(--mws-muted)">SE Teacher:</span>
-            {activeSupportQuery.isLoading ? (
-              <span className="text-xs text-(--mws-muted)">…</span>
-            ) : supportEmployee ? (
-              <Link
-                to={supportEmployee.type === "INTERN" ? `/interns/${supportEmployee.id}` : `/employees/${supportEmployee.id}`}
-                className="text-xs font-semibold text-(--mws-charcoal) hover:underline"
-              >
-                {supportEmployee.full_name}
-              </Link>
-            ) : (
-              <span className="text-xs text-(--mws-muted)">
-                Not assigned
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
