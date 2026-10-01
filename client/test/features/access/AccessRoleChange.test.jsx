@@ -7,6 +7,61 @@ import { adminUsersApi } from '../../../src/features/access/api/accessApi.js'
 import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 
+const baseAdmin = {
+  id: 'admin-2',
+  full_name: 'Dummy Staff',
+  admin_no: 'ADM-002',
+  email: 'dummystaff@millennia21.id',
+  role: 'DATABASE_ADMIN',
+  is_active: true,
+  is_protected: false,
+  is_head_of_care: false,
+  is_identifier_change_approver: false,
+  can_view_student_data: true,
+  can_view_employee_data: true,
+  can_view_sensitive_data: false,
+  can_view_employee_pii: false,
+  can_view_employee_disciplinary_data: false,
+  can_view_all_student_units: false,
+  can_view_all_employee_units: false,
+  student_view_unit_ids: [],
+  employee_view_unit_ids: [],
+  can_write_student_data: false,
+  can_write_employee_data: true,
+  can_manage_enrollments: false,
+  can_manage_teacher_assignments: false,
+  after_hours_write_until: null,
+}
+
+function accessRoutes(admins) {
+  return [
+    {
+      path: /^\/api\/admin\/admin-users(?:\?.*)?$/,
+      response: jsonResponse({
+        data: admins,
+        paging: { current_page: 1, total_page: 1, total_item: admins.length, size: 10 },
+      }),
+    },
+    {
+      path: /^\/api\/admin\/employees(?:\?.*)?$/,
+      response: jsonResponse({
+        data: [],
+        paging: { current_page: 1, total_page: 1, total_item: 0, size: 100 },
+      }),
+    },
+  ]
+}
+
+function renderAccess(user) {
+  return renderWithProviders(
+    <AuthContext.Provider value={{ user }}>
+      <ConfirmProvider>
+        <AccessPage />
+      </ConfirmProvider>
+    </AuthContext.Provider>,
+  )
+}
+
 describe('Access role change summary', () => {
   it('maps the independent all-unit scope APIs', async () => {
     const fetchMock = createFetchRouter([
@@ -105,6 +160,7 @@ describe('Access role change summary', () => {
     )
 
     expect(await screen.findByText('dummystaff@millennia21.id')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Actions for dummystaff@millennia21.id' }))
     await user.click(screen.getByRole('button', { name: 'Make Viewer' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Change admin role' })
@@ -323,5 +379,35 @@ describe('Access role change summary', () => {
 
     expect(await within(dialog).findByLabelText('Junior High')).toBeVisible()
     expect(within(dialog).getByLabelText('Unavailable unit (unit-legacy)')).toBeChecked()
+  })
+
+  it('keeps History, Grant, role change and Demote inside one actions menu', async () => {
+    globalThis.fetch = createFetchRouter(accessRoutes([{ ...baseAdmin }]))
+    const { user } = renderAccess({ role: 'SUPER_ADMIN' })
+    await screen.findByText('dummystaff@millennia21.id')
+
+    expect(screen.queryByRole('button', { name: 'History' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Demote' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Actions for dummystaff@millennia21.id' }))
+    expect(screen.getByRole('button', { name: /History/ })).toBeVisible()
+    expect(screen.getByRole('button', { name: /Grant after-hours write/ })).toBeVisible()
+    expect(screen.getByRole('button', { name: /Make Viewer/ })).toBeVisible()
+    expect(screen.getByRole('button', { name: /Demote/ })).toBeVisible()
+  })
+
+  it('shows the approver checklist only for a Head of CARE admin, and only to a protected Super Admin', async () => {
+    globalThis.fetch = createFetchRouter(accessRoutes([
+      { ...baseAdmin, id: 'admin-care', email: 'care@millennia21.id', is_head_of_care: true },
+      { ...baseAdmin, id: 'admin-other', email: 'other@millennia21.id', is_head_of_care: false },
+    ]))
+    const { user } = renderAccess({ role: 'SUPER_ADMIN', is_protected: true })
+    await screen.findByText('care@millennia21.id')
+
+    const menus = screen.getAllByRole('button', { name: /^Employee/ })
+    await user.click(menus[0])
+    expect(screen.getByRole('button', { name: /Change Request Approver/ })).toBeVisible()
+    await user.keyboard('{Escape}')
+    await user.click(menus[1])
+    expect(screen.queryByRole('button', { name: /Change Request Approver/ })).not.toBeInTheDocument()
   })
 })

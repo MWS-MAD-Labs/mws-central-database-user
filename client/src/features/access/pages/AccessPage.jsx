@@ -702,7 +702,9 @@ function AdminUsersPanel() {
                                   "Employee PII",
                                 ),
                             },
-                            ...(user?.is_protected
+                            ...(user?.is_protected &&
+                            (admin.is_head_of_care ||
+                              admin.is_identifier_change_approver)
                               ? [
                                   {
                                     label: "Change Request Approver",
@@ -793,21 +795,6 @@ function AdminUsersPanel() {
                           Until {formatDateTime(admin.after_hours_write_until)}
                         </StatusBadge>
                       ) : null}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={
-                          admin.role !== "DATABASE_ADMIN" ||
-                          (!admin.can_write_employee_data &&
-                            !admin.can_write_student_data) ||
-                          !admin.is_active
-                        }
-                        onClick={() => setGrantDialog(admin)}
-                      >
-                        <Clock3 size={15} />
-                        Grant
-                      </Button>
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -816,86 +803,126 @@ function AdminUsersPanel() {
                     </StatusBadge>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setHistoryAdmin(admin)}
-                      >
-                        <Eye size={15} />
-                        History
-                      </Button>
-                      {admin.is_active ? (
-                        <div className="flex items-center justify-end gap-1">
-                          {admin.role === "SUPER_ADMIN" ? (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              disabled={
-                                admin.is_protected ||
-                                (demoteSuperAdminMutation.isPending &&
-                                  demoteSuperAdminMutation.variables?.id ===
-                                    admin.id)
-                              }
-                              title={
-                                admin.is_protected
-                                  ? "Protected, role can't be changed"
-                                  : undefined
-                              }
-                              onClick={() => handleDemoteSuperAdmin(admin)}
+                    <div className="flex justify-end">
+                      <ActionsMenu label={`Actions for ${admin.email}`}>
+                        {(closeMenu) => (
+                          <>
+                            <ActionsMenuItem
+                              onClick={() => {
+                                closeMenu();
+                                setHistoryAdmin(admin);
+                              }}
                             >
-                              <ArrowLeftRight size={15} />
-                              Make DB Admin
-                            </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              disabled={
-                                changeRoleMutation.isPending &&
-                                changeRoleMutation.variables?.id === admin.id
-                              }
-                              onClick={() => handleChangeRole(admin)}
-                            >
-                              <ArrowLeftRight size={15} />
-                              {admin.role === "DATABASE_ADMIN"
-                                ? "Make Viewer"
-                                : "Make DB Admin"}
-                            </Button>
-                          )}
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            disabled={admin.is_protected}
-                            title={
-                              admin.is_protected
-                                ? "Protected, can't be deactivated"
-                                : undefined
-                            }
-                            onClick={() => handleDemote(admin)}
-                          >
-                            <Ban size={15} />
-                            Demote
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={
-                            reactivateMutation.variables?.id === admin.id
-                          }
-                          onClick={() => handleReactivate(admin)}
-                        >
-                          <RotateCcw size={15} />
-                          Reactivate
-                        </Button>
-                      )}
+                              <span className="flex items-center gap-2">
+                                <Eye size={15} />
+                                History
+                              </span>
+                            </ActionsMenuItem>
+                            {admin.is_active ? (
+                              <>
+                                <ActionsMenuItem
+                                  disabled={
+                                    admin.role !== "DATABASE_ADMIN" ||
+                                    (!admin.can_write_employee_data &&
+                                      !admin.can_write_student_data)
+                                  }
+                                  title={
+                                    admin.role !== "DATABASE_ADMIN"
+                                      ? "Only for Database Admins"
+                                      : undefined
+                                  }
+                                  onClick={() => {
+                                    closeMenu();
+                                    setGrantDialog(admin);
+                                  }}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <Clock3 size={15} />
+                                    Grant after-hours write
+                                  </span>
+                                </ActionsMenuItem>
+                                {admin.role === "SUPER_ADMIN" ? (
+                                  <ActionsMenuItem
+                                    disabled={
+                                      admin.is_protected ||
+                                      (demoteSuperAdminMutation.isPending &&
+                                        demoteSuperAdminMutation.variables
+                                          ?.id === admin.id)
+                                    }
+                                    title={
+                                      admin.is_protected
+                                        ? "Protected, role can't be changed"
+                                        : undefined
+                                    }
+                                    onClick={() => {
+                                      closeMenu();
+                                      handleDemoteSuperAdmin(admin);
+                                    }}
+                                  >
+                                    <span className="flex items-center gap-2">
+                                      <ArrowLeftRight size={15} />
+                                      Make DB Admin
+                                    </span>
+                                  </ActionsMenuItem>
+                                ) : (
+                                  <ActionsMenuItem
+                                    disabled={
+                                      changeRoleMutation.isPending &&
+                                      changeRoleMutation.variables?.id ===
+                                        admin.id
+                                    }
+                                    onClick={() => {
+                                      closeMenu();
+                                      handleChangeRole(admin);
+                                    }}
+                                  >
+                                    <span className="flex items-center gap-2">
+                                      <ArrowLeftRight size={15} />
+                                      {admin.role === "DATABASE_ADMIN"
+                                        ? "Make Viewer"
+                                        : "Make DB Admin"}
+                                    </span>
+                                  </ActionsMenuItem>
+                                )}
+                                <div className="my-1 border-t border-(--mws-line)" />
+                                <ActionsMenuItem
+                                  tone="danger"
+                                  disabled={admin.is_protected}
+                                  title={
+                                    admin.is_protected
+                                      ? "Protected, can't be deactivated"
+                                      : undefined
+                                  }
+                                  onClick={() => {
+                                    closeMenu();
+                                    handleDemote(admin);
+                                  }}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <Ban size={15} />
+                                    Demote
+                                  </span>
+                                </ActionsMenuItem>
+                              </>
+                            ) : (
+                              <ActionsMenuItem
+                                disabled={
+                                  reactivateMutation.variables?.id === admin.id
+                                }
+                                onClick={() => {
+                                  closeMenu();
+                                  handleReactivate(admin);
+                                }}
+                              >
+                                <span className="flex items-center gap-2">
+                                  <RotateCcw size={15} />
+                                  Reactivate
+                                </span>
+                              </ActionsMenuItem>
+                            )}
+                          </>
+                        )}
+                      </ActionsMenu>
                     </div>
                   </td>
                 </tr>
