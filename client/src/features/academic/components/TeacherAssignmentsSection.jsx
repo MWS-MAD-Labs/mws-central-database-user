@@ -37,6 +37,7 @@ import {
   assignmentDuration,
   humanizeAssignmentDuration,
 } from "../utils/assignmentDuration.js";
+import { AssignmentDurationCell } from "./AssignmentDurationCell.jsx";
 
 function formatSubjectDetail(assignment) {
   return assignment.subject || null
@@ -445,13 +446,10 @@ export function TeacherAssignmentsSection({
                       </td>
                     ) : null}
                     <td className="px-2 py-3">
-                      {humanizeAssignmentDuration(
-                        assignment.start_date,
-                        assignment.end_date,
-                      )}
-                      <p className="mt-0.5 text-xs text-(--mws-muted)">
-                        {formatDurationDetail(assignment)}
-                      </p>
+                      <AssignmentDurationCell
+                        startDate={assignment.start_date}
+                        endDate={assignment.end_date}
+                      />
                     </td>
                   </tr>
                 ))}

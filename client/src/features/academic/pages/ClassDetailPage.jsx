@@ -1245,6 +1245,7 @@ export function ClassDetailPage() {
                   isLoading={enrollmentsQuery.isFetching}
                   onPrevious={() => setStudentPage((page) => Math.max(page - 1, 1))}
                   onNext={() => setStudentPage((page) => page + 1)}
+                  onPageChange={setStudentPage}
                   onPageSizeChange={(size) => {
                     setStudentPageSize(size);
                     setStudentPage(1);

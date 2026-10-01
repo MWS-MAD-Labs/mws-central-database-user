@@ -58,8 +58,8 @@ describe("PC activity room detail assignments", () => {
     );
 
     expect(await screen.findByText("Ari Student")).toBeVisible();
-    expect(screen.getAllByText("Expired")).toHaveLength(2);
-    expect(screen.getByText("01 Sept 2026")).toBeVisible();
+    expect(screen.getAllByText("Expired")).toHaveLength(1);
+    expect(screen.getByText("Expired 01 Sept 2026")).toBeVisible();
     expect(String(fetchMock.mock.calls[0][0])).toContain(
       "page=1&size=10&sort_by=start_date&sort_order=desc",
     );

@@ -23,7 +23,7 @@ import { SortableHeader } from "../../../../components/ui/SortableHeader.jsx";
 import { formatDate, formatStatus } from "../../../../lib/format.js";
 import { showBulkFailureToast, showErrorToast, showSuccessToast } from "../../../../lib/toast.js";
 import { pcActivityRoomsApi } from "../../api/academicApi.js";
-import { assignmentDuration, humanizeAssignmentDuration } from "../../utils/assignmentDuration.js";
+import { AssignmentDurationCell } from "../AssignmentDurationCell.jsx";
 import {
   AddMentorDialog,
   AddStudentsDialog,
@@ -56,9 +56,11 @@ function AssignmentActions({ row, kind, onAction }) {
     <ActionsMenu label={`Actions for ${kind === "student" ? row.student_name : row.mentor_name}`}>
       {(close) => (
         <>
-          <ActionsMenuItem onClick={() => { close(); onAction("date", row); }}>
-            <span className="flex items-center gap-2"><CalendarClock size={15} />Edit start date</span>
-          </ActionsMenuItem>
+          {row.status !== "SCHEDULED" ? (
+            <ActionsMenuItem onClick={() => { close(); onAction("date", row); }}>
+              <span className="flex items-center gap-2"><CalendarClock size={15} />Edit start date</span>
+            </ActionsMenuItem>
+          ) : null}
           {!isEnded ? (
             <>
               <ActionsMenuItem onClick={() => { close(); onAction("move", row); }}>
@@ -209,7 +211,7 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
     else runLifecycle(action, [row]);
   }
   const sort = (column, order) => updateParams({ page: 1, sort_by: column, sort_order: order });
-  const colSpan = canManage ? (isStudent ? 7 : 5) : isStudent ? 6 : 4;
+  const colSpan = canManage ? 5 : 4;
 
   return (
     <div className="space-y-4">
@@ -258,15 +260,13 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
 
       <div className="overflow-hidden rounded-2xl border border-(--mws-line)">
         <div className="overflow-x-auto">
-          <table className={`w-full text-left text-sm ${isStudent ? "min-w-[940px]" : "min-w-[720px]"}`}>
+          <table className={`w-full text-left text-sm min-w-[720px]`}>
             <thead className="bg-(--mws-soft) text-xs font-bold text-(--mws-muted)">
               <tr>
                 {canManage ? <th className="w-12 px-4 py-3"><input type="checkbox" aria-label={`Select all ${label}s on this page`} checked={pageSelected} onChange={(event) => togglePage(event.target.checked)} className="h-4 w-4 accent-(--mws-burgundy)" /></th> : null}
                 <th className="px-4 py-3"><SortableHeader label={isStudent ? "Student" : "Mentor"} column={isStudent ? "student_name" : "mentor_name"} sortBy={params.sort_by} sortOrder={params.sort_order} onSort={sort} /></th>
-                {isStudent ? <th className="px-4 py-3">Class</th> : null}
                 <th className="px-4 py-3"><SortableHeader label="Status" column="status" sortBy={params.sort_by} sortOrder={params.sort_order} onSort={sort} /></th>
                 <th className="px-4 py-3"><SortableHeader label="Duration" column="start_date" sortBy={params.sort_by} sortOrder={params.sort_order} onSort={sort} /></th>
-                {isStudent ? <th className="px-4 py-3">Expiry</th> : null}
                 {canManage ? <th className="px-4 py-3 text-right">Actions</th> : null}
               </tr>
             </thead>
@@ -277,11 +277,9 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
                 return (
                   <tr key={row.id} className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)">
                     {canManage ? <td className="px-4 py-4"><input type="checkbox" aria-label={`Select ${name}`} checked={selected.has(row.id)} onChange={(event) => toggleOne(row, event.target.checked)} className="h-4 w-4 accent-(--mws-burgundy)" /></td> : null}
-                    <td className="px-4 py-4"><Link to={href} target="_blank" rel="noreferrer" className="font-semibold text-(--mws-charcoal) hover:text-(--mws-burgundy) hover:underline">{name}</Link><p className="mt-1 text-xs text-(--mws-muted)">{isStudent ? row.nis || "No NIS" : formatStatus(row.mentor_type)}</p></td>
-                    {isStudent ? <td className="px-4 py-4 text-(--mws-muted)">{row.class_name || "-"}</td> : null}
+                    <td className="px-4 py-4"><Link to={href} target="_blank" rel="noreferrer" className="font-semibold text-(--mws-charcoal) hover:text-(--mws-burgundy) hover:underline">{name}</Link><p className="mt-1 text-xs text-(--mws-muted)">{isStudent ? [row.nis || "No NIS", row.class_name].filter(Boolean).join(" · ") : formatStatus(row.mentor_type)}</p></td>
                     <td className="px-4 py-4"><StatusBadge tone={statusTone(row.status)}>{formatStatus(row.status)}</StatusBadge>{isStudent && !row.still_eligible ? <p className="mt-1"><StatusBadge tone="neutral" variant="text">Out of scope</StatusBadge></p> : null}</td>
-                    <td className="px-4 py-4"><p className="font-medium text-(--mws-charcoal)">{assignmentDuration(row.start_date, row.end_date)}</p><p className="mt-1 text-xs text-(--mws-muted)">{humanizeAssignmentDuration(row.start_date, row.end_date)}</p></td>
-                    {isStudent ? <td className="px-4 py-4"><p className={row.status === "EXPIRED" ? "font-bold text-[#9a5c00]" : "font-medium text-(--mws-charcoal)"}>{row.expires_at ? formatDate(row.expires_at) : "No expiry"}</p>{row.status === "EXPIRED" ? <p className="mt-1 text-xs font-semibold text-[#9a5c00]">Expired</p> : null}</td> : null}
+                    <td className="px-4 py-4"><AssignmentDurationCell startDate={row.start_date} endDate={row.end_date}>{isStudent ? <p className={`mt-0.5 text-xs ${row.status === "EXPIRED" ? "font-semibold text-[#9a5c00]" : "text-(--mws-muted)"}`}>{row.status === "EXPIRED" ? "Expired " : row.expires_at ? "Expires " : "No expiry"}{row.expires_at ? formatDate(row.expires_at) : ""}</p> : null}</AssignmentDurationCell></td>
                     {canManage ? <td className="px-4 py-4 text-right"><AssignmentActions row={row} kind={kind} onAction={handleAction} /></td> : null}
                   </tr>
                 );
@@ -289,7 +287,7 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
             </tbody>
           </table>
         </div>
-        <PaginationBar paging={paging} itemLabel={`${label}s`} isLoading={query.isLoading} onPrevious={() => updateParams({ page: params.page - 1 })} onNext={() => updateParams({ page: params.page + 1 })} onPageChange={(page) => updateParams({ page })} onPageSizeChange={(size) => updateParams({ page: 1, size })} />
+        {paging.total_item > 0 ? <PaginationBar paging={paging} itemLabel={`${label}s`} isLoading={query.isLoading} onPrevious={() => updateParams({ page: params.page - 1 })} onNext={() => updateParams({ page: params.page + 1 })} onPageChange={(page) => updateParams({ page })} onPageSizeChange={(size) => updateParams({ page: 1, size })} /> : null}
       </div>
 
       {dialog?.type === "add" && isStudent ? <AddStudentsDialog room={room} remainingSlots={Math.max(MAX_ROOM_STUDENTS - (room.student_count + (room.scheduled_count || 0)), 0)} onClose={() => setDialog(null)} onAdded={invalidate} /> : null}
