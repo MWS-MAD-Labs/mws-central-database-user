@@ -30,7 +30,9 @@ import { assertCanWriteNow } from "../utils/office-hours";
 import { isPastIdentifierGracePeriod } from "../utils/identifier-lock";
 import {
   canApproveEntity,
+  hasActiveApprover,
   isChangeRequestApprover,
+  NO_APPROVER_MESSAGE,
 } from "../utils/change-request-approver";
 
 const REQUEST_INCLUDE = {
@@ -237,6 +239,9 @@ export class IdentifierChangeRequestService {
         `${IDENTIFIER_FIELD_LABELS[createRequest.field_name]} is locked for others, but you can edit it directly - no request needed.`,
       );
     }
+    if (!(await hasActiveApprover(createRequest.entity_type))) {
+      throw new ResponseError(400, NO_APPROVER_MESSAGE);
+    }
     if (createRequest.new_value === snapshot.currentValue) {
       throw new ResponseError(400, "The new value is the same as the current one");
     }
@@ -439,6 +444,15 @@ export class IdentifierChangeRequestService {
       throw new ResponseError(400, "This request has already been decided or cancelled");
     }
     return this.load(admin, id);
+  }
+
+  // Lets the UI warn before anyone files a request nobody can review.
+  static async approverStatus(): Promise<{ employee: boolean; student: boolean }> {
+    const [employee, student] = await Promise.all([
+      hasActiveApprover("Employee"),
+      hasActiveApprover("Student"),
+    ]);
+    return { employee, student };
   }
 
   static async get(admin: AdminUser, id: string): Promise<IdentifierChangeRequestResponse> {

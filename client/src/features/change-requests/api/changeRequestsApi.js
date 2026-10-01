@@ -9,6 +9,12 @@ export const changeRequestsApi = {
     return apiRequest(`${BASE}${query ? `?${query}` : ''}`)
   },
 
+  // { employee, student }: whether anyone can currently review a request.
+  async approverStatus() {
+    const response = await apiRequest(`${BASE}/approver-status`)
+    return response.data
+  },
+
   async create(payload) {
     const response = await apiRequest(BASE, { method: 'POST', body: payload })
     return response.data

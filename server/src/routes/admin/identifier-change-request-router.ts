@@ -6,6 +6,9 @@ export const identifierChangeRequestRouter = new Hono<{ Variables: AdminVariable
 
 identifierChangeRequestRouter.get("/", (c) => IdentifierChangeRequestController.list(c));
 identifierChangeRequestRouter.post("/", (c) => IdentifierChangeRequestController.create(c));
+identifierChangeRequestRouter.get("/approver-status", (c) =>
+  IdentifierChangeRequestController.approverStatus(c),
+);
 identifierChangeRequestRouter.get("/:id", (c) => IdentifierChangeRequestController.get(c));
 identifierChangeRequestRouter.patch("/:id/approve", (c) =>
   IdentifierChangeRequestController.approve(c),

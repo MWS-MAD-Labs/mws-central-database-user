@@ -72,6 +72,25 @@ export async function canApproveEntity(
   return isHeadOfCare(admin);
 }
 
+// Whether anyone can currently decide a request for this entity type. Employee
+// requests need an active Head of CARE admin with the flag.
+export async function hasActiveApprover(entityType: string): Promise<boolean> {
+  const count = await prismaClient.adminUser.count({
+    where: {
+      can_approve_identifier_changes: true,
+      is_active: true,
+      role: { in: [AdminRole.SUPER_ADMIN, AdminRole.DATABASE_ADMIN] },
+      ...(entityType === "Employee"
+        ? { person: { is: { employee: { is: HEAD_OF_CARE_WHERE } } } }
+        : {}),
+    },
+  });
+  return count > 0;
+}
+
+export const NO_APPROVER_MESSAGE =
+  "No approver is set up yet, so this request can't be reviewed. Ask a Super Admin to set one on the Access page.";
+
 // Boot check. When nobody holds the approver flag yet, the env list seeds
 // it so a fresh deploy is not stuck without approvers.
 export async function validateChangeRequestApproverConfig(): Promise<void> {

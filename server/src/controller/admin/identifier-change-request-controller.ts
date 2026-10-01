@@ -32,6 +32,10 @@ export class IdentifierChangeRequestController {
     return c.json(response);
   }
 
+  static async approverStatus(c: AdminContext) {
+    return c.json({ data: await IdentifierChangeRequestService.approverStatus() });
+  }
+
   static async get(c: AdminContext) {
     const response = await IdentifierChangeRequestService.get(c.var.admin, requireId(c));
     return c.json({ data: response });

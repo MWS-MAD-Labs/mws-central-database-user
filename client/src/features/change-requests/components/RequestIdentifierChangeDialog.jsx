@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Send } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
@@ -28,6 +28,14 @@ export function RequestIdentifierChangeDialog({
       }
     : {}
 
+  const statusQuery = useQuery({
+    queryKey: ['change-requests', 'approver-status'],
+    queryFn: () => changeRequestsApi.approverStatus(),
+  })
+  // Only blocks once the answer is in, so a slow check never stops a valid request.
+  const noApprover =
+    statusQuery.data && !statusQuery.data[entityType === 'Employee' ? 'employee' : 'student']
+
   const mutation = useMutation({
     mutationFn: () =>
       changeRequestsApi.create({
@@ -47,7 +55,7 @@ export function RequestIdentifierChangeDialog({
   function submit(event) {
     event.preventDefault()
     setHasAttemptedSubmit(true)
-    if (!newValue.trim() || reason.trim().length < 5) return
+    if (noApprover || !newValue.trim() || reason.trim().length < 5) return
     mutation.mutate()
   }
 
@@ -64,7 +72,7 @@ export function RequestIdentifierChangeDialog({
           <Button
             form="request-identifier-change-form"
             type="submit"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || Boolean(noApprover)}
             loading={mutation.isPending}
           >
             <Send size={16} />
@@ -79,6 +87,15 @@ export function RequestIdentifierChangeDialog({
         noValidate
         className="grid gap-4"
       >
+        {noApprover ? (
+          <p
+            role="alert"
+            className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]"
+          >
+            No approver is set up yet, so this request can't be reviewed. Ask a
+            Super Admin to set one on the Access page.
+          </p>
+        ) : null}
         <Field label={`Current ${fieldLabel}`}>
           <TextInput value={currentValue || ''} disabled />
         </Field>

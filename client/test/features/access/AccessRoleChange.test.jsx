@@ -33,8 +33,12 @@ const baseAdmin = {
   after_hours_write_until: null,
 }
 
-function accessRoutes(admins) {
+function accessRoutes(admins, approverStatus = { employee: true, student: true }) {
   return [
+    {
+      path: '/api/admin/identifier-change-requests/approver-status',
+      response: jsonResponse({ data: approverStatus }),
+    },
     {
       path: /^\/api\/admin\/admin-users(?:\?.*)?$/,
       response: jsonResponse({
@@ -409,5 +413,19 @@ describe('Access role change summary', () => {
     await user.keyboard('{Escape}')
     await user.click(menus[1])
     expect(screen.queryByRole('button', { name: /Change Request Approver/ })).not.toBeInTheDocument()
+  })
+
+  it('warns Super Admins when no one can approve employee data changes', async () => {
+    globalThis.fetch = createFetchRouter(accessRoutes([{ ...baseAdmin }], { employee: false, student: true }))
+    renderAccess({ role: 'SUPER_ADMIN' })
+    expect(await screen.findByText('No approver for employee data changes yet.')).toBeVisible()
+    expect(screen.getByText(/Head of\s+CARE/)).toBeVisible()
+  })
+
+  it('stays quiet when an approver exists', async () => {
+    globalThis.fetch = createFetchRouter(accessRoutes([{ ...baseAdmin }]))
+    renderAccess({ role: 'SUPER_ADMIN' })
+    await screen.findByText('dummystaff@millennia21.id')
+    expect(screen.queryByText('No approver for employee data changes yet.')).not.toBeInTheDocument()
   })
 })

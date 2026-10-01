@@ -187,6 +187,47 @@ describe("Identifier change requests", () => {
     expect(response.status).toBe(403);
   });
 
+  it("reports approver availability, refuses new requests without one, and keeps old ones for later", async () => {
+    const { employee, requester, approver } = await setup();
+    const { body } = await submit(employee.id, requester.accessToken);
+    expect(body.data.status).toBe("PENDING");
+
+    const withApprover = await (await TestRequest.get(`${BASE}/approver-status`, requester.accessToken)).json();
+    expect(withApprover.data.employee).toBe(true);
+
+    // The only approver loses the flag: nobody can review anymore.
+    await prismaClient.adminUser.update({
+      where: { id: "test-icr-approver-id" },
+      data: { can_approve_identifier_changes: false },
+    });
+    const without = await (await TestRequest.get(`${BASE}/approver-status`, requester.accessToken)).json();
+    expect(without.data.employee).toBe(false);
+
+    await prismaClient.identifierChangeRequest.deleteMany({});
+    const refused = await submit(employee.id, requester.accessToken);
+    expect(refused.response.status).toBe(400);
+    expect(refused.body.errors).toContain("No approver is set up yet");
+
+    // A request filed earlier shows up as soon as an approver exists again.
+    await prismaClient.identifierChangeRequest.create({
+      data: {
+        entity_type: "Employee",
+        entity_id: employee.id,
+        field_name: "nik",
+        old_value: employee.nik,
+        new_value: randomNik(),
+        reason: "Filed before the approver was removed",
+        requested_by: "test-icr-requester-id",
+      },
+    });
+    await prismaClient.adminUser.update({
+      where: { id: "test-icr-approver-id" },
+      data: { can_approve_identifier_changes: true },
+    });
+    const queue = await (await TestRequest.get(BASE, approver.accessToken)).json();
+    expect(queue.data).toHaveLength(1);
+  });
+
   it("only a protected Super Admin can pick approvers, and only Head of CARE admins", async () => {
     const { requester } = await setup();
     const notProtected = await AdminUserTest.createSuperAdmin(undefined, {

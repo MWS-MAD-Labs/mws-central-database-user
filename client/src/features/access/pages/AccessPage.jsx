@@ -43,6 +43,7 @@ import {
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { fetchAllPages } from "../../../lib/pagination.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
+import { changeRequestsApi } from "../../change-requests/api/changeRequestsApi.js";
 import { gradesApi } from "../../academic/api/academicApi.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
 import { unitsApi } from "../../master-data/api/masterDataApi.js";
@@ -139,6 +140,12 @@ export function AccessPage() {
 function AdminUsersPanel() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const approverStatusQuery = useQuery({
+    queryKey: ["change-requests", "approver-status"],
+    queryFn: () => changeRequestsApi.approverStatus(),
+  });
+  const noEmployeeApprover =
+    approverStatusQuery.data && !approverStatusQuery.data.employee;
   const confirm = useConfirm();
   const [params, setParams] = useState({
     page: 1,
@@ -457,6 +464,20 @@ function AdminUsersPanel() {
 
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      {noEmployeeApprover ? (
+        <div
+          role="status"
+          className="border-b border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]"
+        >
+          <p className="font-semibold">No approver for employee data changes yet.</p>
+          <p className="mt-0.5">
+            Requests to change a locked NIK, NPWP, bank or BPJS number can't be
+            reviewed. Pick an admin who is linked to an employee with the Head of
+            CARE position, then tick Change Request Approver in their Employee
+            permissions. Requests filed earlier appear for them automatically.
+          </p>
+        </div>
+      ) : null}
       <div className="border-b border-(--mws-line) p-4">
         <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <DebouncedSearchInput
