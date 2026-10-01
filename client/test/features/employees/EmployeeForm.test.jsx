@@ -25,8 +25,12 @@ function renderEmployeeForm({
   user = employeeSuperAdmin,
   onSubmit = mock(() => {}),
   isSubmitting = false,
+  myRequests = [],
 } = {}) {
   globalThis.fetch = mock(async (url) => {
+    if (url.includes('/identifier-change-requests/mine')) {
+      return new Response(JSON.stringify({ data: myRequests, paging: { current_page: 1, total_page: 1, total_item: myRequests.length, size: 20 }, unseen_decided_count: 0 }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
     if (url.includes('/education-suggestions')) {
       return jsonResponse({ institution_names: [], majors: [] })
     }
@@ -165,6 +169,18 @@ describe('EmployeeForm', () => {
 
     expect(await screen.findByDisplayValue('3174 0101 0190 0001')).toBeDisabled()
     expect(screen.getByText(/Locked. Past the 1-day edit window/)).toBeVisible()
+  })
+
+  it('shows the status of my latest change request on a locked field', async () => {
+    setSystemTime(new Date('2026-09-19T12:00:00.000Z'))
+    const { user } = renderEmployeeForm({
+      employee: employeeFixture(),
+      myRequests: [{ id: 'r1', field_name: 'nik', status: 'REJECTED', decision_note: 'Attach the KTP' }],
+    })
+    await user.click(screen.getByRole('button', { name: 'Show Sensitive Fields' }))
+    const revealDialog = await screen.findByRole('dialog', { name: 'View sensitive fields' })
+    await user.click(within(revealDialog).getByRole('button', { name: 'View' }))
+    expect(await screen.findByText('Last request rejected: Attach the KTP')).toBeVisible()
   })
 
   it('keeps sensitive values out of the payload and the form clean until Show', async () => {

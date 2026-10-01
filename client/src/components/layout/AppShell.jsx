@@ -44,6 +44,10 @@ import {
   canViewWorkforce,
 } from "../../lib/capabilities.js";
 import { usePendingChangeRequestCount } from "../../features/change-requests/hooks/usePendingChangeRequestCount.js";
+import {
+  canSeeMyChangeRequests,
+  useMyChangeRequestCount,
+} from "../../features/change-requests/hooks/useMyChangeRequestCount.js";
 
 const adminNavItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -94,6 +98,7 @@ export function AppShell() {
     "Master Data": true,
   });
   const pendingChangeRequestCount = usePendingChangeRequestCount(user);
+  const myChangeRequestCount = useMyChangeRequestCount(user);
 
   const navItems = useMemo(() => {
     if (user?.type === "employee") {
@@ -181,9 +186,18 @@ export function AppShell() {
         badge: pendingChangeRequestCount || null,
       });
     }
+    // Everyone who can file a request sees the outcome of their own.
+    if (canSeeMyChangeRequests(user)) {
+      items.push({
+        to: "/change-requests/mine",
+        label: "My Requests",
+        icon: ClipboardCheck,
+        badge: myChangeRequestCount || null,
+      });
+    }
     items.push({ to: "/profile", label: "Profile", icon: UserRound });
     return items;
-  }, [user, pendingChangeRequestCount]);
+  }, [user, pendingChangeRequestCount, myChangeRequestCount]);
 
   async function handleLogout() {
     await logout();

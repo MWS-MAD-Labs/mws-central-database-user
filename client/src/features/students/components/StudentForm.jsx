@@ -53,6 +53,8 @@ import {
 } from "../api/studentsApi.js";
 import { formatEntryType } from "../format.js";
 import { RequestIdentifierChangeDialog } from "../../change-requests/components/RequestIdentifierChangeDialog.jsx";
+import { RequestStatusHint } from "../../change-requests/components/RequestStatusHint.jsx";
+import { useMyRequestsForRecord } from "../../change-requests/hooks/useMyRequestsForRecord.js";
 
 const emptyOptions = {
   grades: [],
@@ -106,6 +108,12 @@ export function StudentForm({
   const [values, setValues] = useState(initialValues);
   const [nowSnapshot] = useState(() => Date.now());
   const [requestNisnChangeOpen, setRequestNisnChangeOpen] = useState(false);
+  const myRequestFor = useMyRequestsForRecord(
+    user,
+    "Student",
+    student?.id,
+    mode === "edit",
+  );
 
   const isCreate = mode === "create";
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
@@ -523,6 +531,7 @@ export function StudentForm({
               hint={
                 nisnLocked ? (
                   <LockedHint
+                    request={myRequestFor("nisn")}
                     onRequestChange={
                       student?.id ? () => setRequestNisnChangeOpen(true) : undefined
                     }
@@ -905,11 +914,17 @@ function findOptionByName(options, name) {
   return options.find((option) => option.name === name) || null;
 }
 
-function LockedHint({ onRequestChange }) {
+function LockedHint({ onRequestChange, request }) {
+  const pending = request?.status === "PENDING";
   return (
     <span className="font-semibold text-[#a43c41]">
       Locked, past the 1-day edit window.{" "}
-      {onRequestChange ? (
+      {request ? (
+        <>
+          <RequestStatusHint request={request} />{" "}
+        </>
+      ) : null}
+      {onRequestChange && !pending ? (
         <button
           type="button"
           onClick={onRequestChange}

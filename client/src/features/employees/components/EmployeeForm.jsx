@@ -71,6 +71,8 @@ import { useAcademicUnits } from "../../master-data/hooks/useAcademicUnits.js";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { masterDataApi } from "../../master-data/api/masterDataApi.js";
 import { RequestIdentifierChangeDialog } from "../../change-requests/components/RequestIdentifierChangeDialog.jsx";
+import { RequestStatusHint } from "../../change-requests/components/RequestStatusHint.jsx";
+import { useMyRequestsForRecord } from "../../change-requests/hooks/useMyRequestsForRecord.js";
 import { rememberReveal } from "../../../lib/piiRevealMemory.js";
 
 const employeePiiScope = (employeeId) => `employee:${employeeId}`;
@@ -134,6 +136,12 @@ export function EmployeeForm({
   const [values, setValues] = useState(initialValues);
   const [nowSnapshot] = useState(() => Date.now());
   const [requestChangeField, setRequestChangeField] = useState(null);
+  const myRequestFor = useMyRequestsForRecord(
+    user,
+    "Employee",
+    employee?.id,
+    mode === "edit",
+  );
   const requestChangeFor = (field) =>
     mode === "edit" && employee?.id
       ? () => setRequestChangeField(field)
@@ -1026,7 +1034,8 @@ export function EmployeeForm({
                 !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
                 ) : nikLocked ? (
-                  <LockedHint onRequestChange={requestChangeFor("nik")} />
+                  <LockedHint onRequestChange={requestChangeFor("nik")}
+ request={myRequestFor("nik")} />
                 ) : (
                   <LengthHint value={values.nik} max={16} label="digits" />
                 )
@@ -1052,7 +1061,8 @@ export function EmployeeForm({
                 !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
                 ) : npwpLocked ? (
-                  <LockedHint onRequestChange={requestChangeFor("npwp")} />
+                  <LockedHint onRequestChange={requestChangeFor("npwp")}
+ request={myRequestFor("npwp")} />
                 ) : (
                   <LengthHint value={values.npwp} max={15} label="digits" />
                 )
@@ -1080,6 +1090,7 @@ export function EmployeeForm({
                 ) : bankAccountLocked ? (
                   <LockedHint
                     onRequestChange={requestChangeFor("bank_account_number")}
+ request={myRequestFor("bank_account_number")}
                   />
                 ) : (
                   <LengthHint
@@ -1115,6 +1126,7 @@ export function EmployeeForm({
                 ) : bpjsLocked ? (
                   <LockedHint
                     onRequestChange={requestChangeFor("bpjs_number")}
+ request={myRequestFor("bpjs_number")}
                   />
                 ) : (
                   <LengthHint
@@ -1155,6 +1167,7 @@ export function EmployeeForm({
                   kpjLocked ? (
                     <LockedHint
                       onRequestChange={requestChangeFor("kpj_number")}
+ request={myRequestFor("kpj_number")}
                     />
                   ) : (
                     <LengthHint
@@ -1167,6 +1180,7 @@ export function EmployeeForm({
                 ) : bpjsEmploymentLocked ? (
                   <LockedHint
                     onRequestChange={requestChangeFor("bpjs_employment_number")}
+ request={myRequestFor("bpjs_employment_number")}
                   />
                 ) : (
                   <LengthHint
@@ -1537,11 +1551,17 @@ function buildFullPayload(values) {
   });
 }
 
-function LockedHint({ onRequestChange }) {
+function LockedHint({ onRequestChange, request }) {
+  const pending = request?.status === "PENDING";
   return (
     <span className="font-semibold text-[#a43c41]">
       Locked. Past the 1-day edit window.{" "}
-      {onRequestChange ? (
+      {request ? (
+        <>
+          <RequestStatusHint request={request} />{" "}
+        </>
+      ) : null}
+      {onRequestChange && !pending ? (
         <button
           type="button"
           onClick={onRequestChange}

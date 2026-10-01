@@ -34,6 +34,7 @@ const StudentEditPage = lazy(() => import('../features/students/pages/StudentEdi
 const StudentsPage = lazy(() => import('../features/students/pages/StudentsPage.jsx').then((module) => ({ default: module.StudentsPage })))
 const RoleHome = lazy(() => import('../routes/RoleHome.jsx').then((module) => ({ default: module.RoleHome })))
 const MasterData = lazy(() => import('../features/master-data/pages/MasterData.jsx'))
+const MyChangeRequestsPage = lazy(() => import('../features/change-requests/pages/MyChangeRequestsPage.jsx').then((module) => ({ default: module.MyChangeRequestsPage })))
 const ChangeRequestsPage = lazy(() => import('../features/change-requests/pages/ChangeRequestsPage.jsx').then((module) => ({ default: module.ChangeRequestsPage })))
 const WorkspaceTable = lazy(() => import('../features/tableTecher/pages/WorkspaceTable.jsx').then((module) => ({ default: module.WorkspaceTable })))
 
@@ -51,7 +52,8 @@ export default function App() {
         <Route element={<AppShell />}>
           <Route index element={<RoleHome />} />
           <Route path="dashboard" element={<DashboardPage />} />
-           <Route element={<CapabilityRoute allowed={canViewWorkforce} title="Employee & Intern Access Required" description="Your account cannot browse employee or intern records." />}>
+           <Route path="change-requests/mine" element={<MyChangeRequestsPage />} />
+          <Route element={<CapabilityRoute allowed={canViewWorkforce} title="Employee & Intern Access Required" description="Your account cannot browse employee or intern records." />}>
              <Route path="employees" element={<EmployeesPage />} />
              <Route path="employees/:employeeId" element={<EmployeeDetailPage />} />
              <Route path="interns" element={<InternsPage />} />

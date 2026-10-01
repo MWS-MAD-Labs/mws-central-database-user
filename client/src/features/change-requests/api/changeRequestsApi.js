@@ -9,6 +9,17 @@ export const changeRequestsApi = {
     return apiRequest(`${BASE}${query ? `?${query}` : ''}`)
   },
 
+  // The requester's own requests, with the count of decisions not opened yet.
+  async listMine(params = {}) {
+    const query = compactSearchParams(params).toString()
+    return apiRequest(`${BASE}/mine${query ? `?${query}` : ''}`)
+  },
+
+  async markMineSeen() {
+    const response = await apiRequest(`${BASE}/mine/seen`, { method: 'POST' })
+    return response.data
+  },
+
   // { employee, student }: whether anyone can currently review a request.
   async approverStatus() {
     const response = await apiRequest(`${BASE}/approver-status`)
