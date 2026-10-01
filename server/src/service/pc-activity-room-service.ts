@@ -616,14 +616,16 @@ async function throwStudentIneligibleForRoom(
 
 export class PCActivityRoomService {
   static async listMentorshipsForEmployee(
-    admin: AdminUser,
+    admin: AdminUserWithAcademicScope,
     employeeId: string,
   ): Promise<PcActivityRoomMentorshipHistoryResponse[]> {
     const employee = await prismaClient.employee.findFirst({
       where: { id: employeeId, deleted_at: null },
       select: { unit_id: true },
     });
-    if (!employee || (admin.role === AdminRole.DATABASE_ADMIN && employee.unit_id !== admin.unit_id)) {
+    const employeeScope =
+      admin.role === AdminRole.DATABASE_ADMIN ? resolveEmployeeUnitScope(admin) : undefined;
+    if (!employee || (employeeScope !== undefined && !employeeScope.includes(employee.unit_id))) {
       throw new ResponseError(404, "Employee not found");
     }
     const rows = await prismaClient.pcActivityRoomMentorAssignment.findMany({
@@ -647,14 +649,16 @@ export class PCActivityRoomService {
   }
 
   static async listMentorshipsForIntern(
-    admin: AdminUser,
+    admin: AdminUserWithAcademicScope,
     internId: string,
   ): Promise<PcActivityRoomMentorshipHistoryResponse[]> {
     const intern = await prismaClient.intern.findFirst({
       where: { id: internId, deleted_at: null },
       select: { unit_id: true },
     });
-    if (!intern || (admin.role === AdminRole.DATABASE_ADMIN && intern.unit_id !== admin.unit_id)) {
+    const internScope =
+      admin.role === AdminRole.DATABASE_ADMIN ? resolveEmployeeUnitScope(admin) : undefined;
+    if (!intern || (internScope !== undefined && !internScope.includes(intern.unit_id))) {
       throw new ResponseError(404, "Intern not found");
     }
     const rows = await prismaClient.pcActivityRoomMentorAssignment.findMany({

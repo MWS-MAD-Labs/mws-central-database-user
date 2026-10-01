@@ -13,6 +13,7 @@ import { ResponseError } from "../error/response-error";
 import {
   assertCanViewEmployeeData,
   assertCanViewStudentData,
+  canViewStudentData,
   resolveEmployeeUnitScope,
   resolveStudentUnitScope,
   type AdminUserWithAcademicScope,
@@ -364,7 +365,9 @@ export class StudentSupportAssignmentService {
     request: GetEmployeeSupportAssignmentsRequest,
   ): Promise<EmployeeSupportAssignmentResponse[]> {
     assertCanViewEmployeeData(admin);
-    assertCanViewStudentData(admin);
+    // The caseload names students. Without student access the employee page
+    // still loads, with an empty list instead of a 403.
+    if (!canViewStudentData(admin)) return [];
 
     const getRequest = Validation.validate(
       StudentSupportAssignmentValidation.GET_BY_EMPLOYEE,
@@ -412,6 +415,7 @@ export class StudentSupportAssignmentService {
     request: GetInternSupportAssignmentsRequest,
   ): Promise<EmployeeSupportAssignmentResponse[]> {
     assertCanViewEmployeeData(admin);
+    if (!canViewStudentData(admin)) return [];
     const getRequest = Validation.validate(
       StudentSupportAssignmentValidation.GET_BY_INTERN,
       request,

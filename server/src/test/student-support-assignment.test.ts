@@ -594,7 +594,7 @@ describe("Student Support Assignment", () => {
       expect(response.status).toBe(404);
     });
 
-    it("should require both employee and student view permissions", async () => {
+    it("should need employee access, and show student names only with student access", async () => {
       const teacher = await createTeachingEmployee(
         "test_support_teacher_domain_gate@millennia21.id",
       );
@@ -611,14 +611,13 @@ describe("Student Support Assignment", () => {
         email: "support-student-only@millennia21.id",
       });
 
-      expect(
-        (
-          await TestRequest.get(
-            `/api/admin/employees/${teacher.id}/support-assignments`,
-            employeeOnly.accessToken,
-          )
-        ).status,
-      ).toBe(403);
+      // No student access: the employee page still loads, the caseload is empty.
+      const withoutStudents = await TestRequest.get(
+        `/api/admin/employees/${teacher.id}/support-assignments`,
+        employeeOnly.accessToken,
+      );
+      expect(withoutStudents.status).toBe(200);
+      expect((await withoutStudents.json()).data).toEqual([]);
       expect(
         (
           await TestRequest.get(

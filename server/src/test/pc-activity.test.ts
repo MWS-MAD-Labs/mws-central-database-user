@@ -798,6 +798,34 @@ describe("PC Activity", () => {
       ).toEqual(["MONDAY", "TUESDAY"]);
     });
 
+    it("follows the employee view scope, and never 403s the support caseload without student access", async () => {
+      const employee = await createTeachingEmployee("test_pc_mentorships_scope@millennia21.id");
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_PC_MENTORSHIP_OTHER_${Date.now()}` },
+      });
+      const homeOnly = await AdminUserTest.createDatabaseAdmin(otherUnit.id, {
+        id: "test-mentorship-home-only",
+        email: "test_mentorship_home_only@millennia21.id",
+      });
+      const allEmployeeUnits = await AdminUserTest.createDatabaseAdmin(otherUnit.id, {
+        id: "test-mentorship-all-employee-units",
+        email: "test_mentorship_all_employee_units@millennia21.id",
+        canViewAllEmployeeUnits: true,
+        canViewStudentData: false,
+      });
+
+      // Own unit only: the employee of another unit stays out of reach.
+      const hidden = await TestRequest.get(`/api/admin/employees/${employee.id}/pc-activity-mentorships`, homeOnly.accessToken);
+      expect(hidden.status).toBe(404);
+
+      // All employee units: reachable, and the caseload is empty rather than a 403.
+      const mentorships = await TestRequest.get(`/api/admin/employees/${employee.id}/pc-activity-mentorships`, allEmployeeUnits.accessToken);
+      expect(mentorships.status).toBe(200);
+      const caseload = await TestRequest.get(`/api/admin/employees/${employee.id}/support-assignments`, allEmployeeUnits.accessToken);
+      expect(caseload.status).toBe(200);
+      expect((await caseload.json()).data).toEqual([]);
+    });
+
     it("should return an empty list for an employee who mentors nothing", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const employee = await createTeachingEmployee(
