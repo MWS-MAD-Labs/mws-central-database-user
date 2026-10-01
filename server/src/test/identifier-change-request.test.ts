@@ -187,18 +187,15 @@ describe("Identifier change requests", () => {
     expect(response.status).toBe(403);
   });
 
-  it("only a protected Super Admin can pick approvers", async () => {
+  it("only a protected Super Admin can pick approvers, and only Head of CARE admins", async () => {
     const { requester } = await setup();
-    const target = await prismaClient.adminUser.findUniqueOrThrow({
-      where: { id: "test-icr-requester-id" },
-    });
     const notProtected = await AdminUserTest.createSuperAdmin(undefined, {
       id: "test-icr-plain-super-id",
       email: "test_icr_plain_super@millennia21.id",
     });
     const denied = await TestRequest.patch(
-      `/api/admin/admin-users/can-approve-identifier-changes/${target.id}`,
-      { can_approve_identifier_changes: true },
+      `/api/admin/admin-users/can-approve-identifier-changes/test-icr-approver-id`,
+      { can_approve_identifier_changes: false },
       notProtected.accessToken,
     );
     expect(denied.status).toBe(403);
@@ -208,14 +205,46 @@ describe("Identifier change requests", () => {
       id: "test-icr-protected-id",
       email: OTHER_PROTECTED_EMAIL,
     });
-    const ok = await TestRequest.patch(
-      `/api/admin/admin-users/can-approve-identifier-changes/${target.id}`,
+
+    // The requester is a plain DB admin (not Head of CARE): clear message, no 500.
+    const notHeadOfCare = await TestRequest.patch(
+      `/api/admin/admin-users/can-approve-identifier-changes/test-icr-requester-id`,
       { can_approve_identifier_changes: true },
       protectedAdmin.accessToken,
     );
-    expect(ok.status).toBe(200);
-    const saved = await prismaClient.adminUser.findUniqueOrThrow({ where: { id: target.id } });
-    expect(saved.can_approve_identifier_changes).toBe(true);
+    expect(notHeadOfCare.status).toBe(400);
+    expect(JSON.stringify(await notHeadOfCare.json())).toContain("Head of CARE");
+
+    // The approver fixture is linked to a Head of CARE employee: turn off, then on.
+    const off = await TestRequest.patch(
+      `/api/admin/admin-users/can-approve-identifier-changes/test-icr-approver-id`,
+      { can_approve_identifier_changes: false },
+      protectedAdmin.accessToken,
+    );
+    expect(off.status).toBe(200);
+    const on = await TestRequest.patch(
+      `/api/admin/admin-users/can-approve-identifier-changes/test-icr-approver-id`,
+      { can_approve_identifier_changes: true },
+      protectedAdmin.accessToken,
+    );
+    expect(on.status).toBe(200);
+    expect((await on.json()).data.is_head_of_care).toBe(true);
+  });
+
+  it("the admin list marks Head of CARE admins", async () => {
+    await setup();
+    const protectedAdmin = await AdminUserTest.createSuperAdmin(undefined, {
+      id: "test-icr-protected-id",
+      email: OTHER_PROTECTED_EMAIL,
+    });
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?size=50",
+      protectedAdmin.accessToken,
+    );
+    expect(response.status).toBe(200);
+    const rows = (await response.json()).data as { id: string; is_head_of_care: boolean }[];
+    expect(rows.find((row) => row.id === "test-icr-approver-id")?.is_head_of_care).toBe(true);
+    expect(rows.find((row) => row.id === "test-icr-requester-id")?.is_head_of_care).toBe(false);
   });
 
   it("a protected Super Admin who isn't flagged as approver still can't approve", async () => {

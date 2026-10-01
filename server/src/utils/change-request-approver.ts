@@ -30,6 +30,37 @@ export function isChangeRequestApprover(admin: ApproverFlags): boolean {
   );
 }
 
+const HEAD_OF_CARE_WHERE = {
+  deleted_at: null,
+  status: EmployeeStatus.ACTIVE,
+  job_position: { name: { equals: HEAD_OF_CARE_POSITION, mode: "insensitive" as const } },
+};
+
+// True when the admin is linked to an active Head of CARE employee.
+export async function isHeadOfCare(
+  admin: Pick<AdminUser, "person_id">,
+): Promise<boolean> {
+  if (!admin.person_id) return false;
+  const employee = await prismaClient.employee.findFirst({
+    where: { person_id: admin.person_id, ...HEAD_OF_CARE_WHERE },
+    select: { id: true },
+  });
+  return employee !== null;
+}
+
+// One query for a whole page of admins.
+export async function headOfCarePersonIds(
+  personIds: (string | null)[],
+): Promise<Set<string>> {
+  const ids = personIds.filter((id): id is string => Boolean(id));
+  if (ids.length === 0) return new Set();
+  const employees = await prismaClient.employee.findMany({
+    where: { person_id: { in: ids }, ...HEAD_OF_CARE_WHERE },
+    select: { person_id: true },
+  });
+  return new Set(employees.map((employee) => employee.person_id));
+}
+
 // Employee data additionally needs the approver to be an active Head of CARE.
 // Student requests only need the flag for now.
 export async function canApproveEntity(
@@ -38,18 +69,7 @@ export async function canApproveEntity(
 ): Promise<boolean> {
   if (!isChangeRequestApprover(admin)) return false;
   if (entityType !== "Employee") return true;
-  if (!admin.person_id) return false;
-
-  const employee = await prismaClient.employee.findFirst({
-    where: {
-      person_id: admin.person_id,
-      deleted_at: null,
-      status: EmployeeStatus.ACTIVE,
-      job_position: { name: { equals: HEAD_OF_CARE_POSITION, mode: "insensitive" } },
-    },
-    select: { id: true },
-  });
-  return employee !== null;
+  return isHeadOfCare(admin);
 }
 
 // Boot check. When nobody holds the approver flag yet, the env list seeds
@@ -71,6 +91,7 @@ export async function validateChangeRequestApproverConfig(): Promise<void> {
         email: { in: emails, mode: "insensitive" },
         is_active: true,
         role: { in: [AdminRole.SUPER_ADMIN, AdminRole.DATABASE_ADMIN] },
+        person: { is: { employee: { is: HEAD_OF_CARE_WHERE } } },
       },
       data: { can_approve_identifier_changes: true },
     });
@@ -83,6 +104,6 @@ export async function validateChangeRequestApproverConfig(): Promise<void> {
   }
 
   logger.warn(
-    "No identifier change approvers are set. A protected Super Admin can pick them on the Access page.",
+    "No identifier change approvers are set. A protected Super Admin can pick a Head of CARE on the Access page.",
   );
 }

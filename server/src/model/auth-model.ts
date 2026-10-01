@@ -2,8 +2,8 @@ import { AdminRole, type AdminUser } from "../generated/prisma/client";
 import { generateAdminId } from "../utils/generate-id";
 import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
 import {
-  canApproveEntity,
   isChangeRequestApprover,
+  isHeadOfCare,
 } from "../utils/change-request-approver";
 import { resolvePersonPhotoUrl } from "../lib/minio";
 import { prismaClient } from "../lib/prisma";
@@ -34,6 +34,8 @@ export type AdminResponse = {
   is_identifier_change_approver: boolean;
   // Approver flag plus an active Head of CARE position, needed for employee data.
   is_employee_identifier_change_approver: boolean;
+  // Linked to an active Head of CARE employee, so eligible to be an approver.
+  is_head_of_care: boolean;
   can_view_sensitive_data?: boolean;
   can_view_all_student_units?: boolean;
   can_view_all_employee_units?: boolean;
@@ -73,8 +75,11 @@ export async function toAdminResponse(
     student_view_units?: { unit_id: string }[];
     employee_view_units?: { unit_id: string }[];
   },
+  // Lists pass this from one batch query instead of one lookup per admin.
+  headOfCare?: boolean,
 ): Promise<AdminResponse> {
   const isSuperAdmin = admin.role === AdminRole.SUPER_ADMIN;
+  const isHeadOfCareValue = headOfCare ?? (await isHeadOfCare(admin));
 
   // Most callers fetch a single admin without including these relations -
   // self-fetch here rather than pushing an include onto every call site.
@@ -112,7 +117,8 @@ export async function toAdminResponse(
     type: "admin",
     is_protected: isProtectedSuperAdminEmail(admin.email),
     is_identifier_change_approver: isChangeRequestApprover(admin),
-    is_employee_identifier_change_approver: await canApproveEntity(admin, "Employee"),
+    is_employee_identifier_change_approver: isChangeRequestApprover(admin) && isHeadOfCareValue,
+    is_head_of_care: isHeadOfCareValue,
     person_id: admin.person_id,
   };
 

@@ -7,6 +7,7 @@ import {
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { toAdminResponse, type AdminResponse } from "../model/auth-model";
+import { headOfCarePersonIds, isHeadOfCare } from "../utils/change-request-approver";
 import type {
   AdminUserSortField,
   ChangeAdminRoleRequest,
@@ -1021,15 +1022,22 @@ export class AdminUserService {
     if (!targetAdmin) {
       throw new ResponseError(404, "Admin not found");
     }
-    if (
-      setRequest.can_approve_identifier_changes &&
-      targetAdmin.role !== AdminRole.SUPER_ADMIN &&
-      targetAdmin.role !== AdminRole.DATABASE_ADMIN
-    ) {
-      throw new ResponseError(
-        400,
-        "Only a Super Admin or Database Admin can be an approver",
-      );
+    if (setRequest.can_approve_identifier_changes) {
+      if (
+        targetAdmin.role !== AdminRole.SUPER_ADMIN &&
+        targetAdmin.role !== AdminRole.DATABASE_ADMIN
+      ) {
+        throw new ResponseError(
+          400,
+          "Only a Super Admin or Database Admin can be an approver",
+        );
+      }
+      if (!(await isHeadOfCare(targetAdmin))) {
+        throw new ResponseError(
+          400,
+          "Only an active Head of CARE can be a change request approver",
+        );
+      }
     }
     if (
       targetAdmin.can_approve_identifier_changes ===
@@ -1498,7 +1506,19 @@ export class AdminUserService {
               employee_view_units: { select: { unit_id: true } },
             },
           })
-          .then((admins) => Promise.all(admins.map(toAdminResponse))),
+          .then(async (admins) => {
+            const headOfCare = await headOfCarePersonIds(
+              admins.map((admin) => admin.person_id),
+            );
+            return Promise.all(
+              admins.map((admin) =>
+                toAdminResponse(
+                  admin,
+                  admin.person_id ? headOfCare.has(admin.person_id) : false,
+                ),
+              ),
+            );
+          }),
     });
   }
 }
