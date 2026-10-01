@@ -69,6 +69,8 @@ import {
   assertCanViewStudentData,
   resolveStudentUnitScope,
   type AdminUserWithStudentScope,
+  assertCanWriteUnit,
+  type AdminWithOptionalScope,
 } from "../utils/admin-permissions";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { EnrollmentValidation } from "../validation/enrollment-validation";
@@ -135,20 +137,17 @@ async function resolveStudentFullName(studentId: string): Promise<string | undef
 
 // Database Admin enrollment writes are scoped to the class unit.
 async function assertClassInAdminUnit(
-  admin: AdminUser,
+  admin: AdminUser & AdminWithOptionalScope,
   klass: { id: string; grade: { unit_id: string | null } },
   action: string,
   actionLabel: string,
   context: AuditRequestContext,
 ): Promise<void> {
-  if (admin.role !== AdminRole.DATABASE_ADMIN) return;
-  if (klass.grade.unit_id === admin.unit_id) return;
-
-  await recordUnauthorizedEnrollmentAction(admin, action, context, klass.id);
-  throw new ResponseError(
-    403,
-    `Forbidden: You can only ${actionLabel} within your unit scope`,
-  );
+  await assertCanWriteUnit(admin, klass.grade.unit_id, "student", {
+    onDeny: () =>
+      recordUnauthorizedEnrollmentAction(admin, action, context, klass.id),
+    message: `Forbidden: You can only ${actionLabel} within your unit scope`,
+  });
 }
 
 function assertWriteAllowed(

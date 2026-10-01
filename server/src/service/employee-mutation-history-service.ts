@@ -8,6 +8,7 @@ import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
 import {
   assertCanViewEmployeeData,
+  assertCanWriteUnit,
   resolveEmployeeUnitScope,
   type AdminUserWithEmployeeScope,
 } from "../utils/admin-permissions";
@@ -169,6 +170,13 @@ export class EmployeeMutationHistoryService {
         400,
         "The record this would roll back to no longer exists",
       );
+    }
+
+    // A rollback can restore an earlier unit: it must be inside the scope too.
+    if (previous.unit_id !== null) {
+      await assertCanWriteUnit(admin, previous.unit_id, "employee", {
+        message: "Forbidden: The unit this rollback restores is outside your unit scope",
+      });
     }
 
     // Include the employee name as the audit entity label.

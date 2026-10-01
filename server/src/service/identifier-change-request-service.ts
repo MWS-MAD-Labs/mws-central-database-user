@@ -29,6 +29,7 @@ import { Validation } from "../validation/validation";
 import { AuditService } from "./audit-service";
 import { EmployeeService } from "./employee-service";
 import { StudentService } from "./student-service";
+import { assertCanWriteUnit } from "../utils/admin-permissions";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { isPastIdentifierGracePeriod } from "../utils/identifier-lock";
 import {
@@ -138,9 +139,11 @@ async function assertCanRequest(
         `Forbidden: You don't have permission to write ${entityType.toLowerCase()} data`,
       );
     }
-    if (unitId !== admin.unit_id) {
-      throw new ResponseError(403, "Forbidden: This record is outside your unit scope");
-    }
+    await assertCanWriteUnit(
+      admin,
+      unitId,
+      entityType === "Employee" ? "employee" : "student",
+    );
     await assertCanWriteNow(admin, context, now);
   }
 }

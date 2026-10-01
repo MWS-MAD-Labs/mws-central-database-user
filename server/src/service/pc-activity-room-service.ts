@@ -83,7 +83,9 @@ import {
   assertCanManageTeacherAssignments,
   resolveEmployeeUnitScope,
   resolveStudentUnitScope,
+  isUnitWritable,
   type AdminUserWithAcademicScope,
+  type AdminWithOptionalScope,
 } from "../utils/admin-permissions";
 
 function bulkFailureMessage(error: unknown): string {
@@ -169,7 +171,7 @@ async function assertMentorWriteAllowed(
 }
 
 // Reading a room follows the student view scope (all units, custom units, or
-// own unit). Writing stays locked to the admin's own unit below.
+// own unit). Writing uses the same scope, see assertRoomInAdminUnit.
 function assertRoomReadable(
   admin: AdminUserWithAcademicScope,
   unitIds: string[],
@@ -228,11 +230,14 @@ function mentorsInScope<
   );
 }
 
-// A DATABASE_ADMIN may access rooms that include their unit.
-function assertRoomInAdminUnit(admin: AdminUser, unitIds: string[]): void {
+// A DATABASE_ADMIN may write to a room when one of its units is in scope.
+function assertRoomInAdminUnit(
+  admin: AdminUser & AdminWithOptionalScope,
+  unitIds: string[],
+): void {
   if (
     admin.role === AdminRole.DATABASE_ADMIN &&
-    !unitIds.includes(admin.unit_id)
+    !unitIds.some((unitId) => isUnitWritable(admin, unitId, "student"))
   ) {
     throw new ResponseError(
       403,
@@ -384,14 +389,22 @@ function isSameMentor(
   return left.employee_id === right.employee_id && left.intern_id === right.intern_id;
 }
 
-function assertSelectedRoomUnits(admin: AdminUser, unitIds: string[]): void {
-  if (
-    admin.role === AdminRole.DATABASE_ADMIN &&
-    (unitIds.length !== 1 || unitIds[0] !== admin.unit_id)
-  ) {
+// Units already on the room stay as they are, new ones must be in scope, and
+// at least one room unit must remain in scope.
+function assertSelectedRoomUnits(
+  admin: AdminUser & AdminWithOptionalScope,
+  unitIds: string[],
+  existingUnitIds: string[] = [],
+): void {
+  if (admin.role !== AdminRole.DATABASE_ADMIN) return;
+  const writable = (unitId: string) => isUnitWritable(admin, unitId, "student");
+  const addedOutside = unitIds.some(
+    (unitId) => !existingUnitIds.includes(unitId) && !writable(unitId),
+  );
+  if (addedOutside || !unitIds.some(writable)) {
     throw new ResponseError(
       403,
-      "Forbidden: Database Admin can only select their own single unit",
+      "Forbidden: Room units must stay within your unit scope",
     );
   }
 }
@@ -913,7 +926,7 @@ export class PCActivityRoomService {
 
     const nextUnitIds = updateRequest.unit_ids ?? existingUnitIds;
     if (updateRequest.unit_ids) {
-      assertSelectedRoomUnits(admin, nextUnitIds);
+      assertSelectedRoomUnits(admin, nextUnitIds, existingUnitIds);
     }
     const nextGradeIds =
       updateRequest.grade_ids ?? existing.grades.map((g) => g.grade_id);

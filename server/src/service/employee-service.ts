@@ -70,6 +70,7 @@ import {
   canViewEmployeeDisciplinaryData,
   resolveEmployeeUnitScope,
   type AdminUserWithEmployeeScope,
+  assertCanWriteUnit,
 } from "../utils/admin-permissions";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation, yearsBetweenDates } from "../validation/validation";
@@ -563,13 +564,10 @@ export class EmployeeService {
 
       await assertCanWriteNow(admin, context, now);
 
-      if (admin.unit_id !== request.unit_id) {
-        await recordUnauthorizedEmployeeAction(admin, "create", context);
-        throw new ResponseError(
-          403,
-          "Forbidden: You can only create employees within your unit scope",
-        );
-      }
+      await assertCanWriteUnit(admin, request.unit_id, "employee", {
+        onDeny: () => recordUnauthorizedEmployeeAction(admin, "create", context),
+        message: "Forbidden: You can only create employees within your unit scope",
+      });
     }
 
     const createRequest = Validation.validate(
@@ -903,30 +901,19 @@ export class EmployeeService {
 
       await assertCanWriteNow(admin, context, now);
 
-      if (existingEmployee.unit_id !== admin.unit_id) {
-        await recordUnauthorizedEmployeeAction(
-          admin,
-          "update",
-          context,
-          request.id,
-        );
-        throw new ResponseError(
-          403,
-          "Forbidden: This employee is outside your unit scope",
-        );
-      }
-
-      if (updateRequest.unit_id && updateRequest.unit_id !== admin.unit_id) {
-        await recordUnauthorizedEmployeeAction(
-          admin,
-          "update",
-          context,
-          request.id,
-        );
-        throw new ResponseError(
-          403,
-          "Forbidden: You cannot transfer an employee to a different unit",
-        );
+      // A transfer needs both the source and the destination inside the scope.
+      await assertCanWriteUnit(admin, existingEmployee.unit_id, "employee", {
+        onDeny: () =>
+          recordUnauthorizedEmployeeAction(admin, "update", context, request.id),
+        message: "Forbidden: This employee is outside your unit scope",
+      });
+      if (updateRequest.unit_id && updateRequest.unit_id !== existingEmployee.unit_id) {
+        await assertCanWriteUnit(admin, updateRequest.unit_id, "employee", {
+          onDeny: () =>
+            recordUnauthorizedEmployeeAction(admin, "update", context, request.id),
+          message:
+            "Forbidden: You cannot transfer an employee to a unit outside your unit scope",
+        });
       }
     }
 
@@ -1513,18 +1500,11 @@ export class EmployeeService {
         );
       }
       await assertCanWriteNow(admin, context, now);
-      if (existingEmployee.unit_id !== admin.unit_id) {
-        await recordUnauthorizedEmployeeAction(
-          admin,
-          "extend contract",
-          context,
-          request.id,
-        );
-        throw new ResponseError(
-          403,
-          "Forbidden: This employee is outside your unit scope",
-        );
-      }
+      await assertCanWriteUnit(admin, existingEmployee.unit_id, "employee", {
+        onDeny: () =>
+          recordUnauthorizedEmployeeAction(admin, "extend contract", context, request.id),
+        message: "Forbidden: This employee is outside your unit scope",
+      });
     }
 
     if (existingEmployee.employment_type === EmploymentType.PERMANENT) {

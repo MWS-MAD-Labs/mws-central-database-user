@@ -64,6 +64,7 @@ import {
   resolveEmployeeUnitScope,
   type AdminUserWithAcademicScope,
   type AdminUserWithEmployeeScope,
+  isUnitWritable,
 } from "../utils/admin-permissions";
 import { lockInternWorkforce } from "../utils/intern-workforce-lock";
 
@@ -624,7 +625,7 @@ export class ClassService {
     });
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      if (!primaryGrade || primaryGrade.unit_id !== admin.unit_id) {
+      if (!primaryGrade || !isUnitWritable(admin, primaryGrade.unit_id, "student")) {
         await recordUnauthorizedClassAction(admin, "create", context);
         throw new ResponseError(
           403,
@@ -782,7 +783,7 @@ export class ClassService {
       : null;
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      if (existing.grade.unit_id !== admin.unit_id) {
+      if (!isUnitWritable(admin, existing.grade.unit_id, "student")) {
         await recordUnauthorizedClassAction(
           admin,
           "update",
@@ -796,7 +797,8 @@ export class ClassService {
       }
       if (
         primaryGradeChanging &&
-        (!nextPrimaryGrade || nextPrimaryGrade.unit_id !== admin.unit_id)
+        (!nextPrimaryGrade ||
+          !isUnitWritable(admin, nextPrimaryGrade.unit_id, "student"))
       ) {
         await recordUnauthorizedClassAction(
           admin,
@@ -1381,8 +1383,7 @@ export class ClassService {
     }
 
     if (
-      admin.role === AdminRole.DATABASE_ADMIN &&
-      klass.grade.unit_id !== admin.unit_id
+      !isUnitWritable(admin, klass.grade.unit_id, "academic")
     ) {
       await recordUnauthorizedClassAction(
         admin,
@@ -1549,8 +1550,7 @@ export class ClassService {
     }
 
     if (
-      admin.role === AdminRole.DATABASE_ADMIN &&
-      existing.class.grade.unit_id !== admin.unit_id
+      !isUnitWritable(admin, existing.class.grade.unit_id, "academic")
     ) {
       await recordUnauthorizedClassAction(
         admin,
@@ -1654,8 +1654,7 @@ export class ClassService {
     });
     if (!existing) throw new ResponseError(404, "Teacher assignment not found");
     if (
-      admin.role === AdminRole.DATABASE_ADMIN &&
-      existing.class.grade.unit_id !== admin.unit_id
+      !isUnitWritable(admin, existing.class.grade.unit_id, "academic")
     ) {
       throw new ResponseError(403, "Forbidden: This class is outside your unit scope");
     }
@@ -1953,8 +1952,7 @@ export class ClassService {
     }
 
     if (
-      admin.role === AdminRole.DATABASE_ADMIN &&
-      existing.class.grade.unit_id !== admin.unit_id
+      !isUnitWritable(admin, existing.class.grade.unit_id, "academic")
     ) {
       await recordUnauthorizedClassAction(
         admin,
@@ -2088,8 +2086,7 @@ export class ClassService {
     }
 
     if (
-      admin.role === AdminRole.DATABASE_ADMIN &&
-      existing.class.grade.unit_id !== admin.unit_id
+      !isUnitWritable(admin, existing.class.grade.unit_id, "academic")
     ) {
       await recordUnauthorizedClassAction(
         admin,

@@ -234,6 +234,7 @@ export type EmployeeResponse = {
 
   employment: {
     employee_id: string;
+    unit_id: string;
     unit: string;
     job_position: string;
     job_position_id: string;
@@ -392,6 +393,7 @@ export function toEmployeeResponse(
 
     employment: {
       employee_id: employee.employee_id,
+      unit_id: employee.unit_id,
       unit: employee.unit.name,
       job_position: employee.job_position.name,
       job_position_id: employee.job_position_id,

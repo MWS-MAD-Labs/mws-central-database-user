@@ -151,3 +151,94 @@ export function resolveAcademicUnitScope(
   if (enabledScopes.some((scope) => scope === undefined)) return undefined;
   return [...new Set(enabledScopes.flatMap((scope) => scope ?? []))];
 }
+
+// ---------------------------------------------------------------------------
+// Write scope. The Employee Units / Student Units setting gates writes the
+// same way it gates reads: a DATABASE_ADMIN may write in any unit inside their
+// scope (all units, selected units, or their own unit), given the matching
+// write flag. Role and flag checks stay with the callers.
+// ---------------------------------------------------------------------------
+
+export type WriteScopeDomain = "student" | "employee" | "academic";
+
+// Write services receive the admin the auth middleware loaded, which carries
+// the view-unit relations at runtime even where the type is the plain model.
+export type AdminWithOptionalScope = Pick<
+  AdminUser,
+  | "role"
+  | "unit_id"
+  | "can_view_all_student_units"
+  | "can_view_all_employee_units"
+> & {
+  student_view_units?: { unit_id: string }[];
+  employee_view_units?: { unit_id: string }[];
+};
+
+// Unit ids the admin may write in, or undefined for unrestricted. A missing
+// relation reads as "no custom list", so it falls back to the own unit and
+// never widens access.
+export function resolveWriteUnitScope(
+  admin: AdminWithOptionalScope,
+  domain: WriteScopeDomain,
+): string[] | undefined {
+  if (admin.role === AdminRole.SUPER_ADMIN) return undefined;
+  const student = resolveStudentUnitScope({
+    role: admin.role,
+    unit_id: admin.unit_id,
+    can_view_all_student_units: admin.can_view_all_student_units,
+    student_view_units: admin.student_view_units ?? [],
+  });
+  const employee = resolveEmployeeUnitScope({
+    role: admin.role,
+    unit_id: admin.unit_id,
+    can_view_all_employee_units: admin.can_view_all_employee_units,
+    employee_view_units: admin.employee_view_units ?? [],
+  });
+  if (domain === "student") return student;
+  if (domain === "employee") return employee;
+  if (student === undefined || employee === undefined) return undefined;
+  return [...new Set([...student, ...employee])];
+}
+
+export function isUnitWritable(
+  admin: AdminWithOptionalScope,
+  unitId: string | null | undefined,
+  domain: WriteScopeDomain,
+): boolean {
+  if (admin.role !== AdminRole.DATABASE_ADMIN) return true;
+  const scope = resolveWriteUnitScope(admin, domain);
+  if (scope === undefined) return true;
+  return unitId != null && scope.includes(unitId);
+}
+
+export const OUTSIDE_UNIT_SCOPE_MESSAGE =
+  "Forbidden: This record is outside your unit scope";
+
+// `onDeny` lets each domain keep its own audit entry for the blocked attempt.
+export async function assertCanWriteUnit(
+  admin: AdminWithOptionalScope,
+  unitId: string | null | undefined,
+  domain: WriteScopeDomain,
+  options: { onDeny?: () => Promise<void>; message?: string } = {},
+): Promise<void> {
+  if (isUnitWritable(admin, unitId, domain)) return;
+  await options.onDeny?.();
+  throw new ResponseError(403, options.message ?? OUTSIDE_UNIT_SCOPE_MESSAGE);
+}
+
+// Several units at once: "any" is enough for records that span units (a PC
+// room), "all" is for choosing the units themselves.
+export async function assertCanWriteUnits(
+  admin: AdminWithOptionalScope,
+  unitIds: string[],
+  domain: WriteScopeDomain,
+  mode: "any" | "all",
+  options: { onDeny?: () => Promise<void>; message?: string } = {},
+): Promise<void> {
+  const writable = unitIds.map((unitId) => isUnitWritable(admin, unitId, domain));
+  const ok = mode === "any" ? writable.some(Boolean) : writable.every(Boolean);
+  if (ok && unitIds.length > 0) return;
+  if (admin.role !== AdminRole.DATABASE_ADMIN) return;
+  await options.onDeny?.();
+  throw new ResponseError(403, options.message ?? OUTSIDE_UNIT_SCOPE_MESSAGE);
+}

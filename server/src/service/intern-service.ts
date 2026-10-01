@@ -45,6 +45,7 @@ import { InternValidation } from "../validation/intern-validation";
 import { Validation, yearsBetweenDates } from "../validation/validation";
 import {
   assertCanViewEmployeeData,
+  assertCanWriteUnit,
   resolveEmployeeUnitScope,
   type AdminUserWithEmployeeScope,
 } from "../utils/admin-permissions";
@@ -333,13 +334,10 @@ export class InternService {
 
       await assertCanWriteNow(admin, context, now);
 
-      if (admin.unit_id !== request.unit_id) {
-        await recordUnauthorizedInternAction(admin, "create", context);
-        throw new ResponseError(
-          403,
-          "Forbidden: You can only create interns within your unit scope",
-        );
-      }
+      await assertCanWriteUnit(admin, request.unit_id, "employee", {
+        onDeny: () => recordUnauthorizedInternAction(admin, "create", context),
+        message: "Forbidden: You can only create interns within your unit scope",
+      });
     }
 
     const createRequest = Validation.validate(InternValidation.CREATE, request);
@@ -493,30 +491,19 @@ export class InternService {
 
       await assertCanWriteNow(admin, context);
 
-      if (existingIntern.unit_id !== admin.unit_id) {
-        await recordUnauthorizedInternAction(
-          admin,
-          "update",
-          context,
-          request.id,
-        );
-        throw new ResponseError(
-          403,
-          "Forbidden: This intern is outside your unit scope",
-        );
-      }
-
-      if (updateRequest.unit_id && updateRequest.unit_id !== admin.unit_id) {
-        await recordUnauthorizedInternAction(
-          admin,
-          "update",
-          context,
-          request.id,
-        );
-        throw new ResponseError(
-          403,
-          "Forbidden: You cannot transfer an intern to a different unit",
-        );
+      // A transfer needs both the source and the destination inside the scope.
+      await assertCanWriteUnit(admin, existingIntern.unit_id, "employee", {
+        onDeny: () =>
+          recordUnauthorizedInternAction(admin, "update", context, request.id),
+        message: "Forbidden: This intern is outside your unit scope",
+      });
+      if (updateRequest.unit_id && updateRequest.unit_id !== existingIntern.unit_id) {
+        await assertCanWriteUnit(admin, updateRequest.unit_id, "employee", {
+          onDeny: () =>
+            recordUnauthorizedInternAction(admin, "update", context, request.id),
+          message:
+            "Forbidden: You cannot transfer an intern to a unit outside your unit scope",
+        });
       }
     }
 

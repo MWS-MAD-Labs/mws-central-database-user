@@ -62,6 +62,7 @@ import {
   assertCanViewStudentData,
   resolveStudentUnitScope,
   type AdminUserWithStudentScope,
+  assertCanWriteUnit,
 } from "../utils/admin-permissions";
 import { resolveStudentPhotoUrl } from "./student-photo-service";
 import { NIS_REGEX, StudentValidation } from "../validation/student-validation";
@@ -166,13 +167,11 @@ async function assertCanManageActivation(
       );
     }
     await assertCanWriteNow(admin, context, now);
-    if (gradeUnitId !== admin.unit_id) {
-      await recordUnauthorizedStudentAction(admin, action, context, studentId);
-      throw new ResponseError(
-        403,
-        "Forbidden: This student is outside your unit scope",
-      );
-    }
+    await assertCanWriteUnit(admin, gradeUnitId, "student", {
+      onDeny: () =>
+        recordUnauthorizedStudentAction(admin, action, context, studentId),
+      message: "Forbidden: This student is outside your unit scope",
+    });
   }
 }
 
@@ -633,16 +632,10 @@ export class StudentService {
     if (!joinGrade)
       throw new ResponseError(400, "Invalid join grade: grade not found");
 
-    if (
-      admin.role === AdminRole.DATABASE_ADMIN &&
-      currentGrade.unit_id !== admin.unit_id
-    ) {
-      await recordUnauthorizedStudentAction(admin, "create", context);
-      throw new ResponseError(
-        403,
-        "Forbidden: You can only create students within your unit scope",
-      );
-    }
+    await assertCanWriteUnit(admin, currentGrade.unit_id, "student", {
+      onDeny: () => recordUnauthorizedStudentAction(admin, "create", context),
+      message: "Forbidden: You can only create students within your unit scope",
+    });
 
     // Unknown legacy grades are excluded from ordering checks.
     if (
@@ -1332,18 +1325,16 @@ export class StudentService {
 
       await assertCanWriteNow(admin, context, now);
 
-      if (existing.student.current_grade.unit_id !== admin.unit_id) {
-        await recordUnauthorizedStudentAction(
-          admin,
-          "update",
-          context,
-          request.id,
-        );
-        throw new ResponseError(
-          403,
-          "Forbidden: This student is outside your unit scope",
-        );
-      }
+      await assertCanWriteUnit(
+        admin,
+        existing.student.current_grade.unit_id,
+        "student",
+        {
+          onDeny: () =>
+            recordUnauthorizedStudentAction(admin, "update", context, request.id),
+          message: "Forbidden: This student is outside your unit scope",
+        },
+      );
     }
 
     const oldSnapshot = toStudentAuditSnapshot(existing, existing.student);
@@ -1553,6 +1544,16 @@ export class StudentService {
           400,
           "Invalid join academic year: academic year not found",
         );
+      }
+
+      // Moving to another grade needs the destination unit in scope too.
+      if (updateRequest.current_grade_id !== undefined) {
+        await assertCanWriteUnit(admin, currentGrade.unit_id, "student", {
+          onDeny: () =>
+            recordUnauthorizedStudentAction(admin, "update", context, request.id),
+          message:
+            "Forbidden: You cannot move a student to a grade outside your unit scope",
+        });
       }
 
       // Manual edits cannot use the import-only grade override.

@@ -8,6 +8,7 @@ import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import { AuditService } from "../service/audit-service";
 import { prismaClient } from "../lib/prisma";
+import { isUnitWritable, type AdminWithOptionalScope } from "./admin-permissions";
 
 // Keep only the last four characters in audit snapshots.
 export function maskSensitiveValue(value: string | null): string | null {
@@ -52,7 +53,7 @@ export async function assertCanViewSensitiveData(
 
 // DATABASE_ADMIN may write student relations only within their unit.
 export async function assertStudentInAdminUnit(
-  admin: Pick<AdminUser, "id" | "role" | "unit_id">,
+  admin: Pick<AdminUser, "id"> & AdminWithOptionalScope,
   studentId: string,
   context: AuditRequestContext = {},
 ): Promise<void> {
@@ -63,7 +64,7 @@ export async function assertStudentInAdminUnit(
     select: { current_grade: { select: { unit_id: true } } },
   });
 
-  if (student && student.current_grade.unit_id === admin.unit_id) return;
+  if (student && isUnitWritable(admin, student.current_grade.unit_id, "student")) return;
 
   await AuditService.record({
     action: AuditAction.UNAUTHORIZED_ACCESS,
@@ -83,9 +84,9 @@ export async function assertStudentInAdminUnit(
   );
 }
 
-// DATABASE_ADMIN may write employee photos only within their unit.
+// DATABASE_ADMIN may write employee photos only within their unit scope.
 export async function assertEmployeeInAdminUnit(
-  admin: Pick<AdminUser, "id" | "role" | "unit_id">,
+  admin: Pick<AdminUser, "id"> & AdminWithOptionalScope,
   employeeId: string,
   context: AuditRequestContext = {},
 ): Promise<void> {
@@ -96,7 +97,7 @@ export async function assertEmployeeInAdminUnit(
     select: { unit_id: true },
   });
 
-  if (employee && employee.unit_id === admin.unit_id) return;
+  if (employee && isUnitWritable(admin, employee.unit_id, "employee")) return;
 
   await AuditService.record({
     action: AuditAction.UNAUTHORIZED_ACCESS,

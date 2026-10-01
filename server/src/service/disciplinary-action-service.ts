@@ -25,6 +25,7 @@ import { assertCanWriteNow } from "../utils/office-hours";
 import { Validation } from "../validation/validation";
 import { DisciplinaryActionValidation } from "../validation/disciplinary-action-validation";
 import {
+  assertCanWriteUnit,
   canViewEmployeeDisciplinaryData,
   resolveEmployeeUnitScope,
   type AdminUserWithEmployeeScope,
@@ -85,13 +86,11 @@ export async function assertCanManage(
       "Forbidden: Disciplinary actions require Database Admin employee write access",
     );
   }
-  if (employeeUnitId !== admin.unit_id) {
-    await recordUnauthorizedDisciplinaryAction(admin, action, context, entityId);
-    throw new ResponseError(
-      403,
-      "Forbidden: This employee is outside your unit scope",
-    );
-  }
+  await assertCanWriteUnit(admin, employeeUnitId, "employee", {
+    onDeny: () =>
+      recordUnauthorizedDisciplinaryAction(admin, action, context, entityId),
+    message: "Forbidden: This employee is outside your unit scope",
+  });
   await assertCanWriteNow(admin, context, now);
 }
 

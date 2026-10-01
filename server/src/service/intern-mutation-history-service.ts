@@ -8,6 +8,7 @@ import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
 import {
   assertCanViewEmployeeData,
+  assertCanWriteUnit,
   resolveEmployeeUnitScope,
   type AdminUserWithEmployeeScope,
 } from "../utils/admin-permissions";
@@ -50,9 +51,9 @@ async function assertWriteAllowed(
       );
     }
     await assertCanWriteNow(admin, context, now);
-    if (intern.unit_id !== admin.unit_id) {
-      throw new ResponseError(403, "Forbidden: This intern is outside your unit scope");
-    }
+    await assertCanWriteUnit(admin, intern.unit_id, "employee", {
+      message: "Forbidden: This intern is outside your unit scope",
+    });
   }
 }
 
@@ -134,6 +135,12 @@ export class InternMutationHistoryService {
       },
     });
     if (!intern) throw new ResponseError(404, "Intern not found");
+    // A rollback can restore an earlier unit: it must be inside the scope too.
+    if (previous.unit_id !== null && previous.unit_id !== intern.unit_id) {
+      await assertCanWriteUnit(admin, previous.unit_id, "employee", {
+        message: "Forbidden: The unit this rollback restores is outside your unit scope",
+      });
+    }
 
     const changesEligibility =
       (previous.unit_id !== null && previous.unit_id !== intern.unit_id) ||

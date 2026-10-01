@@ -154,6 +154,7 @@ export type InternResponse = {
   };
 
   employment: {
+    unit_id: string;
     unit: string;
     job_position: string;
     is_teaching_position: boolean;
@@ -260,6 +261,7 @@ export function toInternResponse(
     },
 
     employment: {
+      unit_id: intern.unit_id,
       unit: intern.unit.name,
       job_position: intern.job_position.name,
       is_teaching_position: intern.job_position.is_teaching_position,

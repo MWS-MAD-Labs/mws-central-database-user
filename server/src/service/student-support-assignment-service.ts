@@ -19,6 +19,7 @@ import {
   type AdminUserWithAcademicScope,
   type AdminUserWithEmployeeScope,
   type AdminUserWithStudentScope,
+  assertCanWriteUnit,
 } from "../utils/admin-permissions";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
@@ -200,12 +201,9 @@ async function assertCanWriteSupportAssignment(
       );
     }
     await assertCanWriteNow(admin, context, now);
-    if (gradeUnitId !== admin.unit_id) {
-      throw new ResponseError(
-        403,
-        `Forbidden: You can only ${action} within your unit scope`,
-      );
-    }
+    await assertCanWriteUnit(admin, gradeUnitId, "student", {
+      message: `Forbidden: You can only ${action} within your unit scope`,
+    });
   }
 }
 
