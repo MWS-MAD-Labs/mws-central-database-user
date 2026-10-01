@@ -19,13 +19,6 @@ const eligibleTeacher = {
   },
 }
 
-const otherUnitTeacher = {
-  ...eligibleTeacher,
-  id: 'employee-2',
-  identity: { ...eligibleTeacher.identity, full_name: 'Jordan SE Teacher' },
-  employment: { ...eligibleTeacher.employment, unit: 'Junior High' },
-}
-
 const eligibleIntern = {
   id: 'intern-1',
   identity: { full_name: 'Rina SE Intern', email: 'rina@millennia21.id' },
@@ -39,8 +32,16 @@ const eligibleIntern = {
 function panelRoutes(assignments = [], interns = []) {
   return [
     { path: '/api/admin/students/student-1/support-assignments', response: ({ method }) => method === 'POST' ? jsonResponse({ data: { id: 'assignment-new' } }) : jsonResponse({ data: assignments }) },
-    { path: /^\/api\/admin\/employees(?:\?.*)?$/, response: jsonResponse({ data: [eligibleTeacher, otherUnitTeacher], paging: { total_page: 1 } }) },
-    { path: /^\/api\/admin\/interns(?:\?.*)?$/, response: jsonResponse({ data: interns, paging: { total_page: 1 } }) },
+    {
+      path: /^\/api\/admin\/support-assignments\/candidates(?:\?.*)?$/,
+      response: () => {
+        const data = [
+          { ...eligibleTeacher, workforce_type: 'EMPLOYEE', active_student_count: 2 },
+          ...interns.map((intern) => ({ ...intern, workforce_type: 'INTERN', active_student_count: 0 })),
+        ]
+        return jsonResponse({ data, paging: { current_page: 1, total_page: 1, total_item: data.length, size: 10 } })
+      },
+    },
     { path: '/api/admin/support-assignments/caseload', response: jsonResponse({ data: [{ employee_id: 'employee-1', active_student_count: 2 }] }) },
     { path: '/api/admin/students/student-1/support-assignments/assignment-1/end', method: 'PATCH', response: jsonResponse({ data: { id: 'assignment-1' } }) },
     { path: '/api/admin/students/student-1/support-assignments/assignment-1/reactivate', method: 'PATCH', response: jsonResponse({ data: { id: 'assignment-1' } }) },
@@ -59,11 +60,10 @@ describe('StudentSupportAssignmentPanel', () => {
     )
     expect(await screen.findByText('No Special Education teacher assigned yet.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Assign' }))
-    await user.click(screen.getByRole('button', { name: 'Select A Teacher' }))
 
-    expect(screen.getByRole('option', { name: /Taylor SE Teacher/ })).toBeVisible()
-    expect(screen.queryByRole('option', { name: /Jordan SE Teacher/ })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('option', { name: /Taylor SE Teacher/ }))
+    expect(await screen.findByRole('radio', { name: /Taylor SE Teacher/ })).toBeVisible()
+    expect(screen.queryByRole('radio', { name: /Jordan SE Teacher/ })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('radio', { name: /Taylor SE Teacher/ }))
     await user.type(screen.getByPlaceholderText(/Weekly reading support/), 'Reading support')
     await user.click(screen.getByRole('button', { name: 'Save' }))
     const confirmDialog = screen.getByRole('dialog', { name: 'Confirm teacher assignment' })
@@ -84,8 +84,7 @@ describe('StudentSupportAssignmentPanel', () => {
     )
     await screen.findByText('No Special Education teacher assigned yet.')
     await user.click(screen.getByRole('button', { name: 'Assign' }))
-    await user.click(screen.getByRole('button', { name: 'Select A Teacher' }))
-    await user.click(screen.getByRole('option', { name: /Rina SE Intern/ }))
+    await user.click(await screen.findByRole('radio', { name: /Rina SE Intern/ }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await user.click(
       within(screen.getByRole('dialog', { name: 'Confirm teacher assignment' })).getByRole('button', { name: 'Assign teacher' }),

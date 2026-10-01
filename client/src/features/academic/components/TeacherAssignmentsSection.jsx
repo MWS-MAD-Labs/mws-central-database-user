@@ -25,6 +25,7 @@ import {
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
+import { PaginatedSingleSelect } from "../../../components/ui/PaginatedSingleSelect.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { useDebouncedValue } from "../../../hooks/useDebouncedValue.js";
@@ -46,7 +47,6 @@ function formatDurationDetail(assignment) {
 }
 
 const ASSIGNMENT_PAGE_SIZE = 10;
-const CANDIDATE_PAGE_SIZE = 10;
 
 export function TeacherAssignmentsSection({
   assignments,
@@ -88,6 +88,7 @@ export function TeacherAssignmentsSection({
     () => new Set(),
   );
   const [assignmentPage, setAssignmentPage] = useState(1);
+  const [candidatePageSize, setCandidatePageSize] = useState(10);
   const confirm = useConfirm();
   const [form, setForm] = useState({
     workforce_target: "",
@@ -101,12 +102,12 @@ export function TeacherAssignmentsSection({
       "classes",
       currentClassId,
       "teacher-candidates",
-      { page: candidatePage, search: debouncedCandidateSearch, role: form.role },
+      { page: candidatePage, size: candidatePageSize, search: debouncedCandidateSearch, role: form.role },
     ],
     queryFn: () =>
       classesApi.teacherCandidates(currentClassId, {
         page: candidatePage,
-        size: CANDIDATE_PAGE_SIZE,
+        size: candidatePageSize,
         search: debouncedCandidateSearch || undefined,
         role: form.role,
       }),
@@ -117,7 +118,7 @@ export function TeacherAssignmentsSection({
     current_page: candidatePage,
     total_page: 1,
     total_item: candidates.length,
-    size: CANDIDATE_PAGE_SIZE,
+    size: candidatePageSize,
   };
   function deriveSubjectFromJobPosition(jobPosition) {
     if (!jobPosition) return "";
@@ -521,56 +522,51 @@ export function TeacherAssignmentsSection({
             className="grid gap-3"
           >
             <Field label="Teacher">
-              <div className="flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                   <SearchableSelect
-                      value={form.workforce_target}
-                     onChange={(value) => {
-                        const candidate = candidates.find(
-                          (item) => candidateValue(item) === value,
-                        );
-                        setForm((current) => ({
-                          ...current,
-                          workforce_target: value,
-                         subject:
-                           current.role === "SUBJECT_TEACHER" &&
-                           !current.subject
-                             ? deriveSubjectFromJobPosition(
-                                 candidate?.employment?.job_position || candidate?.job_position,
-                               )
-                             : current.subject,
-                       }));
-                     }}
-                      options={candidates.map(candidateOption)}
-                      placeholder="Select Teacher or Intern"
-                      searchPlaceholder="Search Teachers and Interns"
-                      remote
-                      isLoading={candidatesQuery.isLoading}
-                      onSearchChange={(value) => {
-                        setCandidateSearch(value);
-                        setCandidatePage(1);
-                      }}
-                   />
-                 </div>
-                  {form.workforce_target ? (
-                    <Link
-                      to={candidateHref(form.workforce_target)}
-                    target="_blank"
-                    rel="noreferrer"
-                    title="Open teacher detail in a new tab"
-                    className="shrink-0 rounded-lg border border-(--mws-line) p-2 text-(--mws-muted) hover:border-(--mws-burgundy) hover:text-(--mws-burgundy)"
-                  >
-                    <Eye size={16} />
-                   </Link>
-                 ) : null}
-               </div>
-               <PaginationBar
-                 paging={candidatePaging}
-                 itemLabel="candidates"
-                 isLoading={candidatesQuery.isLoading}
-                 onPrevious={() => setCandidatePage((page) => Math.max(page - 1, 1))}
-                 onNext={() => setCandidatePage((page) => page + 1)}
-               />
+              <PaginatedSingleSelect
+                itemLabel="teacher or intern"
+                options={candidates.map(candidateOption)}
+                value={form.workforce_target}
+                paging={candidatePaging}
+                search={candidateSearch}
+                isLoading={candidatesQuery.isLoading}
+                emptyMessage="No teachers or interns match."
+                onChange={(value) => {
+                  const candidate = candidates.find(
+                    (item) => candidateValue(item) === value,
+                  );
+                  setForm((current) => ({
+                    ...current,
+                    workforce_target: value,
+                    subject:
+                      current.role === "SUBJECT_TEACHER" && !current.subject
+                        ? deriveSubjectFromJobPosition(
+                            candidate?.employment?.job_position ||
+                              candidate?.job_position,
+                          )
+                        : current.subject,
+                  }));
+                }}
+                onSearchChange={(value) => {
+                  setCandidateSearch(value);
+                  setCandidatePage(1);
+                }}
+                onPageChange={setCandidatePage}
+                onPageSizeChange={(size) => {
+                  setCandidatePageSize(size);
+                  setCandidatePage(1);
+                }}
+              />
+              {form.workforce_target ? (
+                <Link
+                  to={candidateHref(form.workforce_target)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-(--mws-muted) hover:text-(--mws-burgundy)"
+                >
+                  <Eye size={14} />
+                  Open teacher detail in a new tab
+                </Link>
+              ) : null}
             </Field>
             <Field
               label="Role"

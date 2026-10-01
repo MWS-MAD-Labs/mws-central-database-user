@@ -48,7 +48,7 @@ function optionRoutes(enrollments = [enrollmentFixture()]) {
 describe('EnrollmentDialog', () => {
   it('validates create requirements and submits selected students after confirmation', async () => {
     const fetchMock = createFetchRouter([
-      { path: /^\/api\/admin\/students(?:\?.*)?$/, response: () => jsonResponse({ data: [studentCandidate], paging }) },
+      { path: /^\/api\/admin\/students\/enrollment-candidates(?:\?.*)?$/, response: () => jsonResponse({ data: [studentCandidate], paging }) },
       { path: '/api/admin/enrollments/preview-backfill', method: 'POST', response: jsonResponse({ data: [] }) },
     ])
     globalThis.fetch = fetchMock
@@ -72,7 +72,7 @@ describe('EnrollmentDialog', () => {
     expect(
       queryClient
         .getQueriesData({ queryKey: ['students', 'enrollment-candidates'] })
-        .some(([, data]) => data?.some((student) => student.id === 'student-2')),
+        .some(([, data]) => data?.data?.some((student) => student.id === 'student-2')),
     ).toBe(true)
     await user.click(screen.getByText('Bela Student'))
     await user.click(screen.getByRole('button', { name: 'Save' }))
@@ -98,7 +98,7 @@ describe('EnrollmentDialog', () => {
     }))
     const smallClass = classFixture({ capacity: 3, active_enrollment_count: 1 })
     globalThis.fetch = createFetchRouter([
-      { path: /^\/api\/admin\/students(?:\?.*)?$/, response: () => jsonResponse({ data: candidates, paging }) },
+      { path: /^\/api\/admin\/students\/enrollment-candidates(?:\?.*)?$/, response: () => jsonResponse({ data: candidates, paging: { ...paging, total_item: 3 } }) },
     ])
     const { user } = renderAcademic(
       <EnrollmentDialog
@@ -128,7 +128,7 @@ describe('EnrollmentDialog', () => {
   it('reports a full class and offers no seats', async () => {
     const smallClass = classFixture({ capacity: 1, active_enrollment_count: 1 })
     globalThis.fetch = createFetchRouter([
-      { path: /^\/api\/admin\/students(?:\?.*)?$/, response: () => jsonResponse({ data: [studentCandidate], paging }) },
+      { path: /^\/api\/admin\/students\/enrollment-candidates(?:\?.*)?$/, response: () => jsonResponse({ data: [studentCandidate], paging }) },
     ])
     const { user } = renderAcademic(
       <EnrollmentDialog
@@ -162,7 +162,7 @@ describe('EnrollmentDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Select Class' }))
     await user.click(screen.getByRole('option', { name: /Grade 1B/ }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
-    expect(submitted).toEqual({ class_id: 'class-2' })
+    expect(submitted).toMatchObject({ class_id: 'class-2' })
     unmount()
 
     submitted = undefined

@@ -5,9 +5,9 @@ import { Link } from 'react-router'
 import { Button } from '../../../../components/ui/Button.jsx'
 import { useConfirm } from '../../../../components/ui/useConfirm.js'
 import { CrudDialog } from '../../../../components/ui/CrudDialog.jsx'
-import { Field, LimitedField, SearchableSelect } from '../../../../components/ui/FormControls.jsx'
+import { Field, LimitedField } from '../../../../components/ui/FormControls.jsx'
 import { PanelMessage } from '../../../../components/ui/PanelMessage.jsx'
-import { PaginationBar } from '../../../../components/ui/PaginationBar.jsx'
+import { PaginatedSingleSelect } from '../../../../components/ui/PaginatedSingleSelect.jsx'
 import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
 import { cleanPayload, trimmedOrUndefined } from '../../../../lib/form.js'
 import { formatDate, formatStatus } from '../../../../lib/format.js'
@@ -252,12 +252,13 @@ export function SupportAssignmentDialog({ title, studentName, mode = 'create', u
   const [values, setValues] = useState({ workforce_target: '', notes: '' })
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const [selectedCandidate, setSelectedCandidate] = useState(null)
   const candidatesQuery = useQuery({
-    queryKey: ['support-assignment-candidates', { page, search, unitId, unitName }],
+    queryKey: ['support-assignment-candidates', { page, pageSize, search, unitId, unitName }],
     queryFn: () => studentSensitiveApi.listSupportAssignmentCandidates({
       page,
-      size: 10,
+      size: pageSize,
       search: search || undefined,
       unit_id: unitId || undefined,
       unit_name: unitName || undefined,
@@ -312,28 +313,21 @@ export function SupportAssignmentDialog({ title, studentName, mode = 'create', u
     >
       <form id="support-assignment-form" className="grid gap-4" onSubmit={submit} noValidate>
         <Field label="Special Education Teacher" error={employeeError}>
-          <SearchableSelect
+          <PaginatedSingleSelect
+            itemLabel="teacher"
+            options={employeeOptions}
             value={values.workforce_target}
+            paging={candidatesQuery.data?.paging || { current_page: page, total_page: 1, total_item: employees.length, size: pageSize }}
+            search={search}
+            isLoading={candidatesQuery.isLoading}
+            emptyMessage="No special education teachers match."
             onChange={(workforceTarget) => {
               setValues({ ...values, workforce_target: workforceTarget })
               setSelectedCandidate(employees.find((candidate) => workforceTargetValue(candidate.workforce_type || 'EMPLOYEE', candidate.id) === workforceTarget) || null)
             }}
-            options={employeeOptions}
-            placeholder="Select A Teacher"
-            searchPlaceholder="Search Employee or Intern"
-            searchableThreshold={1}
-            remote
-            isLoading={candidatesQuery.isLoading}
-            selectedOption={selectedCandidate ? employeeOption(selectedCandidate) : undefined}
             onSearchChange={(value) => { setSearch(value); setPage(1) }}
-            required={hasAttemptedSubmit}
-          />
-          <PaginationBar
-            paging={candidatesQuery.data?.paging}
-            itemLabel="teachers"
-            isLoading={candidatesQuery.isFetching}
-            onPrevious={() => setPage((current) => Math.max(current - 1, 1))}
-            onNext={() => setPage((current) => current + 1)}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
           />
         </Field>
         <LimitedField

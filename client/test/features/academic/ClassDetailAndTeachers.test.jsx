@@ -139,12 +139,26 @@ describe('ClassDetailPage', () => {
 })
 
 describe('TeacherAssignmentsSection', () => {
-  it('filters teacher choices by role and derives subject payloads', async () => {
+  it('lists teacher candidates from the server by role and derives subject payloads', async () => {
     const onAssign = mock(() => {})
+    const fetchMock = createFetchRouter([
+      {
+        path: /^\/api\/admin\/classes\/class-1\/teacher-candidates(?:\?.*)?$/,
+        response: ({ url }) => {
+          const subject = url.includes('role=SUBJECT_TEACHER')
+          const data = subject
+            ? teachingEmployees.filter((employee) => employee.id !== 'employee-home')
+            : teachingEmployees
+          return jsonResponse({ data, paging: { current_page: 1, total_page: 1, total_item: data.length, size: 10 } })
+        },
+      },
+    ])
+    globalThis.fetch = fetchMock
     const { user } = renderAcademic(
       <TeacherAssignmentsSection
         assignments={[]}
-        teachingEmployees={teachingEmployees}
+        currentClassId="class-1"
+        academicYearStartDate="2026-07-01T00:00:00.000Z"
         canWrite
         onAssign={onAssign}
         onEnd={() => {}}
@@ -159,44 +173,47 @@ describe('TeacherAssignmentsSection', () => {
     expect(within(dialog).getByRole('button', { name: 'Add assignment' })).toBeDisabled()
     await user.click(within(dialog).getByRole('button', { name: 'Homeroom' }))
     await user.click(screen.getByRole('option', { name: 'Subject Teacher' }))
-    await user.click(within(dialog).getByRole('button', { name: 'Select Teacher or Intern' }))
-    expect(screen.queryByRole('option', { name: /Hana Homeroom/ })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('option', { name: /Sari Science/ }))
-    expect(within(dialog).getByRole('textbox')).toHaveValue('Science')
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('role=SUBJECT_TEACHER'))).toBe(true),
+    )
+    await user.click(await screen.findByRole('radio', { name: /Sari Science/ }))
+    expect(within(dialog).getByPlaceholderText('e.g. Visual Arts')).toHaveValue('Science')
     await user.click(within(dialog).getByRole('button', { name: 'Add assignment' }))
     const confirmDialog = screen.getByRole('dialog', { name: 'Confirm teacher assignment' })
     await user.click(within(confirmDialog).getByRole('button', { name: 'Add assignment' }))
 
-    expect(onAssign).toHaveBeenCalledWith({
-      employee_id: 'employee-science',
-      role: 'SUBJECT_TEACHER',
-      subject: 'Science',
-    })
+    expect(onAssign).toHaveBeenCalledWith(
+      expect.objectContaining({
+        employee_id: 'employee-science',
+        role: 'SUBJECT_TEACHER',
+        subject: 'Science',
+        start_date: '2026-07-01T00:00:00.000Z',
+      }),
+    )
   })
 
-  it('hides homeroom and special education interns from Subject Teacher choices', async () => {
-    const teachingInterns = [
+  it('shows an intern candidate returned for the Subject Teacher role', async () => {
+    globalThis.fetch = createFetchRouter([
       {
-        id: 'intern-home',
-        identity: { full_name: 'Intan Homeroom' },
-        employment: { job_position: 'Homeroom Teacher', unit: 'Elementary', is_teaching_position: true },
+        path: /^\/api\/admin\/classes\/class-1\/teacher-candidates(?:\?.*)?$/,
+        response: () => jsonResponse({
+          data: [
+            {
+              id: 'intern-art',
+              workforce_type: 'INTERN',
+              identity: { full_name: 'Ari Art' },
+              employment: { job_position: 'Art Teacher', unit: 'Elementary', is_teaching_position: true },
+            },
+          ],
+          paging: { current_page: 1, total_page: 1, total_item: 1, size: 10 },
+        }),
       },
-      {
-        id: 'intern-se',
-        identity: { full_name: 'Sinta SE' },
-        employment: { job_position: 'Special Education Teacher', unit: 'Elementary', is_teaching_position: true },
-      },
-      {
-        id: 'intern-art',
-        identity: { full_name: 'Ari Art' },
-        employment: { job_position: 'Art Teacher', unit: 'Elementary', is_teaching_position: true },
-      },
-    ]
+    ])
     const { user } = renderAcademic(
       <TeacherAssignmentsSection
         assignments={[]}
-        teachingEmployees={[]}
-        teachingInterns={teachingInterns}
+        currentClassId="class-1"
+        academicYearStartDate="2026-07-01T00:00:00.000Z"
         canWrite
         onAssign={() => {}}
         onEnd={() => {}}
@@ -210,11 +227,7 @@ describe('TeacherAssignmentsSection', () => {
     const dialog = screen.getByRole('dialog', { name: 'Assign Teacher' })
     await user.click(within(dialog).getByRole('button', { name: 'Homeroom' }))
     await user.click(screen.getByRole('option', { name: 'Subject Teacher' }))
-    await user.click(within(dialog).getByRole('button', { name: 'Select Teacher or Intern' }))
-
-    expect(screen.queryByRole('option', { name: /Intan Homeroom/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: /Sinta SE/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /Ari Art/ })).toBeVisible()
+    expect(await screen.findByRole('radio', { name: /Ari Art \(Intern\)/ })).toBeVisible()
   })
 
   it('uses bulk selection for teacher assignment actions and next-year promotion', async () => {
