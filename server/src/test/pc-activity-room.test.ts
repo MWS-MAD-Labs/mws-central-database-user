@@ -374,6 +374,47 @@ describe("PC Activity Rooms", () => {
       expect((await bulk.json()).data.failed_count).toBe(1);
     });
 
+    it("lets a DATABASE_ADMIN with all-student-units read rooms of another unit, but not write them", async () => {
+      const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
+      const created = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        activity_id: activityId,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        unit_ids: [unitId],
+        grade_ids: [gradeId],
+      }, superToken);
+      const roomId = (await created.json()).data.id;
+
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_ROOM_READ_OTHER_${Date.now()}` },
+      });
+      const homeOnly = await AdminUserTest.createDatabaseAdmin(otherUnit.id, {
+        id: "test-room-read-home-only",
+        email: "test_room_read_home_only@millennia21.id",
+      });
+      const allUnits = await AdminUserTest.createDatabaseAdmin(otherUnit.id, {
+        id: "test-room-read-all-units",
+        email: "test_room_read_all_units@millennia21.id",
+        canViewAllStudentUnits: true,
+      });
+
+      // Home unit only: the room is invisible.
+      const hidden = await (await TestRequest.get("/api/admin/pc-activity-rooms", homeOnly.accessToken)).json();
+      expect(hidden.data.some((room: { id: string }) => room.id === roomId)).toBe(false);
+      expect((await TestRequest.get(`/api/admin/pc-activity-rooms/${roomId}`, homeOnly.accessToken)).status).toBe(403);
+
+      // All student units: visible, with its students and mentors lists.
+      const visible = await (await TestRequest.get("/api/admin/pc-activity-rooms", allUnits.accessToken)).json();
+      expect(visible.data.some((room: { id: string }) => room.id === roomId)).toBe(true);
+      expect((await TestRequest.get(`/api/admin/pc-activity-rooms/${roomId}`, allUnits.accessToken)).status).toBe(200);
+      expect((await TestRequest.get(`/api/admin/pc-activity-rooms/${roomId}/students`, allUnits.accessToken)).status).toBe(200);
+      expect((await TestRequest.get(`/api/admin/pc-activity-rooms/${roomId}/mentors`, allUnits.accessToken)).status).toBe(200);
+
+      // Writes stay locked to the admin's own unit.
+      const edit = await TestRequest.patch(`/api/admin/pc-activity-rooms/${roomId}`, { label: "X" }, allUnits.accessToken);
+      expect(edit.status).toBe(403);
+    });
+
     it("should reject (403) a DATABASE_ADMIN creating a room outside their own unit", async () => {
       const otherUnit = await prismaClient.masterUnit.create({
         data: { name: `TEST_ROOM_DBADMIN_OTHER_${Date.now()}` },

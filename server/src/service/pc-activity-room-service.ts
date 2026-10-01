@@ -81,6 +81,8 @@ import { getUniqueConstraintFields } from "../utils/prisma-error";
 import {
   assertCanManageEnrollments,
   assertCanManageTeacherAssignments,
+  resolveStudentUnitScope,
+  type AdminUserWithStudentScope,
 } from "../utils/admin-permissions";
 
 function bulkFailureMessage(error: unknown): string {
@@ -162,6 +164,23 @@ async function assertMentorWriteAllowed(
   if (admin.role === AdminRole.DATABASE_ADMIN) {
     assertCanManageTeacherAssignments(admin);
     await assertCanWriteNow(admin, context, now);
+  }
+}
+
+// Reading a room follows the student view scope (all units, custom units, or
+// own unit). Writing stays locked to the admin's own unit below.
+function assertRoomReadable(
+  admin: AdminUserWithStudentScope,
+  unitIds: string[],
+): void {
+  if (admin.role !== AdminRole.DATABASE_ADMIN) return;
+  const scope = resolveStudentUnitScope(admin);
+  if (scope === undefined) return;
+  if (!unitIds.some((unitId) => scope.includes(unitId))) {
+    throw new ResponseError(
+      403,
+      "Forbidden: This room is outside your unit scope",
+    );
   }
 }
 
@@ -609,7 +628,7 @@ export class PCActivityRoomService {
   }
 
   static async search(
-    admin: AdminUser,
+    admin: AdminUserWithStudentScope,
     request: ListPcActivityRoomsRequest,
   ): Promise<Pageable<PcActivityRoomResponse>> {
     const searchRequest = Validation.validate(
@@ -618,12 +637,16 @@ export class PCActivityRoomService {
     );
 
     const skip = (searchRequest.page - 1) * searchRequest.size;
+    const readScope =
+      admin.role === AdminRole.DATABASE_ADMIN
+        ? resolveStudentUnitScope(admin)
+        : undefined;
     const where = {
       deleted_at: null,
       activity_id: searchRequest.activity_id,
       academic_year_id: searchRequest.academic_year_id,
-      ...(admin.role === AdminRole.DATABASE_ADMIN
-        ? { units: { some: { unit_id: admin.unit_id } } }
+      ...(readScope !== undefined
+        ? { units: { some: { unit_id: { in: readScope } } } }
         : {}),
       ...(searchRequest.search
         ? {
@@ -670,12 +693,12 @@ export class PCActivityRoomService {
   }
 
   static async get(
-    admin: AdminUser,
+    admin: AdminUserWithStudentScope,
     request: GetPcActivityRoomRequest,
   ): Promise<PcActivityRoomResponse> {
     const getRequest = Validation.validate(PcActivityRoomValidation.GET, request);
     const room = await findRoomOrThrow(getRequest.id);
-    assertRoomInAdminUnit(admin, room.units.map((u) => u.unit_id));
+    assertRoomReadable(admin, room.units.map((u) => u.unit_id));
     return toPcActivityRoomResponse(room);
   }
 
@@ -1027,7 +1050,7 @@ export class PCActivityRoomService {
   // --- Mentors -----------------------------------------------------------
 
   static async listMentors(
-    admin: AdminUser,
+    admin: AdminUserWithStudentScope,
     request: ListPcActivityRoomMentorsRequest,
   ): Promise<Pageable<PcActivityRoomMentorAssignmentResponse>> {
     const listRequest = Validation.validate(
@@ -1035,7 +1058,7 @@ export class PCActivityRoomService {
       request,
     );
     const room = await findRoomOrThrow(listRequest.room_id);
-    assertRoomInAdminUnit(admin, room.units.map((u) => u.unit_id));
+    assertRoomReadable(admin, room.units.map((u) => u.unit_id));
 
     const where: Prisma.PcActivityRoomMentorAssignmentWhereInput = {
       room_id: listRequest.room_id,
@@ -1896,7 +1919,7 @@ export class PCActivityRoomService {
   }
 
   static async listStudents(
-    admin: AdminUser,
+    admin: AdminUserWithStudentScope,
     request: ListPcActivityRoomStudentsRequest,
   ): Promise<Pageable<PcActivityRoomStudentResponse>> {
     const listRequest = Validation.validate(
@@ -1905,7 +1928,7 @@ export class PCActivityRoomService {
     );
     const room = await findRoomOrThrow(listRequest.room_id);
     const unitIds = room.units.map((u) => u.unit_id);
-    assertRoomInAdminUnit(admin, unitIds);
+    assertRoomReadable(admin, unitIds);
     const gradeIds = room.grades.map((g) => g.grade_id);
     const classIds = room.classes.map((entry) => entry.class_id);
 
