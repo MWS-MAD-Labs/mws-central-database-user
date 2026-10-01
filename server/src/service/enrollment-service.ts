@@ -150,6 +150,20 @@ async function assertClassInAdminUnit(
   });
 }
 
+async function assertGradeInAdminUnit(
+  admin: AdminUser & AdminWithOptionalScope,
+  grade: { unit_id: string | null },
+  action: string,
+  actionLabel: string,
+  context: AuditRequestContext,
+  classId?: string,
+): Promise<void> {
+  await assertCanWriteUnit(admin, grade.unit_id, "student", {
+    onDeny: () => recordUnauthorizedEnrollmentAction(admin, action, context, classId),
+    message: `Forbidden: You can only ${actionLabel} within your unit scope`,
+  });
+}
+
 function assertWriteAllowed(
   admin: AdminUser,
   context: AuditRequestContext,
@@ -832,7 +846,10 @@ export class EnrollmentService {
 
     const student = await prismaClient.student.findFirst({
       where: { id: createRequest.student_id, deleted_at: null },
-      include: { person: { select: { birth_date: true, full_name: true } } },
+      include: {
+        current_grade: { select: { unit_id: true } },
+        person: { select: { birth_date: true, full_name: true } },
+      },
     });
     if (!student) {
       throw new ResponseError(404, "Student not found");
@@ -889,6 +906,15 @@ export class EnrollmentService {
         ? klass.grade
         : klass.additional_grades.find((entry) => entry.grade_id === targetGradeId)!
             .grade;
+
+    await assertGradeInAdminUnit(
+      admin,
+      student.current_grade,
+      "create",
+      "enroll students from their current unit",
+      context,
+      klass.id,
+    );
 
     let backfillSteps: BackfillStep[] | null = null;
     if (!isLegacy) {
@@ -1240,6 +1266,7 @@ export class EnrollmentService {
         id: promoteRequest.id,
         student_id: promoteRequest.student_id,
       },
+      include: { class: { include: { grade: true } } },
     });
     if (!existing) {
       throw new ResponseError(404, "Enrollment not found");
@@ -1249,6 +1276,14 @@ export class EnrollmentService {
     }
 
     const studentFullName = await resolveStudentFullName(promoteRequest.student_id);
+
+    await assertClassInAdminUnit(
+      admin,
+      existing.class,
+      "promote",
+      "promote students from classes",
+      context,
+    );
 
     await assertValidGradeProgression(
       promoteRequest.student_id,
@@ -1467,6 +1502,14 @@ export class EnrollmentService {
     const klass = await assertClassInAcademicYear(
       transferRequest.class_id,
       existing.academic_year_id,
+    );
+
+    await assertClassInAdminUnit(
+      admin,
+      existing.class,
+      "transfer",
+      "move students from classes",
+      context,
     );
 
     if (existing.class_id === klass.id) {
@@ -2418,7 +2461,10 @@ export class EnrollmentService {
         student_id: reactivateRequest.student_id,
         deleted_at: null,
       },
-      include: { class: { include: { grade: true } } },
+      include: {
+        grade: { select: { unit_id: true } },
+        class: { include: { grade: true } },
+      },
     });
     if (!existing) {
       throw new ResponseError(404, "Enrollment not found");
@@ -2427,22 +2473,34 @@ export class EnrollmentService {
       throw new ResponseError(400, "This enrollment is already active");
     }
 
-    await assertClassInAdminUnit(
-      admin,
-      existing.class,
-      "reactivate",
-      "reactivate enrollments in classes",
-      context,
-    );
-
     const student = await prismaClient.student.findFirst({
       where: { id: reactivateRequest.student_id, deleted_at: null },
-      include: { person: { select: { full_name: true } } },
+      include: {
+        current_grade: { select: { unit_id: true } },
+        person: { select: { full_name: true } },
+      },
     });
     if (!student) {
       throw new ResponseError(404, "Student not found");
     }
     const studentFullName = student.person.full_name;
+
+    await assertGradeInAdminUnit(
+      admin,
+      student.current_grade,
+      "reactivate",
+      "reactivate students from their current unit",
+      context,
+      existing.class_id,
+    );
+    await assertGradeInAdminUnit(
+      admin,
+      existing.grade,
+      "reactivate",
+      "reactivate enrollments in historical classes",
+      context,
+      existing.class_id,
+    );
     if (
       student.current_class_id &&
       student.current_class_id !== existing.class_id
@@ -2480,6 +2538,7 @@ export class EnrollmentService {
         where: { id: student.id },
         data: {
           current_class_id: existing.class_id,
+          current_grade_id: existing.grade_id,
           status: StudentStatus.ACTIVE,
           // Stale leftovers from whatever closed this enrollment in the
           // first place - no longer accurate once it's active again.

@@ -10,6 +10,7 @@ import {
 import { AuditAction, ParentType } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
+import { createStudentRelationAdmin } from "./relation-scope-test-utils";
 
 describe("Parent / Guardian", () => {
   let studentId: string;
@@ -87,6 +88,23 @@ describe("Parent / Guardian", () => {
 
       expect(response.status).toBe(200);
     });
+
+    for (const scope of ["selected", "all"] as const) {
+      it(`should allow a DATABASE_ADMIN with ${scope} student-unit scope`, async () => {
+        const { accessToken } = await createStudentRelationAdmin(
+          studentId,
+          scope,
+          { canViewSensitiveData: true },
+        );
+
+        const response = await TestRequest.post(
+          `/api/admin/students/${studentId}/parents`,
+          { type: "MOTHER", full_name: "Jane Doe" },
+          accessToken,
+        );
+        expect(response.status).toBe(200);
+      });
+    }
 
     it("should reject (403) for DATABASE_ADMIN without can_view_sensitive_data", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin();

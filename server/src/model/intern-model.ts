@@ -306,7 +306,10 @@ export const toInternDetailResponse = (
 };
 
 // Keep raw IDs in audit snapshots so later renames do not change history.
-export function toInternAuditSnapshot(intern: Intern): AuditValue {
+export function toInternAuditSnapshot(
+  intern: Intern,
+  pcMentorUnitIds: string[] = [],
+): AuditValue {
   return {
     full_name: intern.full_name,
     nick_name: intern.nick_name,
@@ -323,6 +326,8 @@ export function toInternAuditSnapshot(intern: Intern): AuditValue {
     join_date: intern.join_date.toISOString(),
     end_date: intern.end_date.toISOString(),
     notes: intern.notes,
+    is_pc_mentor_eligible: intern.is_pc_mentor_eligible,
+    pc_mentor_unit_ids: pcMentorUnitIds,
     mobile_phone: intern.mobile_phone,
     residential_address: intern.residential_address,
     education_level: intern.education_level,

@@ -193,7 +193,7 @@ export function PcActivityRoomsPanel() {
   function canManageRoom(room) {
     if (isSuperAdmin) return true;
     if (!isDatabaseAdmin) return false;
-    return room.units.some((unit) => canWriteInUnit(user, unit.id, "student"));
+    return room.units.every((unit) => canWriteInUnit(user, unit.id, "student"));
   }
 
   const removeMutation = useMutation({

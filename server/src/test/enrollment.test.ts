@@ -727,6 +727,57 @@ describe("Student Class Enrollment", () => {
       expect(body.errors).toContain("unit scope");
     });
 
+    it("should require legacy enrollment access to both the student's current unit and destination unit", async () => {
+      const elementary = await prismaClient.masterUnit.findUniqueOrThrow({
+        where: { name: "Elementary" },
+      });
+      const juniorHigh = await prismaClient.masterUnit.findUniqueOrThrow({
+        where: { name: "Junior High" },
+      });
+      const juniorGrade = await prismaClient.grade.create({
+        data: {
+          name: "TEST_ENROLL_LEGACY_SOURCE_GRADE",
+          level: 9490,
+          unit_id: juniorHigh.id,
+        },
+      });
+      await prismaClient.student.update({
+        where: { id: studentId },
+        data: { current_grade_id: juniorGrade.id },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        elementary.id,
+      );
+
+      const blocked = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade1YearAInactive,
+          academic_year_id: yearAId,
+          is_legacy: true,
+        },
+        accessToken,
+      );
+      expect(blocked.status).toBe(403);
+
+      await prismaClient.adminUserStudentViewUnit.createMany({
+        data: [
+          { admin_id: "test-db-admin-id", unit_id: elementary.id },
+          { admin_id: "test-db-admin-id", unit_id: juniorHigh.id },
+        ],
+      });
+      const allowed = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade1YearAInactive,
+          academic_year_id: yearAId,
+          is_legacy: true,
+        },
+        accessToken,
+      );
+      expect(allowed.status).toBe(200);
+    });
+
     it("should reject (400) a duplicate enrollment for the same academic year", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -1958,6 +2009,65 @@ describe("Student Class Enrollment", () => {
 
       expect(response.status).toBe(403);
       expect(body.errors).toContain("unit scope");
+    });
+
+    it("should authorize promotion against both source and destination student scopes", async () => {
+      const elementary = await prismaClient.masterUnit.findUniqueOrThrow({
+        where: { name: "Elementary" },
+      });
+      const juniorHigh = await prismaClient.masterUnit.findUniqueOrThrow({
+        where: { name: "Junior High" },
+      });
+      const targetGrade = await prismaClient.grade.update({
+        where: { id: gradeTwoId },
+        data: { unit_id: juniorHigh.id },
+      });
+      try {
+        const superAdmin = await AdminUserTest.createSuperAdmin();
+        const createdResponse = await TestRequest.post(
+          `/api/admin/students/${studentId}/enrollments`,
+          { class_id: classGrade1YearA, academic_year_id: yearAId },
+          superAdmin.accessToken,
+        );
+        const created = await createdResponse.json();
+        await AdminUserTest.delete();
+
+        const destinationOnly = await AdminUserTest.createDatabaseAdmin(
+          juniorHigh.id,
+        );
+        const blocked = await TestRequest.patch(
+          `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+          {
+            class_id: classGrade2YearB,
+            academic_year_id: yearBId,
+            grade_id: targetGrade.id,
+          },
+          destinationOnly.accessToken,
+        );
+        expect(blocked.status).toBe(403);
+
+        await prismaClient.adminUserStudentViewUnit.createMany({
+          data: [
+            { admin_id: "test-db-admin-id", unit_id: elementary.id },
+            { admin_id: "test-db-admin-id", unit_id: juniorHigh.id },
+          ],
+        });
+        const selected = await TestRequest.patch(
+          `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+          {
+            class_id: classGrade2YearB,
+            academic_year_id: yearBId,
+            grade_id: targetGrade.id,
+          },
+          destinationOnly.accessToken,
+        );
+        expect(selected.status).toBe(200);
+      } finally {
+        await prismaClient.grade.update({
+          where: { id: gradeTwoId },
+          data: { unit_id: elementary.id },
+        });
+      }
     });
 
     it("should reject (400) promoting to an effective_date before the current enrollment's start date", async () => {
@@ -4200,6 +4310,7 @@ describe("Student Class Enrollment", () => {
       });
       expect(student.status).toBe(StudentStatus.ACTIVE);
       expect(student.current_class_id).toBe(classGrade1YearA);
+      expect(student.current_grade_id).toBe(gradeOneId);
       expect(student.graduation_grade).toBeNull();
       expect(student.leave_year).toBeNull();
 
@@ -4239,6 +4350,66 @@ describe("Student Class Enrollment", () => {
 
       expect(response.status).toBe(403);
       expect(body.errors).toContain("unit scope");
+    });
+
+    it("should require current and historical student scopes, then restore the historical grade", async () => {
+      const elementary = await prismaClient.masterUnit.findUniqueOrThrow({
+        where: { name: "Elementary" },
+      });
+      const juniorHigh = await prismaClient.masterUnit.findUniqueOrThrow({
+        where: { name: "Junior High" },
+      });
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        superAdmin.accessToken,
+      );
+      const created = await createResponse.json();
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
+        { status: "WITHDRAWN" },
+        superAdmin.accessToken,
+      );
+      const currentGrade = await prismaClient.grade.create({
+        data: {
+          name: "TEST_ENROLL_REACTIVATE_CURRENT_GRADE",
+          level: 9491,
+          unit_id: juniorHigh.id,
+        },
+      });
+      await prismaClient.student.update({
+        where: { id: studentId },
+        data: { current_grade_id: currentGrade.id },
+      });
+      await AdminUserTest.delete();
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        elementary.id,
+      );
+
+      const blocked = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/reactivate`,
+        {},
+        accessToken,
+      );
+      expect(blocked.status).toBe(403);
+
+      await prismaClient.adminUserStudentViewUnit.createMany({
+        data: [
+          { admin_id: "test-db-admin-id", unit_id: elementary.id },
+          { admin_id: "test-db-admin-id", unit_id: juniorHigh.id },
+        ],
+      });
+      const allowed = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/reactivate`,
+        {},
+        accessToken,
+      );
+      expect(allowed.status).toBe(200);
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.current_grade_id).toBe(gradeOneId);
     });
 
     it("should reject (400) reactivating an already-active enrollment", async () => {

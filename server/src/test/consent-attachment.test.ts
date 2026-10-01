@@ -13,6 +13,7 @@ import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 import { AuditService } from "../service/audit-service";
 import { minioClient, MINIO_BUCKET } from "../lib/minio";
+import { createStudentRelationAdmin } from "./relation-scope-test-utils";
 
 const minioAvailable = await minioClient.listBuckets().then(
   () => true,
@@ -164,6 +165,57 @@ describe("Consent Attachment", () => {
       );
 
       expect(response.status).toBe(403);
+    });
+
+    for (const scope of ["own", "selected", "all"] as const) {
+      it.skipIf(!minioAvailable)(`should allow upload with ${scope} student-unit scope`, async () => {
+        const { accessToken } = await createStudentRelationAdmin(
+          studentId,
+          scope,
+          { canViewSensitiveData: true },
+        );
+        const formData = new FormData();
+        formData.append(
+          "file",
+          new File(["%PDF-1.4 scope"], `${scope}.pdf`, {
+            type: "application/pdf",
+          }),
+        );
+
+        const response = await TestRequest.postMultipart(
+          `/api/admin/students/${studentId}/consents/${consentId}/attachments`,
+          formData,
+          accessToken,
+        );
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        await ConsentAttachmentTest.removeFromMinio(body.data.id);
+      });
+    }
+
+    it.skipIf(!minioAvailable)("should reject upload outside the student-unit scope", async () => {
+      const { accessToken } = await createStudentRelationAdmin(
+        studentId,
+        "outside",
+        { canViewSensitiveData: true },
+      );
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new File(["%PDF-1.4 scope"], "outside.pdf", {
+          type: "application/pdf",
+        }),
+      );
+
+      const response = await TestRequest.postMultipart(
+        `/api/admin/students/${studentId}/consents/${consentId}/attachments`,
+        formData,
+        accessToken,
+      );
+
+      expect(response.status).toBe(403);
+      expect((await response.json()).errors).toContain("unit scope");
     });
 
     it("should reject (400) when no file field is present", async () => {

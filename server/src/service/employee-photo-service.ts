@@ -32,6 +32,7 @@ import { assertEmployeeInAdminUnit } from "../utils/sensitive-data";
 import { detectImageMimeType, processPhoto } from "../utils/image-processing";
 import { EmployeePhotoValidation } from "../validation/employee-photo-validation";
 import { Validation } from "../validation/validation";
+import { resolveWriteUnitScope } from "../utils/admin-permissions";
 
 const MAX_UPLOAD_SIZE_BYTES = 15 * 1024 * 1024; // 15MB, before resize/convert
 
@@ -116,10 +117,16 @@ export async function resolveEmployeePhotoUrl(
 }
 
 // Match extensionless filenames to employee names case-insensitively.
-async function findCandidatesByName(candidateName: string) {
+async function findCandidatesByName(
+  candidateName: string,
+  employeeUnitScope: string[] | undefined,
+) {
   const employees = await prismaClient.employee.findMany({
     where: {
       deleted_at: null,
+      ...(employeeUnitScope === undefined
+        ? {}
+        : { unit_id: { in: employeeUnitScope } }),
       person: { full_name: { equals: candidateName, mode: "insensitive" } },
     },
     include: { person: true, unit: true },
@@ -287,14 +294,9 @@ export class EmployeePhotoService {
     admin: AdminUser,
     request: BulkPreviewEmployeePhotoRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<BulkPreviewEmployeePhotoResponse> {
-    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_employee_pii) {
-      await recordUnauthorizedPhotoAction(admin, "bulk preview", context);
-      throw new ResponseError(
-        403,
-        "Forbidden: You don't have permission to view employee PII (NIK/NPWP/bank account/BPJS)",
-      );
-    }
+    await assertWriteAllowed(admin, "bulk preview", context, now);
 
     const previewRequest = Validation.validate(
       EmployeePhotoValidation.BULK_PREVIEW,
@@ -302,8 +304,12 @@ export class EmployeePhotoService {
     );
 
     const items = [];
+    const employeeUnitScope = resolveWriteUnitScope(admin, "employee");
     for (const fileName of previewRequest.file_names) {
-      const candidates = await findCandidatesByName(stripExtension(fileName));
+      const candidates = await findCandidatesByName(
+        stripExtension(fileName),
+        employeeUnitScope,
+      );
       items.push({ file_name: fileName, candidates });
     }
 

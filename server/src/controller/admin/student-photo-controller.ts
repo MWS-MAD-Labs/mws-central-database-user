@@ -58,6 +58,7 @@ export class StudentPhotoController {
       admin,
       body,
       getAuditRequestContext(c),
+      new Date(),
     );
 
     return c.json({ data: response });

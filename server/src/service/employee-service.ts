@@ -71,6 +71,7 @@ import {
   resolveEmployeeUnitScope,
   type AdminUserWithEmployeeScope,
   assertCanWriteUnit,
+  assertCanWriteUnits,
 } from "../utils/admin-permissions";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation, yearsBetweenDates } from "../validation/validation";
@@ -568,6 +569,19 @@ export class EmployeeService {
         onDeny: () => recordUnauthorizedEmployeeAction(admin, "create", context),
         message: "Forbidden: You can only create employees within your unit scope",
       });
+      if (request.pc_mentor_unit_ids?.length) {
+        await assertCanWriteUnits(
+          admin,
+          request.pc_mentor_unit_ids,
+          "employee",
+          "all",
+          {
+            onDeny: () => recordUnauthorizedEmployeeAction(admin, "create", context),
+            message:
+              "Forbidden: PC mentor units must all be within your employee unit scope",
+          },
+        );
+      }
     }
 
     const createRequest = Validation.validate(
@@ -748,6 +762,7 @@ export class EmployeeService {
             new_values: toEmployeeAuditSnapshot(
               personForAudit,
               personForAudit.employee,
+              createRequest.pc_mentor_unit_ids ?? [],
             ),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
@@ -880,9 +895,16 @@ export class EmployeeService {
     const existingEmployee = await CheckExist.checkEmployeeExists(
       updateRequest.id,
     );
+    const existingPcMentorUnitIds = (
+      await prismaClient.employeePcMentorUnit.findMany({
+        where: { employee_id: existingEmployee.id },
+        select: { unit_id: true },
+      })
+    ).map((row) => row.unit_id);
     const oldSnapshot = toEmployeeAuditSnapshot(
       existingEmployee.person,
       existingEmployee,
+      existingPcMentorUnitIds,
     );
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
@@ -914,6 +936,20 @@ export class EmployeeService {
           message:
             "Forbidden: You cannot transfer an employee to a unit outside your unit scope",
         });
+      }
+      if (updateRequest.pc_mentor_unit_ids?.length) {
+        await assertCanWriteUnits(
+          admin,
+          updateRequest.pc_mentor_unit_ids,
+          "employee",
+          "all",
+          {
+            onDeny: () =>
+              recordUnauthorizedEmployeeAction(admin, "update", context, request.id),
+            message:
+              "Forbidden: PC mentor units must all be within your employee unit scope",
+          },
+        );
       }
     }
 
@@ -1322,7 +1358,11 @@ export class EmployeeService {
             entity_id: existingEmployee.id,
             admin_id: admin.id,
             old_values: oldSnapshot,
-            new_values: toEmployeeAuditSnapshot(fetched, fetched.employee),
+            new_values: toEmployeeAuditSnapshot(
+              fetched,
+              fetched.employee,
+              updateRequest.pc_mentor_unit_ids ?? existingPcMentorUnitIds,
+            ),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
           },
@@ -1532,9 +1572,16 @@ export class EmployeeService {
       );
     }
 
+    const pcMentorUnitIds = (
+      await prismaClient.employeePcMentorUnit.findMany({
+        where: { employee_id: existingEmployee.id },
+        select: { unit_id: true },
+      })
+    ).map((row) => row.unit_id);
     const oldSnapshot = toEmployeeAuditSnapshot(
       existingEmployee.person,
       existingEmployee,
+      pcMentorUnitIds,
     );
 
     await prismaClient.$transaction(async (tx) => {
@@ -1557,7 +1604,11 @@ export class EmployeeService {
           entity_id: existingEmployee.id,
           admin_id: admin.id,
           old_values: oldSnapshot,
-          new_values: toEmployeeAuditSnapshot(fetched.person, fetched),
+          new_values: toEmployeeAuditSnapshot(
+            fetched.person,
+            fetched,
+            pcMentorUnitIds,
+          ),
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -2427,11 +2478,16 @@ export class EmployeeService {
           },
         ],
       },
-      include: { person: true },
+      include: { person: true, pc_mentor_units: { select: { unit_id: true } } },
     });
 
     for (const employee of dueEmployees) {
-      const oldSnapshot = toEmployeeAuditSnapshot(employee.person, employee);
+      const pcMentorUnitIds = employee.pc_mentor_units.map((row) => row.unit_id);
+      const oldSnapshot = toEmployeeAuditSnapshot(
+        employee.person,
+        employee,
+        pcMentorUnitIds,
+      );
 
       await prismaClient.$transaction(async (tx) => {
         await tx.employee.update({
@@ -2464,7 +2520,11 @@ export class EmployeeService {
             entity_type: "Employee",
             entity_id: employee.id,
             old_values: oldSnapshot,
-            new_values: toEmployeeAuditSnapshot(fetched.person, fetched),
+            new_values: toEmployeeAuditSnapshot(
+              fetched.person,
+              fetched,
+              pcMentorUnitIds,
+            ),
           },
           tx,
         );

@@ -119,11 +119,42 @@ describe('canWriteInUnit', () => {
     expect(canWriteInUnit(user, 'u2', 'academic')).toBe(true)
   })
 
+  it('keeps all-unit flags independent in both directions', () => {
+    const studentWide = admin({ can_view_all_student_units: true })
+    expect(canWriteInUnit(studentWide, 'u2', 'student')).toBe(true)
+    expect(canWriteInUnit(studentWide, 'u2', 'employee')).toBe(false)
+
+    const employeeWide = admin({ can_view_all_employee_units: true })
+    expect(canWriteInUnit(employeeWide, 'u2', 'employee')).toBe(true)
+    expect(canWriteInUnit(employeeWide, 'u2', 'student')).toBe(false)
+  })
+
+  it('does not let student all-unit access widen employee writes', () => {
+    const user = admin({
+      can_view_all_student_units: true,
+      employee_view_unit_ids: ['employee-unit'],
+    })
+    expect(canWriteInUnit(user, 'outside-unit', 'student')).toBe(true)
+    expect(canWriteInUnit(user, 'outside-unit', 'employee')).toBe(false)
+    expect(canWriteInUnit(user, 'employee-unit', 'employee')).toBe(true)
+  })
+
   it('follows a custom unit list instead of the home unit', () => {
     const user = admin({ student_view_unit_ids: ['u2', 'u3'] })
     expect(canWriteInUnit(user, 'u2', 'student')).toBe(true)
     expect(canWriteInUnit(user, 'u1', 'student')).toBe(false)
     expect(canViewStudentUnit(user, 'u3')).toBe(true)
+  })
+
+  it('uses selected lists independently and rejects missing unit ids', () => {
+    const user = admin({
+      student_view_unit_ids: ['student-unit'],
+      employee_view_unit_ids: ['employee-unit'],
+    })
+    expect(canWriteInUnit(user, 'student-unit', 'student')).toBe(true)
+    expect(canWriteInUnit(user, 'student-unit', 'employee')).toBe(false)
+    expect(canWriteInUnit(user, 'employee-unit', 'academic')).toBe(true)
+    expect(canWriteInUnit(user, null, 'student')).toBe(false)
   })
 
   it('never lets viewers write', () => {

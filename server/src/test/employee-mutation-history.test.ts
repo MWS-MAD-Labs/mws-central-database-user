@@ -358,6 +358,14 @@ describe("Employee Mutation History", () => {
       });
       expect(auditLog.entity_type).toBe("Employee");
       expect(auditLog.entity_id).toBe(employeeId);
+      expect(auditLog.old_values).toMatchObject({
+        field: "STATUS",
+        status: EmployeeStatus.ON_LEAVE,
+      });
+      expect(auditLog.new_values).toMatchObject({
+        field: "STATUS",
+        status: EmployeeStatus.ACTIVE,
+      });
     });
 
     it("should reject (400) rolling back a baseline row with no previous_history_id", async () => {
@@ -414,6 +422,67 @@ describe("Employee Mutation History", () => {
       );
 
       expect(response.status).toBe(403);
+    });
+
+    it("should audit a DATABASE_ADMIN denial when rollback destination is outside employee scope", async () => {
+      const previous = await prismaClient.employeeMutationHistory.create({
+        data: {
+          employee_id: employeeId,
+          field: "UNIT",
+          unit_id: secondUnitId,
+          start_date: new Date("2025-01-01"),
+          end_date: new Date("2026-01-01"),
+        },
+      });
+      const current = await prismaClient.employeeMutationHistory.findFirstOrThrow({
+        where: { employee_id: employeeId, field: "UNIT", end_date: null },
+      });
+      await prismaClient.employeeMutationHistory.update({
+        where: { id: current.id },
+        data: { previous_history_id: previous.id },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        masterData.unit.id,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/employees/${employeeId}/mutation-history/${current.id}/rollback`,
+        {},
+        accessToken,
+      );
+      expect(response.status).toBe(403);
+      expect(
+        await prismaClient.auditLog.count({
+          where: {
+            action: AuditAction.UNAUTHORIZED_ACCESS,
+            admin_id: "test-db-admin-id",
+            entity_id: employeeId,
+          },
+        }),
+      ).toBeGreaterThanOrEqual(1);
+    });
+
+    it("should audit a DATABASE_ADMIN denial when rollback source is outside employee scope", async () => {
+      const current = await prismaClient.employeeMutationHistory.findFirstOrThrow({
+        where: { employee_id: employeeId, field: "UNIT", end_date: null },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(secondUnitId);
+
+      const response = await TestRequest.patch(
+        `/api/admin/employees/${employeeId}/mutation-history/${current.id}/rollback`,
+        {},
+        accessToken,
+      );
+      expect(response.status).toBe(403);
+      expect(
+        await prismaClient.auditLog.count({
+          where: {
+            action: AuditAction.UNAUTHORIZED_ACCESS,
+            admin_id: "test-db-admin-id",
+            entity_id: employeeId,
+          },
+        }),
+      ).toBeGreaterThanOrEqual(1);
     });
   });
 

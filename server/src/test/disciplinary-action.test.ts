@@ -631,6 +631,60 @@ describe("Employee disciplinary actions (Surat Teguran / Surat Peringatan)", () 
     expect(allowed.response.status).toBe(200);
   });
 
+  it("should enforce own, selected, and all employee-unit coverage for disciplinary writes", async () => {
+    const selectedUnit = await prismaClient.masterUnit.create({
+      data: { name: "TEST_DISC_SELECTED_UNIT" },
+    });
+    const selectedEmployee = await EmployeeTest.create({
+      email: "test_disc_selected_employee@millennia21.id",
+      unitId: selectedUnit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+      { canViewEmployeeDisciplinaryData: true },
+    );
+
+    const outside = await issue(accessToken, selectedEmployee.employee!.id, {
+      type: "SURAT_TEGURAN",
+      reason: "Outside",
+    });
+    expect(outside.response.status).toBe(403);
+
+    await prismaClient.adminUserEmployeeViewUnit.create({
+      data: { admin_id: "test-db-admin-id", unit_id: selectedUnit.id },
+    });
+    const selected = await issue(accessToken, selectedEmployee.employee!.id, {
+      type: "SURAT_TEGURAN",
+      reason: "Selected",
+    });
+    expect(selected.response.status).toBe(200);
+
+    await prismaClient.adminUserEmployeeViewUnit.deleteMany({
+      where: { admin_id: "test-db-admin-id" },
+    });
+    await prismaClient.adminUser.update({
+      where: { id: "test-db-admin-id" },
+      data: { can_view_all_employee_units: true },
+    });
+    const allUnits = await issue(accessToken, selectedEmployee.employee!.id, {
+      type: "SURAT_PERINGATAN",
+      reason: "All units",
+    });
+    expect(allUnits.response.status).toBe(200);
+
+    expect(
+      await prismaClient.auditLog.count({
+        where: {
+          action: AuditAction.UNAUTHORIZED_ACCESS,
+          admin_id: "test-db-admin-id",
+        },
+      }),
+    ).toBeGreaterThanOrEqual(1);
+  });
+
   it("should reject issuing for VIEWER role", async () => {
     const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
     const employee = await createEmployee(superToken, "814", "test_disc_viewer@millennia21.id");

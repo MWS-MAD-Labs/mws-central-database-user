@@ -164,7 +164,7 @@ export function ClassDetailPage() {
     : [];
 
   const unitMatches = canWriteInUnit(user, classUnitId, "student");
-  const teacherUnitMatches = canWriteInUnit(user, classUnitId, "academic");
+  const teacherUnitMatches = canWriteInUnit(user, classUnitId, "employee");
   const canWrite = canManageEnrollments(user) && unitMatches;
   const canWriteTeacher =
     canManageTeacherAssignments(user) && teacherUnitMatches;

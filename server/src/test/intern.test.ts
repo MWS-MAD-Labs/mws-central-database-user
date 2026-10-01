@@ -61,6 +61,9 @@ describe("POST /api/admin/interns", () => {
       masterData.unit.id,
     );
 
+    const academicUnit = await prismaClient.grade.findFirstOrThrow({
+      select: { unit_id: true },
+    });
     const requestBody = {
       full_name: "Test Intern One",
       nick_name: "Intern One",
@@ -75,6 +78,8 @@ describe("POST /api/admin/interns", () => {
       building_id: masterData.building.id,
       join_date: new Date("2026-07-01").toISOString(),
       end_date: new Date("2026-12-31").toISOString(),
+      is_pc_mentor_eligible: true,
+      pc_mentor_unit_ids: [academicUnit.unit_id],
     };
 
     const response = await TestRequest.post(
@@ -104,6 +109,10 @@ describe("POST /api/admin/interns", () => {
     expect(auditLog.entity_type).toBe("Intern");
     expect(auditLog.admin_id).toBe(admin.id);
     expect(auditLog.old_values).toBeNull();
+    expect(auditLog.new_values).toMatchObject({
+      is_pc_mentor_eligible: true,
+      pc_mentor_unit_ids: [academicUnit.unit_id],
+    });
   });
 
   it("should reject creation (400) when birth_date is in the future", async () => {
@@ -758,6 +767,14 @@ describe("Intern mutation history", () => {
       where: { action: AuditAction.ROLLBACK_INTERN_MUTATION },
     });
     expect(audit.entity_type).toBe("Intern");
+    expect(audit.old_values).toMatchObject({
+      field: "BUILDING",
+      building_id: otherBuilding.id,
+    });
+    expect(audit.new_values).toMatchObject({
+      field: "BUILDING",
+      building_id: masterData.building.id,
+    });
   });
 
   it("rejects rollback of a genesis row and viewer rollback", async () => {
@@ -791,6 +808,64 @@ describe("Intern mutation history", () => {
       viewerToken,
     );
     expect(viewerRollback.status).toBe(403);
+    expect(
+      await prismaClient.auditLog.count({
+        where: {
+          action: AuditAction.UNAUTHORIZED_ACCESS,
+          entity_id: intern.id,
+        },
+      }),
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("audits a DATABASE_ADMIN denial when an intern rollback destination is outside employee scope", async () => {
+    const masterData = await MasterDataTest.create();
+    const otherUnit = await prismaClient.masterUnit.create({
+      data: { name: `TEST_INTERN_ROLLBACK_SCOPE_${Date.now()}` },
+    });
+    const intern = await InternTest.create({
+      email: "test_intern_history_scope_denied@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+    const previous = await prismaClient.internMutationHistory.create({
+      data: {
+        intern_id: intern.id,
+        field: "UNIT",
+        unit_id: otherUnit.id,
+        start_date: new Date("2025-01-01"),
+        end_date: new Date("2026-01-01"),
+      },
+    });
+    const current = await prismaClient.internMutationHistory.create({
+      data: {
+        intern_id: intern.id,
+        field: "UNIT",
+        unit_id: masterData.unit.id,
+        start_date: new Date("2026-01-01"),
+        previous_history_id: previous.id,
+      },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/interns/${intern.id}/mutation-history/${current.id}/rollback`,
+      {},
+      accessToken,
+    );
+    expect(response.status).toBe(403);
+    expect(
+      await prismaClient.auditLog.count({
+        where: {
+          action: AuditAction.UNAUTHORIZED_ACCESS,
+          admin_id: "test-db-admin-id",
+          entity_id: intern.id,
+        },
+      }),
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("rejects mutation history without employee view permission", async () => {
@@ -1152,6 +1227,29 @@ describe("PATCH /api/admin/interns/:id", () => {
 
     expect(response.status).toBe(403);
     expect((await response.json()).errors).toContain("intern contact PII");
+  });
+
+  it("should reject DATABASE_ADMIN intern updates when any PC mentor unit is outside employee scope", async () => {
+    const otherUnit = await prismaClient.masterUnit.create({
+      data: { name: "TEST_INTERN_MENTOR_SCOPE_OTHER" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+    const intern = await InternTest.create({
+      email: "test_intern_mentor_scope_update@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/interns/${intern.id}`,
+      { pc_mentor_unit_ids: [otherUnit.id] },
+      accessToken,
+    );
+    expect(response.status).toBe(403);
+    expect((await response.json()).errors).toContain("PC mentor units");
   });
 });
 

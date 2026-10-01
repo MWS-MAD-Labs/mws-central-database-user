@@ -11,6 +11,7 @@ import { AuditAction } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 import { AuditService } from "../service/audit-service";
+import { createStudentRelationAdmin } from "./relation-scope-test-utils";
 
 describe("Health Record", () => {
   let studentId: string;
@@ -118,6 +119,39 @@ describe("Health Record", () => {
       );
 
       expect(response.status).toBe(404);
+    });
+
+    for (const scope of ["selected", "all"] as const) {
+      it(`should allow a DATABASE_ADMIN with ${scope} student-unit scope`, async () => {
+        const { accessToken } = await createStudentRelationAdmin(
+          studentId,
+          scope,
+          { canViewSensitiveData: true },
+        );
+        const response = await TestRequest.post(
+          `/api/admin/students/${studentId}/health-record`,
+          { blood_type: "O" },
+          accessToken,
+        );
+
+        expect(response.status).toBe(200);
+      });
+    }
+
+    it("should reject a DATABASE_ADMIN outside the student-unit scope", async () => {
+      const { accessToken } = await createStudentRelationAdmin(
+        studentId,
+        "outside",
+        { canViewSensitiveData: true },
+      );
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/health-record`,
+        { blood_type: "O" },
+        accessToken,
+      );
+
+      expect(response.status).toBe(403);
+      expect((await response.json()).errors).toContain("unit scope");
     });
 
     it("should reject (400) creating a second health record for the same student", async () => {

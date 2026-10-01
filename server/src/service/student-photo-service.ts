@@ -27,6 +27,7 @@ import {
   type UploadStudentPhotoRequest,
 } from "../model/student-photo-model";
 import { AuditService } from "./audit-service";
+import { resolveWriteUnitScope, type AdminWithOptionalScope } from "../utils/admin-permissions";
 import { assertCanWriteNow } from "../utils/office-hours";
 import {
   assertCanViewSensitiveData,
@@ -120,10 +121,18 @@ export async function resolveStudentPhotoUrl(
 }
 
 // Match extensionless filenames to student names case-insensitively.
-async function findCandidatesByName(candidateName: string) {
+// Candidates stay inside the admin's student unit scope so a scoped admin
+// cannot enumerate out-of-scope students by probing file names.
+async function findCandidatesByName(
+  candidateName: string,
+  studentUnitScope: string[] | undefined,
+) {
   const students = await prismaClient.student.findMany({
     where: {
       deleted_at: null,
+      ...(studentUnitScope === undefined
+        ? {}
+        : { current_grade: { unit_id: { in: studentUnitScope } } }),
       person: { full_name: { equals: candidateName, mode: "insensitive" } },
     },
     include: { person: true, current_grade: true },
@@ -291,8 +300,11 @@ export class StudentPhotoService {
     admin: AdminUser,
     request: BulkPreviewStudentPhotoRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<BulkPreviewStudentPhotoResponse> {
-    await assertCanViewSensitiveData(admin, context);
+    // Preview is part of the write workflow and discloses student names, so
+    // it uses the same gate as commit, not the lighter read-only check.
+    await assertWriteAllowed(admin, "bulk preview", context, now);
 
     const previewRequest = Validation.validate(
       StudentPhotoValidation.BULK_PREVIEW,
@@ -300,8 +312,15 @@ export class StudentPhotoService {
     );
 
     const items = [];
+    const studentUnitScope = resolveWriteUnitScope(
+      admin as AdminUser & AdminWithOptionalScope,
+      "student",
+    );
     for (const fileName of previewRequest.file_names) {
-      const candidates = await findCandidatesByName(stripExtension(fileName));
+      const candidates = await findCandidatesByName(
+        stripExtension(fileName),
+        studentUnitScope,
+      );
       items.push({ file_name: fileName, candidates });
     }
 

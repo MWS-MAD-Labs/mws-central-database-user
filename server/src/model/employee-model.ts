@@ -563,6 +563,7 @@ export function toEmployeeExportRow(
 export function toEmployeeAuditSnapshot(
   person: Person,
   employee: Employee,
+  pcMentorUnitIds: string[] = [],
 ): AuditValue {
   return {
     employee_id: employee.employee_id,
@@ -583,6 +584,8 @@ export function toEmployeeAuditSnapshot(
       ? employee.last_working_date.toISOString()
       : null,
     notes: employee.notes,
+    is_pc_mentor_eligible: employee.is_pc_mentor_eligible,
+    pc_mentor_unit_ids: pcMentorUnitIds,
     marital_status: employee.marital_status,
     mobile_phone: employee.mobile_phone,
     residential_address: employee.residential_address,

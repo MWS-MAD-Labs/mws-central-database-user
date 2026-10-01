@@ -11,6 +11,7 @@ import { AuditAction, VaccineType } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 import { AuditService } from "../service/audit-service";
+import { createStudentRelationAdmin } from "./relation-scope-test-utils";
 
 describe("Vaccine Record", () => {
   let studentId: string;
@@ -103,6 +104,39 @@ describe("Vaccine Record", () => {
 
       expect(response.status).toBe(200);
       expect(body.data.received).toBe(false);
+    });
+
+    for (const scope of ["own", "selected", "all"] as const) {
+      it(`should allow a DATABASE_ADMIN with ${scope} student-unit scope`, async () => {
+        const { accessToken } = await createStudentRelationAdmin(
+          studentId,
+          scope,
+          { canViewSensitiveData: true },
+        );
+        const response = await TestRequest.post(
+          `/api/admin/students/${studentId}/vaccine-records`,
+          { vaccine_type: "POLIO" },
+          accessToken,
+        );
+
+        expect(response.status).toBe(200);
+      });
+    }
+
+    it("should reject a DATABASE_ADMIN outside the student-unit scope", async () => {
+      const { accessToken } = await createStudentRelationAdmin(
+        studentId,
+        "outside",
+        { canViewSensitiveData: true },
+      );
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/vaccine-records`,
+        { vaccine_type: "POLIO" },
+        accessToken,
+      );
+
+      expect(response.status).toBe(403);
+      expect((await response.json()).errors).toContain("unit scope");
     });
 
     it("should reject (403) for VIEWER", async () => {

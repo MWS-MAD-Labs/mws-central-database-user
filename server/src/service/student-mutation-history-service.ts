@@ -8,7 +8,9 @@ import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
 import {
   assertCanViewStudentData,
+  assertCanWriteUnit,
   resolveStudentUnitScope,
+  type AdminWithOptionalScope,
   type AdminUserWithStudentScope,
 } from "../utils/admin-permissions";
 import type { AuditRequestContext } from "../model/audit-log-model";
@@ -171,11 +173,61 @@ export class StudentMutationHistoryService {
       );
     }
 
+    if (current.field === "CURRENT_GRADE") {
+      const restoredGrade = previous.current_grade_id
+        ? await prismaClient.grade.findUnique({
+            where: { id: previous.current_grade_id },
+            select: { unit_id: true },
+          })
+        : null;
+      if (!restoredGrade) {
+        throw new ResponseError(400, "The grade this would restore no longer exists");
+      }
+      await assertCanWriteUnit(
+        admin as AdminUser & AdminWithOptionalScope,
+        restoredGrade.unit_id,
+        "student",
+        {
+          onDeny: () =>
+            recordUnauthorizedAction(
+              admin,
+              "rollback",
+              context,
+              rollbackRequest.student_id,
+            ),
+          message: "Forbidden: The restored grade is outside your unit scope",
+        },
+      );
+    }
+
     // Include the student name as the audit entity label.
     const student = await prismaClient.student.findUnique({
       where: { id: rollbackRequest.student_id },
       select: { person: { select: { full_name: true } } },
     });
+
+    // The row's value lives in the column matching its field, so the audit
+    // can state what was restored without reconstructing from history later.
+    const auditValue = (row: {
+      field: string;
+      join_grade_id: string | null;
+      join_academic_year_id: string | null;
+      entry_type: string | null;
+      class_id: string | null;
+      current_grade_id: string | null;
+    }) => {
+      const key = row.field.toLowerCase();
+      const value =
+        row.join_grade_id ??
+        row.join_academic_year_id ??
+        row.entry_type ??
+        row.class_id ??
+        row.current_grade_id;
+      return {
+        field: row.field,
+        [key === "current_class" ? "class_id" : key]: value,
+      };
+    };
 
     await prismaClient.$transaction(async (tx) => {
       await tx.studentMutationHistory.update({
@@ -215,12 +267,12 @@ export class StudentMutationHistoryService {
           entity_id: rollbackRequest.student_id,
           admin_id: admin.id,
           old_values: {
-            field: current.field,
+            ...auditValue(current),
             history_id: current.id,
             full_name: student?.person.full_name ?? null,
           },
           new_values: {
-            field: previous.field,
+            ...auditValue(previous),
             history_id: previous.id,
             full_name: student?.person.full_name ?? null,
           },

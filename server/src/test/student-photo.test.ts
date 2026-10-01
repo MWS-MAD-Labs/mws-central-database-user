@@ -11,6 +11,7 @@ import { AuditAction } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 import { minioClient } from "../lib/minio";
+import { createStudentRelationAdmin } from "./relation-scope-test-utils";
 
 const minioAvailable = await minioClient.listBuckets().then(
   () => true,
@@ -180,6 +181,51 @@ describe("Student Photo", () => {
       );
 
       expect(response.status).toBe(200);
+    });
+
+    for (const scope of ["selected", "all"] as const) {
+      it.skipIf(!minioAvailable)(`should allow a DATABASE_ADMIN with ${scope} student-unit scope`, async () => {
+        const { accessToken } = await createStudentRelationAdmin(
+          studentId,
+          scope,
+          { canViewSensitiveData: true },
+        );
+        const formData = new FormData();
+        formData.append(
+          "file",
+          new File([VALID_PNG], `${scope}.png`, { type: "image/png" }),
+        );
+
+        const response = await TestRequest.postMultipart(
+          `/api/admin/students/${studentId}/photo`,
+          formData,
+          accessToken,
+        );
+
+        expect(response.status).toBe(200);
+      });
+    }
+
+    it("should reject a DATABASE_ADMIN outside the student-unit scope", async () => {
+      const { accessToken } = await createStudentRelationAdmin(
+        studentId,
+        "outside",
+        { canViewSensitiveData: true },
+      );
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new File([VALID_PNG], "outside.png", { type: "image/png" }),
+      );
+
+      const response = await TestRequest.postMultipart(
+        `/api/admin/students/${studentId}/photo`,
+        formData,
+        accessToken,
+      );
+
+      expect(response.status).toBe(403);
+      expect((await response.json()).errors).toContain("unit scope");
     });
 
     it("should reject (400) when no file field is present", async () => {

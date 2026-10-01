@@ -1,15 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import { AdminRole, type AdminUser } from "../generated/prisma/client";
 import {
+  assertCanWriteUnit,
+  assertCanWriteUnits,
   assertCanManageEnrollments,
   assertCanManageTeacherAssignments,
   canViewAcademicData,
   canViewEmployeeDisciplinaryData,
   canViewEmployeeData,
   canViewStudentData,
+  isUnitWritable,
   resolveAcademicUnitScope,
   resolveEmployeeUnitScope,
   resolveStudentUnitScope,
+  resolveWriteUnitScope,
 } from "../utils/admin-permissions";
 import { normalizeAdminPermissions } from "../service/admin-user-service";
 
@@ -245,5 +249,106 @@ describe("admin domain permissions", () => {
     };
 
     expect(resolveAcademicUnitScope(scopedAdmin)).toBeUndefined();
+  });
+});
+
+describe("admin write unit scope", () => {
+  const scopedAdmin = (overrides: Record<string, unknown> = {}) => ({
+    role: AdminRole.DATABASE_ADMIN,
+    unit_id: "own-unit",
+    can_view_all_student_units: false,
+    can_view_all_employee_units: false,
+    student_view_units: [],
+    employee_view_units: [],
+    ...overrides,
+  });
+
+  it("resolves own, selected, and all student scopes", () => {
+    expect(resolveWriteUnitScope(scopedAdmin(), "student")).toEqual(["own-unit"]);
+    expect(
+      resolveWriteUnitScope(
+        scopedAdmin({ student_view_units: [{ unit_id: "selected-unit" }] }),
+        "student",
+      ),
+    ).toEqual(["selected-unit"]);
+    expect(
+      resolveWriteUnitScope(
+        scopedAdmin({ can_view_all_student_units: true }),
+        "student",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("keeps student and employee write scopes independent", () => {
+    const value = scopedAdmin({
+      can_view_all_employee_units: true,
+      student_view_units: [{ unit_id: "student-unit" }],
+      employee_view_units: [{ unit_id: "employee-unit" }],
+    });
+
+    expect(resolveWriteUnitScope(value, "student")).toEqual(["student-unit"]);
+    expect(resolveWriteUnitScope(value, "employee")).toBeUndefined();
+    expect(isUnitWritable(value, "outside-unit", "student")).toBe(false);
+    expect(isUnitWritable(value, "outside-unit", "employee")).toBe(true);
+    expect(isUnitWritable(value, "outside-unit", "academic")).toBe(true);
+  });
+
+  it("uses the union for academic writes without widening either domain", () => {
+    const value = scopedAdmin({
+      student_view_units: [{ unit_id: "student-unit" }],
+      employee_view_units: [{ unit_id: "employee-unit" }],
+    });
+
+    expect(resolveWriteUnitScope(value, "academic")).toEqual([
+      "student-unit",
+      "employee-unit",
+    ]);
+    expect(isUnitWritable(value, "employee-unit", "student")).toBe(false);
+    expect(isUnitWritable(value, "employee-unit", "academic")).toBe(true);
+  });
+
+  it("assertCanWriteUnit audits and rejects only outside units", async () => {
+    let denied = 0;
+    const value = scopedAdmin();
+
+    await expect(
+      assertCanWriteUnit(value, "own-unit", "student", {
+        onDeny: async () => {
+          denied += 1;
+        },
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      assertCanWriteUnit(value, "outside-unit", "student", {
+        onDeny: async () => {
+          denied += 1;
+        },
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(denied).toBe(1);
+  });
+
+  it("assertCanWriteUnits distinguishes any and all semantics", async () => {
+    const value = scopedAdmin();
+
+    await expect(
+      assertCanWriteUnits(
+        value,
+        ["own-unit", "outside-unit"],
+        "student",
+        "any",
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      assertCanWriteUnits(
+        value,
+        ["own-unit", "outside-unit"],
+        "student",
+        "all",
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      assertCanWriteUnits(value, [], "student", "any"),
+    ).rejects.toMatchObject({ status: 403 });
   });
 });

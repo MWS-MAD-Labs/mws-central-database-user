@@ -3119,6 +3119,67 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     expect(body.data.subject).toBeNull();
   });
 
+  it("should use employee scope for teacher assignment, never the academic union", async () => {
+    const elementary = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(undefined, {
+      canViewAllStudentUnits: true,
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_AssignEmployeeScopeOnly",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_assign_employee_scope_only@millennia21.id",
+      elementary.id,
+    );
+
+    const blocked = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUPPORTING_HOMEROOM },
+      accessToken,
+    );
+    expect(blocked.status).toBe(403);
+
+    await prismaClient.adminUserEmployeeViewUnit.create({
+      data: { admin_id: "test-db-admin-id", unit_id: elementary.id },
+    });
+    const selected = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUPPORTING_HOMEROOM },
+      accessToken,
+    );
+    expect(selected.status).toBe(200);
+
+    await prismaClient.adminUserEmployeeViewUnit.deleteMany({
+      where: { admin_id: "test-db-admin-id" },
+    });
+    await prismaClient.adminUser.update({
+      where: { id: "test-db-admin-id" },
+      data: { can_view_all_employee_units: true },
+    });
+    const allUnitsClass = await ClassTest.create({
+      name: "TEST_AssignAllEmployeeUnits",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const allUnitsTeacher = await createTeachingEmployee(
+      "test_assign_all_employee_units@millennia21.id",
+      elementary.id,
+    );
+    const allUnits = await TestRequest.post(
+      `/api/admin/classes/${allUnitsClass.id}/teachers`,
+      {
+        employee_id: allUnitsTeacher.id,
+        role: ClassTeacherRole.SUPPORTING_HOMEROOM,
+      },
+      accessToken,
+    );
+    expect(allUnits.status).toBe(200);
+  });
+
   it("should reject when caller is not SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
     const klass = await ClassTest.create({
@@ -5290,6 +5351,99 @@ describe("PATCH /api/admin/classes/:id/teachers/bulk/move", () => {
       (item: { status: string }) => item.status === "FAILED",
     );
     expect(failedItem.error).toContain("not found");
+  });
+
+  it("should preauthorize both source and destination with employee scope", async () => {
+    const elementary = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const juniorHigh = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Junior High" },
+    });
+    const juniorGrade = await prismaClient.grade.create({
+      data: {
+        name: "TEST_CLASS_MOVE_JUNIOR_GRADE",
+        level: 9590,
+        unit_id: juniorHigh.id,
+      },
+    });
+    const sourceClass = await ClassTest.create({
+      name: "TEST_BulkMoveScopedSource",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const targetClass = await ClassTest.create({
+      name: "TEST_BulkMoveScopedTarget",
+      gradeId: juniorGrade.id,
+      academicYearId: nextAcademicYearId,
+      status: ClassStatus.INACTIVE,
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementary.id,
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${sourceClass.id}/teachers/bulk/move`,
+      { assignment_ids: ["unused"], target_class_id: targetClass.id },
+      accessToken,
+    );
+    expect(response.status).toBe(403);
+
+    await prismaClient.adminUserEmployeeViewUnit.createMany({
+      data: [
+        { admin_id: "test-db-admin-id", unit_id: elementary.id },
+        { admin_id: "test-db-admin-id", unit_id: juniorHigh.id },
+      ],
+      skipDuplicates: true,
+    });
+    const selected = await TestRequest.patch(
+      `/api/admin/classes/${sourceClass.id}/teachers/bulk/move`,
+      { assignment_ids: ["unused"], target_class_id: targetClass.id },
+      accessToken,
+    );
+    expect(selected.status).toBe(200);
+    expect((await selected.json()).data.failed_count).toBe(1);
+  });
+
+  it("should roll back the destination assignment when ending the source fails", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const sourceClass = await ClassTest.create({
+      name: "TEST_BulkMoveAtomicSource",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const targetClass = await ClassTest.create({
+      name: "TEST_BulkMoveAtomicTarget",
+      gradeId: gradeOneId,
+      academicYearId: nextAcademicYearId,
+      status: ClassStatus.INACTIVE,
+    });
+    const teacher = await createSubjectTeacherEmployee(
+      "test_bulk_move_atomic@millennia21.id",
+    );
+    const assignment = await prismaClient.classTeacherAssignment.create({
+      data: {
+        class_id: sourceClass.id,
+        employee_id: teacher.id,
+        role: ClassTeacherRole.SUBJECT_TEACHER,
+        start_date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+        end_date: new Date(),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${sourceClass.id}/teachers/bulk/move`,
+      { assignment_ids: [assignment.id], target_class_id: targetClass.id },
+      accessToken,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.data.failed_count).toBe(1);
+    expect(
+      await prismaClient.classTeacherAssignment.count({
+        where: { class_id: targetClass.id, employee_id: teacher.id },
+      }),
+    ).toBe(0);
   });
 
   it("should reject (403) for VIEWER", async () => {

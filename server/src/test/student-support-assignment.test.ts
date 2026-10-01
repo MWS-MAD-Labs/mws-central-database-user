@@ -12,11 +12,17 @@ import {
 import { AuditAction, StudentSupportRole } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
+import { createStudentRelationAdmin } from "./relation-scope-test-utils";
 
-async function createTeachingEmployee(email: string): Promise<{ id: string }> {
-  const masterUnit = await prismaClient.masterUnit.findFirstOrThrow({
-    where: { name: { startsWith: "TEST_" } },
-  });
+async function createTeachingEmployee(
+  email: string,
+  unitId?: string,
+): Promise<{ id: string }> {
+  const masterUnit = unitId
+    ? { id: unitId }
+    : await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: { startsWith: "TEST_" } },
+      });
   const position = await prismaClient.masterJobPosition.findFirstOrThrow({
     where: { name: { startsWith: "TEST_" } },
   });
@@ -178,6 +184,28 @@ describe("Student Support Assignment", () => {
       expect(response.status).toBe(200);
       expect(body.data.employee.id).toBe(teacher.id);
     });
+
+    for (const scope of ["selected", "all"] as const) {
+      it(`should assign with ${scope} student-unit scope`, async () => {
+        const { accessToken } = await createStudentRelationAdmin(studentId, scope);
+        const student = await prismaClient.student.findUniqueOrThrow({
+          where: { id: studentId },
+          select: { current_grade: { select: { unit_id: true } } },
+        });
+        const teacher = await createTeachingEmployee(
+          `test_support_teacher_${scope}@millennia21.id`,
+          student.current_grade.unit_id,
+        );
+
+        const response = await TestRequest.post(
+          `/api/admin/students/${studentId}/support-assignments`,
+          { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+          accessToken,
+        );
+
+        expect(response.status).toBe(200);
+      });
+    }
 
     it("should reject (403) DATABASE_ADMIN without can_write_student_data", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin(

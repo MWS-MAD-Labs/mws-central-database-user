@@ -29,6 +29,27 @@ import { assertJobPositionUnitCompatibleByIds } from "../utils/employee-role-rul
 
 const INCLUDE = { unit: true, job_position: true, building: true } as const;
 
+async function recordUnauthorizedAction(
+  admin: AdminUser,
+  action: string,
+  context: AuditRequestContext,
+  internId: string,
+): Promise<void> {
+  await AuditService.record({
+    action: AuditAction.UNAUTHORIZED_ACCESS,
+    source: AuditSource.UI,
+    admin_id: admin.id,
+    entity_type: "Intern",
+    entity_id: internId,
+    new_values: {
+      reason: `blocked intern mutation history ${action}`,
+      intern_id: internId,
+    },
+    ip_address: context.ip_address,
+    user_agent: context.user_agent,
+  });
+}
+
 async function assertWriteAllowed(
   admin: AdminUser,
   internId: string,
@@ -36,6 +57,7 @@ async function assertWriteAllowed(
   now: Date,
 ) {
   if (admin.role === AdminRole.VIEWER) {
+    await recordUnauthorizedAction(admin, "rollback", context, internId);
     throw new ResponseError(403, "Forbidden: Viewer cannot modify data");
   }
   const intern = await prismaClient.intern.findFirst({
@@ -45,6 +67,7 @@ async function assertWriteAllowed(
   if (!intern) throw new ResponseError(404, "Intern not found");
   if (admin.role === AdminRole.DATABASE_ADMIN) {
     if (!admin.can_write_employee_data) {
+      await recordUnauthorizedAction(admin, "rollback", context, internId);
       throw new ResponseError(
         403,
         "Forbidden: You don't have permission to write employee data",
@@ -52,9 +75,27 @@ async function assertWriteAllowed(
     }
     await assertCanWriteNow(admin, context, now);
     await assertCanWriteUnit(admin, intern.unit_id, "employee", {
+      onDeny: () => recordUnauthorizedAction(admin, "rollback", context, internId),
       message: "Forbidden: This intern is outside your unit scope",
     });
   }
+}
+
+function mutationAuditValue(row: {
+  field: string;
+  unit_id: string | null;
+  job_position_id: string | null;
+  building_id: string | null;
+  status: string | null;
+}) {
+  const key = row.field.toLowerCase();
+  return {
+    field: row.field,
+    [key === "unit" || key === "job_position" || key === "building"
+      ? `${key}_id`
+      : key]:
+      row.unit_id ?? row.job_position_id ?? row.building_id ?? row.status,
+  };
 }
 
 export class InternMutationHistoryService {
@@ -138,6 +179,13 @@ export class InternMutationHistoryService {
     // A rollback can restore an earlier unit: it must be inside the scope too.
     if (previous.unit_id !== null && previous.unit_id !== intern.unit_id) {
       await assertCanWriteUnit(admin, previous.unit_id, "employee", {
+        onDeny: () =>
+          recordUnauthorizedAction(
+            admin,
+            "rollback destination",
+            context,
+            rollbackRequest.intern_id,
+          ),
         message: "Forbidden: The unit this rollback restores is outside your unit scope",
       });
     }
@@ -229,12 +277,12 @@ export class InternMutationHistoryService {
           entity_id: rollbackRequest.intern_id,
           admin_id: admin.id,
           old_values: {
-            field: current.field,
+            ...mutationAuditValue(current),
             history_id: current.id,
             full_name: intern.full_name,
           },
           new_values: {
-            field: previous.field,
+            ...mutationAuditValue(previous),
             history_id: previous.id,
             full_name: intern.full_name,
           },

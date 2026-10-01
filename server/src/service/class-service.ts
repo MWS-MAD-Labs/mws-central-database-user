@@ -1383,7 +1383,7 @@ export class ClassService {
     }
 
     if (
-      !isUnitWritable(admin, klass.grade.unit_id, "academic")
+      !isUnitWritable(admin, klass.grade.unit_id, "employee")
     ) {
       await recordUnauthorizedClassAction(
         admin,
@@ -1550,7 +1550,7 @@ export class ClassService {
     }
 
     if (
-      !isUnitWritable(admin, existing.class.grade.unit_id, "academic")
+      !isUnitWritable(admin, existing.class.grade.unit_id, "employee")
     ) {
       await recordUnauthorizedClassAction(
         admin,
@@ -1654,7 +1654,7 @@ export class ClassService {
     });
     if (!existing) throw new ResponseError(404, "Teacher assignment not found");
     if (
-      !isUnitWritable(admin, existing.class.grade.unit_id, "academic")
+      !isUnitWritable(admin, existing.class.grade.unit_id, "employee")
     ) {
       throw new ResponseError(403, "Forbidden: This class is outside your unit scope");
     }
@@ -1736,7 +1736,7 @@ export class ClassService {
   }
 
   // "Roll a teacher forward" - e.g. this year's Homeroom Teacher for Grade
-  // Non-atomic bulk move using the normal assign/end checks per teacher.
+  // Each item creates the destination and ends the source in one transaction.
   static async bulkMoveTeacherAssignments(
     admin: AdminUser,
     request: BulkMoveClassTeacherAssignmentRequest,
@@ -1766,11 +1766,11 @@ export class ClassService {
     const [sourceClass, targetClass] = await Promise.all([
       prismaClient.class.findUnique({
         where: { id: bulkRequest.class_id },
-        include: { academic_year: true },
+        include: { grade: true, academic_year: true },
       }),
       prismaClient.class.findUnique({
         where: { id: bulkRequest.target_class_id },
-        include: { academic_year: true },
+        include: { grade: true, academic_year: true },
       }),
     ]);
     if (!sourceClass || !targetClass) {
@@ -1778,6 +1778,20 @@ export class ClassService {
     }
     if (sourceClass.id === targetClass.id) {
       throw new ResponseError(400, "Target class must be different from the current class");
+    }
+    for (const klass of [sourceClass, targetClass]) {
+      if (!isUnitWritable(admin, klass.grade.unit_id, "employee")) {
+        await recordUnauthorizedClassAction(
+          admin,
+          "bulk move teacher assignments",
+          context,
+          klass.id,
+        );
+        throw new ResponseError(
+          403,
+          "Forbidden: Source and target classes must be within your unit scope",
+        );
+      }
     }
     const sourceStartYear = Number(
       sourceClass.academic_year.name.match(/^(\d{4})\//)?.[1],
@@ -1821,34 +1835,145 @@ export class ClassService {
           targetStartYear === sourceStartYear
             ? now
             : targetClass.academic_year.start_date;
-        const created = await ClassService.assignTeacher(
-          admin,
-          {
-            class_id: bulkRequest.target_class_id,
-            ...(existing.employee_id
-              ? { employee_id: existing.employee_id }
-              : { intern_id: existing.intern_id ?? undefined }),
-            role: existing.role,
-            subject: existing.subject ?? undefined,
-            start_date: targetStartDate.toISOString(),
-          },
-          context,
+        assertAssignmentStartDate(
+          targetStartDate,
+          targetClass.academic_year,
           now,
           targetStartYear === sourceStartYear + 1,
         );
-
-        await ClassService.endTeacherAssignment(
-          admin,
-          {
-            id: existing.id,
-            class_id: existing.class_id,
-            end_date: targetStartDate.toISOString(),
-          },
-          context,
-          now,
+        if (targetStartDate < existing.start_date) {
+          throw new ResponseError(
+            400,
+            "End date cannot be before the assignment's start date",
+          );
+        }
+        if (
+          existing.employee_id &&
+          (existing.role === ClassTeacherRole.HOMEROOM ||
+            existing.role === ClassTeacherRole.SUPPORTING_HOMEROOM)
+        ) {
+          await assertHasHomeroomPosition(existing.employee_id);
+        } else if (
+          existing.employee_id &&
+          existing.role === ClassTeacherRole.SUBJECT_TEACHER
+        ) {
+          await assertHasSubjectTeacherPosition(existing.employee_id);
+        }
+        const workforceAuditValues = await classAssignmentWorkforceAuditValues(
+          existing.employee_id,
+          existing.intern_id,
         );
 
-        items.push({ id: assignmentId, status: "SUCCESS", data: created });
+        const createdId = await prismaClient.$transaction(async (tx) => {
+          if (existing.intern_id) {
+            await lockInternWorkforce(tx, existing.intern_id);
+          }
+          await assertWorkforceMemberIsActive(
+            tx,
+            existing.employee_id ?? undefined,
+            existing.intern_id ?? undefined,
+            existing.role,
+            now,
+          );
+          await assertTeacherUnitMatchesClass(
+            tx,
+            existing.employee_id ?? undefined,
+            existing.intern_id ?? undefined,
+            targetClass.id,
+          );
+          const ended = await tx.classTeacherAssignment.updateMany({
+            where: { id: existing.id, end_date: null, deleted_at: null },
+            data: { end_date: targetStartDate },
+          });
+          if (ended.count === 0) {
+            throw new ResponseError(400, "This assignment has already ended");
+          }
+          if (ROLE_CAPPED_PER_TEACHER_PER_YEAR.has(existing.role)) {
+            await assertTeacherNotAlreadyAssignedThisRoleElsewhere(
+              tx,
+              existing.employee_id ?? undefined,
+              existing.intern_id ?? undefined,
+              targetClass.academic_year_id,
+              existing.role,
+            );
+          }
+          const duplicate = await tx.classTeacherAssignment.findFirst({
+            where: {
+              class_id: targetClass.id,
+              employee_id: existing.employee_id,
+              intern_id: existing.intern_id,
+              role: existing.role,
+              subject: existing.subject,
+              end_date: null,
+              deleted_at: null,
+            },
+          });
+          if (duplicate) {
+            throw new ResponseError(
+              400,
+              "This workforce member already has an active assignment with this exact role/subject for this class.",
+            );
+          }
+
+          const created = await tx.classTeacherAssignment.create({
+            data: {
+              class_id: targetClass.id,
+              employee_id: existing.employee_id,
+              intern_id: existing.intern_id,
+              role: existing.role,
+              subject: existing.subject,
+              start_date: targetStartDate,
+            },
+          });
+
+          await AuditService.record(
+            {
+              action: AuditAction.ASSIGN_CLASS_TEACHER,
+              source: AuditSource.UI,
+              entity_type: "ClassTeacherAssignment",
+              entity_id: created.id,
+              admin_id: admin.id,
+              new_values: {
+                class_id: created.class_id,
+                ...workforceAuditValues,
+                role: created.role,
+                subject: created.subject,
+                start_date: created.start_date.toISOString(),
+              },
+              ip_address: context.ip_address,
+              user_agent: context.user_agent,
+            },
+            tx,
+          );
+          await AuditService.record(
+            {
+              action: AuditAction.END_CLASS_TEACHER_ASSIGNMENT,
+              source: AuditSource.UI,
+              entity_type: "ClassTeacherAssignment",
+              entity_id: existing.id,
+              admin_id: admin.id,
+              old_values: { ...workforceAuditValues, end_date: null },
+              new_values: {
+                ...workforceAuditValues,
+                end_date: targetStartDate.toISOString(),
+              },
+              ip_address: context.ip_address,
+              user_agent: context.user_agent,
+            },
+            tx,
+          );
+          return created.id;
+        });
+        const created = await prismaClient.classTeacherAssignment.findUniqueOrThrow({
+          where: { id: createdId },
+          include: ASSIGNMENT_WORKFORCE_INCLUDE,
+        });
+
+        items.push({
+          id: assignmentId,
+          status: "SUCCESS",
+          data: toClassTeacherAssignmentResponse(created),
+        });
       } catch (error) {
         items.push({
           id: assignmentId,
@@ -1952,7 +2077,7 @@ export class ClassService {
     }
 
     if (
-      !isUnitWritable(admin, existing.class.grade.unit_id, "academic")
+      !isUnitWritable(admin, existing.class.grade.unit_id, "employee")
     ) {
       await recordUnauthorizedClassAction(
         admin,
@@ -2086,7 +2211,7 @@ export class ClassService {
     }
 
     if (
-      !isUnitWritable(admin, existing.class.grade.unit_id, "academic")
+      !isUnitWritable(admin, existing.class.grade.unit_id, "employee")
     ) {
       await recordUnauthorizedClassAction(
         admin,

@@ -46,6 +46,7 @@ import { Validation, yearsBetweenDates } from "../validation/validation";
 import {
   assertCanViewEmployeeData,
   assertCanWriteUnit,
+  assertCanWriteUnits,
   resolveEmployeeUnitScope,
   type AdminUserWithEmployeeScope,
 } from "../utils/admin-permissions";
@@ -338,6 +339,19 @@ export class InternService {
         onDeny: () => recordUnauthorizedInternAction(admin, "create", context),
         message: "Forbidden: You can only create interns within your unit scope",
       });
+      if (request.pc_mentor_unit_ids?.length) {
+        await assertCanWriteUnits(
+          admin,
+          request.pc_mentor_unit_ids,
+          "employee",
+          "all",
+          {
+            onDeny: () => recordUnauthorizedInternAction(admin, "create", context),
+            message:
+              "Forbidden: PC mentor units must all be within your employee unit scope",
+          },
+        );
+      }
     }
 
     const createRequest = Validation.validate(InternValidation.CREATE, request);
@@ -415,7 +429,10 @@ export class InternService {
             entity_type: "Intern",
             entity_id: created.id,
             admin_id: admin.id,
-            new_values: toInternAuditSnapshot(created),
+            new_values: toInternAuditSnapshot(
+              created,
+              createRequest.pc_mentor_unit_ids ?? [],
+            ),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
           },
@@ -473,7 +490,16 @@ export class InternService {
     await assertCanWriteInternContactPii(admin, updateRequest, context);
 
     const existingIntern = await CheckExist.checkInternExists(updateRequest.id);
-    const oldSnapshot = toInternAuditSnapshot(existingIntern);
+    const existingPcMentorUnitIds = (
+      await prismaClient.internPcMentorUnit.findMany({
+        where: { intern_id: existingIntern.id },
+        select: { unit_id: true },
+      })
+    ).map((row) => row.unit_id);
+    const oldSnapshot = toInternAuditSnapshot(
+      existingIntern,
+      existingPcMentorUnitIds,
+    );
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
       if (!admin.can_write_employee_data) {
@@ -504,6 +530,20 @@ export class InternService {
           message:
             "Forbidden: You cannot transfer an intern to a unit outside your unit scope",
         });
+      }
+      if (updateRequest.pc_mentor_unit_ids?.length) {
+        await assertCanWriteUnits(
+          admin,
+          updateRequest.pc_mentor_unit_ids,
+          "employee",
+          "all",
+          {
+            onDeny: () =>
+              recordUnauthorizedInternAction(admin, "update", context, request.id),
+            message:
+              "Forbidden: PC mentor units must all be within your employee unit scope",
+          },
+        );
       }
     }
 
@@ -620,7 +660,10 @@ export class InternService {
             entity_id: updated.id,
             admin_id: admin.id,
             old_values: oldSnapshot,
-            new_values: toInternAuditSnapshot(updated),
+            new_values: toInternAuditSnapshot(
+              updated,
+              updateRequest.pc_mentor_unit_ids ?? existingPcMentorUnitIds,
+            ),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
           },

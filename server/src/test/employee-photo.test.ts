@@ -450,6 +450,55 @@ describe("Employee Photo", () => {
 
       expect(response.status).toBe(403);
     });
+
+    it("should require employee write permission for DATABASE_ADMIN preview", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        masterData.unit.id,
+        { canViewEmployeePii: true, canWriteEmployeeData: false },
+      );
+      const response = await TestRequest.post(
+        "/api/admin/employees/photos/bulk-preview",
+        { file_names: ["Anyone.png"] },
+        accessToken,
+      );
+      expect(response.status).toBe(403);
+    });
+
+    it("should return only name matches inside the DATABASE_ADMIN employee scope", async () => {
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: "TEST_EMPLOYEE_PHOTO_OTHER_UNIT" },
+      });
+      const first = await prismaClient.person.findFirstOrThrow({
+        where: { employee: { id: employeeId } },
+      });
+      const outside = await EmployeeTest.create({
+        email: "test_employee_photo_outside@millennia21.id",
+        unitId: otherUnit.id,
+        jobPositionId: masterData.position.id,
+        jobLevelId: masterData.level.id,
+        buildingId: masterData.building.id,
+      });
+      await prismaClient.person.update({
+        where: { id: outside.id },
+        data: { full_name: first.full_name },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        masterData.unit.id,
+        { canViewEmployeePii: true },
+      );
+
+      const response = await TestRequest.post(
+        "/api/admin/employees/photos/bulk-preview",
+        { file_names: [`${first.full_name}.png`] },
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data[0].candidates.map((row: { id: string }) => row.id)).toEqual([
+        employeeId,
+      ]);
+    });
   });
 
   describe("POST /api/admin/employees/photos/bulk-commit", () => {

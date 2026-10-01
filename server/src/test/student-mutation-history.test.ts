@@ -541,6 +541,74 @@ describe("Student Mutation History", () => {
       );
     });
 
+    it("should validate the restored CURRENT_GRADE unit before rollback", async () => {
+      const outsideUnit = await prismaClient.masterUnit.create({
+        data: { name: "TEST_STU_HIST_OUTSIDE_UNIT" },
+      });
+      const outsideGrade = await prismaClient.grade.create({
+        data: {
+          name: "TEST_STU_HIST_GRADE_OUTSIDE",
+          level: 9199,
+          unit_id: outsideUnit.id,
+        },
+      });
+      const previous = await prismaClient.studentMutationHistory.create({
+        data: {
+          student_id: studentId,
+          field: "CURRENT_GRADE",
+          current_grade_id: outsideGrade.id,
+          start_date: new Date("2099-01-01"),
+          end_date: new Date("2099-02-01"),
+        },
+      });
+      const current = await prismaClient.studentMutationHistory.create({
+        data: {
+          student_id: studentId,
+          field: "CURRENT_GRADE",
+          current_grade_id: gradeId,
+          start_date: new Date("2099-02-01"),
+          previous_history_id: previous.id,
+        },
+      });
+      const unitId = (
+        await prismaClient.grade.findUniqueOrThrow({ where: { id: gradeId } })
+      ).unit_id;
+      await AdminUserTest.delete();
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(unitId);
+
+      const blocked = await TestRequest.patch(
+        `/api/admin/students/${studentId}/mutation-history/${current.id}/rollback`,
+        {},
+        accessToken,
+      );
+      expect(blocked.status).toBe(403);
+      expect(
+        (
+          await prismaClient.studentMutationHistory.findUniqueOrThrow({
+            where: { id: current.id },
+          })
+        ).deleted_at,
+      ).toBeNull();
+
+      await prismaClient.adminUser.update({
+        where: { id: "test-db-admin-id" },
+        data: { can_view_all_student_units: true },
+      });
+      const allowed = await TestRequest.patch(
+        `/api/admin/students/${studentId}/mutation-history/${current.id}/rollback`,
+        {},
+        accessToken,
+      );
+      expect(allowed.status).toBe(200);
+      expect(
+        (
+          await prismaClient.student.findUniqueOrThrow({
+            where: { id: studentId },
+          })
+        ).current_grade_id,
+      ).toBe(outsideGrade.id);
+    });
+
     it("should reject (403) for VIEWER", async () => {
       const { accessToken } = await AdminUserTest.createViewer();
       const currentRow =

@@ -11,6 +11,7 @@ import { AuditAction, HealthNoteCategory } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 import { AuditService } from "../service/audit-service";
+import { createStudentRelationAdmin } from "./relation-scope-test-utils";
 
 describe("Health Note", () => {
   let studentId: string;
@@ -126,6 +127,23 @@ describe("Health Note", () => {
       expect(response.status).toBe(403);
       expect(body.errors).toContain("unit scope");
     });
+
+    for (const scope of ["own", "selected", "all"] as const) {
+      it(`should allow a DATABASE_ADMIN with ${scope} student-unit scope`, async () => {
+        const { accessToken } = await createStudentRelationAdmin(
+          studentId,
+          scope,
+          { canViewSensitiveData: true },
+        );
+        const response = await TestRequest.post(
+          `/api/admin/students/${studentId}/health-notes`,
+          { category: "HEALTH_INFO", description: `${scope} scope note` },
+          accessToken,
+        );
+
+        expect(response.status).toBe(200);
+      });
+    }
 
     it("should reject (404) for a nonexistent student", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();

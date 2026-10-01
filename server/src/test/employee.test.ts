@@ -69,6 +69,9 @@ describe("POST /api/admin/employees", () => {
       masterData.unit.id,
     );
 
+    const academicUnit = await prismaClient.grade.findFirstOrThrow({
+      select: { unit_id: true },
+    });
     const requestBody = {
       full_name: "Test Employee One",
       nick_name: "Emp One",
@@ -87,6 +90,8 @@ describe("POST /api/admin/employees", () => {
       job_level_id: masterData.level.id,
       building_id: masterData.building.id,
       join_date: new Date("2026-07-01").toISOString(),
+      is_pc_mentor_eligible: true,
+      pc_mentor_unit_ids: [academicUnit.unit_id],
     };
 
     const response = await TestRequest.post(
@@ -119,6 +124,10 @@ describe("POST /api/admin/employees", () => {
     expect((auditLog.new_values as { employee_id?: string })?.employee_id).toBe(
       "99.99.001",
     );
+    expect(auditLog.new_values).toMatchObject({
+      is_pc_mentor_eligible: true,
+      pc_mentor_unit_ids: [academicUnit.unit_id],
+    });
     expect(auditLog.ip_address).toBeDefined();
   });
 
@@ -1731,6 +1740,39 @@ describe("POST /api/admin/employees", () => {
     expect(body.errors).toContain(
       "Forbidden: You can only create employees within your unit scope",
     );
+  });
+
+  it("should reject DATABASE_ADMIN employee creation when any PC mentor unit is outside employee scope", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      {
+        full_name: "Scoped Mentor Employee",
+        nick_name: "Scoped Mentor",
+        email: "test_emp_mentor_scope_create@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: "99.99.092",
+        marital_status: MaritalStatus.SINGLE,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.PERMANENT,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        job_level_id: masterData.level.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2026-01-01").toISOString(),
+        pc_mentor_unit_ids: [masterData.unit.id, secondUnitId],
+      },
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("PC mentor units");
   });
 
   it("should reject creation (403) for DATABASE_ADMIN if can_write_employee_data is false", async () => {
@@ -3400,6 +3442,25 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(body.errors).toContain(
       "Forbidden: You cannot transfer an employee to a unit outside your unit scope",
     );
+  });
+
+  it("should reject DATABASE_ADMIN employee updates when any PC mentor unit is outside employee scope", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.305",
+      "test_emp_mentor_scope_update@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { pc_mentor_unit_ids: [secondUnitId] },
+      accessToken,
+    );
+    expect(response.status).toBe(403);
+    expect((await response.json()).errors).toContain("PC mentor units");
   });
 
   it("should let a DATABASE_ADMIN with all employee units edit and transfer across units", async () => {

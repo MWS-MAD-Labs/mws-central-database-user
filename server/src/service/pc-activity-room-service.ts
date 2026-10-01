@@ -79,6 +79,10 @@ import { assertAcademicUnitIds } from "../utils/academic-units";
 import { lockInternWorkforce } from "../utils/intern-workforce-lock";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import {
+  assertEmployeeInAdminUnit,
+  assertStudentInAdminUnit,
+} from "../utils/sensitive-data";
+import {
   assertCanManageEnrollments,
   assertCanManageTeacherAssignments,
   resolveEmployeeUnitScope,
@@ -230,20 +234,40 @@ function mentorsInScope<
   );
 }
 
-// A DATABASE_ADMIN may write to a room when one of its units is in scope.
+// Room-wide mutations require every room unit to be in student scope.
 function assertRoomInAdminUnit(
   admin: AdminUser & AdminWithOptionalScope,
   unitIds: string[],
 ): void {
   if (
     admin.role === AdminRole.DATABASE_ADMIN &&
-    !unitIds.some((unitId) => isUnitWritable(admin, unitId, "student"))
+    !unitIds.every((unitId) => isUnitWritable(admin, unitId, "student"))
   ) {
     throw new ResponseError(
       403,
       "Forbidden: This room is outside your unit scope",
     );
   }
+}
+
+async function assertMentorInAdminUnit(
+  admin: AdminUser & AdminWithOptionalScope,
+  employeeId: string | null,
+  internId: string | null,
+  context: AuditRequestContext,
+): Promise<void> {
+  if (admin.role !== AdminRole.DATABASE_ADMIN) return;
+  if (employeeId) {
+    await assertEmployeeInAdminUnit(admin, employeeId, context);
+    return;
+  }
+  if (!internId) return;
+  const intern = await prismaClient.intern.findUnique({
+    where: { id: internId },
+    select: { unit_id: true },
+  });
+  if (intern && isUnitWritable(admin, intern.unit_id, "employee")) return;
+  throw new ResponseError(403, "Forbidden: This intern is outside your unit scope");
 }
 
 // A mentor can hold multiple activities across different days, but can't
@@ -389,19 +413,12 @@ function isSameMentor(
   return left.employee_id === right.employee_id && left.intern_id === right.intern_id;
 }
 
-// Units already on the room stay as they are, new ones must be in scope, and
-// at least one room unit must remain in scope.
 function assertSelectedRoomUnits(
   admin: AdminUser & AdminWithOptionalScope,
   unitIds: string[],
-  existingUnitIds: string[] = [],
 ): void {
   if (admin.role !== AdminRole.DATABASE_ADMIN) return;
-  const writable = (unitId: string) => isUnitWritable(admin, unitId, "student");
-  const addedOutside = unitIds.some(
-    (unitId) => !existingUnitIds.includes(unitId) && !writable(unitId),
-  );
-  if (addedOutside || !unitIds.some(writable)) {
+  if (!unitIds.every((unitId) => isUnitWritable(admin, unitId, "student"))) {
     throw new ResponseError(
       403,
       "Forbidden: Room units must stay within your unit scope",
@@ -926,7 +943,7 @@ export class PCActivityRoomService {
 
     const nextUnitIds = updateRequest.unit_ids ?? existingUnitIds;
     if (updateRequest.unit_ids) {
-      assertSelectedRoomUnits(admin, nextUnitIds, existingUnitIds);
+      assertSelectedRoomUnits(admin, nextUnitIds);
     }
     const nextGradeIds =
       updateRequest.grade_ids ?? existing.grades.map((g) => g.grade_id);
@@ -1258,10 +1275,18 @@ export class PCActivityRoomService {
     };
     const rows: PcActivityRoomEligibleMentorResponse[] = [
       ...employees
-        .filter((row) => isAllowed(row.unit_id, row.pc_mentor_units) && hasCapacityAndNoConflict(row.id, null))
+        .filter((row) =>
+          isUnitWritable(admin, row.unit_id, "employee") &&
+          isAllowed(row.unit_id, row.pc_mentor_units) &&
+          hasCapacityAndNoConflict(row.id, null),
+        )
         .map((row) => ({ id: row.id, name: row.person.full_name, type: "EMPLOYEE" as const, unit_id: row.unit_id })),
       ...interns
-        .filter((row) => isAllowed(row.unit_id, row.pc_mentor_units) && hasCapacityAndNoConflict(null, row.id))
+        .filter((row) =>
+          isUnitWritable(admin, row.unit_id, "employee") &&
+          isAllowed(row.unit_id, row.pc_mentor_units) &&
+          hasCapacityAndNoConflict(null, row.id),
+        )
         .map((row) => ({ id: row.id, name: row.full_name, type: "INTERN" as const, unit_id: row.unit_id })),
     ];
     const direction = listRequest.sort_order === "desc" ? -1 : 1;
@@ -1289,6 +1314,12 @@ export class PCActivityRoomService {
     const room = await findRoomOrThrow(assignRequest.room_id);
     const unitIds = room.units.map((u) => u.unit_id);
     assertRoomInAdminUnit(admin, unitIds);
+    await assertMentorInAdminUnit(
+      admin,
+      assignRequest.employee_id ?? null,
+      assignRequest.intern_id ?? null,
+      context,
+    );
     assertRoomPeriod(room, now);
     const startDate = parseAssignmentStartDate(assignRequest.start_date, room, now);
 
@@ -1417,6 +1448,12 @@ export class PCActivityRoomService {
       include: { next_assignment: { select: { id: true } } },
     });
     if (!assignment) throw new ResponseError(404, "Mentor assignment not found");
+    await assertMentorInAdminUnit(
+      admin,
+      assignment.employee_id,
+      assignment.intern_id,
+      context,
+    );
     const startDate = parseAssignmentStartDate(updateRequest.start_date, room, now);
     assertEditableStartDate(assignment, startDate);
     const updated = await prismaClient.$transaction(async (tx) => {
@@ -1486,6 +1523,7 @@ export class PCActivityRoomService {
     if (!existing) {
       throw new ResponseError(404, "Mentor assignment not found");
     }
+    await assertMentorInAdminUnit(admin, existing.employee_id, existing.intern_id, context);
     if (existing.status === PcActivityMentorAssignmentStatus.ENDED) {
       throw new ResponseError(400, "This mentor assignment has already ended");
     }
@@ -1547,6 +1585,7 @@ export class PCActivityRoomService {
     if (!existing) {
       throw new ResponseError(404, "Mentor assignment not found");
     }
+    await assertMentorInAdminUnit(admin, existing.employee_id, existing.intern_id, context);
 
     await prismaClient.$transaction(async (tx) => {
       await tx.pcActivityRoomMentorAssignment.update({
@@ -1599,6 +1638,7 @@ export class PCActivityRoomService {
     if (!existing) {
       throw new ResponseError(404, "Mentor assignment not found");
     }
+    await assertMentorInAdminUnit(admin, existing.employee_id, existing.intern_id, context);
     if (existing.status !== PcActivityMentorAssignmentStatus.ENDED) {
       throw new ResponseError(400, "This mentor assignment hasn't ended");
     }
@@ -1689,6 +1729,7 @@ export class PCActivityRoomService {
       where: { id: moveRequest.id, room_id: sourceRoom.id, deleted_at: null },
     });
     if (!source) throw new ResponseError(404, "Mentor assignment not found");
+    await assertMentorInAdminUnit(admin, source.employee_id, source.intern_id, context);
     const existingSuccessor = await prismaClient.pcActivityRoomMentorAssignment.findUnique({
       where: { previous_assignment_id: source.id },
       include: MENTOR_INCLUDE,
@@ -2278,6 +2319,7 @@ export class PCActivityRoomService {
       },
     });
     if (!assignment) throw new ResponseError(404, "Student assignment not found");
+    await assertStudentInAdminUnit(admin, assignment.student_id, context);
     const startDate = parseAssignmentStartDate(updateRequest.start_date, room, now);
     assertEditableStartDate(assignment, startDate, assignment.expires_at);
     const updated = await prismaClient.$transaction(async (tx) => {
@@ -2373,6 +2415,7 @@ export class PCActivityRoomService {
     if (!assignment) {
       throw new ResponseError(404, "Active student assignment not found");
     }
+    await assertStudentInAdminUnit(admin, assignment.student_id, context);
     const wasScheduled = assignment.status === PcActivityAssignmentStatus.SCHEDULED;
     const endedOn = wasScheduled ? assignment.start_date : now;
     await prismaClient.$transaction(async (tx) => {
@@ -2416,6 +2459,7 @@ export class PCActivityRoomService {
       where: { id: dropRequest.assignment_id, room_id: room.id, deleted_at: null },
     });
     if (!assignment) throw new ResponseError(404, "Student assignment not found");
+    await assertStudentInAdminUnit(admin, assignment.student_id, context);
     await prismaClient.$transaction(async (tx) => {
       await tx.passionConnectionActivity.update({
         where: { id: assignment.id },
@@ -2461,6 +2505,7 @@ export class PCActivityRoomService {
       },
     });
     if (!assignment) throw new ResponseError(404, "Ended student assignment not found");
+    await assertStudentInAdminUnit(admin, assignment.student_id, context);
     await assertStudentEligibleForRoom(room, assignment.student_id);
     const conflict = await prismaClient.passionConnectionActivity.findFirst({
       where: {
@@ -2520,6 +2565,7 @@ export class PCActivityRoomService {
       },
     });
     if (!source) throw new ResponseError(404, "Active student assignment not found");
+    await assertStudentInAdminUnit(admin, source.student_id, context);
     const sameYear = sourceRoom.academic_year_id === targetRoom.academic_year_id;
     if (sameYear) {
       if (sourceRoom.day !== targetRoom.day) {

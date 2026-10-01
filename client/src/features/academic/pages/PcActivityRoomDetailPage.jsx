@@ -84,14 +84,14 @@ export function PcActivityRoomDetailPage() {
   })
   const activities = activitiesQuery.data?.data || []
 
-  const unitMatches =
+  const roomUnitsMatch =
     isSuperAdmin ||
     (isDatabaseAdmin &&
       Boolean(room) &&
-      room.units.some((unit) => canWriteInUnit(user, unit.id, 'student')))
-  const canEditRoom = unitMatches
-  const canManageStudents = unitMatches && canManageEnrollments(user)
-  const canManageMentors = unitMatches && canManageTeacherAssignments(user)
+      room.units.every((unit) => canWriteInUnit(user, unit.id, 'student')))
+  const canEditRoom = roomUnitsMatch
+  const canManageStudents = roomUnitsMatch && canManageEnrollments(user)
+  const canManageMentors = roomUnitsMatch && canManageTeacherAssignments(user)
 
   const backAction = (
     <Button asChild variant="secondary">

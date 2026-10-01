@@ -1874,6 +1874,186 @@ describe("PC Activity Rooms", () => {
   });
 
   describe("Management permissions", () => {
+    it("requires every room unit for selected, all, and outside room-wide mutations", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_ROOM_SCOPE_GATE_${Date.now()}` },
+      });
+      await prismaClient.grade.create({
+        data: {
+          name: `TEST_ROOM_SCOPE_GATE_GRADE_${Date.now()}`,
+          level: -9989,
+          unit_id: otherUnit.id,
+        },
+      });
+      const createRoom = async (label: string) => {
+        const response = await TestRequest.post("/api/admin/pc-activity-rooms", {
+          activity_id: activityId,
+          academic_year_id: academicYearId,
+          day: "MONDAY",
+          duration_type: "SEMESTER",
+          unit_ids: [unitId, otherUnit.id],
+          grade_ids: [gradeId],
+          label,
+        }, superAdmin.accessToken);
+        return (await response.json()).data.id as string;
+      };
+      const selectedRoomId = await createRoom("Selected scope");
+      const allRoomId = await createRoom("All scope");
+      const outsideRoomId = await createRoom("Outside scope");
+
+      const selected = await AdminUserTest.createDatabaseAdmin(unitId, {
+        id: "test-room-selected-scope",
+        email: "test_room_selected_scope@millennia21.id",
+      });
+      await prismaClient.adminUserStudentViewUnit.createMany({
+        data: [unitId, otherUnit.id].map((scopedUnitId) => ({
+          admin_id: "test-room-selected-scope",
+          unit_id: scopedUnitId,
+        })),
+      });
+      expect((await TestRequest.patch(
+        `/api/admin/pc-activity-rooms/${selectedRoomId}`,
+        { label: "Selected updated" },
+        selected.accessToken,
+      )).status).toBe(200);
+
+      const all = await AdminUserTest.createDatabaseAdmin(unitId, {
+        id: "test-room-all-scope",
+        email: "test_room_all_scope@millennia21.id",
+        canViewAllStudentUnits: true,
+      });
+      expect((await TestRequest.patch(
+        `/api/admin/pc-activity-rooms/${allRoomId}`,
+        { label: "All updated" },
+        all.accessToken,
+      )).status).toBe(200);
+
+      const outside = await AdminUserTest.createDatabaseAdmin(unitId, {
+        id: "test-room-outside-scope",
+        email: "test_room_outside_scope@millennia21.id",
+      });
+      const blocked = await TestRequest.patch(
+        `/api/admin/pc-activity-rooms/${outsideRoomId}`,
+        { label: "Must not update" },
+        outside.accessToken,
+      );
+      expect(blocked.status).toBe(403);
+      expect((await prismaClient.pcActivityRoom.findUniqueOrThrow({
+        where: { id: outsideRoomId },
+      })).label).toBe("Outside scope");
+      expect((await TestRequest.delete(
+        `/api/admin/pc-activity-rooms/${outsideRoomId}`,
+        outside.accessToken,
+      )).status).toBe(403);
+      expect((await prismaClient.pcActivityRoom.findUniqueOrThrow({
+        where: { id: outsideRoomId },
+      })).deleted_at).toBeNull();
+    });
+
+    it("authorizes the persisted student per bulk item and blocks assignment-ID bypass without mutation", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+      const roomResponse = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        activity_id: activityId,
+        academic_year_id: academicYearId,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        unit_ids: [unitId],
+        grade_ids: [gradeId],
+      }, superAdmin.accessToken);
+      const roomId = (await roomResponse.json()).data.id;
+      const assigned = await TestRequest.post(
+        `/api/admin/pc-activity-rooms/${roomId}/students/bulk`,
+        { student_ids: [studentId] },
+        superAdmin.accessToken,
+      );
+      const assignmentId = (await assigned.json()).data.items[0].data.id;
+      const outsideUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_ROOM_STUDENT_ACTOR_${Date.now()}` },
+      });
+      const outsideGrade = await prismaClient.grade.create({
+        data: {
+          name: `TEST_ROOM_STUDENT_ACTOR_GRADE_${Date.now()}`,
+          level: -9988,
+          unit_id: outsideUnit.id,
+        },
+      });
+      await prismaClient.student.update({
+        where: { id: studentId },
+        data: { current_grade_id: outsideGrade.id },
+      });
+      const scopedAdmin = await AdminUserTest.createDatabaseAdmin(unitId, {
+        id: "test-room-student-actor-scope",
+        email: "test_room_student_actor_scope@millennia21.id",
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/pc-activity-rooms/${roomId}/students/bulk-end`,
+        { assignment_ids: [assignmentId] },
+        scopedAdmin.accessToken,
+      );
+      const result = (await response.json()).data;
+      expect(response.status).toBe(200);
+      expect(result.success_count).toBe(0);
+      expect(result.failed_count).toBe(1);
+      expect(result.items[0].error).toContain("student is outside your unit scope");
+      const unchanged = await prismaClient.passionConnectionActivity.findUniqueOrThrow({
+        where: { id: assignmentId },
+      });
+      expect(unchanged.status).toBe("ACTIVE");
+      expect(unchanged.end_date).toBeNull();
+    });
+
+    it("authorizes the persisted mentor in employee scope and blocks assignment-ID bypass without mutation", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+      const roomResponse = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        activity_id: activityId,
+        academic_year_id: academicYearId,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        unit_ids: [unitId],
+        grade_ids: [gradeId],
+      }, superAdmin.accessToken);
+      const roomId = (await roomResponse.json()).data.id;
+      const outsideUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_ROOM_MENTOR_ACTOR_${Date.now()}` },
+      });
+      const mentor = await createEligibleMentorEmployee(
+        "test_pc_room_actor_scope@millennia21.id",
+        outsideUnit.id,
+      );
+      await prismaClient.employeePcMentorUnit.create({
+        data: { employee_id: mentor.id, unit_id: unitId },
+      });
+      const assigned = await TestRequest.post(
+        `/api/admin/pc-activity-rooms/${roomId}/mentors`,
+        { employee_id: mentor.id },
+        superAdmin.accessToken,
+      );
+      const assignmentId = (await assigned.json()).data.id;
+      const scopedAdmin = await AdminUserTest.createDatabaseAdmin(unitId, {
+        id: "test-room-mentor-actor-scope",
+        email: "test_room_mentor_actor_scope@millennia21.id",
+        canViewAllStudentUnits: true,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/pc-activity-rooms/${roomId}/mentors/bulk-end`,
+        { assignment_ids: [assignmentId] },
+        scopedAdmin.accessToken,
+      );
+      const result = (await response.json()).data;
+      expect(response.status).toBe(200);
+      expect(result.success_count).toBe(0);
+      expect(result.failed_count).toBe(1);
+      expect(result.items[0].error).toContain("employee is outside your unit scope");
+      const unchanged = await prismaClient.pcActivityRoomMentorAssignment.findUniqueOrThrow({
+        where: { id: assignmentId },
+      });
+      expect(unchanged.status).toBe("ACTIVE");
+      expect(unchanged.end_date).toBeNull();
+    });
+
     it("separates student enrollment management from mentor assignment management", async () => {
       const superAdmin = await AdminUserTest.createSuperAdmin();
       const createResponse = await TestRequest.post(

@@ -21,7 +21,6 @@ import {
 } from "../model/employee-mutation-history-model";
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
-import { assertEmployeeInAdminUnit } from "../utils/sensitive-data";
 import { EmployeeMutationHistoryValidation } from "../validation/employee-mutation-history-validation";
 import { Validation } from "../validation/validation";
 import { assertJobPositionCapacity } from "../utils/job-position-capacity";
@@ -80,8 +79,40 @@ async function assertWriteAllowed(
       );
     }
     await assertCanWriteNow(admin, context, now);
-    await assertEmployeeInAdminUnit(admin, employeeId, context);
+    const employee = await prismaClient.employee.findFirst({
+      where: { id: employeeId, deleted_at: null },
+      select: { unit_id: true },
+    });
+    if (!employee) throw new ResponseError(404, "Employee not found");
+    await assertCanWriteUnit(admin, employee.unit_id, "employee", {
+      onDeny: () => recordUnauthorizedAction(admin, action, context, employeeId),
+      message: "Forbidden: This employee is outside your unit scope",
+    });
   }
+}
+
+function mutationAuditValue(row: {
+  field: string;
+  unit_id: string | null;
+  job_position_id: string | null;
+  job_level_id: string | null;
+  building_id: string | null;
+  status: string | null;
+  employment_type: string | null;
+}) {
+  const key = row.field.toLowerCase();
+  return {
+    field: row.field,
+    [key === "unit" || key === "job_position" || key === "job_level" || key === "building"
+      ? `${key}_id`
+      : key]:
+      row.unit_id ??
+      row.job_position_id ??
+      row.job_level_id ??
+      row.building_id ??
+      row.status ??
+      row.employment_type,
+  };
 }
 
 export class EmployeeMutationHistoryService {
@@ -175,6 +206,13 @@ export class EmployeeMutationHistoryService {
     // A rollback can restore an earlier unit: it must be inside the scope too.
     if (previous.unit_id !== null) {
       await assertCanWriteUnit(admin, previous.unit_id, "employee", {
+        onDeny: () =>
+          recordUnauthorizedAction(
+            admin,
+            "rollback destination",
+            context,
+            rollbackRequest.employee_id,
+          ),
         message: "Forbidden: The unit this rollback restores is outside your unit scope",
       });
     }
@@ -297,12 +335,12 @@ export class EmployeeMutationHistoryService {
           entity_id: rollbackRequest.employee_id,
           admin_id: admin.id,
           old_values: {
-            field: current.field,
+            ...mutationAuditValue(current),
             history_id: current.id,
             full_name: employee?.person.full_name ?? null,
           },
           new_values: {
-            field: previous.field,
+            ...mutationAuditValue(previous),
             history_id: previous.id,
             full_name: employee?.person.full_name ?? null,
           },
