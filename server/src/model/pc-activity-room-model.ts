@@ -23,11 +23,13 @@ export const PC_ACTIVITY_ROOM_STUDENT_SORT_FIELDS = [
   "student_name",
   "nis",
   "start_date",
+  "expires_at",
   "status",
 ] as const;
 export const PC_ACTIVITY_ROOM_MENTOR_SORT_FIELDS = [
   "mentor_name",
   "mentor_type",
+  "job_position",
   "start_date",
   "status",
 ] as const;
@@ -253,6 +255,8 @@ export type PcActivityRoomMentorAssignmentResponse = {
   mentor_id: string;
   mentor_name: string;
   mentor_type: "EMPLOYEE" | "INTERN";
+  job_position_name: string | null;
+  unit_name: string | null;
   start_date: string;
   end_date: string | null;
   status: PcActivityMentorAssignmentStatus;
@@ -273,8 +277,19 @@ export type PcActivityRoomMentorshipHistoryResponse = {
 
 export function toPcActivityRoomMentorAssignmentResponse(
   assignment: PcActivityRoomMentorAssignment & {
-    employee: (Employee & { person: Person }) | null;
-    intern: Intern | null;
+    employee:
+      | (Employee & {
+          person: Person;
+          unit?: { name: string } | null;
+          job_position?: { name: string } | null;
+        })
+      | null;
+    intern:
+      | (Intern & {
+          unit?: { name: string } | null;
+          job_position?: { name: string } | null;
+        })
+      | null;
   },
 ): PcActivityRoomMentorAssignmentResponse {
   return {
@@ -283,6 +298,9 @@ export function toPcActivityRoomMentorAssignmentResponse(
     mentor_id: assignment.employee?.id ?? assignment.intern!.id,
     mentor_name: assignment.employee?.person.full_name ?? assignment.intern!.full_name,
     mentor_type: assignment.employee ? "EMPLOYEE" : "INTERN",
+    job_position_name:
+      assignment.employee?.job_position?.name ?? assignment.intern?.job_position?.name ?? null,
+    unit_name: assignment.employee?.unit?.name ?? assignment.intern?.unit?.name ?? null,
     start_date: assignment.start_date.toISOString(),
     end_date: assignment.end_date ? assignment.end_date.toISOString() : null,
     status: assignment.status,
@@ -347,6 +365,7 @@ export type PcActivityRoomStudentResponse = {
   // of still_eligible - shown even when they've moved out of this room's
   // scope, so it's clear where they actually are now.
   class_name: string | null;
+  grade_name: string | null;
   day: PCDay;
   status: PcActivityAssignmentStatus;
   start_date: string;

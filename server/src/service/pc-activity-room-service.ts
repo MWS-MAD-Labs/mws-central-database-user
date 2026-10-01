@@ -405,6 +405,12 @@ const ROOM_INCLUDE = {
   mentors: { include: { employee: { include: { person: true } }, intern: true } },
 } as const;
 
+// Mentor rows carry job position and unit for the room tables.
+const MENTOR_INCLUDE = {
+  employee: { include: { person: true, unit: true, job_position: true } },
+  intern: { include: { unit: true, job_position: true } },
+} as const;
+
 async function findRoomOrThrow(id: string) {
   const [room, counts] = await Promise.all([
     prismaClient.pcActivityRoom.findFirst({
@@ -1142,16 +1148,26 @@ export class PCActivityRoomService {
           : {},
       ],
     };
-    if (listRequest.sort_by === "mentor_name" || listRequest.sort_by === "mentor_type") {
+    if (
+      listRequest.sort_by === "mentor_name" ||
+      listRequest.sort_by === "mentor_type" ||
+      listRequest.sort_by === "job_position"
+    ) {
       const assignments = await prismaClient.pcActivityRoomMentorAssignment.findMany({
         where,
-        include: { employee: { include: { person: true } }, intern: true },
+        include: MENTOR_INCLUDE,
       });
       const rows = assignments.map(toPcActivityRoomMentorAssignmentResponse);
       const direction = listRequest.sort_order === "desc" ? -1 : 1;
       rows.sort((left, right) => {
-        const leftValue = listRequest.sort_by === "mentor_name" ? left.mentor_name.toLocaleLowerCase() : left.mentor_type;
-        const rightValue = listRequest.sort_by === "mentor_name" ? right.mentor_name.toLocaleLowerCase() : right.mentor_type;
+        const key = (row: typeof left) =>
+          listRequest.sort_by === "mentor_name"
+            ? row.mentor_name.toLocaleLowerCase()
+            : listRequest.sort_by === "job_position"
+              ? (row.job_position_name ?? "").toLocaleLowerCase()
+              : row.mentor_type;
+        const leftValue = key(left);
+        const rightValue = key(right);
         return leftValue === rightValue ? left.id.localeCompare(right.id) : leftValue.localeCompare(rightValue) * direction;
       });
       return pageableSlice(rows, listRequest.page, listRequest.size);
@@ -1161,7 +1177,7 @@ export class PCActivityRoomService {
       count: () => prismaClient.pcActivityRoomMentorAssignment.count({ where }),
       findMany: () => prismaClient.pcActivityRoomMentorAssignment.findMany({
         where,
-        include: { employee: { include: { person: true } }, intern: true },
+        include: MENTOR_INCLUDE,
         skip,
         take: listRequest.size,
         orderBy: [
@@ -1335,7 +1351,7 @@ export class PCActivityRoomService {
 
     const created = await prismaClient.pcActivityRoomMentorAssignment.findUniqueOrThrow({
       where: { id: createdId },
-      include: { employee: { include: { person: true } }, intern: true },
+      include: MENTOR_INCLUDE,
     });
     return toPcActivityRoomMentorAssignmentResponse(created);
   }
@@ -1390,7 +1406,7 @@ export class PCActivityRoomService {
       const row = await tx.pcActivityRoomMentorAssignment.update({
         where: { id: assignment.id },
         data: { start_date: startDate },
-        include: { employee: { include: { person: true } }, intern: true },
+        include: MENTOR_INCLUDE,
       });
       await AuditService.record({
         action: AuditAction.UPDATE_PC_ACTIVITY_ROOM_MENTOR_START_DATE,
@@ -1658,7 +1674,7 @@ export class PCActivityRoomService {
     if (!source) throw new ResponseError(404, "Mentor assignment not found");
     const existingSuccessor = await prismaClient.pcActivityRoomMentorAssignment.findUnique({
       where: { previous_assignment_id: source.id },
-      include: { employee: { include: { person: true } }, intern: true },
+      include: MENTOR_INCLUDE,
     });
     if (existingSuccessor) {
       if (
@@ -1758,7 +1774,7 @@ export class PCActivityRoomService {
       if (getUniqueConstraintFields(error)) {
         const successor = await prismaClient.pcActivityRoomMentorAssignment.findUnique({
           where: { previous_assignment_id: source.id },
-          include: { employee: { include: { person: true } }, intern: true },
+          include: MENTOR_INCLUDE,
         });
         if (
           successor?.deleted_at === null &&
@@ -1772,7 +1788,7 @@ export class PCActivityRoomService {
     }
     const created = await prismaClient.pcActivityRoomMentorAssignment.findUniqueOrThrow({
       where: { id: createdId },
-      include: { employee: { include: { person: true } }, intern: true },
+      include: MENTOR_INCLUDE,
     });
     return toPcActivityRoomMentorAssignmentResponse(created);
   }
@@ -2032,6 +2048,7 @@ export class PCActivityRoomService {
       ],
     };
     const skip = (listRequest.page - 1) * listRequest.size;
+    const sortOrder = listRequest.sort_order ?? "asc";
     const rows = await prismaClient.passionConnectionActivity.findMany({
       where,
       include: {
@@ -2047,9 +2064,15 @@ export class PCActivityRoomService {
             skip,
             take: listRequest.size,
             orderBy: [
-              { [listRequest.sort_by === "nis" ? "student" : listRequest.sort_by ?? "start_date"]: listRequest.sort_by === "nis" ? { nis: listRequest.sort_order } : listRequest.sort_order },
-              { id: "asc" },
-            ],
+              listRequest.sort_by === "nis"
+                ? { student: { nis: sortOrder } }
+                : listRequest.sort_by === "expires_at"
+                  ? { expires_at: { sort: sortOrder, nulls: "last" as const } }
+                  : listRequest.sort_by === "status"
+                    ? { status: sortOrder }
+                    : { start_date: sortOrder },
+              { id: "asc" as const },
+            ] satisfies Prisma.PassionConnectionActivityOrderByWithRelationInput[],
           }),
     });
 
@@ -2062,10 +2085,17 @@ export class PCActivityRoomService {
         deleted_at: null,
         student_id: { in: rows.map((row) => row.student_id) },
       },
-      select: { student_id: true, class: { select: { name: true } } },
+      select: {
+        student_id: true,
+        class: { select: { name: true } },
+        grade: { select: { name: true } },
+      },
     });
     const classNameByStudentId = new Map(
       enrollments.map((entry) => [entry.student_id, entry.class.name]),
+    );
+    const gradeNameByStudentId = new Map(
+      enrollments.map((entry) => [entry.student_id, entry.grade.name]),
     );
 
     const responseRows = rows.map((row) => ({
@@ -2074,6 +2104,7 @@ export class PCActivityRoomService {
       student_name: row.student.person.full_name,
       nis: row.student.nis,
       class_name: classNameByStudentId.get(row.student_id) ?? null,
+      grade_name: gradeNameByStudentId.get(row.student_id) ?? null,
       day: row.day,
       status: row.status,
       start_date: row.start_date.toISOString(),
@@ -2085,6 +2116,15 @@ export class PCActivityRoomService {
     const direction = listRequest.sort_order === "desc" ? -1 : 1;
     responseRows.sort((left, right) => {
       const field = listRequest.sort_by;
+      // No expiry sorts last in either direction, matching the DB order.
+      if (field === "expires_at") {
+        if (!left.expires_at && !right.expires_at) return left.id.localeCompare(right.id);
+        if (!left.expires_at) return 1;
+        if (!right.expires_at) return -1;
+        return left.expires_at === right.expires_at
+          ? left.id.localeCompare(right.id)
+          : left.expires_at.localeCompare(right.expires_at) * direction;
+      }
       const leftValue = field === "student_name" ? left.student_name.toLocaleLowerCase() :
         field === "nis" ? left.nis ?? "" : field === "status" ? left.status : left.start_date;
       const rightValue = field === "student_name" ? right.student_name.toLocaleLowerCase() :
@@ -2244,7 +2284,7 @@ export class PCActivityRoomService {
     });
     const enrollment = await prismaClient.studentClassEnrollment.findFirst({
       where: { student_id: updated.student_id, academic_year_id: room.academic_year_id, enrollment_status: "ACTIVE", deleted_at: null },
-      select: { class: { select: { name: true } } },
+      select: { class: { select: { name: true } }, grade: { select: { name: true } } },
     });
     const stillEligible = (await eligibleEnrollmentRows(
       room.academic_year_id,
@@ -2258,6 +2298,7 @@ export class PCActivityRoomService {
       student_name: updated.student.person.full_name,
       nis: updated.student.nis,
       class_name: enrollment?.class.name ?? null,
+      grade_name: enrollment?.grade.name ?? null,
       day: updated.day,
       status: updated.status,
       start_date: updated.start_date.toISOString(),

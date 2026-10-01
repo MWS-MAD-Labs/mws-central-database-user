@@ -415,6 +415,30 @@ describe("PC Activity Rooms", () => {
       expect(edit.status).toBe(403);
     });
 
+    it("returns grade_name and sorts students by expiry with no-expiry rows last", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const created = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        activity_id: activityId,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        unit_ids: [unitId],
+        grade_ids: [gradeId],
+      }, accessToken);
+      const roomId = (await created.json()).data.id;
+      await TestRequest.post(`/api/admin/pc-activity-rooms/${roomId}/students/bulk`, { student_ids: [studentId] }, accessToken);
+
+      for (const order of ["asc", "desc"]) {
+        const response = await TestRequest.get(
+          `/api/admin/pc-activity-rooms/${roomId}/students?sort_by=expires_at&sort_order=${order}`,
+          accessToken,
+        );
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.data).toHaveLength(1);
+        expect(body.data[0].grade_name).toBe("TEST_STUDENT_GRADE");
+      }
+    });
+
     it("shows a scoped DATABASE_ADMIN only the students of their own units in a multi-unit room", async () => {
       const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
       const otherUnit = await prismaClient.masterUnit.create({
@@ -730,6 +754,20 @@ describe("PC Activity Rooms", () => {
         listBody.data.map((m: { mentor_type: string }) => m.mentor_type).sort(),
       ).toEqual(["EMPLOYEE", "INTERN"]);
       expect(listBody.paging.total_item).toBe(2);
+
+      // Rows carry job position and unit for the room table, and can be sorted by position.
+      for (const row of listBody.data as { job_position_name: string | null; unit_name: string | null }[]) {
+        expect(row.job_position_name).toBeTruthy();
+        expect(row.unit_name).toBeTruthy();
+      }
+      const bySorted = await (
+        await TestRequest.get(
+          `/api/admin/pc-activity-rooms/${roomId}/mentors?sort_by=job_position&sort_order=desc`,
+          accessToken,
+        )
+      ).json();
+      const names = bySorted.data.map((row: { job_position_name: string }) => row.job_position_name);
+      expect(names).toEqual([...names].sort((left, right) => right.localeCompare(left)));
     });
 
     it("globally sorts and pages eligible employees and interns while excluding conflicts", async () => {
