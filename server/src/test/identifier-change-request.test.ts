@@ -116,6 +116,71 @@ describe("Identifier change requests", () => {
     return { response, body: await response.json(), newValue };
   }
 
+  it("caps the reason and decision notes at 100 characters", async () => {
+    const { employee, requester, approver } = await setup();
+    const tooLong = "x".repeat(101);
+
+    const longReason = await TestRequest.post(BASE, {
+      entity_type: "Employee",
+      entity_id: employee.id,
+      field_name: "nik",
+      new_value: randomNik(),
+      reason: tooLong,
+    }, requester.accessToken);
+    expect(longReason.status).toBe(400);
+    expect(JSON.stringify(await longReason.json())).toContain("at most 100");
+
+    const { body } = await submit(employee.id, requester.accessToken);
+    const longReject = await TestRequest.patch(`${BASE}/${body.data.id}/reject`, { decision_note: tooLong }, approver.accessToken);
+    expect(longReject.status).toBe(400);
+    const longApprove = await TestRequest.patch(`${BASE}/${body.data.id}/approve`, { decision_note: tooLong }, approver.accessToken);
+    expect(longApprove.status).toBe(400);
+
+    const okNote = await TestRequest.patch(`${BASE}/${body.data.id}/reject`, { decision_note: "x".repeat(100) }, approver.accessToken);
+    expect(okNote.status).toBe(200);
+  });
+
+  it("pages the list, splits History from Pending, and counts what the admin can decide", async () => {
+    const { employee, requester, approver } = await setup();
+    // Three requests on three fields, so each is allowed alongside the others.
+    const fields = ["nik", "npwp", "bank_account_number"];
+    await prismaClient.employee.update({
+      where: { id: employee.id },
+      data: {
+        npwp: "111111111123000",
+        npwp_set_at: new Date(Date.now() - TWO_DAYS_MS),
+        bank_account_number: "1234567890",
+        bank_account_number_set_at: new Date(Date.now() - TWO_DAYS_MS),
+      },
+    });
+    const created: string[] = [];
+    for (const field of fields) {
+      const response = await TestRequest.post(BASE, {
+        entity_type: "Employee",
+        entity_id: employee.id,
+        field_name: field,
+        new_value: field === "nik" ? randomNik() : field === "npwp" ? "222222222223000" : "9876543210",
+        reason: "Fixing a typo",
+      }, requester.accessToken);
+      expect(response.status).toBe(200);
+      created.push((await response.json()).data.id);
+    }
+
+    const first = await (await TestRequest.get(`${BASE}?status=PENDING&page=1&size=2`, approver.accessToken)).json();
+    expect(first.data).toHaveLength(2);
+    expect(first.paging.total_item).toBe(3);
+    expect(first.paging.total_page).toBe(2);
+    expect(first.pending_decidable_count).toBe(3);
+    const second = await (await TestRequest.get(`${BASE}?status=PENDING&page=2&size=2`, approver.accessToken)).json();
+    expect(second.data).toHaveLength(1);
+
+    await TestRequest.patch(`${BASE}/${created[0]}/reject`, { decision_note: "Not needed" }, approver.accessToken);
+    const history = await (await TestRequest.get(`${BASE}?history=true`, approver.accessToken)).json();
+    expect(history.paging.total_item).toBe(1);
+    expect(history.data[0].status).toBe("REJECTED");
+    expect(history.pending_decidable_count).toBe(2);
+  });
+
   it("rejects a request for a field that isn't locked yet", async () => {
     const { employee, requester } = await setup({ locked: false });
     const { response, body } = await submit(employee.id, requester.accessToken);

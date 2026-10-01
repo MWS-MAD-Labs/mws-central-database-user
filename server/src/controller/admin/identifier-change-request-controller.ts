@@ -23,11 +23,14 @@ async function optionalNote(c: AdminContext): Promise<string | undefined> {
 
 export class IdentifierChangeRequestController {
   static async list(c: AdminContext) {
-    const query = c.req.query() as ListIdentifierChangeRequests;
+    const query = c.req.query() as Record<string, string | undefined>;
     const response = await IdentifierChangeRequestService.list(c.var.admin, {
-      status: query.status || undefined,
-      entity_type: query.entity_type || undefined,
+      status: (query.status || undefined) as ListIdentifierChangeRequests["status"],
+      entity_type: (query.entity_type || undefined) as ListIdentifierChangeRequests["entity_type"],
       entity_id: query.entity_id || undefined,
+      history: query.history === "true",
+      page: query.page ? Number(query.page) : 1,
+      size: query.size ? Number(query.size) : 10,
     });
     return c.json(response);
   }

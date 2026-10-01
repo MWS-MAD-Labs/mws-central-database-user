@@ -6,6 +6,7 @@ import {
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
+import { paginate } from "../model/page-model";
 import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
@@ -480,22 +481,51 @@ export class IdentifierChangeRequestService {
     const listRequest = Validation.validate(IdentifierChangeRequestValidation.LIST, request);
     assertCanReview(admin);
     const employeeApprover = await canApproveEntity(admin, "Employee");
-    const records = await prismaClient.identifierChangeRequest.findMany({
-      where: {
-        status: listRequest.status,
-        entity_type: listRequest.entity_type,
-        entity_id: listRequest.entity_id,
+    const where = {
+      status: listRequest.history
+        ? { not: IdentifierChangeRequestStatus.PENDING }
+        : listRequest.status,
+      entity_type: listRequest.entity_type,
+      entity_id: listRequest.entity_id,
+    };
+    const page = listRequest.page ?? 1;
+    const size = listRequest.size ?? 10;
+    const skip = (page - 1) * size;
+    const paged = await paginate(page, size, {
+      count: () => prismaClient.identifierChangeRequest.count({ where }),
+      findMany: async () => {
+        const records = await prismaClient.identifierChangeRequest.findMany({
+          where,
+          include: REQUEST_INCLUDE,
+          orderBy: [{ requested_at: "desc" }, { id: "desc" }],
+          skip,
+          take: size,
+        });
+        const names = await entityNames(records);
+        return records.map((record) =>
+          this.toResponse(admin, record, names, employeeApprover),
+        );
       },
-      include: REQUEST_INCLUDE,
-      orderBy: { requested_at: "desc" },
-      take: 200,
     });
-    const names = await entityNames(records);
+
+    // What the sidebar badge counts: pending requests this admin may decide.
+    const decidableTypes = [
+      ...(canApprove(admin) ? ["Student"] : []),
+      ...(employeeApprover ? ["Employee"] : []),
+    ];
+    const pendingDecidableCount = decidableTypes.length
+      ? await prismaClient.identifierChangeRequest.count({
+          where: {
+            status: IdentifierChangeRequestStatus.PENDING,
+            entity_type: { in: decidableTypes },
+            requested_by: { not: admin.id },
+          },
+        })
+      : 0;
     return {
-      data: records.map((record) =>
-        this.toResponse(admin, record, names, employeeApprover),
-      ),
+      ...paged,
       can_approve: true,
+      pending_decidable_count: pendingDecidableCount,
     };
   }
 

@@ -1,3 +1,4 @@
+import type { Pageable } from "./page-model";
 import type {
   AdminUser,
   IdentifierChangeRequest,
@@ -48,6 +49,9 @@ export type ListIdentifierChangeRequests = {
   status?: IdentifierChangeRequestStatus;
   entity_type?: IdentifierChangeEntityType;
   entity_id?: string;
+  history?: boolean;
+  page?: number;
+  size?: number;
 };
 
 export type IdentifierChangeRequestResponse = {
@@ -72,9 +76,10 @@ export type IdentifierChangeRequestResponse = {
   can_cancel: boolean;
 };
 
-export type IdentifierChangeRequestListResponse = {
-  data: IdentifierChangeRequestResponse[];
+export type IdentifierChangeRequestListResponse = Pageable<IdentifierChangeRequestResponse> & {
   can_approve: boolean;
+  // Pending requests this admin can decide, for the sidebar badge.
+  pending_decidable_count: number;
 };
 
 export function toIdentifierChangeRequestResponse(
