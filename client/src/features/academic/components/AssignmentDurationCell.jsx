@@ -4,7 +4,18 @@ import {
 } from "../utils/assignmentDuration.js";
 
 // Humanized length on top, date range underneath. Optional extra line below.
-export function AssignmentDurationCell({ startDate, endDate, children }) {
+// `compact` keeps it to one line: the range shows, the length sits in the tooltip.
+export function AssignmentDurationCell({ startDate, endDate, compact = false, children }) {
+  if (compact) {
+    return (
+      <span
+        className="whitespace-nowrap text-(--mws-charcoal)"
+        title={humanizeAssignmentDuration(startDate, endDate)}
+      >
+        {assignmentDuration(startDate, endDate)}
+      </span>
+    );
+  }
   return (
     <>
       <p className="font-medium text-(--mws-charcoal)">

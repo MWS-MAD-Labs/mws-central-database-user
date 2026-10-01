@@ -214,7 +214,7 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
     else runLifecycle(action, [row]);
   }
   const sort = (column, order) => updateParams({ page: 1, sort_by: column, sort_order: order });
-  const colSpan = canManage ? 5 : 4;
+  const colSpan = (isStudent ? 6 : 5) + (canManage ? 2 : 0);
 
   return (
     <div className="space-y-4">
@@ -263,14 +263,26 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
 
       <div className="overflow-hidden rounded-2xl border border-(--mws-line)">
         <div className="overflow-x-auto">
-          <table className={`w-full text-left text-sm min-w-[720px]`}>
+          <table className="w-full min-w-[900px] text-left text-sm">
             <thead className="bg-(--mws-soft) text-xs font-bold text-(--mws-muted)">
               <tr>
-                {canManage ? <th className="w-12 px-4 py-3"><input type="checkbox" aria-label={`Select all ${label}s on this page`} checked={pageSelected} onChange={(event) => togglePage(event.target.checked)} className="h-4 w-4 accent-(--mws-burgundy)" /></th> : null}
-                <th className="px-4 py-3"><SortableHeader label={isStudent ? "Student" : "Mentor"} column={isStudent ? "student_name" : "mentor_name"} sortBy={params.sort_by} sortOrder={params.sort_order} onSort={sort} /></th>
-                <th className="px-4 py-3"><SortableHeader label="Status" column="status" sortBy={params.sort_by} sortOrder={params.sort_order} onSort={sort} /></th>
-                <th className="px-4 py-3"><SortableHeader label="Duration" column="start_date" sortBy={params.sort_by} sortOrder={params.sort_order} onSort={sort} /></th>
-                {canManage ? <th className="px-4 py-3 text-right">Actions</th> : null}
+                {canManage ? <th className="w-12 px-4 py-2.5"><input type="checkbox" aria-label={`Select all ${label}s on this page`} checked={pageSelected} onChange={(event) => togglePage(event.target.checked)} className="h-4 w-4 accent-(--mws-burgundy)" /></th> : null}
+                <th className="px-4 py-2.5"><SortableHeader label={isStudent ? "Student" : "Mentor"} column={isStudent ? "student_name" : "mentor_name"} sortBy={params.sort_by} sortOrder={params.sort_order} onSort={sort} /></th>
+                {isStudent ? (
+                  <>
+                    <th className="px-4 py-2.5"><SortableHeader label="NIS" column="nis" sortBy={params.sort_by} sortOrder={params.sort_order} onSort={sort} /></th>
+                    <th className="px-4 py-2.5">Class</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-4 py-2.5"><SortableHeader label="Job position" column="job_position" sortBy={params.sort_by} sortOrder={params.sort_order} onSort={sort} /></th>
+                    <th className="px-4 py-2.5">Unit</th>
+                  </>
+                )}
+                <th className="px-4 py-2.5"><SortableHeader label="Status" column="status" sortBy={params.sort_by} sortOrder={params.sort_order} onSort={sort} /></th>
+                <th className="px-4 py-2.5"><SortableHeader label="Duration" column="start_date" sortBy={params.sort_by} sortOrder={params.sort_order} onSort={sort} /></th>
+                {isStudent ? <th className="px-4 py-2.5"><SortableHeader label="Expires" column="expires_at" sortBy={params.sort_by} sortOrder={params.sort_order} onSort={sort} /></th> : null}
+                {canManage ? <th className="px-4 py-2.5 text-right">Actions</th> : null}
               </tr>
             </thead>
             <tbody className={query.isPlaceholderData ? "opacity-60 transition-opacity" : undefined}>
@@ -279,11 +291,23 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
                 const href = isStudent ? `/students/${row.student_id}` : row.mentor_type === "INTERN" ? `/interns/${row.mentor_id}` : `/employees/${row.mentor_id}`;
                 return (
                   <tr key={row.id} className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)">
-                    {canManage ? <td className="px-4 py-4"><input type="checkbox" aria-label={`Select ${name}`} checked={selected.has(row.id)} onChange={(event) => toggleOne(row, event.target.checked)} className="h-4 w-4 accent-(--mws-burgundy)" /></td> : null}
-                    <td className="px-4 py-4"><Link to={href} target="_blank" rel="noreferrer" className="font-semibold text-(--mws-charcoal) hover:text-(--mws-burgundy) hover:underline">{name}</Link><p className="mt-1 text-xs text-(--mws-muted)">{isStudent ? [row.nis || "No NIS", row.class_name].filter(Boolean).join(" · ") : formatStatus(row.mentor_type)}</p></td>
-                    <td className="px-4 py-4"><StatusBadge tone={statusTone(row.status)}>{formatStatus(row.status)}</StatusBadge>{isStudent && !row.still_eligible ? <p className="mt-1"><StatusBadge tone="neutral" variant="text">Out of scope</StatusBadge></p> : null}</td>
-                    <td className="px-4 py-4"><AssignmentDurationCell startDate={row.start_date} endDate={row.end_date}>{isStudent ? <p className={`mt-0.5 text-xs ${row.status === "EXPIRED" ? "font-semibold text-[#9a5c00]" : "text-(--mws-muted)"}`}>{row.status === "EXPIRED" ? "Expired " : row.expires_at ? "Expires " : "No expiry"}{row.expires_at ? formatDate(row.expires_at) : ""}</p> : null}</AssignmentDurationCell></td>
-                    {canManage ? <td className="px-4 py-4 text-right"><AssignmentActions row={row} kind={kind} onAction={handleAction} /></td> : null}
+                    {canManage ? <td className="px-4 py-2.5"><input type="checkbox" aria-label={`Select ${name}`} checked={selected.has(row.id)} onChange={(event) => toggleOne(row, event.target.checked)} className="h-4 w-4 accent-(--mws-burgundy)" /></td> : null}
+                    <td className="px-4 py-2.5"><Link to={href} target="_blank" rel="noreferrer" className="font-semibold text-(--mws-charcoal) hover:text-(--mws-burgundy) hover:underline">{name}</Link></td>
+                    {isStudent ? (
+                      <>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-(--mws-muted)">{row.nis || "-"}</td>
+                        <td className="max-w-40 truncate px-4 py-2.5 text-(--mws-muted)" title={row.grade_name || undefined}>{row.class_name || "-"}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="max-w-48 truncate px-4 py-2.5 text-(--mws-charcoal)" title={formatStatus(row.mentor_type)}>{row.job_position_name || "-"}<span className="ml-1.5 text-xs text-(--mws-muted)">{row.mentor_type === "INTERN" ? "Intern" : ""}</span></td>
+                        <td className="max-w-40 truncate px-4 py-2.5 text-(--mws-muted)">{row.unit_name || "-"}</td>
+                      </>
+                    )}
+                    <td className="px-4 py-2.5"><div className="flex flex-wrap items-center gap-x-2"><StatusBadge tone={statusTone(row.status)}>{formatStatus(row.status)}</StatusBadge>{isStudent && !row.still_eligible ? <StatusBadge tone="neutral" variant="text">Out of scope</StatusBadge> : null}</div></td>
+                    <td className="px-4 py-2.5"><AssignmentDurationCell compact startDate={row.start_date} endDate={row.end_date} /></td>
+                    {isStudent ? <td className={`whitespace-nowrap px-4 py-2.5 ${row.status === "EXPIRED" ? "font-semibold text-[#9a5c00]" : "text-(--mws-muted)"}`}>{row.expires_at ? `${row.status === "EXPIRED" ? "Expired " : ""}${formatDate(row.expires_at)}` : "No expiry"}</td> : null}
+                    {canManage ? <td className="px-4 py-2.5 text-right"><AssignmentActions row={row} kind={kind} onAction={handleAction} /></td> : null}
                   </tr>
                 );
               })}

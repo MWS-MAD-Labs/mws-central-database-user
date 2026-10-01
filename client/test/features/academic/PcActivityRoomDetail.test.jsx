@@ -2,6 +2,7 @@ import { describe, expect, it, mock } from "bun:test";
 import { screen, waitFor } from "@testing-library/react";
 import { ConfirmProvider } from "../../../src/components/ui/ConfirmDialog.jsx";
 import {
+  RoomMentorsSection,
   RoomStudentsSection,
 } from "../../../src/features/academic/components/pc-activity-room/RoomAssignmentsSection.jsx";
 import {
@@ -127,6 +128,56 @@ describe("PC activity room detail assignments", () => {
       student_ids: ["student-1", "student-2"],
       start_date: "2026-07-01T00:00:00.000Z",
     });
+  });
+
+  it("shows NIS, class and expiry as their own columns on one line per student", async () => {
+    globalThis.fetch = createFetchRouter([
+      {
+        path: /^\/api\/admin\/pc-activity-rooms\/room-1\/students\?.*/,
+        response: jsonResponse({
+          data: [{ ...student, status: "ACTIVE", grade_name: "Grade 1", expires_at: "2026-12-01T00:00:00.000Z" }],
+          paging: { current_page: 1, total_page: 1, total_item: 1, size: 10 },
+        }),
+      },
+    ]);
+    renderManaged(<RoomStudentsSection room={room} canManage />);
+    await screen.findByText("Ari Student");
+
+    for (const header of ["NIS", "Class", "Status", "Duration", "Expires"]) {
+      expect(screen.getByRole("columnheader", { name: new RegExp(header) })).toBeVisible();
+    }
+    expect(screen.getByText("1001")).toBeVisible();
+    expect(screen.getByText("Grade 1A")).toBeVisible();
+    expect(screen.getByText("01 Dec 2026")).toBeVisible();
+  });
+
+  it("shows job position and unit for mentors", async () => {
+    globalThis.fetch = createFetchRouter([
+      {
+        path: /^\/api\/admin\/pc-activity-rooms\/room-1\/mentors\?.*/,
+        response: jsonResponse({
+          data: [{
+            id: "m-1",
+            room_id: "room-1",
+            mentor_id: "emp-1",
+            mentor_name: "Rina Mentor",
+            mentor_type: "EMPLOYEE",
+            job_position_name: "Art Teacher",
+            unit_name: "Elementary",
+            status: "ACTIVE",
+            start_date: "2026-07-01T00:00:00.000Z",
+            end_date: null,
+          }],
+          paging: { current_page: 1, total_page: 1, total_item: 1, size: 10 },
+        }),
+      },
+    ]);
+    renderManaged(<RoomMentorsSection room={room} canManage />);
+    expect(await screen.findByText("Rina Mentor")).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: /Job position/ })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "Unit" })).toBeVisible();
+    expect(screen.getByText("Art Teacher")).toBeVisible();
+    expect(screen.getByText("Elementary")).toBeVisible();
   });
 
   it("keeps the current page on screen while the next page loads", async () => {
