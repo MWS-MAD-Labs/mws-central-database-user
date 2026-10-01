@@ -85,6 +85,23 @@ describe('ClassDetailPage', () => {
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
   })
 
+  it('shows the students table with its own NIS, grade, gender, status and duration columns', async () => {
+    globalThis.fetch = createFetchRouter(classDetailRoutes())
+    const { queryClient } = renderClassDetail()
+    await screen.findByRole('heading', { level: 1, name: 'Grade 1A' })
+    await screen.findByText('Ari Student')
+
+    for (const header of ['Student', 'NIS', 'Grade', 'Gender', 'Status', 'SE Teacher', 'Duration', 'Actions']) {
+      expect(screen.getAllByRole('columnheader', { name: new RegExp(`^${header}$`) }).length).toBeGreaterThan(0)
+    }
+    // Actions sit last, after Duration, matching the header order.
+    const headers = screen.getAllByRole('columnheader').map((cell) => cell.textContent.trim()).filter(Boolean)
+    const studentsHeaders = headers.slice(headers.indexOf('Student'))
+    expect(studentsHeaders.at(-1)).toBe('Actions')
+    expect(studentsHeaders.indexOf('Duration')).toBeLessThan(studentsHeaders.indexOf('Actions'))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+  })
+
   it('hides mutations for viewers and renders empty related sections', async () => {
     globalThis.fetch = createFetchRouter([
       ...classDetailRoutes({ assignments: [] }).filter((route) => !String(route.path).includes('enrollments')),
@@ -228,6 +245,51 @@ describe('TeacherAssignmentsSection', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Homeroom' }))
     await user.click(screen.getByRole('option', { name: 'Subject Teacher' }))
     expect(await screen.findByRole('radio', { name: /Ari Art \(Intern\)/ })).toBeVisible()
+  })
+
+  it('shows position, unit, status and duration columns, and sorts, searches and filters teachers', async () => {
+    const mk = (id, name, extra = {}) => ({
+      ...activeAssignment,
+      id,
+      workforce_member: { id: `emp-${id}`, type: 'EMPLOYEE', employee_id: `E-${id}`, full_name: name },
+      employee: { id: `emp-${id}`, employee_id: `E-${id}`, full_name: name },
+      job_position_name: 'Art Teacher',
+      unit_name: 'Elementary',
+      ...extra,
+    })
+    const assignments = [
+      mk('a1', 'Zed Zebra', { start_date: '2026-07-01T00:00:00.000Z', end_date: null }),
+      mk('a2', 'Amy Alpha', { start_date: '2026-07-02T00:00:00.000Z', end_date: '2026-08-01T00:00:00.000Z', job_position_name: 'Science Teacher' }),
+    ]
+    const { user } = renderAcademic(
+      <TeacherAssignmentsSection
+        assignments={assignments}
+        canWrite
+        currentClassId="class-1"
+        onAssign={() => {}}
+        onEnd={() => {}}
+        onRemove={() => {}}
+        onReopen={() => {}}
+        onBulkMove={() => {}}
+      />,
+    )
+
+    for (const header of ['Teacher', 'Job position', 'Unit', 'Role', 'Status', 'Duration']) {
+      expect(screen.getByRole('columnheader', { name: new RegExp(`^${header}$`) })).toBeVisible()
+    }
+    expect(screen.getByText('Science Teacher')).toBeVisible()
+    expect(screen.getAllByText('Elementary').length).toBeGreaterThan(0)
+
+    const names = () => screen.getAllByRole('link').map((link) => link.textContent).filter((text) => /Zed|Amy/.test(text))
+    // Newest start first by default; sorting by Teacher puts Amy first.
+    expect(names()).toEqual(['Amy Alpha', 'Zed Zebra'])
+    await user.click(screen.getByRole('button', { name: /^Teacher$/ }))
+    expect(names()[0]).toBe('Amy Alpha')
+
+    await user.type(screen.getByLabelText('Search teachers'), 'zebra')
+    expect(names()).toEqual(['Zed Zebra'])
+    await user.clear(screen.getByLabelText('Search teachers'))
+    expect(names()).toHaveLength(2)
   })
 
   it('uses bulk selection for teacher assignment actions and next-year promotion', async () => {

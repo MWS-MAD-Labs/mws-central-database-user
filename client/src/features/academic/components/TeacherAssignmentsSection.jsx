@@ -9,7 +9,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import {
   ActionsMenu,
@@ -24,7 +24,11 @@ import {
   SearchableSelect,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
+import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
+import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
+import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { SelectFilter } from "./SelectFilter.jsx";
 import { PaginatedSingleSelect } from "../../../components/ui/PaginatedSingleSelect.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
@@ -33,21 +37,39 @@ import { dateInputFromIso, isoFromDateInput } from "../../../lib/form.js";
 import { formatDate, formatStatus } from "../../../lib/format.js";
 import { classTeacherRoles, classesApi } from "../api/academicApi.js";
 import { classSelectOptions } from "../utils/selectOptions.js";
-import {
-  assignmentDuration,
-  humanizeAssignmentDuration,
-} from "../utils/assignmentDuration.js";
 import { AssignmentDurationCell } from "./AssignmentDurationCell.jsx";
 
 function formatSubjectDetail(assignment) {
   return assignment.subject || null
 }
 
-function formatDurationDetail(assignment) {
-  return assignmentDuration(assignment.start_date, assignment.end_date)
+const STATUS_FILTER_OPTIONS = [
+  { value: "", label: "All Statuses" },
+  { value: "ACTIVE", label: "Active" },
+  { value: "SCHEDULED", label: "Scheduled" },
+  { value: "ENDED", label: "Ended" },
+];
+
+// Derived from the dates; the server keeps no status for class teachers.
+function assignmentStatus(assignment, now = Date.now()) {
+  if (assignment.end_date && new Date(assignment.end_date).getTime() <= now) return "ENDED";
+  if (new Date(assignment.start_date).getTime() > now) return "SCHEDULED";
+  return "ACTIVE";
 }
 
-const ASSIGNMENT_PAGE_SIZE = 10;
+const STATUS_TONES = { ACTIVE: "green", SCHEDULED: "amber", ENDED: "neutral" };
+
+function teacherName(assignment) {
+  return assignment.workforce_member?.full_name ?? assignment.employee?.full_name ?? "";
+}
+
+function sortValue(assignment, column) {
+  if (column === "teacher") return teacherName(assignment).toLocaleLowerCase();
+  if (column === "role") return assignment.role;
+  if (column === "status") return assignmentStatus(assignment);
+  if (column === "job_position") return (assignment.job_position_name ?? "").toLocaleLowerCase();
+  return assignment.start_date;
+}
 
 export function TeacherAssignmentsSection({
   assignments,
@@ -90,6 +112,10 @@ export function TeacherAssignmentsSection({
     () => new Set(),
   );
   const [assignmentPage, setAssignmentPage] = useState(1);
+  const [assignmentPageSize, setAssignmentPageSize] = useState(10);
+  const [teacherSearch, setTeacherSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [teacherSort, setTeacherSort] = useState({ sort_by: "start_date", sort_order: "desc" });
   const [candidatePageSize, setCandidatePageSize] = useState(10);
   const confirm = useConfirm();
   const [form, setForm] = useState({
@@ -196,18 +222,48 @@ export function TeacherAssignmentsSection({
     selectedAssignments.every((assignment) => assignment.end_date != null);
   const allSelected =
     assignments.length > 0 && selectedAssignments.length === assignments.length;
+  const visibleAssignments = useMemo(() => {
+    const term = teacherSearch.trim().toLocaleLowerCase();
+    const direction = teacherSort.sort_order === "desc" ? -1 : 1;
+    return assignments
+      .filter((assignment) => !statusFilter || assignmentStatus(assignment) === statusFilter)
+      .filter(
+        (assignment) =>
+          !term ||
+          [
+            teacherName(assignment),
+            assignment.job_position_name,
+            assignment.unit_name,
+            assignment.subject,
+            formatStatus(assignment.role),
+          ]
+            .filter(Boolean)
+            .some((value) => String(value).toLocaleLowerCase().includes(term)),
+      )
+      .sort((left, right) => {
+        const leftValue = sortValue(left, teacherSort.sort_by);
+        const rightValue = sortValue(right, teacherSort.sort_by);
+        return leftValue === rightValue
+          ? left.id.localeCompare(right.id)
+          : leftValue.localeCompare(rightValue) * direction;
+      });
+  }, [assignments, statusFilter, teacherSearch, teacherSort]);
   const assignmentTotalPages = Math.max(
-    Math.ceil(assignments.length / ASSIGNMENT_PAGE_SIZE),
+    Math.ceil(visibleAssignments.length / assignmentPageSize),
     1,
   );
   const clampedAssignmentPage = Math.min(
     assignmentPage,
     assignmentTotalPages,
   );
-  const pagedAssignments = assignments.slice(
-    (clampedAssignmentPage - 1) * ASSIGNMENT_PAGE_SIZE,
-    clampedAssignmentPage * ASSIGNMENT_PAGE_SIZE,
+  const pagedAssignments = visibleAssignments.slice(
+    (clampedAssignmentPage - 1) * assignmentPageSize,
+    clampedAssignmentPage * assignmentPageSize,
   );
+  function sortTeachers(sort_by, sort_order) {
+    setTeacherSort({ sort_by, sort_order });
+    setAssignmentPage(1);
+  }
 
   function toggleAll(checked) {
     setSelectedAssignmentIds(
@@ -255,6 +311,31 @@ export function TeacherAssignmentsSection({
           </Button>
         ) : null}
       </div>
+
+      {assignments.length > 0 ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            value={teacherSearch}
+            onChange={(event) => {
+              setTeacherSearch(event.target.value);
+              setAssignmentPage(1);
+            }}
+            placeholder="Search teachers"
+            aria-label="Search teachers"
+            className="h-9 min-w-48 flex-1 rounded-full border border-(--mws-line) px-3 text-sm outline-none focus:border-(--mws-burgundy)"
+          />
+          <SelectFilter
+            value={statusFilter}
+            onChange={(value) => {
+              setStatusFilter(value);
+              setAssignmentPage(1);
+            }}
+            options={STATUS_FILTER_OPTIONS}
+            placeholder="All Statuses"
+          />
+        </div>
+      ) : null}
 
       {isLoading ? (
         <PanelMessage>Loading teacher assignments…</PanelMessage>
@@ -362,121 +443,139 @@ export function TeacherAssignmentsSection({
             </BulkActionBar>
           ) : null}
 
-          <div className="space-y-3 md:hidden">
-            {pagedAssignments.map((assignment) => (
-              <TeacherAssignmentCard
-                key={assignment.id}
-                assignment={assignment}
-                canWrite={canWrite}
-                isSelected={selectedAssignmentIds.has(assignment.id)}
-                onToggle={(checked) => toggleOne(assignment.id, checked)}
-              />
-            ))}
-          </div>
-
-          <div className="hidden w-full overflow-x-auto md:block">
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs font-bold text-(--mws-muted)">
-                <tr>
+          <DenseTable
+            minWidth={980}
+            head={
+              <>
+                {canWrite ? (
+                  <th className="w-12 px-4 py-2.5">
+                    <input
+                      type="checkbox"
+                      aria-label="Select All Teacher Assignments"
+                      checked={allSelected}
+                      onChange={(event) => toggleAll(event.target.checked)}
+                      className="h-4 w-4 accent-(--mws-burgundy)"
+                    />
+                  </th>
+                ) : null}
+                <th className="px-4 py-2.5">
+                  <SortableHeader label="Teacher" column="teacher" sortBy={teacherSort.sort_by} sortOrder={teacherSort.sort_order} onSort={sortTeachers} />
+                </th>
+                <th className="px-4 py-2.5">
+                  <SortableHeader label="Job position" column="job_position" sortBy={teacherSort.sort_by} sortOrder={teacherSort.sort_order} onSort={sortTeachers} />
+                </th>
+                <th className="px-4 py-2.5">Unit</th>
+                <th className="px-4 py-2.5">
+                  <SortableHeader label="Role" column="role" sortBy={teacherSort.sort_by} sortOrder={teacherSort.sort_order} onSort={sortTeachers} />
+                </th>
+                <th className="px-4 py-2.5">
+                  <SortableHeader label="Status" column="status" sortBy={teacherSort.sort_by} sortOrder={teacherSort.sort_order} onSort={sortTeachers} />
+                </th>
+                <th className="px-4 py-2.5">
+                  <SortableHeader label="Duration" column="start_date" sortBy={teacherSort.sort_by} sortOrder={teacherSort.sort_order} onSort={sortTeachers} />
+                </th>
+                {canWrite ? <th className="px-4 py-2.5 text-right">Actions</th> : null}
+              </>
+            }
+            footer={
+              visibleAssignments.length > 0 ? (
+                <PaginationBar
+                  paging={{
+                    current_page: clampedAssignmentPage,
+                    total_page: assignmentTotalPages,
+                    total_item: visibleAssignments.length,
+                    size: assignmentPageSize,
+                  }}
+                  itemLabel="assignments"
+                  onPrevious={() => setAssignmentPage((page) => Math.max(page - 1, 1))}
+                  onNext={() =>
+                    setAssignmentPage((page) => Math.min(page + 1, assignmentTotalPages))
+                  }
+                  onPageChange={setAssignmentPage}
+                  onPageSizeChange={(size) => {
+                    setAssignmentPageSize(size);
+                    setAssignmentPage(1);
+                  }}
+                />
+              ) : null
+            }
+          >
+            {pagedAssignments.length === 0 ? (
+              <tr>
+                <td colSpan={canWrite ? 8 : 6} className="px-4 py-8 text-center text-(--mws-muted)">
+                  No teacher assignments match.
+                </td>
+              </tr>
+            ) : null}
+            {pagedAssignments.map((assignment) => {
+              const status = assignmentStatus(assignment);
+              const isIntern = assignment.workforce_member?.type === "INTERN";
+              return (
+                <tr key={assignment.id} className={denseRowClass}>
                   {canWrite ? (
-                    <th className="w-10 px-2 py-2">
+                    <td className={denseCellClass}>
                       <input
                         type="checkbox"
-                        aria-label="Select All Teacher Assignments"
-                        checked={allSelected}
-                        onChange={(event) => toggleAll(event.target.checked)}
+                        aria-label={`Select ${teacherName(assignment)}`}
+                        checked={selectedAssignmentIds.has(assignment.id)}
+                        onChange={(event) =>
+                          toggleOne(assignment.id, event.target.checked)
+                        }
                         className="h-4 w-4 accent-(--mws-burgundy)"
                       />
-                    </th>
+                    </td>
                   ) : null}
-                  <th className="px-2 py-2">Teacher</th>
-                  <th className="px-2 py-2">Role</th>
-                   <th className="min-w-44 px-4 py-2">Duration</th>
-                   {canWrite ? <th className="w-10 px-2 py-2" /> : null}
-                </tr>
-              </thead>
-              <tbody>
-                {pagedAssignments.map((assignment) => (
-                  <tr
-                    key={assignment.id}
-                    className="border-t border-(--mws-line)"
-                  >
-                    {canWrite ? (
-                      <td className="px-2 py-3">
-                        <input
-                          type="checkbox"
-                           aria-label={`Select ${assignment.workforce_member?.full_name ?? assignment.employee?.full_name}`}
-                          checked={selectedAssignmentIds.has(assignment.id)}
-                          onChange={(event) =>
-                            toggleOne(assignment.id, event.target.checked)
-                          }
-                          className="h-4 w-4 accent-(--mws-burgundy)"
-                        />
-                      </td>
+                  <td className={`${denseCellClass} max-w-56 truncate font-semibold text-(--mws-charcoal)`}>
+                    <Link
+                      to={isIntern ? `/interns/${assignment.workforce_member.id}` : `/employees/${assignment.workforce_member?.id ?? assignment.employee?.id}`}
+                      title={teacherName(assignment)}
+                      className="hover:underline"
+                    >
+                      {teacherName(assignment)}
+                    </Link>
+                    {isIntern ? (
+                      <span className="ml-1.5 text-xs font-normal text-(--mws-muted)">Intern</span>
                     ) : null}
-                    <td className="px-2 py-3 font-semibold text-(--mws-charcoal)">
-                       <Link
-                         to={assignment.workforce_member?.type === "INTERN" ? `/interns/${assignment.workforce_member.id}` : `/employees/${assignment.workforce_member?.id ?? assignment.employee?.id}`}
-                        className="hover:underline"
-                      >
-                         {assignment.workforce_member?.full_name ?? assignment.employee?.full_name}
-                      </Link>
-                      <p className="mt-0.5 text-xs font-normal text-(--mws-muted)">
-                         {assignment.workforce_member?.type === "INTERN" ? "Intern" : assignment.employee?.employee_id}
-                      </p>
-                    </td>
-                    <td className="min-w-44 whitespace-nowrap px-4 py-3">
-                      {formatStatus(assignment.role)}
-                      {formatSubjectDetail(assignment) ? (
-                        <p className="mt-0.5 text-xs text-(--mws-muted)">
-                          {formatSubjectDetail(assignment)}
-                        </p>
-                      ) : null}
-                    </td>
-                    {canWrite ? (
-                      <td className="px-2 py-3 text-right">
-                        <TeacherAssignmentActions
-                          assignment={assignment}
-                          onEditStartDate={() =>
-                            setStartDateDialog({ mode: "single", assignment })
-                          }
-                          onEnd={() => onEnd?.(assignment)}
-                          onRemove={() => onRemove?.(assignment)}
-                          onReopen={() => onReopen?.(assignment)}
-                        />
-                      </td>
+                  </td>
+                  <td className={`${denseCellClass} max-w-48 truncate text-(--mws-charcoal)`} title={assignment.job_position_name || undefined}>
+                    {assignment.job_position_name || "-"}
+                  </td>
+                  <td className={`${denseCellClass} max-w-40 truncate text-(--mws-muted)`}>
+                    {assignment.unit_name || "-"}
+                  </td>
+                  <td className={`${denseCellClass} whitespace-nowrap`}>
+                    {formatStatus(assignment.role)}
+                    {formatSubjectDetail(assignment) ? (
+                      <span className="ml-1.5 text-xs text-(--mws-muted)">{formatSubjectDetail(assignment)}</span>
                     ) : null}
-                    <td className="px-2 py-3">
-                      <AssignmentDurationCell
-                        startDate={assignment.start_date}
-                        endDate={assignment.end_date}
+                  </td>
+                  <td className={denseCellClass}>
+                    <StatusBadge tone={STATUS_TONES[status]}>{formatStatus(status)}</StatusBadge>
+                  </td>
+                  <td className={denseCellClass}>
+                    <AssignmentDurationCell
+                      compact
+                      startDate={assignment.start_date}
+                      endDate={assignment.end_date}
+                    />
+                  </td>
+                  {canWrite ? (
+                    <td className={`${denseCellClass} text-right`}>
+                      <TeacherAssignmentActions
+                        assignment={assignment}
+                        onEditStartDate={() =>
+                          setStartDateDialog({ mode: "single", assignment })
+                        }
+                        onEnd={() => onEnd?.(assignment)}
+                        onRemove={() => onRemove?.(assignment)}
+                        onReopen={() => onReopen?.(assignment)}
                       />
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {assignments.length > ASSIGNMENT_PAGE_SIZE ? (
-            <PaginationBar
-              paging={{
-                current_page: clampedAssignmentPage,
-                total_page: assignmentTotalPages,
-                total_item: assignments.length,
-                size: ASSIGNMENT_PAGE_SIZE,
-              }}
-              itemLabel="assignments"
-              onPrevious={() =>
-                setAssignmentPage((page) => Math.max(page - 1, 1))
-              }
-              onNext={() =>
-                setAssignmentPage((page) =>
-                  Math.min(page + 1, assignmentTotalPages),
-                )
-              }
-            />
-          ) : null}
+                  ) : null}
+                </tr>
+              );
+            })}
+          </DenseTable>
         </>
       )}
 
@@ -954,71 +1053,6 @@ function MoveTeacherAssignmentsDialog({
         </Field>
       </form>
     </CrudDialog>
-  );
-}
-
-function TeacherAssignmentCard({
-  assignment,
-  canWrite,
-  isSelected,
-  onToggle,
-}) {
-  const workforceMember = assignment.workforce_member ?? assignment.employee;
-  const isIntern = assignment.workforce_member?.type === "INTERN";
-
-  return (
-    <div className="rounded-xl border border-(--mws-line) bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          {canWrite ? (
-            <input
-              type="checkbox"
-              aria-label={`Select ${workforceMember.full_name}`}
-              checked={isSelected}
-              onChange={(event) => onToggle(event.target.checked)}
-              className="mt-1 h-4 w-4 shrink-0 accent-(--mws-burgundy)"
-            />
-          ) : null}
-          <div className="min-w-0">
-            <Link
-              to={isIntern ? `/interns/${workforceMember.id}` : `/employees/${workforceMember.id}`}
-              className="font-semibold text-(--mws-charcoal) hover:underline"
-            >
-              {workforceMember.full_name}
-            </Link>
-            <p className="mt-0.5 text-xs text-(--mws-muted)">
-              {isIntern ? "Intern" : assignment.employee?.employee_id}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-        <div>
-          <p className="text-xs text-(--mws-muted)">Role</p>
-          <p className="text-(--mws-charcoal)">
-            {formatStatus(assignment.role)}
-          </p>
-          {formatSubjectDetail(assignment) ? (
-            <p className="mt-0.5 text-xs text-(--mws-muted)">
-              {formatSubjectDetail(assignment)}
-            </p>
-          ) : null}
-        </div>
-        <div>
-          <p className="text-xs text-(--mws-muted)">Duration</p>
-          <p className="text-(--mws-charcoal)">
-            {humanizeAssignmentDuration(
-              assignment.start_date,
-              assignment.end_date,
-            )}
-          </p>
-          <p className="mt-0.5 text-xs text-(--mws-muted)">
-            {formatDurationDetail(assignment)}
-          </p>
-        </div>
-      </div>
-    </div>
   );
 }
 
