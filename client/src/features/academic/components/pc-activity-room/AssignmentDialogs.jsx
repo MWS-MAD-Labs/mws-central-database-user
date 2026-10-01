@@ -14,9 +14,23 @@ import { showBulkFailureToast, showErrorToast, showSuccessToast } from "../../..
 import { academicYearsApi, pcActivityRoomsApi } from "../../api/academicApi.js";
 import { PaginatedCandidatePicker } from "./PaginatedCandidatePicker.jsx";
 
+function dateOnly(value) {
+  return value ? new Date(value).toISOString().slice(0, 10) : undefined;
+}
+
+function roomRangeHint(room) {
+  const start = dateOnly(room.start_date);
+  const end = dateOnly(room.end_date);
+  return start && end
+    ? `Starts with the room. Pick a date between ${start} and ${end} to join later.`
+    : undefined;
+}
+
 export function StartDateDialog({
   title = "Edit Start Date",
   noun = "assignment",
+  min,
+  max,
   initialDate,
   count = 1,
   isSubmitting,
@@ -47,6 +61,8 @@ export function StartDateDialog({
       <Field label="Start Date">
         <TextInput
           type="date"
+          min={min}
+          max={max}
           value={startDate}
           onChange={(event) => setStartDate(event.target.value)}
         />
@@ -239,8 +255,8 @@ export function AddStudentsDialog({ room, remainingSlots, onClose, onAdded }) {
       }
     >
       <div className="space-y-4">
-        <Field label="Start Date" hint="Defaults to the room start date and can be changed manually.">
-          <TextInput type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+        <Field label="Start Date" hint={roomRangeHint(room)}>
+          <TextInput type="date" min={dateOnly(room.start_date)} max={dateOnly(room.end_date)} value={startDate} onChange={(event) => setStartDate(event.target.value)} />
         </Field>
         <PaginatedCandidatePicker
           items={items}
@@ -324,8 +340,8 @@ export function AddMentorDialog({ room, remainingSlots, onClose, onAdded }) {
       }
     >
       <div className="space-y-4">
-        <Field label="Start Date" hint="Defaults to the room start date and can be changed manually.">
-          <TextInput type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+        <Field label="Start Date" hint={roomRangeHint(room)}>
+          <TextInput type="date" min={dateOnly(room.start_date)} max={dateOnly(room.end_date)} value={startDate} onChange={(event) => setStartDate(event.target.value)} />
         </Field>
         <PaginatedCandidatePicker
           items={items}

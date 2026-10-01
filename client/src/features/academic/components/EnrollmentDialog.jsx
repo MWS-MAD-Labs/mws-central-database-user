@@ -1150,6 +1150,7 @@ export function EnrollmentDialog({
           >
             <DateField
               value={values.start_date}
+              {...yearBounds(selectedAcademicYear)}
               onChange={(event) =>
                 setValues({ ...values, start_date: event.target.value })
               }
@@ -1164,6 +1165,7 @@ export function EnrollmentDialog({
           >
             <DateField
               value={values.effective_date}
+              {...yearBounds(selectedAcademicYear)}
               onChange={(event) =>
                 setValues({ ...values, effective_date: event.target.value })
               }
@@ -1289,6 +1291,7 @@ export function EnrollmentDialog({
             >
               <DateField
                 value={values.end_date}
+                {...yearBounds(recordAcademicYear)}
                 onChange={(event) =>
                   setValues({ ...values, end_date: event.target.value })
                 }
@@ -1655,6 +1658,18 @@ function getClassCapacityLabel(klass) {
     description: `${activeCount}/${klass.capacity} students, ${remaining} seats left`,
     badge: `${remaining} seats`,
     tone: remaining <= 3 ? "amber" : "green",
+  };
+}
+
+// Date-only bounds for DateField min/max.
+function yearBounds(academicYear) {
+  return {
+    min: academicYear?.start_date
+      ? new Date(academicYear.start_date).toISOString().slice(0, 10)
+      : undefined,
+    max: academicYear?.end_date
+      ? new Date(academicYear.end_date).toISOString().slice(0, 10)
+      : undefined,
   };
 }
 

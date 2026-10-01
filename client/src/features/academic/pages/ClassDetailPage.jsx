@@ -769,6 +769,7 @@ export function ClassDetailPage() {
             onAssign={(payload) => assignTeacherMutation.mutate(payload)}
             currentClassId={classId}
             academicYearStartDate={klass?.academic_year?.start_date}
+            academicYearEndDate={klass?.academic_year?.end_date}
             moveTargetClassOptions={moveTargetClassOptions}
             academicYears={optionsQuery.data?.academicYears || []}
             isBulkMoving={bulkMoveTeacherAssignmentsMutation.isPending}
@@ -817,53 +818,54 @@ export function ClassDetailPage() {
         </section>
 
         <section className="rounded-2xl border border-(--mws-line) bg-white p-5">
-          <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="flex items-center gap-2 font-display text-lg font-bold text-(--mws-charcoal)">
               <Users size={18} />
               Students
             </h2>
-            <div className="flex items-center gap-2">
-              <input
-                type="search"
-                value={studentSearch}
-                onChange={(event) => {
-                  setStudentSearch(event.target.value);
+            {canWrite ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                aria-label="Enroll student"
+                title="Enroll student"
+                disabled={optionsQuery.isLoading}
+                onClick={() => setEnrollDialogOpen(true)}
+              >
+                <Plus size={16} />
+              </Button>
+            ) : null}
+          </div>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <input
+              type="search"
+              value={studentSearch}
+              onChange={(event) => {
+                setStudentSearch(event.target.value);
+                setStudentPage(1);
+              }}
+              placeholder="Search students"
+              aria-label="Search students"
+              className="h-9 min-w-48 flex-1 rounded-full border border-(--mws-line) px-3 text-sm outline-none focus:border-(--mws-burgundy)"
+            />
+            {isMixedClass ? (
+              <SelectFilter
+                value={studentGradeFilter}
+                onChange={(value) => {
+                  setStudentGradeFilter(value);
                   setStudentPage(1);
                 }}
-                placeholder="Search students"
-                aria-label="Search students"
-                className="h-9 min-w-0 rounded-full border border-(--mws-line) px-3 text-sm outline-none focus:border-(--mws-burgundy)"
+                options={[
+                  { value: "", label: "All Grades" },
+                  ...mixedClassGradeOptions.map((grade) => ({
+                    value: grade.name,
+                    label: grade.name,
+                  })),
+                ]}
+                placeholder="All Grades"
               />
-              {isMixedClass ? (
-                <SelectFilter
-                  value={studentGradeFilter}
-                  onChange={(value) => {
-                    setStudentGradeFilter(value);
-                    setStudentPage(1);
-                  }}
-                  options={[
-                    { value: "", label: "All Grades" },
-                    ...mixedClassGradeOptions.map((grade) => ({
-                      value: grade.name,
-                      label: grade.name,
-                    })),
-                  ]}
-                  placeholder="All Grades"
-                />
-              ) : null}
-              {canWrite ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={optionsQuery.isLoading}
-                  onClick={() => setEnrollDialogOpen(true)}
-                >
-                  <Plus size={14} />
-                  Enroll student
-                </Button>
-              ) : null}
-            </div>
+            ) : null}
           </div>
           {!hasStudentAccess ? (
             <PanelMessage>
@@ -1305,6 +1307,8 @@ export function ClassDetailPage() {
 
       {startDateDialog ? (
         <StartDateDialog
+          min={klass?.academic_year?.start_date ? new Date(klass.academic_year.start_date).toISOString().slice(0, 10) : undefined}
+          max={klass?.academic_year?.end_date ? new Date(klass.academic_year.end_date).toISOString().slice(0, 10) : undefined}
           title="Edit Enrollment Date"
           noun="enrollment"
           count={startDateDialog.records.length}

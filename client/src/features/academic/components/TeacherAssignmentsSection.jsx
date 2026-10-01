@@ -59,6 +59,7 @@ export function TeacherAssignmentsSection({
   onAssign,
   currentClassId,
   academicYearStartDate,
+  academicYearEndDate,
   moveTargetClassOptions = [],
   academicYears = [],
   isBulkMoving,
@@ -601,9 +602,18 @@ export function TeacherAssignmentsSection({
                 />
               </Field>
             ) : null}
-            <Field label="Start Date" hint="Defaults to this class's academic year start date.">
+            <Field
+              label="Start Date"
+              hint={
+                academicYearStartDate
+                  ? `Starts on the academic year's first day. Pick a later date inside the year if the teacher joined mid-year.`
+                  : undefined
+              }
+            >
               <DateField
                 value={form.start_date}
+                min={dateInputFromIso(academicYearStartDate) || undefined}
+                max={dateInputFromIso(academicYearEndDate) || undefined}
                 onChange={(event) =>
                   setForm({ ...form, start_date: event.target.value })
                 }
@@ -649,6 +659,8 @@ export function TeacherAssignmentsSection({
       ) : null}
       {startDateDialog ? (
         <EditAssignmentStartDateDialog
+          min={dateInputFromIso(academicYearStartDate) || undefined}
+          max={dateInputFromIso(academicYearEndDate) || undefined}
           count={
             startDateDialog.mode === "bulk" ? selectedAssignments.length : 1
           }
@@ -731,6 +743,8 @@ function EndAssignmentDialog({ count, isSubmitting, onClose, onSubmit }) {
 }
 
 function EditAssignmentStartDateDialog({
+  min,
+  max,
   count,
   initialDate,
   isSubmitting,
@@ -770,6 +784,8 @@ function EditAssignmentStartDateDialog({
         <Field label="Start Date">
           <DateField
             value={startDate}
+                min={min}
+                max={max}
             onChange={(event) => setStartDate(event.target.value)}
           />
         </Field>

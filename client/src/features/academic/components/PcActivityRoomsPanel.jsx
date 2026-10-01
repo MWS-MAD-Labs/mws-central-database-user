@@ -489,6 +489,15 @@ export function RoomFormDialog({
   const years = suppliedYears || yearsQuery.data?.data || [];
   const classes = classesQuery.data || [];
   const activeYearId = years.find((year) => year.status === "ACTIVE")?.id || "";
+  // Room start defaults to the chosen academic year's start and stays inside its range.
+  const selectedYear = years.find((year) => year.id === values.academic_year_id);
+  const yearStartDate = selectedYear?.start_date
+    ? new Date(selectedYear.start_date).toISOString().slice(0, 10)
+    : "";
+  const yearEndDate = selectedYear?.end_date
+    ? new Date(selectedYear.end_date).toISOString().slice(0, 10)
+    : "";
+  const startDateValue = values.start_date || yearStartDate;
 
   // One-time default once the active year loads late (e.g. years wasn't
   // pre-fetched by the parent) - guarded so it never re-fires after the
@@ -652,6 +661,7 @@ export function RoomFormDialog({
     setValues((current) => ({
       ...current,
       academic_year_id: value,
+      start_date: "",
       class_ids: [],
     }));
     setAllowAllClasses(false);
@@ -690,8 +700,8 @@ export function RoomFormDialog({
         academic_year_id: values.academic_year_id,
         label: values.label || undefined,
         day: values.day,
-        start_date: values.start_date
-          ? new Date(`${values.start_date}T00:00:00.000Z`).toISOString()
+        start_date: startDateValue
+          ? new Date(`${startDateValue}T00:00:00.000Z`).toISOString()
           : undefined,
         duration_type: values.duration_type,
         custom_duration_days:
@@ -790,11 +800,17 @@ export function RoomFormDialog({
             </Field>
             <Field
               label="Start Date"
-              hint="Defaults to the academic year's start date when left blank."
+              hint={
+                yearStartDate
+                  ? `Starts on the academic year's first day. Pick a date between ${yearStartDate} and ${yearEndDate || "the year end"} to start later.`
+                  : "Pick an academic year first."
+              }
             >
               <TextInput
                 type="date"
-                value={values.start_date}
+                min={yearStartDate || undefined}
+                max={yearEndDate || undefined}
+                value={startDateValue}
                 onChange={(event) =>
                   setValues((current) => ({
                     ...current,

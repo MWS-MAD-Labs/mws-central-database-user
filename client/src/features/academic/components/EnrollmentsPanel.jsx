@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { StartDateDialog } from "./pc-activity-room/AssignmentDialogs.jsx";
+import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -584,6 +585,7 @@ export function EnrollmentsPanel() {
                         onFixClass={() =>
                           setDialog({ mode: "fix-class", record: enrollment })
                         }
+                        onEditDate={() => setStartDateRecords([enrollment])}
                         onPromote={() =>
                           setDialog({ mode: "promote", record: enrollment })
                         }
@@ -660,6 +662,7 @@ export function EnrollmentsPanel() {
 
       {startDateRecords ? (
         <StartDateDialog
+          {...startDateBounds(startDateRecords, optionsQuery.data?.academicYears)}
           title="Edit Enrollment Date"
           noun="enrollment"
           count={startDateRecords.length}
@@ -696,6 +699,7 @@ function EnrollmentRowActions({
   onFixClass,
   onPromote,
   onClose,
+  onEditDate,
   onDelete,
   onRestore,
 }) {
@@ -746,45 +750,51 @@ function EnrollmentRowActions({
   }
 
   return (
-    <div className="flex flex-wrap justify-end gap-1">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={!canWrite || !isActive}
-        onClick={onTransfer}
-      >
-        Move
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={!canWrite || !isActive}
-        onClick={onPromote}
-      >
-        Promote
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={!canWrite || !isActive}
-        onClick={onClose}
-      >
-        Close
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={!canDelete}
-        onClick={onDelete}
-      >
-        <Trash2 size={15} />
-      </Button>
+    <div className="flex justify-end">
+      <ActionsMenu label={`Actions for ${enrollment.student.full_name}`}>
+        {(closeMenu) => (
+          <>
+            {canWrite && isActive ? (
+              <>
+                <ActionsMenuItem onClick={() => { closeMenu(); onEditDate(); }}>
+                  Edit date
+                </ActionsMenuItem>
+                <ActionsMenuItem onClick={() => { closeMenu(); onTransfer(); }}>
+                  Move
+                </ActionsMenuItem>
+                <ActionsMenuItem onClick={() => { closeMenu(); onPromote(); }}>
+                  Promote
+                </ActionsMenuItem>
+                <ActionsMenuItem onClick={() => { closeMenu(); onClose(); }}>
+                  Close
+                </ActionsMenuItem>
+              </>
+            ) : null}
+            <ActionsMenuItem
+              tone="danger"
+              disabled={!canDelete}
+              onClick={() => { closeMenu(); onDelete(); }}
+            >
+              Delete
+            </ActionsMenuItem>
+          </>
+        )}
+      </ActionsMenu>
     </div>
   );
+}
+
+// Limits the date picker to the academic year when every record shares one.
+function startDateBounds(records, academicYears = []) {
+  const yearId = records[0]?.academic_year?.id;
+  if (!yearId || records.some((record) => record.academic_year?.id !== yearId)) {
+    return {};
+  }
+  const year = academicYears.find((item) => item.id === yearId);
+  return {
+    min: year?.start_date ? new Date(year.start_date).toISOString().slice(0, 10) : undefined,
+    max: year?.end_date ? new Date(year.end_date).toISOString().slice(0, 10) : undefined,
+  };
 }
 
 function useEnrollmentOptionsQuery() {

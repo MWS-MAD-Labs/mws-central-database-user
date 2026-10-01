@@ -198,6 +198,7 @@ describe('EnrollmentsPanel', () => {
     const { user } = renderAcademic(<EnrollmentsPanel />)
     await screen.findByText('Ari Student')
 
+    await user.click(screen.getByRole('button', { name: 'Actions for Ari Student' }))
     await user.click(screen.getByRole('button', { name: 'Move' }))
     await user.click(screen.getByRole('button', { name: 'Select Class' }))
     await user.click(screen.getByRole('option', { name: /Grade 1B/ }))
@@ -205,6 +206,26 @@ describe('EnrollmentsPanel', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, request]) =>
       url === '/api/admin/students/student-1/enrollments/enrollment-1/transfer' &&
       JSON.parse(request.body).class_id === 'class-2',
+    )).toBe(true))
+  })
+
+  it('edits an enrollment start date from the row menu within the academic year', async () => {
+    const fetchMock = createFetchRouter([
+      ...optionRoutes(),
+      { path: '/api/admin/enrollments/bulk/start-date', method: 'PATCH', response: jsonResponse({ data: { total_count: 1, success_count: 1, failed_count: 0, items: [] } }) },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderAcademic(<EnrollmentsPanel />)
+    await screen.findByText('Ari Student')
+
+    await user.click(screen.getByRole('button', { name: 'Actions for Ari Student' }))
+    await user.click(screen.getByRole('button', { name: 'Edit date' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Enrollment Date' })
+    expect(dialog.querySelector('input[type="date"]')).toBeTruthy()
+    await user.click(within(dialog).getByRole('button', { name: 'Save Date' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, request]) =>
+      url === '/api/admin/enrollments/bulk/start-date' &&
+      JSON.parse(request.body).enrollment_ids[0] === 'enrollment-1',
     )).toBe(true))
   })
 
@@ -218,8 +239,8 @@ describe('EnrollmentsPanel', () => {
     const { user, unmount } = renderAcademic(<EnrollmentsPanel />)
     await screen.findByText('Ari Student')
 
-    const deleteButtons = screen.getAllByRole('button').filter((button) => button.querySelector('svg') && button.textContent === '')
-    await user.click(deleteButtons.at(-1))
+    await user.click(screen.getByRole('button', { name: 'Actions for Ari Student' }))
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
     const confirm = screen.getByRole('dialog', { name: 'Move to trash' })
     await user.click(within(confirm).getByRole('button', { name: 'Move to trash' }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>

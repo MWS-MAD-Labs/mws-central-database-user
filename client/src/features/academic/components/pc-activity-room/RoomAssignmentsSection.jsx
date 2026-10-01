@@ -292,7 +292,7 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
 
       {dialog?.type === "add" && isStudent ? <AddStudentsDialog room={room} remainingSlots={Math.max(MAX_ROOM_STUDENTS - (room.student_count + (room.scheduled_count || 0)), 0)} onClose={() => setDialog(null)} onAdded={invalidate} /> : null}
       {dialog?.type === "add" && !isStudent ? <AddMentorDialog room={room} remainingSlots={Math.max(MAX_ROOM_MENTORS - (room.mentors?.length || 0), 0)} onClose={() => setDialog(null)} onAdded={invalidate} /> : null}
-      {dialog?.type === "date" ? <StartDateDialog initialDate={dialog.rows.length === 1 ? dialog.rows[0].start_date : room.start_date} count={dialog.rows.length} isSubmitting={dateMutation.isPending} onClose={() => setDialog(null)} onSubmit={(startDate) => dateMutation.mutate({ ids: dialog.rows.map((row) => row.id), startDate })} /> : null}
+      {dialog?.type === "date" ? <StartDateDialog min={room.start_date ? new Date(room.start_date).toISOString().slice(0, 10) : undefined} max={room.end_date ? new Date(room.end_date).toISOString().slice(0, 10) : undefined} initialDate={dialog.rows.length === 1 ? dialog.rows[0].start_date : room.start_date} count={dialog.rows.length} isSubmitting={dateMutation.isPending} onClose={() => setDialog(null)} onSubmit={(startDate) => dateMutation.mutate({ ids: dialog.rows.map((row) => row.id), startDate })} /> : null}
       {dialog?.type === "move" || dialog?.type === "promote" ? <MoveAssignmentsDialog room={room} count={dialog.rows.length} kind={kind} promote={dialog.type === "promote"} isSubmitting={moveMutation.isPending} onClose={() => setDialog(null)} onSubmit={(targetRoomId) => moveMutation.mutate({ ids: dialog.rows.map((row) => row.id), targetRoomId })} /> : null}
     </div>
   );
