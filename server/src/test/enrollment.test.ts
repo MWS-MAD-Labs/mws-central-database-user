@@ -226,6 +226,7 @@ describe("Student Class Enrollment", () => {
       expect(body.data.academic_year.id).toBe(yearAId);
       expect(body.data.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
       expect(body.data.student.id).toBe(studentId);
+      expect(["MALE", "FEMALE"]).toContain(body.data.student.gender);
       expect(body.data.promoted_from_enrollment_id).toBeNull();
 
       const student = await prismaClient.student.findUniqueOrThrow({

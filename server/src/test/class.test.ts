@@ -2829,6 +2829,9 @@ describe("GET /api/admin/classes/:id/teacher-assignments", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.length).toBe(2);
+    // The table shows each teacher's position and unit.
+    expect(body.data[0].job_position_name).toBeTruthy();
+    expect(body.data[0].unit_name).toBeTruthy();
     expect(body.data[0].employee.id).toBe(teacherB.id);
     expect(body.data[0].end_date).toBeNull();
     expect(body.data[1].employee.id).toBe(teacherA.id);

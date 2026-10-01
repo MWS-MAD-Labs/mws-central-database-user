@@ -6,6 +6,7 @@ import type {
   Student,
   StudentClassEnrollment,
   StudentStatus,
+  Gender,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 import type { BulkActionResponse } from "./bulk-action-model";
@@ -234,6 +235,7 @@ export type EnrollmentResponse = {
     full_name: string;
     // Student status may be inactive while the enrollment remains active.
     status: StudentStatus;
+    gender: Gender;
     // Search flags any unresolved placeholder class in the student's history.
     has_unresolved_placeholder_class: boolean;
   };
@@ -271,6 +273,7 @@ export function toEnrollmentResponse(
       nis: enrollment.student.nis,
       full_name: enrollment.student.person.full_name,
       status: enrollment.student.status,
+      gender: enrollment.student.person.gender,
       has_unresolved_placeholder_class: hasUnresolvedPlaceholderClass,
     },
     class: {

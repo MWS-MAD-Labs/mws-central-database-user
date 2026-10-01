@@ -288,8 +288,19 @@ export type BulkReopenClassTeacherAssignmentRequest = {
 };
 
 export type ClassTeacherAssignmentWithEmployee = ClassTeacherAssignment & {
-  employee: (Employee & { person: Person }) | null;
-  intern?: Intern | null;
+  employee:
+    | (Employee & {
+        person: Person;
+        unit?: { name: string } | null;
+        job_position?: { name: string } | null;
+      })
+    | null;
+  intern?:
+    | (Intern & {
+        unit?: { name: string } | null;
+        job_position?: { name: string } | null;
+      })
+    | null;
 };
 
 export type ClassTeacherAssignmentResponse = {
@@ -305,6 +316,8 @@ export type ClassTeacherAssignmentResponse = {
     employee_id: string;
     full_name: string;
   };
+  job_position_name: string | null;
+  unit_name: string | null;
   role: ClassTeacherRole;
   subject: string | null;
   start_date: string;
@@ -346,6 +359,9 @@ export function toClassTeacherAssignmentResponse(
           employee_id: "",
           full_name: assignment.intern!.full_name,
         },
+    job_position_name:
+      assignment.employee?.job_position?.name ?? assignment.intern?.job_position?.name ?? null,
+    unit_name: assignment.employee?.unit?.name ?? assignment.intern?.unit?.name ?? null,
     role: assignment.role,
     subject: assignment.subject,
     start_date: assignment.start_date.toISOString(),

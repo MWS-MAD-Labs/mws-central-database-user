@@ -145,6 +145,12 @@ function assertDatabaseAdminCanWriteClass(
   }
 }
 
+// Teacher rows carry job position and unit for the class table.
+const ASSIGNMENT_WORKFORCE_INCLUDE = {
+  employee: { include: { person: true, unit: true, job_position: true } },
+  intern: { include: { unit: true, job_position: true } },
+} as const;
+
 const CLASS_INCLUDE = {
   grade: { include: { unit: true } },
   additional_grades: { include: { grade: true } },
@@ -163,7 +169,7 @@ const CLASS_INCLUDE = {
       // ends in the future (a carry-over) still shows until it actually ends.
       deleted_at: null,
     },
-    include: { employee: { include: { person: true } }, intern: true },
+    include: ASSIGNMENT_WORKFORCE_INCLUDE,
     orderBy: { start_date: "asc" as const },
   },
 } as const;
@@ -872,7 +878,7 @@ export class ClassService {
             deleted_at: null,
             employee: { unit_id: { not: nextGrade.unit_id } },
           },
-          include: { employee: { include: { person: true } }, intern: true },
+          include: ASSIGNMENT_WORKFORCE_INCLUDE,
         });
       if (mismatchedAssignments.length > 0) {
         const names = mismatchedAssignments
@@ -1145,7 +1151,7 @@ export class ClassService {
     const assignments: ClassTeacherAssignmentWithEmployee[] =
       await prismaClient.classTeacherAssignment.findMany({
         where: { class_id: request.id, deleted_at: null },
-        include: { employee: { include: { person: true } }, intern: true },
+        include: ASSIGNMENT_WORKFORCE_INCLUDE,
         orderBy: { start_date: "desc" },
       });
 
@@ -1497,7 +1503,7 @@ export class ClassService {
     const withEmployee =
       await prismaClient.classTeacherAssignment.findUniqueOrThrow({
         where: { id: createdId },
-        include: { employee: { include: { person: true } }, intern: true },
+        include: ASSIGNMENT_WORKFORCE_INCLUDE,
       });
 
     return toClassTeacherAssignmentResponse(withEmployee);
@@ -1610,7 +1616,7 @@ export class ClassService {
     const updated = await prismaClient.classTeacherAssignment.findUniqueOrThrow(
       {
         where: { id: existing.id },
-        include: { employee: { include: { person: true } }, intern: true },
+        include: ASSIGNMENT_WORKFORCE_INCLUDE,
       },
     );
 
@@ -2158,7 +2164,7 @@ export class ClassService {
     const updated = await prismaClient.classTeacherAssignment.findUniqueOrThrow(
       {
         where: { id: existing.id },
-        include: { employee: { include: { person: true } }, intern: true },
+        include: ASSIGNMENT_WORKFORCE_INCLUDE,
       },
     );
 
