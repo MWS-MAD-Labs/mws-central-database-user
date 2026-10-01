@@ -129,6 +129,51 @@ describe("PC activity room detail assignments", () => {
     });
   });
 
+  it("keeps the current page on screen while the next page loads", async () => {
+    let releasePageTwo
+    const pageTwo = new Promise((resolve) => { releasePageTwo = resolve })
+    globalThis.fetch = createFetchRouter([
+      {
+        path: /^\/api\/admin\/pc-activity-rooms\/room-1\/students\?.*/,
+        response: async ({ url }) => {
+          if (url.includes("page=2")) await pageTwo
+          return jsonResponse({
+            data: [{ ...student, id: url.includes("page=2") ? "assignment-2" : "assignment-1", student_name: url.includes("page=2") ? "Budi Student" : "Ari Student" }],
+            paging: { current_page: url.includes("page=2") ? 2 : 1, total_page: 2, total_item: 11, size: 10 },
+          })
+        },
+      },
+    ])
+    const { user } = renderManaged(<RoomStudentsSection room={room} canManage />)
+    expect(await screen.findByText("Ari Student")).toBeVisible()
+
+    await user.click(screen.getByRole("button", { name: "Next" }))
+    // Page two has not answered yet: page one rows stay, no Loading row replaces them.
+    expect(screen.getByText("Ari Student")).toBeVisible()
+    expect(screen.queryByText("Loading students...")).not.toBeInTheDocument()
+
+    releasePageTwo()
+    expect(await screen.findByText("Budi Student")).toBeVisible()
+  });
+
+  it("says where else a candidate already is, and when a legacy record gets attached", async () => {
+    globalThis.fetch = createFetchRouter([
+      {
+        path: /^\/api\/admin\/pc-activity-rooms\/room-1\/eligible-students\?.*/,
+        response: jsonResponse({
+          data: [
+            { student_id: "student-1", full_name: "Ari Student", nis: "1", grade_name: "Grade 1", class_name: "1A", other_activity: { activity_name: "Book Keepers", day: "TUESDAY", same_day: false }, legacy_match: "NONE" },
+            { student_id: "student-2", full_name: "Budi Student", nis: "2", grade_name: "Grade 1", class_name: "1A", other_activity: { activity_name: "Coding", day: "MONDAY", same_day: true }, legacy_match: "EXACT" },
+          ],
+          paging: { current_page: 1, total_page: 1, total_item: 2, size: 10 },
+        }),
+      },
+    ])
+    renderManaged(<AddStudentsDialog room={room} remainingSlots={99} onClose={() => {}} onAdded={() => {}} />)
+    expect(await screen.findByText("Also in Book Keepers (Tuesday)")).toBeVisible()
+    expect(screen.getByText("Existing Coding record on Monday will be attached to this room")).toBeVisible()
+  });
+
   it("formats assignment duration consistently", () => {
     expect(
       assignmentDuration(

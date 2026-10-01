@@ -109,6 +109,9 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
       isStudent
         ? pcActivityRoomsApi.listStudents(room.id, params)
         : pcActivityRoomsApi.listMentors(room.id, params),
+    // Keep the old page on screen while the next one loads, so the page
+    // height (and the scroll position) does not collapse.
+    placeholderData: (previous) => previous,
   });
   const rows = query.data?.data || [];
   const paging = query.data?.paging || defaultPaging(params);
@@ -270,7 +273,7 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
                 {canManage ? <th className="px-4 py-3 text-right">Actions</th> : null}
               </tr>
             </thead>
-            <tbody>
+            <tbody className={query.isPlaceholderData ? "opacity-60 transition-opacity" : undefined}>
               {query.isLoading ? <tr><td colSpan={colSpan} className="px-4 py-10 text-center text-(--mws-muted)">Loading {label}s...</td></tr> : rows.length === 0 ? <tr><td colSpan={colSpan} className="px-4 py-10 text-center text-(--mws-muted)">No {label} assignments match.</td></tr> : rows.map((row) => {
                 const name = isStudent ? row.student_name : row.mentor_name;
                 const href = isStudent ? `/students/${row.student_id}` : row.mentor_type === "INTERN" ? `/interns/${row.mentor_id}` : `/employees/${row.mentor_id}`;
@@ -287,7 +290,7 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
             </tbody>
           </table>
         </div>
-        {paging.total_item > 0 ? <PaginationBar paging={paging} itemLabel={`${label}s`} isLoading={query.isLoading} onPrevious={() => updateParams({ page: params.page - 1 })} onNext={() => updateParams({ page: params.page + 1 })} onPageChange={(page) => updateParams({ page })} onPageSizeChange={(size) => updateParams({ page: 1, size })} /> : null}
+        {paging.total_item > 0 ? <PaginationBar paging={paging} itemLabel={`${label}s`} isLoading={query.isFetching} onPrevious={() => updateParams({ page: params.page - 1 })} onNext={() => updateParams({ page: params.page + 1 })} onPageChange={(page) => updateParams({ page })} onPageSizeChange={(size) => updateParams({ page: 1, size })} /> : null}
       </div>
 
       {dialog?.type === "add" && isStudent ? <AddStudentsDialog room={room} remainingSlots={Math.max(MAX_ROOM_STUDENTS - (room.student_count + (room.scheduled_count || 0)), 0)} onClose={() => setDialog(null)} onAdded={invalidate} /> : null}

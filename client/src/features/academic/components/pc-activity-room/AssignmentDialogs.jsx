@@ -171,6 +171,7 @@ function useCandidateState(room, kind) {
       kind === "student"
         ? pcActivityRoomsApi.listEligibleStudents(room.id, requestParams)
         : pcActivityRoomsApi.listEligibleMentors(room.id, requestParams),
+    placeholderData: (previous) => previous,
   });
   const [selected, setSelected] = useState(() => new Map());
   function updateParams(patch) {
@@ -197,6 +198,17 @@ function useCandidateState(room, kind) {
   return { params, updateParams, query, selected, toggle, togglePage };
 }
 
+// Says where else the student already is, and what picking them here does.
+function alsoInHint(student) {
+  const other = student.other_activity;
+  if (!other) return null;
+  const day = formatStatus(other.day);
+  if (student.legacy_match === "EXACT") {
+    return `Existing ${other.activity_name} record on ${day} will be attached to this room`;
+  }
+  return `Also in ${other.activity_name} (${day})`;
+}
+
 export function AddStudentsDialog({ room, remainingSlots, onClose, onAdded }) {
   const state = useCandidateState(room, "student");
   const [startDate, setStartDate] = useState(dateInputFromIso(room.start_date));
@@ -208,9 +220,7 @@ export function AddStudentsDialog({ room, remainingSlots, onClose, onAdded }) {
     sublabel: [student.nis, student.grade_name, student.class_name]
       .filter(Boolean)
       .join(" / "),
-    extra: student.other_activity
-      ? `Also in ${student.other_activity.activity_name}`
-      : null,
+    extra: alsoInHint(student),
   }));
   const assignMutation = useMutation({
     mutationFn: () =>
