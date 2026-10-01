@@ -1,6 +1,10 @@
 import {
   AdminRole,
   AuditAction,
+  EmployeeStatus,
+  EnrollmentStatus,
+  InternStatus,
+  StudentStatus,
   AuditSource,
   type PCDay,
   PcActivityAssignmentStatus,
@@ -893,7 +897,11 @@ export class PCActivityRoomService {
       });
       if (updateRequest.duration_type || updateRequest.custom_duration_days !== undefined) {
         await tx.passionConnectionActivity.updateMany({
-          where: { room_id: existing.id, status: PcActivityAssignmentStatus.ACTIVE, deleted_at: null },
+          where: {
+            room_id: existing.id,
+            status: { in: [PcActivityAssignmentStatus.ACTIVE, PcActivityAssignmentStatus.SCHEDULED] },
+            deleted_at: null,
+          },
           data: { expires_at: nextEndDate },
         });
       }
@@ -1358,9 +1366,16 @@ export class PCActivityRoomService {
     }
 
     await prismaClient.$transaction(async (tx) => {
+      // A scheduled row never started, so it ends on its start date and frees
+      // the source row to be promoted again.
+      const wasScheduled = existing.status === PcActivityMentorAssignmentStatus.SCHEDULED;
       await tx.pcActivityRoomMentorAssignment.update({
         where: { id: existing.id },
-        data: { end_date: now, status: PcActivityMentorAssignmentStatus.ENDED },
+        data: {
+          end_date: wasScheduled ? existing.start_date : now,
+          status: PcActivityMentorAssignmentStatus.ENDED,
+          ...(wasScheduled ? { previous_assignment_id: null } : {}),
+        },
       });
 
       await AuditService.record(
@@ -1371,7 +1386,10 @@ export class PCActivityRoomService {
           entity_id: existing.id,
           admin_id: admin.id,
           old_values: { status: existing.status, end_date: existing.end_date?.toISOString() ?? null },
-          new_values: { status: PcActivityMentorAssignmentStatus.ENDED, end_date: now.toISOString() },
+          new_values: {
+            status: PcActivityMentorAssignmentStatus.ENDED,
+            end_date: (wasScheduled ? existing.start_date : now).toISOString(),
+          },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -1408,7 +1426,12 @@ export class PCActivityRoomService {
     await prismaClient.$transaction(async (tx) => {
       await tx.pcActivityRoomMentorAssignment.update({
         where: { id: existing.id },
-        data: { deleted_at: now },
+        data: {
+          deleted_at: now,
+          ...(existing.status === PcActivityMentorAssignmentStatus.SCHEDULED
+            ? { previous_assignment_id: null }
+            : {}),
+        },
       });
 
       await AuditService.record(
@@ -2189,10 +2212,16 @@ export class PCActivityRoomService {
     if (!assignment) {
       throw new ResponseError(404, "Active student assignment not found");
     }
+    const wasScheduled = assignment.status === PcActivityAssignmentStatus.SCHEDULED;
+    const endedOn = wasScheduled ? assignment.start_date : now;
     await prismaClient.$transaction(async (tx) => {
       await tx.passionConnectionActivity.update({
         where: { id: assignment.id },
-        data: { status: PcActivityAssignmentStatus.ENDED, end_date: now },
+        data: {
+          status: PcActivityAssignmentStatus.ENDED,
+          end_date: endedOn,
+          ...(wasScheduled ? { previous_assignment_id: null } : {}),
+        },
       });
       await AuditService.record(
         {
@@ -2202,7 +2231,7 @@ export class PCActivityRoomService {
           entity_id: assignment.id,
           admin_id: admin.id,
           old_values: { status: assignment.status, end_date: null },
-          new_values: { status: PcActivityAssignmentStatus.ENDED, end_date: now.toISOString() },
+          new_values: { status: PcActivityAssignmentStatus.ENDED, end_date: endedOn.toISOString() },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -2229,7 +2258,12 @@ export class PCActivityRoomService {
     await prismaClient.$transaction(async (tx) => {
       await tx.passionConnectionActivity.update({
         where: { id: assignment.id },
-        data: { deleted_at: now },
+        data: {
+          deleted_at: now,
+          ...(assignment.status === PcActivityAssignmentStatus.SCHEDULED
+            ? { previous_assignment_id: null }
+            : {}),
+        },
       });
       await AuditService.record({
         action: AuditAction.DROP_PC_ACTIVITY_ROOM_STUDENT_ASSIGNMENT,
@@ -2347,6 +2381,16 @@ export class PCActivityRoomService {
       },
     });
     if (conflict) throw new ResponseError(400, "Student already has an active assignment on the target day");
+    const existingSuccessor = await prismaClient.passionConnectionActivity.findFirst({
+      where: { previous_assignment_id: source.id },
+      select: { id: true },
+    });
+    if (existingSuccessor) {
+      throw new ResponseError(
+        400,
+        "This student assignment has already been moved or promoted to another room.",
+      );
+    }
     const createdId = await prismaClient.$transaction(async (tx) => {
       await assertRoomStudentCapacity(tx, targetRoom.id);
       if (sameYear) {
@@ -2543,6 +2587,10 @@ export class PCActivityRoomService {
 
   // --- Sweep -----------------------------------------------------------
 
+  // Activates due scheduled rows. A row whose student or mentor no longer
+  // qualifies (withdrawn, resigned, expired intern, room gone) is cancelled
+  // instead, so the predecessor stays as it was and the source can be
+  // promoted again.
   static async activateScheduledAssignments(now: Date = new Date()): Promise<number> {
     return prismaClient.$transaction(async (tx) => {
       const scheduledStudents = await tx.passionConnectionActivity.findMany({
@@ -2551,7 +2599,10 @@ export class PCActivityRoomService {
           start_date: { lte: now },
           deleted_at: null,
         },
-        select: { id: true, previous_assignment_id: true },
+        include: {
+          student: { select: { status: true, deleted_at: true } },
+          room: { select: { deleted_at: true } },
+        },
       });
       const scheduledMentors = await tx.pcActivityRoomMentorAssignment.findMany({
         where: {
@@ -2559,10 +2610,55 @@ export class PCActivityRoomService {
           start_date: { lte: now },
           deleted_at: null,
         },
-        select: { id: true, previous_assignment_id: true },
+        include: {
+          room: { select: { deleted_at: true } },
+          employee: { select: { status: true, deleted_at: true } },
+          intern: { select: { status: true, end_date: true } },
+        },
       });
 
       for (const assignment of scheduledStudents) {
+        let reason: string | null = null;
+        if (!assignment.room || assignment.room.deleted_at) {
+          reason = "room no longer exists";
+        } else if (assignment.student.deleted_at || assignment.student.status !== StudentStatus.ACTIVE) {
+          reason = "student is no longer active";
+        } else {
+          const enrollment = await tx.studentClassEnrollment.findFirst({
+            where: {
+              student_id: assignment.student_id,
+              academic_year_id: assignment.academic_year_id,
+              enrollment_status: EnrollmentStatus.ACTIVE,
+              deleted_at: null,
+            },
+            select: { id: true },
+          });
+          if (!enrollment) reason = "student has no active enrollment in the room's year";
+        }
+
+        if (reason) {
+          await tx.passionConnectionActivity.update({
+            where: { id: assignment.id },
+            data: {
+              status: PcActivityAssignmentStatus.ENDED,
+              end_date: assignment.start_date,
+              deleted_at: now,
+              previous_assignment_id: null,
+            },
+          });
+          await AuditService.record(
+            {
+              action: AuditAction.AUTO_CANCEL_PC_ACTIVITY_ASSIGNMENT,
+              source: AuditSource.SYSTEM,
+              entity_type: "PassionConnectionActivity",
+              entity_id: assignment.id,
+              new_values: { reason },
+            },
+            tx,
+          );
+          continue;
+        }
+
         if (assignment.previous_assignment_id) {
           await tx.passionConnectionActivity.updateMany({
             where: {
@@ -2577,9 +2673,57 @@ export class PCActivityRoomService {
           where: { id: assignment.id },
           data: { status: PcActivityAssignmentStatus.ACTIVE },
         });
+        await AuditService.record(
+          {
+            action: AuditAction.AUTO_ACTIVATE_PC_ACTIVITY_ASSIGNMENT,
+            source: AuditSource.SYSTEM,
+            entity_type: "PassionConnectionActivity",
+            entity_id: assignment.id,
+            new_values: { status: PcActivityAssignmentStatus.ACTIVE },
+          },
+          tx,
+        );
       }
 
       for (const assignment of scheduledMentors) {
+        let reason: string | null = null;
+        if (assignment.room.deleted_at) {
+          reason = "room no longer exists";
+        } else if (
+          assignment.employee &&
+          (assignment.employee.deleted_at || assignment.employee.status !== EmployeeStatus.ACTIVE)
+        ) {
+          reason = "employee is no longer active";
+        } else if (
+          assignment.intern &&
+          (assignment.intern.status !== InternStatus.ACTIVE || assignment.intern.end_date <= now)
+        ) {
+          reason = "intern is no longer active";
+        }
+
+        if (reason) {
+          await tx.pcActivityRoomMentorAssignment.update({
+            where: { id: assignment.id },
+            data: {
+              status: PcActivityMentorAssignmentStatus.ENDED,
+              end_date: assignment.start_date,
+              deleted_at: now,
+              previous_assignment_id: null,
+            },
+          });
+          await AuditService.record(
+            {
+              action: AuditAction.AUTO_CANCEL_PC_ACTIVITY_ASSIGNMENT,
+              source: AuditSource.SYSTEM,
+              entity_type: "PcActivityRoomMentorAssignment",
+              entity_id: assignment.id,
+              new_values: { reason },
+            },
+            tx,
+          );
+          continue;
+        }
+
         if (assignment.previous_assignment_id) {
           await tx.pcActivityRoomMentorAssignment.updateMany({
             where: {
@@ -2594,6 +2738,16 @@ export class PCActivityRoomService {
           where: { id: assignment.id },
           data: { status: PcActivityMentorAssignmentStatus.ACTIVE },
         });
+        await AuditService.record(
+          {
+            action: AuditAction.AUTO_ACTIVATE_PC_ACTIVITY_ASSIGNMENT,
+            source: AuditSource.SYSTEM,
+            entity_type: "PcActivityRoomMentorAssignment",
+            entity_id: assignment.id,
+            new_values: { status: PcActivityMentorAssignmentStatus.ACTIVE },
+          },
+          tx,
+        );
       }
 
       return scheduledStudents.length + scheduledMentors.length;

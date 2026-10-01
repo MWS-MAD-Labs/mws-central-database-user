@@ -5,6 +5,7 @@ import {
   AuditSource,
   ClassStatus,
   EnrollmentStatus,
+  PcActivityAssignmentStatus,
   Prisma,
   StudentEntryType,
   StudentStatus,
@@ -1865,6 +1866,42 @@ export class EnrollmentService {
             : {}),
         },
       });
+
+      // A student who is leaving keeps no scheduled PC room seat.
+      if (becomesTerminal) {
+        const scheduled = await tx.passionConnectionActivity.findMany({
+          where: {
+            student_id: student.id,
+            status: PcActivityAssignmentStatus.SCHEDULED,
+            deleted_at: null,
+          },
+          select: { id: true, start_date: true },
+        });
+        for (const row of scheduled) {
+          await tx.passionConnectionActivity.update({
+            where: { id: row.id },
+            data: {
+              status: PcActivityAssignmentStatus.ENDED,
+              end_date: row.start_date,
+              deleted_at: now,
+              previous_assignment_id: null,
+            },
+          });
+          await AuditService.record(
+            {
+              action: AuditAction.AUTO_CANCEL_PC_ACTIVITY_ASSIGNMENT,
+              source: AuditSource.UI,
+              entity_type: "PassionConnectionActivity",
+              entity_id: row.id,
+              admin_id: admin.id,
+              new_values: { reason: "student left the school" },
+              ip_address: context.ip_address,
+              user_agent: context.user_agent,
+            },
+            tx,
+          );
+        }
+      }
 
       // no include - a nested include here races on the tx's single pg
       // connection, and the audit snapshot only needs raw enrollment fields

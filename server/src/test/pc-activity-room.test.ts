@@ -1587,6 +1587,82 @@ describe("PC Activity Rooms", () => {
       expect(targetAfterStart.status).toBe("ACTIVE");
     });
 
+    async function scheduleStudentRollover() {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const admin = await prismaClient.adminUser.findUniqueOrThrow({ where: { id: "test-super-admin-id" } });
+      const currentYear = await prismaClient.academicYear.findUniqueOrThrow({ where: { id: academicYearId } });
+      const nextYear = await resolveNextAcademicYear(currentYear);
+      const nextClass = await prismaClient.class.create({
+        data: { name: `TEST_PC_ROOM_NEXT_CLASS_${Date.now()}`, grade_id: gradeId, academic_year_id: nextYear.id },
+      });
+      await EnrollmentTest.create({
+        studentId, classId: nextClass.id, academicYearId: nextYear.id, gradeId, gradeLevel: "TEST_STUDENT_GRADE",
+      });
+      const source = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        activity_id: activityId, academic_year_id: academicYearId, day: "MONDAY", duration_type: "SEMESTER", unit_ids: [unitId],
+        grade_ids: [gradeId],
+      }, accessToken);
+      const target = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        activity_id: activityId, academic_year_id: nextYear.id, day: "TUESDAY", duration_type: "SEMESTER", unit_ids: [unitId],
+        grade_ids: [gradeId], class_ids: [nextClass.id],
+      }, accessToken);
+      const sourceId = (await source.json()).data.id;
+      const targetBody = (await target.json()).data;
+      const bulk = await TestRequest.post(`/api/admin/pc-activity-rooms/${sourceId}/students/bulk`, { student_ids: [studentId] }, accessToken);
+      const assignmentId = (await bulk.json()).data.items[0].data.id;
+      const moveAt = new Date(currentYear.end_date!.getTime() - 10 * 24 * 60 * 60 * 1000);
+      const moved = await PCActivityRoomService.moveStudent(
+        admin,
+        { room_id: sourceId, assignment_id: assignmentId, target_room_id: targetBody.id },
+        {},
+        moveAt,
+      );
+      return { admin, sourceId, targetBody, assignmentId, scheduledId: moved.id, moveAt };
+    }
+
+    it("cancels a scheduled student rollover when the student left before it starts", async () => {
+      const { targetBody, assignmentId, scheduledId } = await scheduleStudentRollover();
+      await prismaClient.student.update({ where: { id: studentId }, data: { status: "WITHDRAWN" } });
+
+      await PCActivityRoomService.activateScheduledAssignments(
+        new Date(new Date(targetBody.start_date).getTime() + 1),
+      );
+
+      const [scheduled, source] = await Promise.all([
+        prismaClient.passionConnectionActivity.findUniqueOrThrow({ where: { id: scheduledId } }),
+        prismaClient.passionConnectionActivity.findUniqueOrThrow({ where: { id: assignmentId } }),
+      ]);
+      expect(scheduled.deleted_at).not.toBeNull();
+      expect(scheduled.previous_assignment_id).toBeNull();
+      expect(scheduled.status).toBe("ENDED");
+      expect(source.status).toBe("ACTIVE");
+      const log = await prismaClient.auditLog.findFirst({
+        where: { action: "AUTO_CANCEL_PC_ACTIVITY_ASSIGNMENT", entity_id: scheduledId },
+      });
+      expect(log).not.toBeNull();
+    });
+
+    it("lets the source be promoted again after its scheduled row is dropped", async () => {
+      const { admin, sourceId, targetBody, assignmentId, scheduledId, moveAt } = await scheduleStudentRollover();
+
+      await PCActivityRoomService.dropStudentAssignment(
+        admin,
+        { room_id: targetBody.id, assignment_id: scheduledId },
+        {},
+        moveAt,
+      );
+
+      const again = await PCActivityRoomService.moveStudent(
+        admin,
+        { room_id: sourceId, assignment_id: assignmentId, target_room_id: targetBody.id },
+        {},
+        moveAt,
+      );
+      expect(again.id).not.toBe(scheduledId);
+      const row = await prismaClient.passionConnectionActivity.findUniqueOrThrow({ where: { id: again.id } });
+      expect(row.status).toBe("SCHEDULED");
+    });
+
     it("rejects student promotion as too early before checking target enrollment", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const admin = await prismaClient.adminUser.findUniqueOrThrow({ where: { id: "test-super-admin-id" } });
