@@ -81,8 +81,9 @@ import { getUniqueConstraintFields } from "../utils/prisma-error";
 import {
   assertCanManageEnrollments,
   assertCanManageTeacherAssignments,
+  resolveEmployeeUnitScope,
   resolveStudentUnitScope,
-  type AdminUserWithStudentScope,
+  type AdminUserWithAcademicScope,
 } from "../utils/admin-permissions";
 
 function bulkFailureMessage(error: unknown): string {
@@ -170,7 +171,7 @@ async function assertMentorWriteAllowed(
 // Reading a room follows the student view scope (all units, custom units, or
 // own unit). Writing stays locked to the admin's own unit below.
 function assertRoomReadable(
-  admin: AdminUserWithStudentScope,
+  admin: AdminUserWithAcademicScope,
   unitIds: string[],
 ): void {
   if (admin.role !== AdminRole.DATABASE_ADMIN) return;
@@ -182,6 +183,49 @@ function assertRoomReadable(
       "Forbidden: This room is outside your unit scope",
     );
   }
+}
+
+// A scoped DATABASE_ADMIN only sees the students and mentors that sit in the
+// units they may view, even when the room itself covers more units.
+function studentRowScope(
+  admin: AdminUserWithAcademicScope,
+): Prisma.PassionConnectionActivityWhereInput {
+  if (admin.role !== AdminRole.DATABASE_ADMIN) return {};
+  const scope = resolveStudentUnitScope(admin);
+  if (scope === undefined) return {};
+  return { student: { current_grade: { unit_id: { in: scope } } } };
+}
+
+function mentorRowScope(
+  admin: AdminUserWithAcademicScope,
+): Prisma.PcActivityRoomMentorAssignmentWhereInput {
+  if (admin.role !== AdminRole.DATABASE_ADMIN) return {};
+  const scope = resolveEmployeeUnitScope(admin);
+  if (scope === undefined) return {};
+  return {
+    OR: [
+      { employee: { unit_id: { in: scope } } },
+      { intern: { unit_id: { in: scope } } },
+    ],
+  };
+}
+
+function mentorsInScope<
+  T extends {
+    employee: { unit_id: string } | null;
+    intern: { unit_id: string } | null;
+  },
+>(admin: AdminUserWithAcademicScope, mentors: T[]): T[] {
+  if (admin.role !== AdminRole.DATABASE_ADMIN) return mentors;
+  const scope = resolveEmployeeUnitScope(admin);
+  if (scope === undefined) return mentors;
+  return mentors.filter((mentor) =>
+    mentor.employee
+      ? scope.includes(mentor.employee.unit_id)
+      : mentor.intern
+        ? scope.includes(mentor.intern.unit_id)
+        : false,
+  );
 }
 
 // A DATABASE_ADMIN may access rooms that include their unit.
@@ -628,7 +672,7 @@ export class PCActivityRoomService {
   }
 
   static async search(
-    admin: AdminUserWithStudentScope,
+    admin: AdminUserWithAcademicScope,
     request: ListPcActivityRoomsRequest,
   ): Promise<Pageable<PcActivityRoomResponse>> {
     const searchRequest = Validation.validate(
@@ -675,7 +719,11 @@ export class PCActivityRoomService {
           .then(async (rooms) => {
             const counts = await prismaClient.passionConnectionActivity.groupBy({
               by: ["room_id", "status"],
-              where: { room_id: { in: rooms.map((room) => room.id) }, deleted_at: null },
+              where: {
+                room_id: { in: rooms.map((room) => room.id) },
+                deleted_at: null,
+                ...studentRowScope(admin),
+              },
               _count: { _all: true },
             });
             const countMap = new Map<string, Partial<Record<PcActivityAssignmentStatus, number>>>();
@@ -686,20 +734,38 @@ export class PCActivityRoomService {
               countMap.set(row.room_id, roomCounts);
             }
             return rooms.map((room) =>
-              toPcActivityRoomResponse(Object.assign(room, { student_counts: countMap.get(room.id) })),
+              toPcActivityRoomResponse(
+                Object.assign(room, {
+                  mentors: mentorsInScope(admin, room.mentors),
+                  student_counts: countMap.get(room.id),
+                }),
+              ),
             );
           }),
     });
   }
 
   static async get(
-    admin: AdminUserWithStudentScope,
+    admin: AdminUserWithAcademicScope,
     request: GetPcActivityRoomRequest,
   ): Promise<PcActivityRoomResponse> {
     const getRequest = Validation.validate(PcActivityRoomValidation.GET, request);
     const room = await findRoomOrThrow(getRequest.id);
     assertRoomReadable(admin, room.units.map((u) => u.unit_id));
-    return toPcActivityRoomResponse(room);
+    const scopedWhere = studentRowScope(admin);
+    if (Object.keys(scopedWhere).length > 0) {
+      const counts = await prismaClient.passionConnectionActivity.groupBy({
+        by: ["status"],
+        where: { room_id: room.id, deleted_at: null, ...scopedWhere },
+        _count: { _all: true },
+      });
+      room.student_counts = Object.fromEntries(
+        counts.map((row) => [row.status, row._count._all]),
+      );
+    }
+    return toPcActivityRoomResponse(
+      Object.assign(room, { mentors: mentorsInScope(admin, room.mentors) }),
+    );
   }
 
   static async create(
@@ -1050,7 +1116,7 @@ export class PCActivityRoomService {
   // --- Mentors -----------------------------------------------------------
 
   static async listMentors(
-    admin: AdminUserWithStudentScope,
+    admin: AdminUserWithAcademicScope,
     request: ListPcActivityRoomMentorsRequest,
   ): Promise<Pageable<PcActivityRoomMentorAssignmentResponse>> {
     const listRequest = Validation.validate(
@@ -1064,14 +1130,17 @@ export class PCActivityRoomService {
       room_id: listRequest.room_id,
       deleted_at: null,
       status: listRequest.status,
-      ...(listRequest.search
-        ? {
-            OR: [
-              { employee: { person: { full_name: { contains: listRequest.search, mode: "insensitive" } } } },
-              { intern: { full_name: { contains: listRequest.search, mode: "insensitive" } } },
-            ],
-          }
-        : {}),
+      AND: [
+        mentorRowScope(admin),
+        listRequest.search
+          ? {
+              OR: [
+                { employee: { person: { full_name: { contains: listRequest.search, mode: "insensitive" } } } },
+                { intern: { full_name: { contains: listRequest.search, mode: "insensitive" } } },
+              ],
+            }
+          : {},
+      ],
     };
     if (listRequest.sort_by === "mentor_name" || listRequest.sort_by === "mentor_type") {
       const assignments = await prismaClient.pcActivityRoomMentorAssignment.findMany({
@@ -1866,22 +1935,30 @@ export class PCActivityRoomService {
       },
       include: { activity: { select: { name: true } } },
     });
-    const rowsByStudentId = new Map<string, (typeof activityRows)[number]>();
+    const rowsByStudentId = new Map<string, (typeof activityRows)[number][]>();
     for (const row of activityRows) {
-      rowsByStudentId.set(row.student_id, row);
+      const list = rowsByStudentId.get(row.student_id) ?? [];
+      list.push(row);
+      rowsByStudentId.set(row.student_id, list);
     }
 
     const rows = filteredStudents.map((enrollment) => {
       const student = enrollment.student;
-      const row = rowsByStudentId.get(student.id);
+      const studentRows = rowsByStudentId.get(student.id) ?? [];
       // A same-day assignment elsewhere blocks this room; assignments on
       // other days don't - one PC room per day is the rule.
-      const sameDayConflict = row !== undefined && row.day === room.day;
+      const sameDayConflict = studentRows.some((entry) => entry.day === room.day);
+      const inThisRoom = studentRows.some((entry) => entry.room_id === room.id);
+      // The same-day row elsewhere wins over other-day rows, so a conflict is
+      // never hidden behind an unrelated assignment.
+      const row =
+        studentRows.find((entry) => entry.room_id !== room.id && entry.day === room.day) ??
+        studentRows.find((entry) => entry.room_id !== room.id);
       // EXACT only for an unattached legacy row (room_id null) whose
       // activity+day already matches this room exactly - a different room's
       // same-day row is a real conflict, not something to attach here.
       const legacyMatch: "EXACT" | "DAY_ONLY" | "NONE" =
-        row && row.room_id === null && sameDayConflict && row.activity_id === room.activity_id
+        row && row.room_id === null && row.day === room.day && row.activity_id === room.activity_id
           ? "EXACT"
           : sameDayConflict
             ? "DAY_ONLY"
@@ -1892,15 +1969,15 @@ export class PCActivityRoomService {
         nis: student.nis,
         class_name: enrollment.class.name,
         grade_name: enrollment.grade.name,
-        already_assigned: row?.room_id === room.id || sameDayConflict,
+        already_assigned: inThisRoom || sameDayConflict,
         other_activity:
-          row && row.room_id !== room.id
+          row
             ? {
                 assignment_id: row.id,
                 activity_name: row.activity.name,
                 day: row.day,
                 room_id: row.room_id,
-                same_day: sameDayConflict,
+                same_day: row.day === room.day,
               }
             : null,
         legacy_match: legacyMatch,
@@ -1919,7 +1996,7 @@ export class PCActivityRoomService {
   }
 
   static async listStudents(
-    admin: AdminUserWithStudentScope,
+    admin: AdminUserWithAcademicScope,
     request: ListPcActivityRoomStudentsRequest,
   ): Promise<Pageable<PcActivityRoomStudentResponse>> {
     const listRequest = Validation.validate(
@@ -1940,16 +2017,19 @@ export class PCActivityRoomService {
     const where: Prisma.PassionConnectionActivityWhereInput = {
       room_id: room.id,
       status: listRequest.status,
-      ...(listRequest.search
-        ? {
-            student: {
-              OR: [
-                { person: { full_name: { contains: listRequest.search, mode: "insensitive" } } },
-                { nis: { contains: listRequest.search, mode: "insensitive" } },
-              ],
-            },
-          }
-        : {}),
+      AND: [
+        studentRowScope(admin),
+        listRequest.search
+          ? {
+              student: {
+                OR: [
+                  { person: { full_name: { contains: listRequest.search, mode: "insensitive" } } },
+                  { nis: { contains: listRequest.search, mode: "insensitive" } },
+                ],
+              },
+            }
+          : {},
+      ],
     };
     const skip = (listRequest.page - 1) * listRequest.size;
     const rows = await prismaClient.passionConnectionActivity.findMany({

@@ -415,6 +415,75 @@ describe("PC Activity Rooms", () => {
       expect(edit.status).toBe(403);
     });
 
+    it("shows a scoped DATABASE_ADMIN only the students of their own units in a multi-unit room", async () => {
+      const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_ROOM_MULTI_OTHER_${Date.now()}` },
+      });
+      await prismaClient.grade.create({
+        data: { name: `TEST_ROOM_MULTI_GRADE_${Date.now()}`, level: -9995, unit_id: otherUnit.id },
+      });
+      const created = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        activity_id: activityId,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        unit_ids: [unitId, otherUnit.id],
+        grade_ids: [gradeId],
+      }, superToken);
+      const roomId = (await created.json()).data.id;
+      const bulk = await TestRequest.post(
+        `/api/admin/pc-activity-rooms/${roomId}/students/bulk`,
+        { student_ids: [studentId] },
+        superToken,
+      );
+      expect(bulk.status).toBe(200);
+
+      const scoped = await AdminUserTest.createDatabaseAdmin(otherUnit.id, {
+        id: "test-room-scope-own-unit",
+        email: "test_room_scope_own_unit@millennia21.id",
+      });
+      const wide = await AdminUserTest.createDatabaseAdmin(otherUnit.id, {
+        id: "test-room-scope-wide",
+        email: "test_room_scope_wide@millennia21.id",
+        canViewAllStudentUnits: true,
+      });
+
+      // The room is visible through its other unit, the other unit's student is not.
+      const scopedRoom = (await (await TestRequest.get(`/api/admin/pc-activity-rooms/${roomId}`, scoped.accessToken)).json()).data;
+      expect(scopedRoom.student_count).toBe(0);
+      const scopedList = await (await TestRequest.get(`/api/admin/pc-activity-rooms/${roomId}/students`, scoped.accessToken)).json();
+      expect(scopedList.data).toHaveLength(0);
+      const scopedRooms = (await (await TestRequest.get("/api/admin/pc-activity-rooms", scoped.accessToken)).json()).data;
+      expect(scopedRooms.find((room: { id: string }) => room.id === roomId).student_count).toBe(0);
+
+      const wideRoom = (await (await TestRequest.get(`/api/admin/pc-activity-rooms/${roomId}`, wide.accessToken)).json()).data;
+      expect(wideRoom.student_count).toBe(1);
+      const wideList = await (await TestRequest.get(`/api/admin/pc-activity-rooms/${roomId}/students`, wide.accessToken)).json();
+      expect(wideList.data).toHaveLength(1);
+    });
+
+    it("reports the same-day assignment as other_activity when a student has several", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await PCActivityTest.create({ studentId, day: "MONDAY", activity: "TEST_ROOM_HINT_MONDAY", academicYearId });
+      await PCActivityTest.create({ studentId, day: "TUESDAY", activity: "TEST_ROOM_HINT_TUESDAY", academicYearId });
+      const created = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        activity_id: activityId,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        unit_ids: [unitId],
+        grade_ids: [gradeId],
+      }, accessToken);
+      const roomId = (await created.json()).data.id;
+
+      const response = await TestRequest.get(
+        `/api/admin/pc-activity-rooms/${roomId}/eligible-students?available_only=false`,
+        accessToken,
+      );
+      const row = (await response.json()).data.find((item: { student_id: string }) => item.student_id === studentId);
+      expect(row.other_activity.day).toBe("MONDAY");
+      expect(row.other_activity.same_day).toBe(true);
+    });
+
     it("should reject (403) a DATABASE_ADMIN creating a room outside their own unit", async () => {
       const otherUnit = await prismaClient.masterUnit.create({
         data: { name: `TEST_ROOM_DBADMIN_OTHER_${Date.now()}` },
