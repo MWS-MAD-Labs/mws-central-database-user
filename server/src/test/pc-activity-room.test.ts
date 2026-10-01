@@ -633,7 +633,7 @@ describe("PC Activity Rooms", () => {
       }, accessToken);
       const roomId = (await roomResponse.json()).data.id;
       const employee = await createEligibleMentorEmployee("test_pc_room_eligible_zulu@millennia21.id", unitId);
-      const intern = await createEligibleMentorIntern("test_pc_room_eligible_alpha@millennia21.id", unitId);
+      const intern = await createEligibleMentorIntern("test_intern_pc_room_eligible_alpha@millennia21.id", unitId);
 
       const firstPage = await TestRequest.get(
         `/api/admin/pc-activity-rooms/${roomId}/eligible-mentors?page=1&size=1&sort_by=name&sort_order=asc`,

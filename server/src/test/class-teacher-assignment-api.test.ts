@@ -56,7 +56,7 @@ describe("Class Teacher Assignment API (internal)", () => {
       where: { name: "2099/2100" },
     });
     if (!academicYear) {
-      const created = await AcademicYearTest.create();
+      const created = await AcademicYearTest.createStarted();
       academicYear = await prismaClient.academicYear.update({
         where: { id: created.id },
         data: { name: "2099/2100" },

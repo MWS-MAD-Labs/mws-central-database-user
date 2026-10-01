@@ -120,6 +120,17 @@ async function createNonTeachingEmployee(
   return person.employee!;
 }
 
+// Moves a test year over today so default assignment dates (the year start) are not in the future.
+async function startYearInPast(academicYearId: string) {
+  await prismaClient.academicYear.update({
+    where: { id: academicYearId },
+    data: {
+      start_date: new Date("2001-01-01T00:00:00.000Z"),
+      end_date: new Date("2100-01-01T00:00:00.000Z"),
+    },
+  });
+}
+
 describe("POST /api/admin/classes", () => {
   let gradeOneId: string;
   let gradeTwoId: string;
@@ -155,6 +166,13 @@ describe("POST /api/admin/classes", () => {
 
   it("defaults assignment start_date to the academic-year start and exposes year dates", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await prismaClient.academicYear.update({
+      where: { id: academicYearId },
+      data: {
+        start_date: new Date("2001-01-01T00:00:00.000Z"),
+        end_date: new Date("2100-01-01T00:00:00.000Z"),
+      },
+    });
     const year = await prismaClient.academicYear.findUniqueOrThrow({
       where: { id: academicYearId },
     });
@@ -191,6 +209,13 @@ describe("POST /api/admin/classes", () => {
 
   it("updates assignment start_date and audits old/new snapshots", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await prismaClient.academicYear.update({
+      where: { id: academicYearId },
+      data: {
+        start_date: new Date("2001-01-01T00:00:00.000Z"),
+        end_date: new Date("2100-01-01T00:00:00.000Z"),
+      },
+    });
     const year = await prismaClient.academicYear.findUniqueOrThrow({
       where: { id: academicYearId },
     });
@@ -1274,6 +1299,7 @@ describe("PATCH /api/admin/classes/:id", () => {
 
   it("should reject changing a class's grade when it would strand an active teacher assignment outside their unit", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await startYearInPast(academicYearId);
     const klass = await ClassTest.create({
       name: "TEST_GradeChangeStrandsTeacher",
       gradeId: gradeOneId, // Grade 1 -> Elementary
@@ -1312,6 +1338,7 @@ describe("PATCH /api/admin/classes/:id", () => {
 
   it("should allow changing a class's grade to another grade in the same unit, even with an active teacher assigned", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await startYearInPast(academicYearId);
     const klass = await ClassTest.create({
       name: "TEST_GradeChangeSameUnit",
       gradeId: gradeOneId, // Grade 1 -> Elementary
@@ -1344,6 +1371,7 @@ describe("PATCH /api/admin/classes/:id", () => {
 
   it("should allow changing a class's grade across units once the mismatched teacher assignment has ended", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await startYearInPast(academicYearId);
     const klass = await ClassTest.create({
       name: "TEST_GradeChangeAfterEnd",
       gradeId: gradeOneId, // Grade 1 -> Elementary
@@ -1670,6 +1698,7 @@ describe("PATCH /api/admin/classes/:id", () => {
 
   it("should reject (400) moving a class out of ACTIVE while it still has an active teacher assignment", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await startYearInPast(academicYearId);
     const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
     await prismaClient.academicYear.delete({ where: { id: academicYearId } }); // this test uses its own dedicated year below
     const yearEndingSoon = await prismaClient.academicYear.create({
@@ -2247,6 +2276,7 @@ describe("GET /api/admin/classes", () => {
 
   it("should reflect current open HOMEROOM assignments in homeroom_teachers", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await startYearInPast(academicYearId);
     const teacherA = await createTeachingEmployee(
       "test_list_homeroom_a@millennia21.id",
     );
@@ -2299,6 +2329,7 @@ describe("GET /api/admin/classes", () => {
 
   it("should reflect current open SUPPORTING_HOMEROOM assignments in supporting_homeroom_teachers, separate from homeroom_teachers", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await startYearInPast(academicYearId);
     const homeroomTeacher = await createTeachingEmployee(
       "test_list_supporting_homeroom_a@millennia21.id",
     );
@@ -2602,6 +2633,7 @@ describe("DELETE /api/admin/classes/:id", () => {
 
   it("should reject deletion when a teacher is still assigned to the class", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await startYearInPast(academicYearId);
     const klass = await ClassTest.create({
       name: "TEST_HasTeacher",
       gradeId: gradeOneId,
@@ -2662,7 +2694,7 @@ describe("GET /api/admin/classes/:id/teacher-assignments", () => {
     // Grade 1 keeps its natural seeded unit (Elementary) - the teachers this
     // test creates default to that same unit.
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
-    academicYearId = (await AcademicYearTest.create()).id;
+    academicYearId = (await AcademicYearTest.createStarted()).id;
   });
 
   afterEach(async () => {
@@ -2706,7 +2738,11 @@ describe("GET /api/admin/classes/:id/teacher-assignments", () => {
     );
     await TestRequest.post(
       `/api/admin/classes/${created.data.id}/teachers`,
-      { employee_id: teacherB.id, role: ClassTeacherRole.HOMEROOM },
+      {
+        employee_id: teacherB.id,
+        role: ClassTeacherRole.HOMEROOM,
+        start_date: new Date().toISOString(),
+      },
       accessToken,
     );
 
@@ -2817,7 +2853,7 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     // here (as other describe blocks do) breaks that match.
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
     gradeTwoId = (await GradeTest.getByName("Grade 2")).id;
-    academicYearId = (await AcademicYearTest.create()).id;
+    academicYearId = (await AcademicYearTest.createStarted()).id;
   });
 
   afterEach(async () => {
@@ -3274,7 +3310,8 @@ describe("POST /api/admin/classes/:id/teachers", () => {
       data: {
         name: "Test Year Other",
         status: AcademicYearStatus.UPCOMING,
-        start_date: new Date("2026-01-01"),
+        start_date: new Date("2000-01-01"),
+        end_date: new Date("2000-12-31"),
       },
     });
     const otherYearClass = await ClassTest.create({
@@ -3629,7 +3666,7 @@ describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/end", () => {
     await MasterDataTest.create();
 
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
-    academicYearId = (await AcademicYearTest.create()).id;
+    academicYearId = (await AcademicYearTest.createStarted()).id;
   });
 
   afterEach(async () => {
@@ -3989,7 +4026,7 @@ describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/end", () => {
 
     const response = await TestRequest.patch(
       `/api/admin/classes/${klass.id}/teachers/${createdBody.data.id}/end`,
-      { end_date: "2020-01-01T00:00:00.000Z" },
+      { end_date: "2000-01-01T00:00:00.000Z" },
       accessToken,
     );
     const body = await response.json();
@@ -4016,7 +4053,7 @@ describe("DELETE /api/admin/classes/:id/teachers/:assignmentId", () => {
     await MasterDataTest.create();
 
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
-    academicYearId = (await AcademicYearTest.create()).id;
+    academicYearId = (await AcademicYearTest.createStarted()).id;
   });
 
   afterEach(async () => {
@@ -4382,7 +4419,7 @@ describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/reopen", () => {
     // Grade 1 keeps its natural seeded unit (Elementary) - see e.g. "Grade 1
     // -> Elementary" below.
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
-    academicYearId = (await AcademicYearTest.create()).id;
+    academicYearId = (await AcademicYearTest.createStarted()).id;
   });
 
   afterEach(async () => {
@@ -4759,7 +4796,7 @@ describe("Class enrollment history counts", () => {
     await MasterDataTest.create();
 
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
-    academicYearId = (await AcademicYearTest.create()).id;
+    academicYearId = (await AcademicYearTest.createStarted()).id;
   });
 
   afterEach(async () => {
@@ -5030,7 +5067,7 @@ describe("PATCH /api/admin/classes/:id/teachers/bulk/move", () => {
     await MasterDataTest.create();
 
     // The bulk/move endpoint parses the year number out of the academic
-    // year's own NAME ("YYYY/YYYY"), not its dates - AcademicYearTest.create()'s
+    // year's own NAME ("YYYY/YYYY"), not its dates - AcademicYearTest.createStarted()'s
     // token-based name never matches that, so both years here need a real
     // name, with the target's year immediately following the source's.
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
@@ -5274,7 +5311,7 @@ describe("PATCH /api/admin/classes/:id/teachers/bulk/end and DELETE .../bulk", (
     await MasterDataTest.create();
 
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
-    academicYearId = (await AcademicYearTest.create()).id;
+    academicYearId = (await AcademicYearTest.createStarted()).id;
 
     accessToken = (await AdminUserTest.createSuperAdmin()).accessToken;
     const klass = await ClassTest.create({

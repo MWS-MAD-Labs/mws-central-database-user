@@ -2391,7 +2391,7 @@ describe("Student Class Enrollment", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/enrollments/${created.data.id}/transfer`,
-        { class_id: classGrade1YearAAlt },
+        { class_id: classGrade1YearAAlt, effective_date: "2026-01-01T00:00:00.000Z" },
         accessToken,
       );
       const body = await response.json();
@@ -2439,7 +2439,7 @@ describe("Student Class Enrollment", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/enrollments/${created.data.id}/transfer`,
-        { class_id: classGrade1YearAAlt },
+        { class_id: classGrade1YearAAlt, effective_date: "2026-01-01T00:00:00.000Z" },
         accessToken,
       );
       expect(response.status).toBe(200);
@@ -2973,6 +2973,7 @@ describe("Student Class Enrollment", () => {
         {
           enrollment_ids: [firstEnrollment.data.id, secondEnrollment.data.id],
           class_id: classGrade1YearAAlt,
+          effective_date: "2026-01-01T00:00:00.000Z",
         },
         accessToken,
       );
@@ -3009,6 +3010,7 @@ describe("Student Class Enrollment", () => {
         {
           enrollment_ids: [created.data.id, "nonexistent-enrollment-id"],
           class_id: classGrade1YearAAlt,
+          effective_date: "2026-01-01T00:00:00.000Z",
         },
         accessToken,
       );
@@ -4579,7 +4581,7 @@ describe("Student Class Enrollment", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/students/${gradeTwoStudent.student!.id}/enrollments/${created.data.id}/transfer`,
-        { class_id: mixedClassId },
+        { class_id: mixedClassId, effective_date: "2026-01-01T00:00:00.000Z" },
         accessToken,
       );
       const body = await response.json();

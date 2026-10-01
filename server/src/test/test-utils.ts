@@ -294,6 +294,15 @@ export class AcademicYearTest {
     }
   }
 
+  // A year that already started, for flows that default dates to the year start.
+  // Spans today; tests that add a second year must pick dates outside it.
+  static async createStarted() {
+    return this.create({
+      start: new Date("2001-01-01T00:00:00.000Z"),
+      end: new Date("2100-01-01T00:00:00.000Z"),
+    });
+  }
+
   static async create(options: { start?: Date; end?: Date } = {}) {
     const token = Date.now() + Math.floor(Math.random() * 1000);
     const start = options.start ?? new Date("3000-01-01T00:00:00.000Z");
