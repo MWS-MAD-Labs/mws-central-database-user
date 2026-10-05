@@ -165,7 +165,7 @@ function EntitlementsPanel() {
           value={filters.application_id}
           onChange={(value) => setFilter({ application_id: value })}
           options={[
-            { value: "", label: "All applications" },
+            { value: "", label: "All Applications" },
             ...applications.map((application) => ({ value: application, label: application })),
           ]}
         />
@@ -487,7 +487,7 @@ function GrantDialog({ roles, onClose, onDone }) {
                   value={filter.unit_id}
                   onChange={(value) => setFilterValue({ unit_id: value })}
                   options={[
-                    { value: "", label: "All units" },
+                    { value: "", label: "All Units" },
                     ...(options.units || []).map((unit) => ({ value: unit.id, label: unit.name })),
                   ]}
                 />
@@ -496,7 +496,7 @@ function GrantDialog({ roles, onClose, onDone }) {
                   value={filter.job_position_id}
                   onChange={(value) => setFilterValue({ job_position_id: value })}
                   options={[
-                    { value: "", label: "All positions" },
+                    { value: "", label: "All Positions" },
                     ...(options.jobPositions || []).map((item) => ({ value: item.id, label: item.name })),
                   ]}
                 />
@@ -505,7 +505,7 @@ function GrantDialog({ roles, onClose, onDone }) {
                   value={filter.job_level_id}
                   onChange={(value) => setFilterValue({ job_level_id: value })}
                   options={[
-                    { value: "", label: "All levels" },
+                    { value: "", label: "All Levels" },
                     ...(options.jobLevels || []).map((item) => ({ value: item.id, label: item.name })),
                   ]}
                 />
@@ -513,7 +513,7 @@ function GrantDialog({ roles, onClose, onDone }) {
                   label="Employment Type"
                   value={filter.employment_type}
                   onChange={(value) => setFilterValue({ employment_type: value })}
-                  options={[{ value: "", label: "All types" }, ...enumOptions(employmentTypes)]}
+                  options={[{ value: "", label: "All Employment Types" }, ...enumOptions(employmentTypes)]}
                 />
                 {hasActiveFilter ? (
                   <Button
@@ -526,7 +526,7 @@ function GrantDialog({ roles, onClose, onDone }) {
                       setParams((current) => ({ ...current, page: 1 }));
                     }}
                   >
-                    Reset filters
+                    Reset Filters
                   </Button>
                 ) : null}
               </div>
@@ -596,10 +596,12 @@ function ChangeRoleDialog({ entitlement, roles, onClose, onDone }) {
 }
 
 const audienceLabels = {
-  EMPLOYEES: "All active employees",
-  STUDENTS: "All active students",
-  EMPLOYEES_AND_STUDENTS: "All active employees and students",
+  EMPLOYEES: "All Active Employees",
+  STUDENTS: "All Active Students",
+  EMPLOYEES_AND_STUDENTS: "All Active Employees and Students",
 };
+
+const BASELINE_PAGE_SIZE = 10;
 
 function useRules() {
   return useQuery({
@@ -620,6 +622,8 @@ function RolesPanel() {
   const applications = [...new Set(roles.map((role) => role.application_id))].sort();
   const [dialog, setDialog] = useState(null);
   const [ruleDialog, setRuleDialog] = useState(null);
+  const [baselineSearch, setBaselineSearch] = useState("");
+  const [baselinePage, setBaselinePage] = useState(1);
 
   const toggleMutation = useMutation({
     mutationFn: (role) => applicationAccessApi.updateRole(role.id, { is_active: !role.is_active }),
@@ -630,47 +634,112 @@ function RolesPanel() {
     onError: (error) => showErrorToast(error, "Could not update this role."),
   });
 
-  function describeRule(rule) {
-    if (!rule) return "No baseline. Only people with their own entitlement can open it.";
-    const scope =
-      rule.unit_ids.length === 0
-        ? "all units"
-        : rule.unit_ids.map((id) => units.find((unit) => unit.id === id)?.name || id).join(", ");
-    return `${audienceLabels[rule.audience]} (${scope}) get ${rule.default_role_key}${rule.is_active ? "" : ", currently off"}.`;
-  }
+  const unitSummary = (rule) =>
+    rule.unit_ids.length === 0
+      ? "All Units"
+      : rule.unit_ids.map((id) => units.find((unit) => unit.id === id)?.name || id).join(", ");
+
+  const needle = baselineSearch.trim().toLowerCase();
+  const baselineRows = applications
+    .filter((application) => !needle || application.toLowerCase().includes(needle))
+    .map((application) => ({
+      application,
+      rule: rules.find((item) => item.application_id === application),
+    }));
+  const baselineTotalPages = Math.max(Math.ceil(baselineRows.length / BASELINE_PAGE_SIZE), 1);
+  const baselinePageClamped = Math.min(baselinePage, baselineTotalPages);
+  const baselinePaged = baselineRows.slice(
+    (baselinePageClamped - 1) * BASELINE_PAGE_SIZE,
+    baselinePageClamped * BASELINE_PAGE_SIZE,
+  );
 
   return (
     <section className="min-w-0 space-y-6">
       <div className="space-y-3">
-        <div>
-          <h2 className="font-display text-lg font-bold text-(--mws-charcoal)">Baseline access</h2>
-          <p className="text-sm text-(--mws-muted)">
-            For applications that everyone may use, set a default role here instead of granting people one by one.
-            A person's own entitlement always replaces the baseline, and revoking it blocks them.
-          </p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-display text-lg font-bold text-(--mws-charcoal)">Baseline access</h2>
+            <p className="max-w-2xl text-sm text-(--mws-muted)">
+              For applications that everyone may use, set a default role here instead of granting people one by
+              one. A person's own entitlement replaces the baseline, and revoking it blocks them.
+            </p>
+          </div>
+          <div className="w-full sm:w-64">
+            <DebouncedSearchInput
+              value={baselineSearch}
+              onChange={(value) => {
+                setBaselineSearch(value);
+                setBaselinePage(1);
+              }}
+              placeholder="Search applications"
+            />
+          </div>
         </div>
         {applications.length === 0 ? (
           <PanelMessage>No applications have roles yet.</PanelMessage>
+        ) : baselineRows.length === 0 ? (
+          <PanelMessage>No applications match this search.</PanelMessage>
         ) : (
-          <div className="grid gap-3 lg:grid-cols-2">
-            {applications.map((application) => {
-              const rule = rules.find((item) => item.application_id === application);
-              return (
-                <div
-                  key={application}
-                  className="flex items-start justify-between gap-3 rounded-2xl border border-(--mws-line) bg-white p-4"
-                >
-                  <div className="min-w-0">
-                    <p className="font-display font-bold text-(--mws-charcoal)">{application}</p>
-                    <p className="mt-1 text-sm text-(--mws-muted)">{describeRule(rule)}</p>
-                  </div>
-                  <Button type="button" size="sm" variant="secondary" onClick={() => setRuleDialog({ application, rule })}>
-                    {rule ? "Edit" : "Set up"}
+          <DenseTable
+            minWidth={800}
+            head={
+              <>
+                <th className="px-4 py-2.5">Application</th>
+                <th className="px-4 py-2.5">Who Gets It</th>
+                <th className="px-4 py-2.5">Units</th>
+                <th className="px-4 py-2.5">Default Role</th>
+                <th className="px-4 py-2.5">Status</th>
+                <th className="px-4 py-2.5 text-right">Actions</th>
+              </>
+            }
+            footer={
+              baselineRows.length > BASELINE_PAGE_SIZE ? (
+                <PaginationBar
+                  paging={{
+                    current_page: baselinePageClamped,
+                    total_page: baselineTotalPages,
+                    total_item: baselineRows.length,
+                    size: BASELINE_PAGE_SIZE,
+                  }}
+                  itemLabel="applications"
+                  onPrevious={() => setBaselinePage((current) => Math.max(current - 1, 1))}
+                  onNext={() => setBaselinePage((current) => Math.min(current + 1, baselineTotalPages))}
+                />
+              ) : null
+            }
+          >
+            {baselinePaged.map(({ application, rule }) => (
+              <tr key={application} className={denseRowClass}>
+                <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>{application}</td>
+                <td className={denseCellClass}>{rule ? audienceLabels[rule.audience] : "-"}</td>
+                <td className={`${denseCellClass} max-w-48`}>
+                  <span className="block truncate" title={rule ? unitSummary(rule) : undefined}>
+                    {rule ? unitSummary(rule) : "-"}
+                  </span>
+                </td>
+                <td className={denseCellClass}>{rule ? rule.default_role_key : "-"}</td>
+                <td className={denseCellClass}>
+                  {rule ? (
+                    <StatusBadge tone={rule.is_active ? "green" : "neutral"}>
+                      {rule.is_active ? "On" : "Off"}
+                    </StatusBadge>
+                  ) : (
+                    <span className="text-xs text-(--mws-muted)">No baseline</span>
+                  )}
+                </td>
+                <td className={`${denseCellClass} text-right`}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setRuleDialog({ application, rule })}
+                  >
+                    {rule ? "Edit" : "Set Up"}
                   </Button>
-                </div>
-              );
-            })}
-          </div>
+                </td>
+              </tr>
+            ))}
+          </DenseTable>
         )}
       </div>
 
@@ -839,7 +908,7 @@ function RuleDialog({ application, rule, roles, units, onClose }) {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <CheckboxField
               checked={allUnits}
-              label="All units"
+              label="All Units"
               onChange={(event) => setUnitIds(event.target.checked ? [] : units.map((unit) => unit.id))}
             />
             {units.map((unit) => (

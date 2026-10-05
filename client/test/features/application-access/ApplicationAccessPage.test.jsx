@@ -168,10 +168,11 @@ describe('ApplicationAccessPage', () => {
     ]))
     globalThis.fetch = fetchMock
     const { user } = renderPage({ role: 'SUPER_ADMIN' }, '/application-access?tab=roles')
-    expect(await screen.findByText(/No baseline/)).toBeVisible()
+    expect(await screen.findByText('No baseline')).toBeVisible()
 
-    await user.click(screen.getByRole('button', { name: 'Set up' }))
+    await user.click(screen.getByRole('button', { name: 'Set Up' }))
     const dialog = await screen.findByRole('dialog', { name: 'Baseline access for exima' })
+    expect(within(dialog).getByRole('button', { name: 'All Active Employees' })).toBeVisible()
     await user.click(within(dialog).getByRole('button', { name: 'Select a role' }))
     await user.click(screen.getByRole('option', { name: /STAFF/ }))
     await user.type(within(dialog).getByRole('textbox'), 'mws')
