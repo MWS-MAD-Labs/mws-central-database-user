@@ -7,6 +7,17 @@ const RULES = '/api/admin/application-access-rules'
 const ACCESS = '/api/admin/application-access'
 
 export const applicationAccessApi = {
+  async listApplications() {
+    const response = await apiRequest(`${ACCESS}/applications`)
+    return response.data
+  },
+
+  // Groups of one application with the exceptions under each.
+  async getApplication(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}`)
+    return response.data
+  },
+
   // Group rules and people in one paged list.
   async listAccess(params = {}) {
     const query = compactSearchParams(params).toString()

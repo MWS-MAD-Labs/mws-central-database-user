@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { screen, waitFor, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
 import { Route, Routes } from 'react-router'
@@ -13,41 +13,13 @@ const roles = [
   { id: 'role-old', application_id: 'exima', key: 'LEGACY', label: 'Legacy', permissions: [], is_active: false, active_entitlement_count: 0 },
 ]
 
-const personRow = {
-  kind: 'PERSON',
-  id: 'ent-1',
-  application_id: 'exima',
-  role: 'ADMIN',
-  permissions: ['app.admin', 'store.use'],
-  organization_id: 'mws',
-  is_active: true,
-  granted_at: '2026-10-01T00:00:00.000Z',
-  updated_at: '2026-10-01T00:00:00.000Z',
-  group: null,
-  person: { person_id: 'person-1', full_name: 'Dummy Staff', email: 'dummystaff@millennia21.id', unit: 'MAD Lab' },
-}
-
-const groupRow = {
-  kind: 'GROUP',
-  id: 'rule-1',
-  application_id: 'exima',
-  role: 'STAFF',
-  permissions: ['store.use'],
-  organization_id: 'mws',
-  is_active: true,
-  granted_at: '2026-10-01T00:00:00.000Z',
-  updated_at: '2026-10-01T00:00:00.000Z',
-  group: {
-    audience: 'EMPLOYEES',
-    units: [{ id: 'unit-1', name: 'MAD Lab' }],
-    job_positions: [],
-    job_levels: [],
-  },
-  person: null,
-}
-
 const organizations = [
   { application_id: 'exima', organization_id: 'org_exima_a1b2c3' },
+]
+
+const applications = [
+  { application_id: 'exima', organization_id: 'org_exima_a1b2c3', active_group_count: 2, exception_count: 3 },
+  { application_id: 'hub', organization_id: null, active_group_count: 0, exception_count: 0 },
 ]
 
 function baseRoutes(extra = []) {
@@ -55,14 +27,7 @@ function baseRoutes(extra = []) {
     ...extra,
     { path: '/api/admin/application-organizations', response: () => jsonResponse({ data: organizations }) },
     { path: '/api/admin/application-roles', response: () => jsonResponse({ data: roles }) },
-    {
-      path: /^\/api\/admin\/application-access(\?.*)?$/,
-      method: 'GET',
-      response: () => jsonResponse({
-        data: [groupRow, personRow],
-        paging: { current_page: 1, total_page: 1, total_item: 2, size: 10 },
-      }),
-    },
+    { path: '/api/admin/application-access/applications', response: () => jsonResponse({ data: applications }) },
   ]
 }
 
@@ -72,8 +37,7 @@ function renderPage(user = { role: 'SUPER_ADMIN' }, route = '/application-access
       <ConfirmProvider>
         <Routes>
           <Route path="/application-access" element={<ApplicationAccessPage />} />
-          <Route path="/application-access/grant" element={<div>Grant page</div>} />
-          <Route path="/application-access/groups/:ruleId" element={<div>Group edit page</div>} />
+          <Route path="/application-access/apps/:applicationId" element={<div>App page</div>} />
           <Route path="/application-access/roles/new" element={<div>New role page</div>} />
           <Route path="/application-access/roles/:roleId" element={<div>Edit role page</div>} />
         </Routes>
@@ -90,97 +54,23 @@ describe('ApplicationAccessPage', () => {
     expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
   })
 
-  it('lists group access and people in one table', async () => {
+  it('lists applications with group and exception counts and flags the ones without a group', async () => {
     globalThis.fetch = createFetchRouter(baseRoutes())
     renderPage()
-    expect(await screen.findByText('All Active Employees')).toBeVisible()
-    expect(screen.getByText('Units: MAD Lab')).toBeVisible()
-    const personTableRow = screen.getByText('Dummy Staff').closest('tr')
-    expect(screen.getByText(/dummystaff@millennia21.id · MAD Lab/)).toBeVisible()
-    expect(within(personTableRow).getByText('ADMIN')).toBeVisible()
-    expect(within(personTableRow).getByText('Active')).toBeVisible()
+    const exima = (await screen.findByText('exima')).closest('tr')
+    expect(within(exima).getByText('org_exima_a1b2c3')).toBeVisible()
+    expect(within(exima).getByText('2')).toBeVisible()
+    expect(within(exima).getByText('3')).toBeVisible()
+    const hub = screen.getByText('hub').closest('tr')
+    expect(within(hub).getByText('No group yet')).toBeVisible()
   })
 
-  it('opens the full pages for granting, editing a group and roles', async () => {
+  it('opens the page of an application from Manage', async () => {
     globalThis.fetch = createFetchRouter(baseRoutes())
     const { user } = renderPage()
-    await screen.findByText('Dummy Staff')
-
-    await user.click(screen.getByRole('button', { name: 'Add Access' }))
-    expect(await screen.findByText('Grant page')).toBeVisible()
-  })
-
-  it('opens the group edit page from the row menu', async () => {
-    globalThis.fetch = createFetchRouter(baseRoutes())
-    const { user } = renderPage()
-    await screen.findByText('Dummy Staff')
-
-    await user.click(screen.getByRole('button', { name: /Actions for All Active Employees on exima/ }))
-    await user.click(screen.getByRole('button', { name: 'Edit' }))
-    expect(await screen.findByText('Group edit page')).toBeVisible()
-  })
-
-  it('confirms before blocking or removing a person, and turns a group off or deletes it', async () => {
-    const fetchMock = createFetchRouter(baseRoutes([
-      {
-        path: '/api/admin/application-entitlements/revoke/ent-1',
-        method: 'PATCH',
-        response: () => jsonResponse({ data: { ...personRow, is_active: false } }),
-      },
-      {
-        path: '/api/admin/application-entitlements/ent-1',
-        method: 'DELETE',
-        response: () => jsonResponse({ data: true }),
-      },
-      {
-        path: '/api/admin/application-access-rules/rule-1',
-        method: 'PATCH',
-        response: () => jsonResponse({ data: {} }),
-      },
-      {
-        path: '/api/admin/application-access-rules/rule-1',
-        method: 'DELETE',
-        response: () => jsonResponse({ data: true }),
-      },
-    ]))
-    globalThis.fetch = fetchMock
-    const { user } = renderPage()
-    await screen.findByText('Dummy Staff')
-
-    await user.click(screen.getByRole('button', { name: /Actions for Dummy Staff on exima/ }))
-    await user.click(screen.getByRole('button', { name: 'Block access' }))
-    const blockDialog = await screen.findByRole('dialog', { name: 'Block access' })
-    await user.click(within(blockDialog).getByRole('button', { name: 'Block' }))
-    await waitFor(() => {
-      expect(fetchMock.mock.calls.some(([url, options]) =>
-        url.endsWith('/revoke/ent-1') && options.method === 'PATCH')).toBe(true)
-    })
-
-    await user.click(screen.getByRole('button', { name: /Actions for Dummy Staff on exima/ }))
-    await user.click(screen.getByRole('button', { name: 'Remove' }))
-    const removeDialog = await screen.findByRole('dialog', { name: 'Remove own access' })
-    await user.click(within(removeDialog).getByRole('button', { name: 'Remove' }))
-    await waitFor(() => {
-      expect(fetchMock.mock.calls.some(([url, options]) =>
-        url.endsWith('/application-entitlements/ent-1') && options.method === 'DELETE')).toBe(true)
-    })
-
-    await user.click(screen.getByRole('button', { name: /Actions for All Active Employees on exima/ }))
-    await user.click(screen.getByRole('button', { name: 'Turn off' }))
-    await waitFor(() => {
-      const call = fetchMock.mock.calls.find(([url, options]) =>
-        url.endsWith('/application-access-rules/rule-1') && options.method === 'PATCH')
-      expect(JSON.parse(call[1].body)).toEqual({ is_active: false })
-    })
-
-    await user.click(screen.getByRole('button', { name: /Actions for All Active Employees on exima/ }))
-    await user.click(screen.getByRole('button', { name: 'Delete' }))
-    const deleteDialog = await screen.findByRole('dialog', { name: 'Delete group access' })
-    await user.click(within(deleteDialog).getByRole('button', { name: 'Delete' }))
-    await waitFor(() => {
-      expect(fetchMock.mock.calls.some(([url, options]) =>
-        url.endsWith('/application-access-rules/rule-1') && options.method === 'DELETE')).toBe(true)
-    })
+    await screen.findByText('exima')
+    await user.click(screen.getByRole('button', { name: 'Manage exima' }))
+    expect(await screen.findByText('App page')).toBeVisible()
   })
 
   it('shows the registry and the generated organization ids on the Roles tab', async () => {
@@ -205,16 +95,16 @@ describe('ApplicationAccessPage', () => {
     expect(await screen.findByText('Edit role page')).toBeVisible()
   })
 
-  it('switches between the Access and Roles tabs', async () => {
+  it('switches between the Applications and Roles tabs', async () => {
     globalThis.fetch = createFetchRouter(baseRoutes())
     const { user } = renderPage()
-    await screen.findByText('Dummy Staff')
+    await screen.findByText('exima')
 
     await user.click(screen.getByRole('button', { name: 'Roles' }))
     expect(await screen.findByText('LEGACY')).toBeVisible()
-    expect(screen.queryByText('Dummy Staff')).not.toBeInTheDocument()
+    expect(screen.queryByText('No group yet')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Access' }))
-    expect(await screen.findByText('Dummy Staff')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Applications' }))
+    expect(await screen.findByText('No group yet')).toBeVisible()
   })
 })

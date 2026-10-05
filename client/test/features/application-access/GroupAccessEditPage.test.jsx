@@ -40,11 +40,11 @@ function renderPage(user = { role: 'SUPER_ADMIN' }) {
   return renderWithProviders(
     <AuthContext.Provider value={{ user }}>
       <Routes>
-        <Route path="/application-access/groups/:ruleId" element={<GroupAccessEditPage />} />
-        <Route path="/application-access" element={<div>Access list</div>} />
+        <Route path="/application-access/apps/:applicationId/groups/:ruleId" element={<GroupAccessEditPage />} />
+        <Route path="/application-access/apps/:applicationId" element={<div>Access list</div>} />
       </Routes>
     </AuthContext.Provider>,
-    { route: '/application-access/groups/rule-1' },
+    { route: '/application-access/apps/exima/groups/rule-1' },
   )
 }
 
