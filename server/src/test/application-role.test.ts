@@ -22,6 +22,7 @@ describe("application role registry", () => {
     });
     await prismaClient.applicationEntitlement.deleteMany({ where: { application_id: appId } });
     await prismaClient.applicationRole.deleteMany({ where: { application_id: appId } });
+    await prismaClient.applicationOrganization.deleteMany({ where: { application_id: appId } });
     await EmployeeTest.delete();
     await AdminUserTest.delete();
     await MasterDataTest.delete();
@@ -78,7 +79,7 @@ describe("application role registry", () => {
     });
     const granted = await TestRequest.post(
       "/api/admin/application-entitlements",
-      { person_id: person.id, application_id: appId, organization_id: "mws", role: "LEAD" },
+      { person_id: person.id, application_id: appId, role: "LEAD" },
       accessToken,
     );
     expect(granted.status).toBe(200);
@@ -92,5 +93,12 @@ describe("application role registry", () => {
     const entitlement = await prismaClient.applicationEntitlement.findFirstOrThrow({ where: { application_id: appId } });
     expect(entitlement.permissions).toEqual(["a.read", "a.write"]);
     expect(entitlement.version).toBe(2);
+  });
+
+  it("creates the organization of a new application together with its first role", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await TestRequest.post(BASE, { application_id: appId, key: "LEAD", label: "Lead", permissions: [] }, accessToken);
+    const organization = await prismaClient.applicationOrganization.findUnique({ where: { application_id: appId } });
+    expect(organization?.organization_id).toMatch(/^org_/);
   });
 });

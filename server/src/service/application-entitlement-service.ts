@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import {
   AdminRole,
   AuditAction,
@@ -65,6 +66,31 @@ function auditSnapshot(entitlement: ApplicationEntitlement) {
     version: entitlement.version,
     is_active: entitlement.is_active,
   };
+}
+
+function generateOrganizationId(applicationId: string): string {
+  return `org_${applicationId.replace(/-/g, "_")}_${randomBytes(3).toString("hex")}`;
+}
+
+// One organization per application, created the first time it is needed and
+// never typed by hand.
+export async function resolveOrganizationId(applicationId: string): Promise<string> {
+  const existing = await prismaClient.applicationOrganization.findUnique({
+    where: { application_id: applicationId },
+  });
+  if (existing) return existing.organization_id;
+  try {
+    const created = await prismaClient.applicationOrganization.create({
+      data: { application_id: applicationId, organization_id: generateOrganizationId(applicationId) },
+    });
+    return created.organization_id;
+  } catch {
+    // Another request created it first.
+    const winner = await prismaClient.applicationOrganization.findUniqueOrThrow({
+      where: { application_id: applicationId },
+    });
+    return winner.organization_id;
+  }
 }
 
 // The registry decides what a role may do. Keys match exactly, no mapping.
@@ -288,6 +314,8 @@ export class ApplicationEntitlementService {
       grant.permissions,
     );
 
+    const organizationId = await resolveOrganizationId(grant.application_id);
+
     const existing = await prismaClient.applicationEntitlement.findUnique({
       where: {
         person_id_application_id: {
@@ -307,6 +335,7 @@ export class ApplicationEntitlementService {
             data: {
               role: grant.role,
               permissions: rolePermissions,
+              organization_id: organizationId,
               is_active: true,
               version: { increment: 1 },
               granted_at: new Date(),
@@ -316,7 +345,7 @@ export class ApplicationEntitlementService {
             data: {
               person_id: grant.person_id,
               application_id: grant.application_id,
-              organization_id: grant.organization_id,
+              organization_id: organizationId,
               role: grant.role,
               permissions: rolePermissions,
             },
@@ -360,7 +389,6 @@ export class ApplicationEntitlementService {
           {
             person_id: personId,
             application_id: input.application_id,
-            organization_id: input.organization_id,
             role: input.role,
           },
           context,
@@ -580,6 +608,8 @@ export class ApplicationRoleService {
     if (existing) {
       throw new ResponseError(400, `Role ${input.key} already exists for ${input.application_id}`);
     }
+    // A new application gets its organization together with its first role.
+    await resolveOrganizationId(input.application_id);
     const created = await prismaClient.$transaction(async (tx) => {
       const saved = await tx.applicationRole.create({ data: input });
       await AuditService.record(
@@ -763,7 +793,27 @@ function ruleAuditSnapshot(rule: {
   };
 }
 
+export class ApplicationOrganizationService {
+  static async list(admin: AdminUser) {
+    assertSuperAdmin(admin);
+    const rows = await prismaClient.applicationOrganization.findMany({
+      orderBy: { application_id: "asc" },
+    });
+    return rows.map((row) => ({
+      application_id: row.application_id,
+      organization_id: row.organization_id,
+    }));
+  }
+}
+
 export class ApplicationAccessRuleService {
+  static async get(admin: AdminUser, id: string): Promise<ApplicationAccessRuleResponse> {
+    assertSuperAdmin(admin);
+    const rule = await prismaClient.applicationAccessRule.findUnique({ where: { id } });
+    if (!rule) throw new ResponseError(404, "Group access not found");
+    return toApplicationAccessRuleResponse(rule);
+  }
+
   static async create(
     admin: AdminUser,
     request: CreateApplicationAccessRuleRequest,
@@ -780,9 +830,12 @@ export class ApplicationAccessRuleService {
     };
     await assertRuleReferences(input);
     if (input.is_active) await assertNoOverlap(input.application_id, input);
+    const organizationId = await resolveOrganizationId(input.application_id);
 
     const saved = await prismaClient.$transaction(async (tx) => {
-      const rule = await tx.applicationAccessRule.create({ data: input });
+      const rule = await tx.applicationAccessRule.create({
+        data: { ...input, organization_id: organizationId },
+      });
       await AuditService.record(
         {
           action: AuditAction.APPLICATION_ACCESS_RULE_CREATE,
@@ -818,7 +871,6 @@ export class ApplicationAccessRuleService {
       job_position_ids: input.job_position_ids ?? existing.job_position_ids,
       job_level_ids: input.job_level_ids ?? existing.job_level_ids,
       default_role_key: input.default_role_key ?? existing.default_role_key,
-      organization_id: input.organization_id ?? existing.organization_id,
       is_active: input.is_active ?? existing.is_active,
     };
     await assertRuleReferences(next);
@@ -832,7 +884,6 @@ export class ApplicationAccessRuleService {
           job_position_ids: next.job_position_ids,
           job_level_ids: next.job_level_ids,
           default_role_key: next.default_role_key,
-          organization_id: next.organization_id,
           is_active: next.is_active,
         },
       });

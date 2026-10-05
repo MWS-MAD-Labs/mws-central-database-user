@@ -39,6 +39,7 @@ describe("application baseline access rules", () => {
     await prismaClient.applicationEntitlement.deleteMany({ where: { application_id: appId } });
     await prismaClient.applicationAccessRule.deleteMany({ where: { application_id: appId } });
     await prismaClient.applicationRole.deleteMany({ where: { application_id: appId } });
+    await prismaClient.applicationOrganization.deleteMany({ where: { application_id: appId } });
     if (apiClientIds.length) {
       await prismaClient.apiClient.deleteMany({ where: { id: { in: apiClientIds } } });
       apiClientIds.length = 0;
@@ -76,7 +77,7 @@ describe("application baseline access rules", () => {
   async function addRule(token: string, body: Record<string, unknown> = {}) {
     return TestRequest.post(
       RULES,
-      { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF", organization_id: "mws", ...body },
+      { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF", ...body },
       token,
     );
   }
@@ -99,7 +100,7 @@ describe("application baseline access rules", () => {
     expect(body.data.permissions).toEqual(["store.use"]);
     expect(body.data.is_default).toBe(true);
     expect(body.data.version).toBe(0);
-    expect(body.data.organization_id).toBe("mws");
+    expect(body.data.organization_id).toMatch(/^org_/);
   });
 
   it("lets an explicit entitlement win and a revoked one block group access", async () => {
@@ -109,7 +110,7 @@ describe("application baseline access rules", () => {
 
     const granted = await (await TestRequest.post(
       ENTITLEMENTS,
-      { person_id: person.id, application_id: appId, organization_id: "mws", role: "ADMIN" },
+      { person_id: person.id, application_id: appId, role: "ADMIN" },
       accessToken,
     )).json();
     const explicit = (await (await lookup(person.id)).json()).data;
@@ -218,7 +219,7 @@ describe("application baseline access rules", () => {
       const person = await createEmployee(email);
       await TestRequest.post(
         ENTITLEMENTS,
-        { person_id: person.id, application_id: appId, organization_id: "mws", role: "ADMIN" },
+        { person_id: person.id, application_id: appId, role: "ADMIN" },
         accessToken,
       );
     }
@@ -249,7 +250,7 @@ describe("application baseline access rules", () => {
 
     const response = await TestRequest.post(
       `${ENTITLEMENTS}/bulk`,
-      { person_ids: [a.id, b.id, inactive.id], application_id: appId, organization_id: "mws", role: "STAFF" },
+      { person_ids: [a.id, b.id, inactive.id], application_id: appId, role: "STAFF" },
       accessToken,
     );
     const body = (await response.json()).data;
@@ -260,9 +261,51 @@ describe("application baseline access rules", () => {
 
     const unknownRole = await TestRequest.post(
       `${ENTITLEMENTS}/bulk`,
-      { person_ids: [a.id], application_id: appId, organization_id: "mws", role: "NOPE" },
+      { person_ids: [a.id], application_id: appId, role: "NOPE" },
       accessToken,
     );
     expect(unknownRole.status).toBe(400);
+  });
+
+  it("creates one organization per application, keeps it stable and lists it for Super Admin", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const first = await createEmployee("test_rule_org_a@millennia21.id");
+    const second = await createEmployee("test_rule_org_b@millennia21.id");
+
+    const one = await (await TestRequest.post(
+      ENTITLEMENTS,
+      { person_id: first.id, application_id: appId, role: "STAFF" },
+      accessToken,
+    )).json();
+    const two = await (await TestRequest.post(
+      ENTITLEMENTS,
+      { person_id: second.id, application_id: appId, role: "ADMIN", organization_id: "typed-by-hand" },
+      accessToken,
+    )).json();
+    expect(one.data.organization_id).toMatch(new RegExp(`^org_${appId.replace(/-/g, "_")}_[0-9a-f]{6}$`));
+    // Whatever is typed is ignored, the application's own organization is used.
+    expect(two.data.organization_id).toBe(one.data.organization_id);
+
+    const rule = await (await addRule(accessToken)).json();
+    expect(rule.data.organization_id).toBe(one.data.organization_id);
+
+    const listed = (await (await TestRequest.get("/api/admin/application-organizations", accessToken)).json()).data;
+    expect(listed.find((row: { application_id: string }) => row.application_id === appId).organization_id).toBe(
+      one.data.organization_id,
+    );
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin();
+    expect((await TestRequest.get("/api/admin/application-organizations", dbAdmin.accessToken)).status).toBe(403);
+  });
+
+  it("reads one group access by id", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const id = await ruleId(await addRule(accessToken, { unit_ids: [masterData.unit.id] }));
+    const response = await TestRequest.get(`${RULES}/${id}`, accessToken);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.data.unit_ids).toEqual([masterData.unit.id]);
+    expect((await TestRequest.get(`${RULES}/missing`, accessToken)).status).toBe(404);
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin();
+    expect((await TestRequest.get(`${RULES}/${id}`, dbAdmin.accessToken)).status).toBe(403);
   });
 });

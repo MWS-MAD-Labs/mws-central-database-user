@@ -42,7 +42,6 @@ export class ApplicationEntitlementValidation {
   static readonly GRANT = z.object({
     person_id: nonemptyId("Person ID"),
     application_id: applicationId,
-    organization_id: nonemptyId("Organization ID"),
     role: roleKey,
     permissions: permissions.optional(),
   });
@@ -54,7 +53,6 @@ export class ApplicationEntitlementValidation {
       .max(200, "Pick at most 200 people at a time")
       .refine((values) => new Set(values).size === values.length, "People must be unique"),
     application_id: applicationId,
-    organization_id: nonemptyId("Organization ID"),
     role: roleKey,
   });
 
@@ -102,7 +100,6 @@ const accessRuleFields = {
   job_position_ids: idList("Job position"),
   job_level_ids: idList("Job level"),
   default_role_key: roleKey,
-  organization_id: nonemptyId("Organization ID"),
   is_active: z.boolean().default(true),
 };
 
@@ -119,7 +116,6 @@ export class ApplicationAccessRuleValidation {
     job_position_ids: idList("Job position").optional(),
     job_level_ids: idList("Job level").optional(),
     default_role_key: roleKey.optional(),
-    organization_id: nonemptyId("Organization ID").optional(),
     is_active: z.boolean().optional(),
   });
 

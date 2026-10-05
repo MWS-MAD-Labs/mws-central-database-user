@@ -28,7 +28,6 @@ export type ApplicationEntitlementLookupRequest = {
 export type GrantApplicationEntitlementRequest = {
   person_id: string;
   application_id: string;
-  organization_id: string;
   role: string;
   // Optional: the registry role decides them. When sent they must match.
   permissions?: string[];
@@ -56,7 +55,6 @@ export type ListApplicationEntitlementsRequest = {
 export type BulkGrantApplicationEntitlementRequest = {
   person_ids: string[];
   application_id: string;
-  organization_id: string;
   role: string;
 };
 
@@ -67,7 +65,6 @@ export type CreateApplicationAccessRuleRequest = {
   job_position_ids?: string[];
   job_level_ids?: string[];
   default_role_key: string;
-  organization_id: string;
   is_active?: boolean;
 };
 
@@ -77,7 +74,6 @@ export type UpdateApplicationAccessRuleRequest = {
   job_position_ids?: string[];
   job_level_ids?: string[];
   default_role_key?: string;
-  organization_id?: string;
   is_active?: boolean;
 };
 

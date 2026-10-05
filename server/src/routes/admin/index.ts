@@ -26,6 +26,7 @@ import { applicationEntitlementRouter } from "./application-entitlement-router";
 import {
   applicationAccessRouter,
   applicationAccessRuleRouter,
+  applicationOrganizationRouter,
   applicationRoleRouter,
 } from "./application-role-router";
 import { applicationIntegrationProfileRouter } from "./application-integration-profile-router";
@@ -60,6 +61,7 @@ adminRouter.route("/application-entitlements", applicationEntitlementRouter);
 adminRouter.route("/application-roles", applicationRoleRouter);
 adminRouter.route("/application-access-rules", applicationAccessRuleRouter);
 adminRouter.route("/application-access", applicationAccessRouter);
+adminRouter.route("/application-organizations", applicationOrganizationRouter);
 adminRouter.route(
   "/application-integration-profiles",
   applicationIntegrationProfileRouter,

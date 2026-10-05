@@ -217,7 +217,6 @@ describe("application entitlements", () => {
       {
         person_id: person.id,
         application_id: "exima",
-        organization_id: "mws",
         role: "ADMIN",
         permissions: ADMIN_PERMISSIONS,
       },
@@ -258,7 +257,6 @@ describe("application entitlements", () => {
       {
         person_id: person.id,
         application_id: "exima",
-        organization_id: "mws",
         role: "STAFF",
         permissions: STAFF_PERMISSIONS,
       },
@@ -292,7 +290,6 @@ describe("application entitlements", () => {
       {
         person_id: person.id,
         application_id: "exima",
-        organization_id: "mws",
         role: "STAFF",
         permissions: STAFF_PERMISSIONS,
       },
@@ -336,7 +333,6 @@ describe("application entitlements", () => {
       {
         person_id: inactive.id,
         application_id: "exima",
-        organization_id: "mws",
         role: "STAFF",
         permissions: STAFF_PERMISSIONS,
       },
@@ -374,7 +370,6 @@ describe("application entitlements", () => {
       {
         person_id: person.id,
         application_id: "exima",
-        organization_id: "mws",
         role: "VIEWER",
         permissions: ["reports.read"],
       },
@@ -393,7 +388,6 @@ describe("application entitlements", () => {
         {
           person_id: person.id,
           application_id: "daily-checkin",
-          organization_id: "mws",
           role,
           permissions,
         },
@@ -421,7 +415,6 @@ describe("application entitlements", () => {
         {
           person_id: person.id,
           application_id: "daily-checkin",
-          organization_id: "mws",
           ...testCase,
         },
         accessToken,
@@ -431,7 +424,7 @@ describe("application entitlements", () => {
   });
   it("is strict about role keys: lowercase and unknown roles are rejected, permissions default from the registry", async () => {
     const { accessToken } = await createSuperAdmin();
-    const base = { application_id: "exima", organization_id: "mws" };
+    const base = { application_id: "exima" };
 
     const lower = await TestRequest.post(
       "/api/admin/application-entitlements",
@@ -466,7 +459,6 @@ describe("application entitlements", () => {
         {
           person_id: (await createEmployee()).id,
           application_id: "exima",
-          organization_id: "mws",
           role,
         },
         accessToken,

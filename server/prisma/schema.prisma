@@ -1615,6 +1615,18 @@ model ApplicationAccessRule {
   @@map("application_access_rules")
 }
 
+// The organization an application sees its Central people under. Generated
+// once per application and never typed by hand.
+model ApplicationOrganization {
+  id              String   @id @default(cuid())
+  application_id  String   @unique
+  organization_id String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@map("application_organizations")
+}
+
 // Allowed roles per application. Entitlement roles must match a row here exactly.
 model ApplicationRole {
   id             String   @id @default(cuid())

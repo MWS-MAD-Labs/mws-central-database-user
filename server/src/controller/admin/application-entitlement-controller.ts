@@ -13,6 +13,7 @@ import {
   ApplicationAccessRuleService,
   ApplicationAccessService,
   ApplicationEntitlementService,
+  ApplicationOrganizationService,
   ApplicationRoleService,
 } from "../../service/application-entitlement-service";
 import type { AdminVariables } from "../../type/hono-context";
@@ -119,7 +120,19 @@ export class ApplicationRoleController {
   }
 }
 
+export class ApplicationOrganizationController {
+  static async list(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: await ApplicationOrganizationService.list(c.var.admin) });
+  }
+}
+
 export class ApplicationAccessRuleController {
+  static async get(c: Context<{ Variables: AdminVariables }>) {
+    const id = c.req.param("id");
+    if (!id) throw new ResponseError(400, "Rule ID is required");
+    return c.json({ data: await ApplicationAccessRuleService.get(c.var.admin, id) });
+  }
+
   static async create(c: Context<{ Variables: AdminVariables }>) {
     const request = (await c.req.json()) as CreateApplicationAccessRuleRequest;
     const response = await ApplicationAccessRuleService.create(
