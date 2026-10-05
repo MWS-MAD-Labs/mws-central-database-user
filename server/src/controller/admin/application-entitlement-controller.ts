@@ -1,12 +1,15 @@
 import type { Context } from "hono";
 import type {
+  BulkGrantApplicationEntitlementRequest,
   CreateApplicationRoleRequest,
+  SetApplicationAccessRuleRequest,
   GrantApplicationEntitlementRequest,
   UpdateApplicationEntitlementRequest,
   UpdateApplicationRoleRequest,
 } from "../../model/application-entitlement-model";
 import { ResponseError } from "../../error/response-error";
 import {
+  ApplicationAccessRuleService,
   ApplicationEntitlementService,
   ApplicationRoleService,
 } from "../../service/application-entitlement-service";
@@ -17,6 +20,16 @@ export class ApplicationEntitlementController {
   static async grant(c: Context<{ Variables: AdminVariables }>) {
     const request = (await c.req.json()) as GrantApplicationEntitlementRequest;
     const response = await ApplicationEntitlementService.grant(
+      c.var.admin,
+      request,
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
+  static async bulkGrant(c: Context<{ Variables: AdminVariables }>) {
+    const request = (await c.req.json()) as BulkGrantApplicationEntitlementRequest;
+    const response = await ApplicationEntitlementService.bulkGrant(
       c.var.admin,
       request,
       getAuditRequestContext(c),
@@ -98,6 +111,24 @@ export class ApplicationRoleController {
     const response = await ApplicationRoleService.update(
       c.var.admin,
       { id, ...body },
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+}
+
+export class ApplicationAccessRuleController {
+  static async list(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: await ApplicationAccessRuleService.list(c.var.admin) });
+  }
+
+  static async set(c: Context<{ Variables: AdminVariables }>) {
+    const applicationId = c.req.param("applicationId");
+    if (!applicationId) throw new ResponseError(400, "Application ID is required");
+    const body = (await c.req.json()) as Omit<SetApplicationAccessRuleRequest, "application_id">;
+    const response = await ApplicationAccessRuleService.set(
+      c.var.admin,
+      { application_id: applicationId, ...body },
       getAuditRequestContext(c),
     );
     return c.json({ data: response });

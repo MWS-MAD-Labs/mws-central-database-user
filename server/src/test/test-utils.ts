@@ -489,6 +489,22 @@ export class TestRequest {
     );
   }
 
+  static async put<T>(
+    url: string,
+    body: T,
+    accessToken?: string,
+  ): Promise<Response> {
+    return web.request(
+      url,
+      {
+        method: "PUT",
+        headers: this.makeHeaders(accessToken),
+        body: JSON.stringify(body),
+      },
+      this.createMockEnv(),
+    );
+  }
+
   static async delete(url: string, accessToken?: string): Promise<Response> {
     return web.request(
       url,

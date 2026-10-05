@@ -9,6 +9,9 @@ export const applicationEntitlementRouter = new Hono<{
 applicationEntitlementRouter.post("/", (c) =>
   ApplicationEntitlementController.grant(c),
 );
+applicationEntitlementRouter.post("/bulk", (c) =>
+  ApplicationEntitlementController.bulkGrant(c),
+);
 applicationEntitlementRouter.get("/", (c) =>
   ApplicationEntitlementController.list(c),
 );

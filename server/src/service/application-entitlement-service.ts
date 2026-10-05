@@ -3,7 +3,9 @@ import {
   AuditAction,
   AuditSource,
   EmployeeStatus,
+  ApplicationAudience,
   PersonType,
+  StudentStatus,
   type AdminUser,
   type ApplicationEntitlement,
 } from "../generated/prisma/client";
@@ -13,7 +15,11 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toApplicationEntitlementResponse,
   type ApplicationEntitlementLookupRequest,
+  type ApplicationAccessRuleResponse,
   type ApplicationEntitlementListItem,
+  type BulkGrantApplicationEntitlementRequest,
+  type SetApplicationAccessRuleRequest,
+  toApplicationAccessRuleResponse,
   type ApplicationEntitlementResponse,
   type ApplicationRoleResponse,
   type CreateApplicationRoleRequest,
@@ -27,7 +33,9 @@ import {
 } from "../model/application-entitlement-model";
 import { paginate, type Pageable } from "../model/page-model";
 import type { ApiClientVariables } from "../type/hono-context";
+import { toBulkActionResponse, type BulkActionResponse } from "../model/bulk-action-model";
 import {
+  ApplicationAccessRuleValidation,
   ApplicationEntitlementValidation,
   ApplicationRoleValidation,
 } from "../validation/application-entitlement-validation";
@@ -81,6 +89,83 @@ async function resolveRolePermissions(
   return entry.permissions;
 }
 
+async function personMatchesRule(
+  personId: string,
+  rule: { audience: ApplicationAudience; unit_ids: string[] },
+): Promise<boolean> {
+  const person = await prismaClient.person.findFirst({
+    where: { id: personId, deleted_at: null },
+    select: {
+      person_type: true,
+      employee: { select: { status: true, deleted_at: true, unit_id: true } },
+      student: {
+        select: { status: true, deleted_at: true, current_grade: { select: { unit_id: true } } },
+      },
+    },
+  });
+  if (!person) return false;
+  const inUnits = (unitId: string | null | undefined) =>
+    rule.unit_ids.length === 0 || (unitId != null && rule.unit_ids.includes(unitId));
+
+  if (person.person_type === PersonType.EMPLOYEE) {
+    const employee = person.employee;
+    return (
+      rule.audience !== ApplicationAudience.STUDENTS &&
+      employee?.status === EmployeeStatus.ACTIVE &&
+      employee.deleted_at === null &&
+      inUnits(employee.unit_id)
+    );
+  }
+  if (person.person_type === PersonType.STUDENT) {
+    const student = person.student;
+    return (
+      rule.audience !== ApplicationAudience.EMPLOYEES &&
+      student?.status === StudentStatus.ACTIVE &&
+      student.deleted_at === null &&
+      inUnits(student.current_grade?.unit_id)
+    );
+  }
+  return false;
+}
+
+async function resolveBaselineEntitlement(
+  personId: string | undefined,
+  applicationId: string | undefined,
+): Promise<ApplicationEntitlementResponse | null> {
+  if (!personId || !applicationId) return null;
+  const rule = await prismaClient.applicationAccessRule.findUnique({
+    where: { application_id: applicationId },
+  });
+  if (!rule || !rule.is_active) return null;
+
+  const explicit = await prismaClient.applicationEntitlement.findUnique({
+    where: { person_id_application_id: { person_id: personId, application_id: applicationId } },
+    select: { id: true },
+  });
+  if (explicit) return null;
+
+  const role = await prismaClient.applicationRole.findUnique({
+    where: { application_id_key: { application_id: applicationId, key: rule.default_role_key } },
+  });
+  if (!role || !role.is_active) return null;
+  if (!(await personMatchesRule(personId, rule))) return null;
+
+  const stamp = (role.updated_at > rule.updated_at ? role.updated_at : rule.updated_at).toISOString();
+  return {
+    id: `baseline:${applicationId}`,
+    person_id: personId,
+    application_id: applicationId,
+    organization_id: rule.organization_id,
+    role: role.key,
+    permissions: role.permissions,
+    version: 0,
+    is_active: true,
+    granted_at: rule.created_at.toISOString(),
+    updated_at: stamp,
+    is_default: true,
+  };
+}
+
 export class ApplicationEntitlementService {
   static async lookup(
     client: ApiClientVariables,
@@ -106,6 +191,12 @@ export class ApplicationEntitlementService {
       orderBy: { updated_at: "desc" },
     });
 
+    // No explicit row: fall back to the application's baseline rule, unless an
+    // explicit (revoked) row exists, which means someone chose to deny access.
+    const baseline = entitlement
+      ? null
+      : await resolveBaselineEntitlement(lookup.person_id, lookup.application_id);
+
     await AuditService.record({
       action: AuditAction.API_ACCESS,
       source: AuditSource.API,
@@ -115,17 +206,16 @@ export class ApplicationEntitlementService {
       new_values: {
         requested_person_id: lookup.person_id ?? null,
         requested_application_id: lookup.application_id ?? null,
-        found: entitlement !== null,
+        found: entitlement !== null || baseline !== null,
+        via_baseline_rule: baseline !== null,
       },
       ip_address: context.ip_address,
       user_agent: context.user_agent,
     });
 
-    if (!entitlement) {
-      throw new ResponseError(404, "Active application entitlement not found");
-    }
-
-    return toApplicationEntitlementResponse(entitlement);
+    if (entitlement) return toApplicationEntitlementResponse(entitlement);
+    if (baseline) return baseline;
+    throw new ResponseError(404, "Active application entitlement not found");
   }
 
   static async grant(
@@ -210,6 +300,41 @@ export class ApplicationEntitlementService {
     });
 
     return toApplicationEntitlementResponse(entitlement);
+  }
+
+  static async bulkGrant(
+    admin: AdminUser,
+    request: BulkGrantApplicationEntitlementRequest,
+    context: AuditRequestContext = {},
+  ): Promise<BulkActionResponse<ApplicationEntitlementResponse>> {
+    assertSuperAdmin(admin);
+    const input = Validation.validate(ApplicationEntitlementValidation.BULK_GRANT, request);
+    // Fail the whole call early on a bad role instead of once per person.
+    await resolveRolePermissions(input.application_id, input.role, undefined);
+
+    const items = [];
+    for (const personId of input.person_ids) {
+      try {
+        const data = await this.grant(
+          admin,
+          {
+            person_id: personId,
+            application_id: input.application_id,
+            organization_id: input.organization_id,
+            role: input.role,
+          },
+          context,
+        );
+        items.push({ id: personId, status: "SUCCESS" as const, data });
+      } catch (error) {
+        items.push({
+          id: personId,
+          status: "FAILED" as const,
+          error: error instanceof ResponseError ? error.message : "Could not grant access",
+        });
+      }
+    }
+    return toBulkActionResponse(items);
   }
 
   static async update(
@@ -489,5 +614,96 @@ export class ApplicationRoleService {
       return saved;
     });
     return toApplicationRoleResponse(updated, activeCount);
+  }
+}
+
+export class ApplicationAccessRuleService {
+  static async list(admin: AdminUser): Promise<ApplicationAccessRuleResponse[]> {
+    assertSuperAdmin(admin);
+    const rules = await prismaClient.applicationAccessRule.findMany({
+      orderBy: { application_id: "asc" },
+    });
+    return rules.map(toApplicationAccessRuleResponse);
+  }
+
+  // One rule per application: this creates it or replaces it.
+  static async set(
+    admin: AdminUser,
+    request: SetApplicationAccessRuleRequest,
+    context: AuditRequestContext = {},
+  ): Promise<ApplicationAccessRuleResponse> {
+    assertSuperAdmin(admin);
+    const validated = Validation.validate(ApplicationAccessRuleValidation.SET, request);
+    const input = {
+      ...validated,
+      unit_ids: validated.unit_ids ?? [],
+      is_active: validated.is_active ?? true,
+    };
+
+    const role = await prismaClient.applicationRole.findUnique({
+      where: {
+        application_id_key: { application_id: input.application_id, key: input.default_role_key },
+      },
+    });
+    if (!role || !role.is_active) {
+      throw new ResponseError(
+        400,
+        `Role "${input.default_role_key}" is not an active role of ${input.application_id}`,
+      );
+    }
+    if (input.unit_ids.length > 0) {
+      const found = await prismaClient.masterUnit.count({ where: { id: { in: input.unit_ids } } });
+      if (found !== input.unit_ids.length) {
+        throw new ResponseError(400, "One or more units do not exist");
+      }
+    }
+
+    const existing = await prismaClient.applicationAccessRule.findUnique({
+      where: { application_id: input.application_id },
+    });
+    const snapshot = (rule: {
+      audience: string;
+      unit_ids: string[];
+      default_role_key: string;
+      organization_id: string;
+      is_active: boolean;
+    }) => ({
+      audience: rule.audience,
+      unit_ids: rule.unit_ids,
+      default_role_key: rule.default_role_key,
+      organization_id: rule.organization_id,
+      is_active: rule.is_active,
+    });
+
+    const saved = await prismaClient.$transaction(async (tx) => {
+      const data = {
+        audience: input.audience,
+        unit_ids: input.unit_ids,
+        default_role_key: input.default_role_key,
+        organization_id: input.organization_id,
+        is_active: input.is_active,
+      };
+      const rule = existing
+        ? await tx.applicationAccessRule.update({ where: { id: existing.id }, data })
+        : await tx.applicationAccessRule.create({
+            data: { application_id: input.application_id, ...data },
+          });
+      await AuditService.record(
+        {
+          action: AuditAction.APPLICATION_ACCESS_RULE_SET,
+          source: AuditSource.UI,
+          entity_type: "ApplicationAccessRule",
+          entity_id: rule.id,
+          admin_id: admin.id,
+          old_values: existing ? snapshot(existing) : undefined,
+          new_values: { application_id: rule.application_id, ...snapshot(rule) },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+      return rule;
+    });
+    return toApplicationAccessRuleResponse(saved);
   }
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ApplicationAudience } from "../generated/prisma/client";
 
 const applicationId = z
   .string()
@@ -46,6 +47,17 @@ export class ApplicationEntitlementValidation {
     permissions: permissions.optional(),
   });
 
+  static readonly BULK_GRANT = z.object({
+    person_ids: z
+      .array(nonemptyId("Person ID"))
+      .min(1, "Pick at least one person")
+      .max(200, "Pick at most 200 people at a time")
+      .refine((values) => new Set(values).size === values.length, "People must be unique"),
+    application_id: applicationId,
+    organization_id: nonemptyId("Organization ID"),
+    role: roleKey,
+  });
+
   static readonly UPDATE = z
     .object({
       id: nonemptyId("Entitlement ID"),
@@ -67,6 +79,28 @@ export class ApplicationEntitlementValidation {
     search: z.string().trim().max(100).optional(),
     page: z.number().int().min(1).default(1),
     size: z.number().int().min(1).max(100).default(10),
+  });
+}
+
+const AUDIENCES = Object.values(ApplicationAudience) as [
+  ApplicationAudience,
+  ...ApplicationAudience[],
+];
+
+export class ApplicationAccessRuleValidation {
+  static readonly SET = z.object({
+    application_id: applicationId,
+    audience: z.enum(AUDIENCES, {
+      message: "Audience must be EMPLOYEES, STUDENTS or EMPLOYEES_AND_STUDENTS",
+    }),
+    unit_ids: z
+      .array(nonemptyId("Unit ID"))
+      .max(50, "Too many units")
+      .refine((values) => new Set(values).size === values.length, "Units must be unique")
+      .default([]),
+    default_role_key: roleKey,
+    organization_id: nonemptyId("Organization ID"),
+    is_active: z.boolean().default(true),
   });
 }
 

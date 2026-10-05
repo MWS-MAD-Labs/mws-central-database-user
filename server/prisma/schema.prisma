@@ -315,6 +315,7 @@ enum AuditAction {
   APPLICATION_ENTITLEMENT_REVOKE
   APPLICATION_ROLE_CREATE
   APPLICATION_ROLE_UPDATE
+  APPLICATION_ACCESS_RULE_SET
   ROLE_CHANGE
   PERMISSION_CHANGE
   REQUEST_IDENTIFIER_CHANGE
@@ -1581,6 +1582,30 @@ model ApplicationEntitlement {
   @@unique([person_id, application_id])
   @@index([application_id, organization_id, is_active])
   @@map("application_entitlements")
+}
+
+enum ApplicationAudience {
+  EMPLOYEES
+  STUDENTS
+  EMPLOYEES_AND_STUDENTS
+}
+
+// Baseline access for ordinary users: everyone in the audience (optionally
+// limited to some units) gets default_role_key without a per-person row. An
+// explicit entitlement for the same person always wins, including a revoked one.
+model ApplicationAccessRule {
+  id               String              @id @default(cuid())
+  application_id   String              @unique
+  audience         ApplicationAudience
+  // Empty means every unit.
+  unit_ids         String[]            @default([])
+  default_role_key String
+  organization_id  String
+  is_active        Boolean             @default(true)
+  created_at       DateTime            @default(now())
+  updated_at       DateTime            @updatedAt
+
+  @@map("application_access_rules")
 }
 
 // Allowed roles per application. Entitlement roles must match a row here exactly.
