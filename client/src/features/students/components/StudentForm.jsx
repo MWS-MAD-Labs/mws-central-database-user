@@ -31,7 +31,11 @@ import {
   trimmedOrUndefined,
   visibleErrors,
 } from "../../../lib/form.js";
-import { enumOptions, formatStatus, UNKNOWN_LEGACY_GRADE_NAME } from "../../../lib/format.js";
+import {
+  enumOptions,
+  formatStatus,
+  UNKNOWN_LEGACY_GRADE_NAME,
+} from "../../../lib/format.js";
 import {
   buildChangedFieldEntries,
   buildFilledFieldEntries,
@@ -86,17 +90,25 @@ export function StudentForm({
   const revealBirthMutation = useMutation({
     mutationFn: () => studentSensitiveApi.recordPiiAccess(student.id),
     onSuccess: (revealed) => {
-      const fresh = getInitialValues(mode, {
-        ...student,
-        identity: { ...student.identity, ...revealed },
-      }, options);
-      const patch = { birth_place: fresh.birth_place, birth_date: fresh.birth_date };
+      const fresh = getInitialValues(
+        mode,
+        {
+          ...student,
+          identity: { ...student.identity, ...revealed },
+        },
+        options,
+      );
+      const patch = {
+        birth_place: fresh.birth_place,
+        birth_date: fresh.birth_date,
+      };
       // Same patch on both, so loading the values never makes the form dirty.
       setInitialValues((current) => ({ ...current, ...patch }));
       setValues((current) => ({ ...current, ...patch }));
       setBirthRevealed(true);
     },
-    onError: (error) => showErrorToast(error, "Could not reveal birth details."),
+    onError: (error) =>
+      showErrorToast(error, "Could not reveal birth details."),
   });
   async function handleRevealBirth() {
     const confirmed = await confirm({
@@ -299,12 +311,19 @@ export function StudentForm({
       }
     }
 
-    onSubmit(buildPayload(values, { includeBirth: birthRevealed }), pendingPhotoBlob);
+    onSubmit(
+      buildPayload(values, { includeBirth: birthRevealed }),
+      pendingPhotoBlob,
+    );
   }
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="min-w-0 space-y-5 pb-20" noValidate>
+      <form
+        onSubmit={handleSubmit}
+        className="min-w-0 space-y-5 pb-20"
+        noValidate
+      >
         <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
           <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
             Identity
@@ -335,9 +354,7 @@ export function StudentForm({
                 </label>
               </div>
               <div className="text-sm text-(--mws-muted)">
-                <p className="font-semibold text-(--mws-charcoal)">
-                  Photo
-                </p>
+                <p className="font-semibold text-(--mws-charcoal)">Photo</p>
                 <p>Add one after creating the student.</p>
               </div>
             </div>
@@ -490,10 +507,7 @@ export function StudentForm({
                 </div>
               </Field>
             ) : (
-              <Field
-                label="NIS"
-                hint="Managed by backend and locked after creation."
-              >
+              <Field label="NIS" hint="System-generated and uneditable.">
                 <TextInput
                   value={values.nis || values.legacy_nis || "-"}
                   disabled
@@ -534,7 +548,9 @@ export function StudentForm({
                   <LockedHint
                     request={myRequestFor("nisn")}
                     onRequestChange={
-                      student?.id ? () => setRequestNisnChangeOpen(true) : undefined
+                      student?.id
+                        ? () => setRequestNisnChangeOpen(true)
+                        : undefined
                     }
                   />
                 ) : (
@@ -688,7 +704,9 @@ export function StudentForm({
                 <CheckboxField
                   label="SN"
                   checked={values.sn}
-                  onChange={(event) => updateCheckbox("sn", event.target.checked)}
+                  onChange={(event) =>
+                    updateCheckbox("sn", event.target.checked)
+                  }
                 />
               </>
             ) : isLegacyGraduateCreate ? (
@@ -728,7 +746,9 @@ export function StudentForm({
                 <CheckboxField
                   label="SN"
                   checked={values.sn}
-                  onChange={(event) => updateCheckbox("sn", event.target.checked)}
+                  onChange={(event) =>
+                    updateCheckbox("sn", event.target.checked)
+                  }
                 />
               </>
             ) : null}
@@ -786,7 +806,9 @@ export function StudentForm({
             type="submit"
             loading={isSubmitting}
             disabled={
-              isSubmitting || missingRequiredCount > 0 || (!isCreate && !isDirty)
+              isSubmitting ||
+              missingRequiredCount > 0 ||
+              (!isCreate && !isDirty)
             }
             title={
               buildFixFieldsTooltip(allErrors) ||

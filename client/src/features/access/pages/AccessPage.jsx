@@ -470,12 +470,15 @@ function AdminUsersPanel() {
           role="status"
           className="border-b border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]"
         >
-          <p className="font-semibold">No approver for employee data changes yet.</p>
+          <p className="font-semibold">
+            No approver for employee data changes yet.
+          </p>
           <p className="mt-0.5">
             Requests to change a locked NIK, NPWP, bank or BPJS number can't be
-            reviewed. Pick an admin who is linked to an employee with the Head of
-            CARE position, then tick Change Request Approver in their Employee
-            permissions. Requests filed earlier appear for them automatically.
+            reviewed. Pick an admin who is linked to an employee with the Head
+            of CARE position, then tick Change Request Approver in their
+            Employee permissions. Requests filed earlier appear for them
+            automatically.
           </p>
         </div>
       ) : null}
@@ -860,7 +863,7 @@ function AdminUsersPanel() {
                                 >
                                   <span className="flex items-center gap-2">
                                     <Clock3 size={15} />
-                                    Grant after-hours write
+                                    Grant after-hours
                                   </span>
                                 </ActionsMenuItem>
                                 {admin.role === "SUPER_ADMIN" ? (
@@ -1228,12 +1231,14 @@ function PromoteDialog({ isSubmitting, onClose, onSubmit }) {
             itemLabel="employee"
             isLoading={employeesQuery.isFetching}
             value={values.employee_id}
-            paging={employeesQuery.data?.paging || {
-              current_page: employeePage,
-              total_page: 1,
-              total_item: employees.length,
-              size: employeePageSize,
-            }}
+            paging={
+              employeesQuery.data?.paging || {
+                current_page: employeePage,
+                total_page: 1,
+                total_item: employees.length,
+                size: employeePageSize,
+              }
+            }
             search={employeeSearch}
             onChange={(employeeId) => {
               const employee = employees.find((e) => e.id === employeeId);
@@ -1525,7 +1530,13 @@ function PermissionGroupMenu({ label, items }) {
   );
 }
 
-function UnitScopeControl({ label, allUnits, unitIds = [], disabled, onClick }) {
+function UnitScopeControl({
+  label,
+  allUnits,
+  unitIds = [],
+  disabled,
+  onClick,
+}) {
   const detail = allUnits
     ? "All"
     : unitIds.length > 0
@@ -1536,7 +1547,11 @@ function UnitScopeControl({ label, allUnits, unitIds = [], disabled, onClick }) 
     <button
       type="button"
       disabled={disabled}
-      title={disabled ? `Enable ${label === "Student Units" ? "View Students" : "View Employees & Interns"} first` : undefined}
+      title={
+        disabled
+          ? `Enable ${label === "Student Units" ? "View Students" : "View Employees & Interns"} first`
+          : undefined
+      }
       onClick={onClick}
       className="inline-flex items-center gap-1.5 rounded-full border border-(--mws-line) bg-white px-2.5 py-1 text-xs font-semibold text-(--mws-charcoal) transition hover:border-(--mws-burgundy) disabled:cursor-not-allowed disabled:opacity-50"
     >
@@ -1637,9 +1652,13 @@ function UnitScopeDialog({ admin, domain, isSubmitting, onClose, onSubmit }) {
         {mode === "custom" ? (
           <div className="ml-7 max-h-64 space-y-1 overflow-y-auto rounded-xl border border-(--mws-line) p-2">
             {unitsQuery.isLoading ? (
-              <p className="px-2 py-3 text-sm text-(--mws-muted)">Loading units...</p>
+              <p className="px-2 py-3 text-sm text-(--mws-muted)">
+                Loading units...
+              </p>
             ) : units.length === 0 ? (
-              <p className="px-2 py-3 text-sm text-(--mws-muted)">No units available.</p>
+              <p className="px-2 py-3 text-sm text-(--mws-muted)">
+                No units available.
+              </p>
             ) : (
               units.map((unit) => (
                 <label
