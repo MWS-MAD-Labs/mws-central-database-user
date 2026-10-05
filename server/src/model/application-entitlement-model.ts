@@ -93,6 +93,7 @@ export type ListApplicationCandidatesRequest = {
   application_id: string;
   coverage?: "ANY" | "COVERED" | "UNCOVERED" | "GROUP";
   group_id?: string;
+  exclude_own_access?: boolean;
   unit_id?: string;
   job_position_id?: string;
   job_level_id?: string;

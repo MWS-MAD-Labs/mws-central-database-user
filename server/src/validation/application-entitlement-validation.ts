@@ -111,6 +111,8 @@ export class ApplicationAccessRuleValidation {
     application_id: applicationId,
     coverage: z.enum(["ANY", "COVERED", "UNCOVERED", "GROUP"]).default("ANY"),
     group_id: nonemptyId("Group ID").optional(),
+    // Leave out people who already have their own access row for the application.
+    exclude_own_access: z.boolean().optional(),
     unit_id: nonemptyId("Unit ID").optional(),
     job_position_id: nonemptyId("Job position ID").optional(),
     job_level_id: nonemptyId("Job level ID").optional(),

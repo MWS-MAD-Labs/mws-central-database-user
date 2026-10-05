@@ -192,6 +192,7 @@ export class ApplicationAccessController {
       application_id: applicationId,
       coverage: coverage as "ANY" | "COVERED" | "UNCOVERED" | "GROUP" | undefined,
       group_id: c.req.query("group_id"),
+      exclude_own_access: c.req.query("exclude_own_access") === "true" ? true : undefined,
       unit_id: c.req.query("unit_id"),
       job_position_id: c.req.query("job_position_id"),
       job_level_id: c.req.query("job_level_id"),

@@ -1013,7 +1013,12 @@ export class ApplicationAccessService {
             ],
           }
         : {}),
-      AND: [coverageWhere],
+      AND: [
+        coverageWhere,
+        ...(filters.exclude_own_access
+          ? [{ person: { application_entitlements: { none: { application_id: filters.application_id } } } }]
+          : []),
+      ],
     };
 
     return paginate(page, size, {

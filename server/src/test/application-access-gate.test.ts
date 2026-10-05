@@ -270,6 +270,31 @@ describe("application access gate: no redundant access, parent removed last", ()
     expect((await TestRequest.get(url, dbAdmin.accessToken)).status).toBe(403);
   });
 
+  it("can leave out people who already have their own access", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const withOwn = await createEmployee("test_gate_own_a@millennia21.id");
+    const blocked = await createEmployee("test_gate_own_b@millennia21.id");
+    const free = await createEmployee("test_gate_own_c@millennia21.id");
+    await addRule(accessToken);
+    await grant(accessToken, withOwn.id, "ADMIN");
+    const blockedGrant = await (await grant(accessToken, blocked.id, "ADMIN")).json();
+    await TestRequest.patch(`${ENTITLEMENTS}/revoke/${blockedGrant.data.id}`, {}, accessToken);
+
+    const url = `/api/admin/application-access/candidates?application_id=${appId}`;
+    const plain = (await (await TestRequest.get(url, accessToken)).json()) as { data: { person_id: string }[]; paging: { total_item: number } };
+    expect(plain.data.map((item) => item.person_id)).toEqual(expect.arrayContaining([withOwn.id, blocked.id, free.id]));
+
+    const trimmed = (await (await TestRequest.get(`${url}&exclude_own_access=true`, accessToken)).json()) as {
+      data: { person_id: string }[];
+      paging: { total_item: number };
+    };
+    const ids = trimmed.data.map((item) => item.person_id);
+    expect(ids).toContain(free.id);
+    expect(ids).not.toContain(withOwn.id);
+    expect(ids).not.toContain(blocked.id);
+    expect(trimmed.paging.total_item).toBe(plain.paging.total_item - 2);
+  });
+
   it("treats everyone as uncovered when the application has no groups", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const person = await createEmployee("test_gate_cand_c@millennia21.id");
