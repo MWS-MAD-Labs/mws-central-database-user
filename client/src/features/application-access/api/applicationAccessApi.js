@@ -28,6 +28,12 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  // Deletes the person's own access row. They fall back to group access.
+  async removeEntitlement(id) {
+    const response = await apiRequest(`${ENTITLEMENTS}/${id}`, { method: 'DELETE' })
+    return response.data
+  },
+
   async revoke(id) {
     const response = await apiRequest(`${ENTITLEMENTS}/revoke/${id}`, { method: 'PATCH' })
     return response.data

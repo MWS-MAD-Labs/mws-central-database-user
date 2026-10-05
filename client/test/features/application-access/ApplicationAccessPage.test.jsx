@@ -120,12 +120,17 @@ describe('ApplicationAccessPage', () => {
     expect(await screen.findByText('Group edit page')).toBeVisible()
   })
 
-  it('confirms before revoking a person and turns a group off or deletes it', async () => {
+  it('confirms before blocking or removing a person, and turns a group off or deletes it', async () => {
     const fetchMock = createFetchRouter(baseRoutes([
       {
         path: '/api/admin/application-entitlements/revoke/ent-1',
         method: 'PATCH',
         response: () => jsonResponse({ data: { ...personRow, is_active: false } }),
+      },
+      {
+        path: '/api/admin/application-entitlements/ent-1',
+        method: 'DELETE',
+        response: () => jsonResponse({ data: true }),
       },
       {
         path: '/api/admin/application-access-rules/rule-1',
@@ -143,12 +148,21 @@ describe('ApplicationAccessPage', () => {
     await screen.findByText('Dummy Staff')
 
     await user.click(screen.getByRole('button', { name: /Actions for Dummy Staff on exima/ }))
-    await user.click(screen.getByRole('button', { name: 'Revoke' }))
-    const revokeDialog = await screen.findByRole('dialog', { name: 'Revoke access' })
-    await user.click(within(revokeDialog).getByRole('button', { name: 'Revoke' }))
+    await user.click(screen.getByRole('button', { name: 'Block access' }))
+    const blockDialog = await screen.findByRole('dialog', { name: 'Block access' })
+    await user.click(within(blockDialog).getByRole('button', { name: 'Block' }))
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([url, options]) =>
         url.endsWith('/revoke/ent-1') && options.method === 'PATCH')).toBe(true)
+    })
+
+    await user.click(screen.getByRole('button', { name: /Actions for Dummy Staff on exima/ }))
+    await user.click(screen.getByRole('button', { name: 'Remove' }))
+    const removeDialog = await screen.findByRole('dialog', { name: 'Remove own access' })
+    await user.click(within(removeDialog).getByRole('button', { name: 'Remove' }))
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url, options]) =>
+        url.endsWith('/application-entitlements/ent-1') && options.method === 'DELETE')).toBe(true)
     })
 
     await user.click(screen.getByRole('button', { name: /Actions for All Active Employees on exima/ }))

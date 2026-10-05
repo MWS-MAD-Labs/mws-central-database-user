@@ -43,6 +43,17 @@ export function GrantAccessPage() {
   const roles = rolesQuery.data || [];
   const optionsQuery = useQuery({ queryKey: ["employee-form-options"], queryFn: loadEmployeeFormOptions });
   const options = optionsQuery.data || {};
+  const groupsQuery = useQuery({
+    queryKey: ["application-access", "groups", application],
+    queryFn: () =>
+      applicationAccessApi.listAccess({
+        application_id: application,
+        kind: "GROUP",
+        is_active: true,
+        size: 100,
+      }),
+    enabled: Boolean(application),
+  });
   const employeesQuery = useQuery({
     queryKey: ["application-access", "employees", params, filter],
     queryFn: () =>
@@ -79,6 +90,24 @@ export function GrantAccessPage() {
   const roleOptions = roles.filter((role) => role.application_id === application && role.is_active);
   const selectedRole = roleOptions.find((role) => role.key === roleKey);
   const hasActiveFilter = Object.values(filter).some(Boolean);
+
+  // Specific access sits on top of a baseline: a group with no filters.
+  const groups = groupsQuery.data?.data || [];
+  const baselines = groups.filter(
+    (row) =>
+      row.group.units.length === 0 &&
+      row.group.job_positions.length === 0 &&
+      row.group.job_levels.length === 0,
+  );
+  const covers = (rowAudience, target) => rowAudience === "EMPLOYEES_AND_STUDENTS" || rowAudience === target;
+  const targetAudience = mode === "PEOPLE" ? "EMPLOYEES" : audience;
+  const matchingBaseline = baselines.find((row) => covers(row.group.audience, targetAudience));
+  const groupIsBaseline =
+    mode === "GROUP" &&
+    groupFilters.units.selected === null &&
+    (audience === "STUDENTS" ||
+      (groupFilters.positions.selected === null && groupFilters.levels.selected === null));
+  const needsBaseline = Boolean(application) && groupsQuery.isSuccess && !matchingBaseline && !groupIsBaseline;
 
   function setFilterValue(patch) {
     setFilter((current) => ({ ...current, ...patch }));
@@ -152,7 +181,7 @@ export function GrantAccessPage() {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!application || !roleKey) return;
+    if (!application || !roleKey || needsBaseline) return;
     if (mode === "PEOPLE") {
       if (selected.size === 0) return;
       peopleMutation.mutate();
@@ -308,6 +337,17 @@ export function GrantAccessPage() {
                     : `Permissions: ${selectedRole.permissions.join(", ")}`}
                 </p>
               ) : null}
+              {needsBaseline ? (
+                <p className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-3 py-2 text-xs text-[#805b18]">
+                  Set up the baseline for {application} first. Switch Who to A Group, keep every filter on All,
+                  and grant that group a role. People and narrower groups come after it.
+                </p>
+              ) : matchingBaseline && !groupIsBaseline ? (
+                <p className="text-xs text-(--mws-muted)">
+                  {audienceLabels[matchingBaseline.group.audience]} already get {matchingBaseline.role}. Pick a
+                  different role to give someone more or less.
+                </p>
+              ) : null}
               <OrganizationNote applicationId={application} />
             </div>
             <div className="flex gap-2">
@@ -317,6 +357,7 @@ export function GrantAccessPage() {
               <Button
                 type="submit"
                 className="flex-1"
+                disabled={needsBaseline}
                 loading={peopleMutation.isPending || groupMutation.isPending}
               >
                 Grant

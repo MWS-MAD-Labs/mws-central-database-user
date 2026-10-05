@@ -80,9 +80,11 @@ export function ApplicationAccessPage() {
       </div>
       {activeTab === "roles" ? <RolesPanel /> : <AccessPanel />}
       <PageHint id="application-access-source-of-truth">
-        Give access to people or to a group. If someone matches several, the most specific one wins:
-        the person, then job position, job level, unit, and everyone last. A person who was revoked stays
-        blocked even if a group covers them.
+        Start with a baseline for each application: a group for everyone with all units, positions and
+        levels. Then add people or narrower groups only when they need a different role. The most specific
+        access wins: the person, then job position, job level, unit, and the baseline last. Someone who
+        is blocked stays blocked even if a group covers them. To remove a baseline, handle the specific
+        access under it first.
       </PageHint>
     </div>
   );
@@ -143,9 +145,18 @@ function AccessPanel() {
     mutationFn: (id) => applicationAccessApi.revoke(id),
     onSuccess: () => {
       invalidate();
-      showSuccessToast("Access revoked.");
+      showSuccessToast("Access blocked.");
     },
-    onError: (error) => showErrorToast(error, "Could not revoke this access."),
+    onError: (error) => showErrorToast(error, "Could not block this access."),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (id) => applicationAccessApi.removeEntitlement(id),
+    onSuccess: () => {
+      invalidate();
+      showSuccessToast("Own access removed.");
+    },
+    onError: (error) => showErrorToast(error, "Could not remove this access."),
   });
 
   const restoreMutation = useMutation({
@@ -158,9 +169,9 @@ function AccessPanel() {
       }),
     onSuccess: () => {
       invalidate();
-      showSuccessToast("Access restored.");
+      showSuccessToast("Access unblocked.");
     },
-    onError: (error) => showErrorToast(error, "Could not restore this access."),
+    onError: (error) => showErrorToast(error, "Could not unblock this access."),
   });
 
   const groupMutation = useMutation({
@@ -276,7 +287,7 @@ function AccessPanel() {
                 <td className={denseCellClass}>{row.organization_id}</td>
                 <td className={denseCellClass}>
                   <StatusBadge tone={row.is_active ? "green" : "neutral"}>
-                    {row.is_active ? "Active" : isGroup ? "Off" : "Revoked"}
+                    {row.is_active ? "Active" : isGroup ? "Off" : "Blocked"}
                   </StatusBadge>
                 </td>
                 <td className={`${denseCellClass} whitespace-nowrap text-xs text-(--mws-muted)`}>
@@ -329,29 +340,57 @@ function AccessPanel() {
                             Change role
                           </ActionsMenuItem>
                           <ActionsMenuItem
+                            onClick={async () => {
+                              closeMenu();
+                              const confirmed = await confirm({
+                                title: "Remove own access",
+                                description: `${row.person.full_name} falls back to group access on ${row.application_id}, or loses access if no group covers them.`,
+                                confirmLabel: "Remove",
+                              });
+                              if (confirmed) removeMutation.mutate(row.id);
+                            }}
+                          >
+                            Remove
+                          </ActionsMenuItem>
+                          <ActionsMenuItem
                             tone="danger"
                             onClick={async () => {
                               closeMenu();
                               const confirmed = await confirm({
-                                title: "Revoke access",
-                                description: `${row.person.full_name} will no longer be able to open ${row.application_id}.`,
-                                confirmLabel: "Revoke",
+                                title: "Block access",
+                                description: `${row.person.full_name} will not be able to open ${row.application_id}, even if a group covers them.`,
+                                confirmLabel: "Block",
                               });
                               if (confirmed) revokeMutation.mutate(row.id);
                             }}
                           >
-                            Revoke
+                            Block access
                           </ActionsMenuItem>
                         </>
                       ) : (
-                        <ActionsMenuItem
-                          onClick={() => {
-                            closeMenu();
-                            restoreMutation.mutate(row);
-                          }}
-                        >
-                          Restore with the same role
-                        </ActionsMenuItem>
+                        <>
+                          <ActionsMenuItem
+                            onClick={() => {
+                              closeMenu();
+                              restoreMutation.mutate(row);
+                            }}
+                          >
+                            Unblock
+                          </ActionsMenuItem>
+                          <ActionsMenuItem
+                            onClick={async () => {
+                              closeMenu();
+                              const confirmed = await confirm({
+                                title: "Remove own access",
+                                description: `${row.person.full_name} falls back to group access on ${row.application_id}, or loses access if no group covers them.`,
+                                confirmLabel: "Remove",
+                              });
+                              if (confirmed) removeMutation.mutate(row.id);
+                            }}
+                          >
+                            Remove
+                          </ActionsMenuItem>
+                        </>
                       )
                     }
                   </ActionsMenu>

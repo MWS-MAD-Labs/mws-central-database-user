@@ -12,8 +12,25 @@ const roles = [
   { id: 'role-old', application_id: 'exima', key: 'LEGACY', label: 'Legacy', permissions: [], is_active: false, active_entitlement_count: 0 },
 ]
 
-const routes = (extra = []) => [
+const baselineRow = {
+  kind: 'GROUP',
+  id: 'rule-base',
+  application_id: 'exima',
+  role: 'STAFF',
+  permissions: ['store.use'],
+  organization_id: 'org_exima_a1b2c3',
+  is_active: true,
+  group: { audience: 'EMPLOYEES', units: [], job_positions: [], job_levels: [] },
+  person: null,
+}
+
+const routes = (extra = [], groups = [baselineRow]) => [
   ...extra,
+  {
+    path: /^\/api\/admin\/application-access\?/,
+    method: 'GET',
+    response: () => jsonResponse({ data: groups, paging: { current_page: 1, total_page: 1, total_item: groups.length, size: 100 } }),
+  },
   { path: '/api/admin/application-roles', response: () => jsonResponse({ data: roles }) },
   { path: '/api/admin/application-organizations', response: () => jsonResponse({ data: [{ application_id: 'exima', organization_id: 'org_exima_a1b2c3' }] }) },
   { path: /^\/api\/admin\/units/, response: () => jsonResponse({ data: [{ id: 'unit-1', name: 'MAD Lab' }, { id: 'unit-2', name: 'Elementary' }] }) },
@@ -186,5 +203,49 @@ describe('GrantAccessPage', () => {
         default_role_key: 'ADMIN',
       })
     })
+  })
+
+  it('asks for the baseline first and disables Grant until it exists', async () => {
+    const fetchMock = createFetchRouter(routes([], []))
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await screen.findByRole('button', { name: 'Select an application' })
+    await chooseApplicationAndRole(user, /STAFF/)
+
+    expect(await screen.findByText(/Set up the baseline for exima first/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Grant' })).toBeDisabled()
+  })
+
+  it('tells which role everyone already gets once a baseline exists', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    await screen.findByRole('button', { name: 'Select an application' })
+    await chooseApplicationAndRole(user, /ADMIN/)
+
+    expect(await screen.findByText(/All Active Employees already get STAFF/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Grant' })).not.toBeDisabled()
+  })
+
+  it('still lets the baseline itself be created when none exists', async () => {
+    const fetchMock = createFetchRouter(routes([
+      {
+        path: '/api/admin/application-access-rules',
+        method: 'POST',
+        response: () => jsonResponse({ data: { id: 'rule-new' } }),
+      },
+    ], []))
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await screen.findByRole('button', { name: 'Specific People' })
+    await user.click(screen.getByRole('button', { name: 'Specific People' }))
+    await user.click(screen.getByRole('option', { name: 'A Group' }))
+    await chooseApplicationAndRole(user, /STAFF/)
+
+    expect(screen.getByRole('button', { name: 'Grant' })).not.toBeDisabled()
+    // Narrowing the group makes it a specific access, which needs the baseline.
+    await user.click(screen.getByLabelText('All Units'))
+    await user.click(screen.getByLabelText('MAD Lab'))
+    expect(await screen.findByText(/Set up the baseline for exima first/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Grant' })).toBeDisabled()
   })
 })
