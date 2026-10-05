@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { IDENTIFIER_CHANGE_ENTITY_TYPES } from "../model/identifier-change-request-model";
+import {
+  CHANGE_REQUEST_ENTITY_TYPES,
+  IDENTIFIER_CHANGE_ENTITY_TYPES,
+} from "../model/identifier-change-request-model";
 
 export class IdentifierChangeRequestValidation {
   static readonly CREATE = z.object({
@@ -35,7 +38,7 @@ export class IdentifierChangeRequestValidation {
   });
 
   static readonly LIST_MINE = z.object({
-    entity_type: z.enum(IDENTIFIER_CHANGE_ENTITY_TYPES).optional(),
+    entity_type: z.enum(CHANGE_REQUEST_ENTITY_TYPES).optional(),
     entity_id: z.string().min(1).optional(),
     page: z.number().int().min(1).default(1),
     size: z.number().int().min(1).max(100).default(10),
@@ -43,7 +46,7 @@ export class IdentifierChangeRequestValidation {
 
   static readonly LIST = z.object({
     status: z.enum(["PENDING", "APPROVED", "REJECTED", "CANCELLED"]).optional(),
-    entity_type: z.enum(IDENTIFIER_CHANGE_ENTITY_TYPES).optional(),
+    entity_type: z.enum(CHANGE_REQUEST_ENTITY_TYPES).optional(),
     entity_id: z.string().min(1).optional(),
     // The History tab: everything that is no longer pending.
     history: z.boolean().optional(),

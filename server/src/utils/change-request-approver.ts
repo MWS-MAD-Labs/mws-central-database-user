@@ -61,14 +61,16 @@ export async function headOfCarePersonIds(
   return new Set(employees.map((employee) => employee.person_id));
 }
 
-// Employee data additionally needs the approver to be an active Head of CARE.
-// Student requests only need the flag for now.
+// Entity types that need an active Head of CARE approver. Student requests
+// only need the flag for now.
+const HEAD_OF_CARE_ENTITY_TYPES = ["Employee", "DisciplinaryAction"];
+
 export async function canApproveEntity(
   admin: ApproverFlags & Pick<AdminUser, "person_id">,
   entityType: string,
 ): Promise<boolean> {
   if (!isChangeRequestApprover(admin)) return false;
-  if (entityType !== "Employee") return true;
+  if (!HEAD_OF_CARE_ENTITY_TYPES.includes(entityType)) return true;
   return isHeadOfCare(admin);
 }
 
@@ -80,7 +82,7 @@ export async function hasActiveApprover(entityType: string): Promise<boolean> {
       can_approve_identifier_changes: true,
       is_active: true,
       role: { in: [AdminRole.SUPER_ADMIN, AdminRole.DATABASE_ADMIN] },
-      ...(entityType === "Employee"
+      ...(HEAD_OF_CARE_ENTITY_TYPES.includes(entityType)
         ? { person: { is: { employee: { is: HEAD_OF_CARE_WHERE } } } }
         : {}),
     },

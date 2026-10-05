@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import { DisciplinaryActionService } from "../../service/disciplinary-action-service";
+import { DisciplinaryChangeRequestService } from "../../service/disciplinary-change-request-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type { DisciplinaryActionType } from "../../generated/prisma/enums";
@@ -89,6 +90,26 @@ export class DisciplinaryActionController {
       getAuditRequestContext(c),
     );
 
+    return c.json({ data: response });
+  }
+
+  static async requestEdit(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const employeeId = c.req.param("id");
+    const actionId = c.req.param("actionId");
+    if (!employeeId || !actionId) {
+      throw new ResponseError(400, "Employee ID and action ID are required in parameter");
+    }
+    const body = (await c.req.json()) as {
+      reason?: string;
+      notes?: string;
+      change_reason: string;
+    };
+    const response = await DisciplinaryChangeRequestService.requestEdit(
+      admin,
+      { id: actionId, employee_id: employeeId, ...body },
+      getAuditRequestContext(c),
+    );
     return c.json({ data: response });
   }
 

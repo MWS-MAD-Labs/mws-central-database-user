@@ -31,6 +31,7 @@ import {
   resolveEmployeeUnitScope,
   type AdminUserWithEmployeeScope,
 } from "../utils/admin-permissions";
+import { canApproveEntity } from "../utils/change-request-approver";
 
 // Default validity is 180 days when the admin does not choose a duration.
 const DEFAULT_VALIDITY_DAYS = 180;
@@ -95,6 +96,28 @@ export async function assertCanManage(
   await assertCanWriteNow(admin, context, now);
 }
 
+// Super Admins and change request approvers edit a saved letter directly;
+// everyone else files a change request.
+export async function canEditDisciplinaryDirectly(
+  admin: AdminUser,
+): Promise<boolean> {
+  return (
+    admin.role === AdminRole.SUPER_ADMIN ||
+    (await canApproveEntity(admin, "DisciplinaryAction"))
+  );
+}
+
+export const DISCIPLINARY_NEEDS_APPROVAL_MESSAGE =
+  "Changing a saved disciplinary letter needs approval. Submit a change request instead.";
+
+export async function assertCanEditDisciplinaryDirectly(
+  admin: AdminUser,
+): Promise<void> {
+  if (!(await canEditDisciplinaryDirectly(admin))) {
+    throw new ResponseError(403, DISCIPLINARY_NEEDS_APPROVAL_MESSAGE);
+  }
+}
+
 export async function assertCanReadDisciplinaryData(
   admin: AdminUserWithEmployeeScope,
   employeeUnitId: string,
@@ -147,7 +170,7 @@ export class DisciplinaryActionService {
       findMany: () =>
         prismaClient.employeeDisciplinaryAction.findMany({
           where,
-          include: { issued_by_admin: { select: { full_name: true } }, _count: { select: { attachments: { where: { deleted_at: null } } } } },
+          include: { issued_by_admin: { select: { full_name: true } }, _count: { select: { attachments: { where: { deleted_at: null, pending_approval: false } } } } },
           orderBy: [{ issued_date: "desc" }, { id: "desc" }],
           skip: (listRequest.page - 1) * listRequest.size,
           take: listRequest.size,
@@ -323,7 +346,7 @@ export class DisciplinaryActionService {
 
     const withAdmin = await prismaClient.employeeDisciplinaryAction.findUniqueOrThrow({
       where: { id: created.id },
-      include: { issued_by_admin: { select: { full_name: true } }, _count: { select: { attachments: { where: { deleted_at: null } } } } },
+      include: { issued_by_admin: { select: { full_name: true } }, _count: { select: { attachments: { where: { deleted_at: null, pending_approval: false } } } } },
     });
     return toDisciplinaryActionResponse(withAdmin);
   }
@@ -350,6 +373,7 @@ export class DisciplinaryActionService {
       now,
       updateRequest.id,
     );
+    await assertCanEditDisciplinaryDirectly(admin);
 
     const existing = await prismaClient.employeeDisciplinaryAction.findFirst({
       where: { id: updateRequest.id, employee_id: updateRequest.employee_id },
@@ -391,7 +415,7 @@ export class DisciplinaryActionService {
 
     const withAdmin = await prismaClient.employeeDisciplinaryAction.findUniqueOrThrow({
       where: { id: updated.id },
-      include: { issued_by_admin: { select: { full_name: true } }, _count: { select: { attachments: { where: { deleted_at: null } } } } },
+      include: { issued_by_admin: { select: { full_name: true } }, _count: { select: { attachments: { where: { deleted_at: null, pending_approval: false } } } } },
     });
     return toDisciplinaryActionResponse(withAdmin);
   }
@@ -459,7 +483,7 @@ export class DisciplinaryActionService {
 
     const withAdmin = await prismaClient.employeeDisciplinaryAction.findUniqueOrThrow({
       where: { id: updated.id },
-      include: { issued_by_admin: { select: { full_name: true } }, _count: { select: { attachments: { where: { deleted_at: null } } } } },
+      include: { issued_by_admin: { select: { full_name: true } }, _count: { select: { attachments: { where: { deleted_at: null, pending_approval: false } } } } },
     });
     return toDisciplinaryActionResponse(withAdmin);
   }
@@ -521,7 +545,7 @@ export class DisciplinaryActionService {
 
     const withAdmin = await prismaClient.employeeDisciplinaryAction.findUniqueOrThrow({
       where: { id: updated.id },
-      include: { issued_by_admin: { select: { full_name: true } }, _count: { select: { attachments: { where: { deleted_at: null } } } } },
+      include: { issued_by_admin: { select: { full_name: true } }, _count: { select: { attachments: { where: { deleted_at: null, pending_approval: false } } } } },
     });
     return toDisciplinaryActionResponse(withAdmin);
   }

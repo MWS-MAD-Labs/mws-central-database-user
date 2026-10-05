@@ -18,6 +18,7 @@ import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
 import type { AdminUserWithEmployeeScope } from "../utils/admin-permissions";
 import {
+  assertCanEditDisciplinaryDirectly,
   assertCanManage,
   assertCanReadDisciplinaryData,
 } from "./disciplinary-action-service";
@@ -68,6 +69,7 @@ export class DisciplinaryActionAttachmentService {
       now,
       uploadRequest.disciplinary_action_id,
     );
+    await assertCanEditDisciplinaryDirectly(admin);
     await assertDisciplinaryActionExists(
       uploadRequest.disciplinary_action_id,
       uploadRequest.employee_id,
@@ -149,6 +151,7 @@ export class DisciplinaryActionAttachmentService {
       now,
       deleteRequest.id,
     );
+    await assertCanEditDisciplinaryDirectly(admin);
     await assertDisciplinaryActionExists(
       deleteRequest.disciplinary_action_id,
       deleteRequest.employee_id,
@@ -158,6 +161,7 @@ export class DisciplinaryActionAttachmentService {
       where: {
         id: deleteRequest.id,
         disciplinary_action_id: deleteRequest.disciplinary_action_id,
+        pending_approval: false,
       },
     });
     if (!existing) {
@@ -215,6 +219,7 @@ export class DisciplinaryActionAttachmentService {
       now,
       restoreRequest.id,
     );
+    await assertCanEditDisciplinaryDirectly(admin);
     await assertDisciplinaryActionExists(
       restoreRequest.disciplinary_action_id,
       restoreRequest.employee_id,
@@ -224,6 +229,7 @@ export class DisciplinaryActionAttachmentService {
       where: {
         id: restoreRequest.id,
         disciplinary_action_id: restoreRequest.disciplinary_action_id,
+        pending_approval: false,
       },
     });
     if (!existing) {
@@ -294,6 +300,7 @@ export class DisciplinaryActionAttachmentService {
     const attachments = await prismaClient.disciplinaryActionAttachment.findMany({
       where: {
         disciplinary_action_id: listRequest.disciplinary_action_id,
+        pending_approval: false,
         deleted_at: listRequest.is_deleted ? { not: null } : null,
       },
       orderBy: { uploaded_at: "desc" },
@@ -338,6 +345,7 @@ export class DisciplinaryActionAttachmentService {
       where: {
         id: downloadRequest.id,
         disciplinary_action_id: downloadRequest.disciplinary_action_id,
+        pending_approval: false,
         deleted_at: null,
       },
     });

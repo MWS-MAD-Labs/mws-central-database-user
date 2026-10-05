@@ -102,6 +102,18 @@ employeeRouter.patch("/:id/disciplinary-actions/:actionId/revoke", (c) =>
   DisciplinaryActionController.revoke(c),
 );
 
+employeeRouter.post("/:id/disciplinary-actions/:actionId/change-requests", (c) =>
+  DisciplinaryActionController.requestEdit(c),
+);
+employeeRouter.post(
+  "/:id/disciplinary-actions/:actionId/attachments/change-requests",
+  attachmentUploadBodyLimit,
+  (c) => DisciplinaryActionAttachmentController.requestUpload(c),
+);
+employeeRouter.post(
+  "/:id/disciplinary-actions/:actionId/attachments/:attachmentId/change-requests",
+  (c) => DisciplinaryActionAttachmentController.requestChange(c),
+);
 employeeRouter.post(
   "/:id/disciplinary-actions/:actionId/attachments",
   attachmentUploadBodyLimit,

@@ -29,7 +29,8 @@ import { Validation } from "../validation/validation";
 import { AuditService } from "./audit-service";
 import { EmployeeService } from "./employee-service";
 import { StudentService } from "./student-service";
-import { assertCanWriteUnit } from "../utils/admin-permissions";
+import { assertCanWriteUnit, canViewEmployeeDisciplinaryData } from "../utils/admin-permissions";
+import { DisciplinaryChangeRequestService } from "./disciplinary-change-request-service";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { isPastIdentifierGracePeriod } from "../utils/identifier-lock";
 import {
@@ -180,6 +181,12 @@ async function assertCanDecide(
       "Forbidden: You're not an approver for identifier change requests",
     );
   }
+  if (entityType === "DisciplinaryAction" && !canViewEmployeeDisciplinaryData(admin)) {
+    throw new ResponseError(
+      403,
+      "Forbidden: Employee disciplinary data access is required to decide this request",
+    );
+  }
   if (admin.id === requestedBy) {
     throw new ResponseError(403, "You can't decide your own change request");
   }
@@ -190,7 +197,10 @@ async function entityNames(
 ): Promise<Map<string, string>> {
   const employeeIds = records.filter((r) => r.entity_type === "Employee").map((r) => r.entity_id);
   const studentIds = records.filter((r) => r.entity_type === "Student").map((r) => r.entity_id);
-  const [employees, students] = await Promise.all([
+  const actionIds = records
+    .filter((r) => r.entity_type === "DisciplinaryAction")
+    .map((r) => r.entity_id);
+  const [employees, students, actions] = await Promise.all([
     employeeIds.length
       ? prismaClient.employee.findMany({
           where: { id: { in: employeeIds } },
@@ -203,8 +213,20 @@ async function entityNames(
           select: { id: true, person: { select: { full_name: true } } },
         })
       : [],
+    actionIds.length
+      ? prismaClient.employeeDisciplinaryAction.findMany({
+          where: { id: { in: actionIds } },
+          select: {
+            id: true,
+            employee: { select: { person: { select: { full_name: true } } } },
+          },
+        })
+      : [],
   ]);
   return new Map([
+    ...actions.map(
+      (a) => [`DisciplinaryAction:${a.id}`, a.employee.person.full_name] as const,
+    ),
     ...employees.map((e) => [`Employee:${e.id}`, e.person.full_name] as const),
     ...students.map((s) => [`Student:${s.id}`, s.person.full_name] as const),
   ]);
@@ -338,20 +360,24 @@ export class IdentifierChangeRequestService {
     }
 
     try {
-      const entityType = pending.entity_type as IdentifierChangeEntityType;
-      const snapshot = await loadLockedField(entityType, pending.entity_id, pending.field_name, now);
-      if (snapshot.currentValue !== pending.old_value) {
-        throw new ResponseError(
-          409,
-          "This field changed after the request was made. Reject it and ask for a new request.",
-        );
-      }
-
-      const patch = { id: pending.entity_id, [pending.field_name]: pending.new_value };
-      if (entityType === "Employee") {
-        await EmployeeService.update(admin, patch, context, now, true);
+      if (pending.entity_type === "DisciplinaryAction") {
+        await DisciplinaryChangeRequestService.apply(admin, pending, context, now);
       } else {
-        await StudentService.update(admin, patch, context, now, true);
+        const entityType = pending.entity_type as IdentifierChangeEntityType;
+        const snapshot = await loadLockedField(entityType, pending.entity_id, pending.field_name, now);
+        if (snapshot.currentValue !== pending.old_value) {
+          throw new ResponseError(
+            409,
+            "This field changed after the request was made. Reject it and ask for a new request.",
+          );
+        }
+
+        const patch = { id: pending.entity_id, [pending.field_name]: pending.new_value };
+        if (entityType === "Employee") {
+          await EmployeeService.update(admin, patch, context, now, true);
+        } else {
+          await StudentService.update(admin, patch, context, now, true);
+        }
       }
     } catch (error) {
       await prismaClient.identifierChangeRequest.update({
@@ -429,6 +455,7 @@ export class IdentifierChangeRequestService {
         tx,
       );
     });
+    await DisciplinaryChangeRequestService.discard(pending);
 
     return this.load(admin, pending.id);
   }
@@ -449,6 +476,7 @@ export class IdentifierChangeRequestService {
     if (updated.count === 0) {
       throw new ResponseError(400, "This request has already been decided or cancelled");
     }
+    await DisciplinaryChangeRequestService.discard(pending);
     return this.load(admin, id);
   }
 
@@ -516,7 +544,7 @@ export class IdentifierChangeRequestService {
     // What the sidebar badge counts: pending requests this admin may decide.
     const decidableTypes = [
       ...(canApprove(admin) ? ["Student"] : []),
-      ...(employeeApprover ? ["Employee"] : []),
+      ...(employeeApprover ? ["Employee", "DisciplinaryAction"] : []),
     ];
     const pendingDecidableCount = decidableTypes.length
       ? await prismaClient.identifierChangeRequest.count({
@@ -597,12 +625,22 @@ export class IdentifierChangeRequestService {
     employeeApprover: boolean,
   ): IdentifierChangeRequestResponse {
     const isPending = record.status === IdentifierChangeRequestStatus.PENDING;
-    return toIdentifierChangeRequestResponse(record, {
+    const headOfCareType =
+      record.entity_type === "Employee" || record.entity_type === "DisciplinaryAction";
+    const masked =
+      (record.entity_type === "Employee" && !canSeeEmployeePii(admin)) ||
+      (record.entity_type === "DisciplinaryAction" && !canViewEmployeeDisciplinaryData(admin));
+    // Attachment rows carry the file id in new_value, the name is old_value.
+    const shown =
+      record.entity_type === "DisciplinaryAction" && record.field_name.startsWith("attachment_")
+        ? { ...record, new_value: "" }
+        : record;
+    return toIdentifierChangeRequestResponse(shown, {
       entityName: names.get(`${record.entity_type}:${record.entity_id}`) ?? null,
-      masked: record.entity_type === "Employee" && !canSeeEmployeePii(admin),
+      masked,
       canDecide:
         isPending &&
-        (record.entity_type === "Employee" ? employeeApprover : canApprove(admin)) &&
+        (headOfCareType ? employeeApprover : canApprove(admin)) &&
         record.requested_by !== admin.id,
       canCancel: isPending && record.requested_by === admin.id,
     });

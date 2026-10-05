@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import { DisciplinaryActionAttachmentService } from "../../service/disciplinary-action-attachment-service";
+import { DisciplinaryChangeRequestService } from "../../service/disciplinary-change-request-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 
@@ -33,6 +34,51 @@ export class DisciplinaryActionAttachmentController {
       getAuditRequestContext(c),
     );
 
+    return c.json({ data: response });
+  }
+
+  static async requestUpload(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const employeeId = c.req.param("id");
+    const actionId = c.req.param("actionId");
+    if (!employeeId || !actionId) {
+      throw new ResponseError(400, "Employee ID and action ID are required in parameter");
+    }
+    const body = await c.req.parseBody();
+    const file = body["file"];
+    if (!(file instanceof File)) {
+      throw new ResponseError(400, "A file is required under the 'file' field");
+    }
+    const response = await DisciplinaryChangeRequestService.requestAttachmentUpload(
+      admin,
+      {
+        id: actionId,
+        employee_id: employeeId,
+        change_reason: String(body["change_reason"] ?? ""),
+      },
+      file,
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
+  static async requestChange(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const employeeId = c.req.param("id");
+    const actionId = c.req.param("actionId");
+    const attachmentId = c.req.param("attachmentId");
+    if (!employeeId || !actionId || !attachmentId) {
+      throw new ResponseError(400, "Employee, action and attachment IDs are required in parameter");
+    }
+    const body = (await c.req.json()) as {
+      kind: "remove" | "restore";
+      change_reason: string;
+    };
+    const response = await DisciplinaryChangeRequestService.requestAttachmentChange(
+      admin,
+      { id: actionId, employee_id: employeeId, attachment_id: attachmentId, ...body },
+      getAuditRequestContext(c),
+    );
     return c.json({ data: response });
   }
 

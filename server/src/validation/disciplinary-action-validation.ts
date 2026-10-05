@@ -61,4 +61,34 @@ export class DisciplinaryActionValidation {
     page: z.number().min(1).positive().default(1),
     size: z.number().min(1).positive().max(100).default(10),
   });
+
+  static readonly CHANGE_REASON = z
+    .string()
+    .trim()
+    .min(5, "Reason must be at least 5 characters")
+    .max(100, "Reason must be at most 100 characters");
+
+  static readonly REQUEST_EDIT = z
+    .object({
+      id: z.string().min(1, "ID is required"),
+      employee_id: z.string().min(1, "Employee ID is required"),
+      reason: z
+        .string()
+        .min(1, "Reason is required")
+        .max(500, "Reason is too long")
+        .optional(),
+      notes: z.string().max(1000, "Notes is too long").optional(),
+      change_reason: DisciplinaryActionValidation.CHANGE_REASON,
+    })
+    .refine((value) => value.reason !== undefined || value.notes !== undefined, {
+      message: "Provide at least one of reason or notes to change",
+    });
+
+  static readonly REQUEST_ATTACHMENT = z.object({
+    id: z.string().min(1, "ID is required"),
+    employee_id: z.string().min(1, "Employee ID is required"),
+    attachment_id: z.string().min(1).optional(),
+    kind: z.enum(["add", "remove", "restore"]),
+    change_reason: DisciplinaryActionValidation.CHANGE_REASON,
+  });
 }

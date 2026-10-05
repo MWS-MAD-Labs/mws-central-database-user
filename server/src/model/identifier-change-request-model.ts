@@ -9,6 +9,13 @@ export const IDENTIFIER_CHANGE_ENTITY_TYPES = ["Employee", "Student"] as const;
 export type IdentifierChangeEntityType =
   (typeof IDENTIFIER_CHANGE_ENTITY_TYPES)[number];
 
+// Requests also cover edits to an existing disciplinary letter (reason, notes,
+// attachments). Those are filed through DisciplinaryChangeRequestService.
+export const CHANGE_REQUEST_ENTITY_TYPES = [
+  ...IDENTIFIER_CHANGE_ENTITY_TYPES,
+  "DisciplinaryAction",
+] as const;
+
 export const EMPLOYEE_LOCKABLE_FIELDS = [
   "nik",
   "npwp",
@@ -30,6 +37,11 @@ export const IDENTIFIER_FIELD_LABELS: Record<string, string> = {
   bpjs_employment_number: "BPJS Ketenagakerjaan number",
   kpj_number: "KPJ number",
   nisn: "NISN",
+  reason: "Disciplinary reason",
+  notes: "Disciplinary notes",
+  attachment_add: "Add attachment",
+  attachment_remove: "Remove attachment",
+  attachment_restore: "Restore attachment",
 };
 
 export type CreateIdentifierChangeRequest = {
@@ -45,9 +57,11 @@ export type DecideIdentifierChangeRequest = {
   decision_note?: string;
 };
 
+export type ChangeRequestEntityType = (typeof CHANGE_REQUEST_ENTITY_TYPES)[number];
+
 export type ListIdentifierChangeRequests = {
   status?: IdentifierChangeRequestStatus;
-  entity_type?: IdentifierChangeEntityType;
+  entity_type?: ChangeRequestEntityType;
   entity_id?: string;
   history?: boolean;
   page?: number;
@@ -55,7 +69,7 @@ export type ListIdentifierChangeRequests = {
 };
 
 export type ListMyIdentifierChangeRequests = {
-  entity_type?: IdentifierChangeEntityType;
+  entity_type?: ChangeRequestEntityType;
   entity_id?: string;
   page?: number;
   size?: number;

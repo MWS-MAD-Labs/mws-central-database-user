@@ -1057,6 +1057,8 @@ model DisciplinaryActionAttachment {
   uploaded_by            String
   uploaded_at            DateTime                   @default(now())
   deleted_at             DateTime?
+  // Staged by a non-approver, hidden everywhere until a change request approves it.
+  pending_approval       Boolean                    @default(false)
 
   @@map("disciplinary_action_attachments")
 }
