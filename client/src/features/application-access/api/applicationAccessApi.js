@@ -49,6 +49,16 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  async getRule(id) {
+    const response = await apiRequest(`${RULES}/${id}`)
+    return response.data
+  },
+
+  async listOrganizations() {
+    const response = await apiRequest('/api/admin/application-organizations')
+    return response.data
+  },
+
   async createRule(payload) {
     const response = await apiRequest(RULES, { method: 'POST', body: payload })
     return response.data
