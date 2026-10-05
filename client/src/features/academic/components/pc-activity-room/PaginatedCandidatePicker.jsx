@@ -10,6 +10,7 @@ export function PaginatedCandidatePicker({
   isLoading,
   emptyMessage,
   itemLabel,
+  dense = false,
   onSearchChange,
   onToggle,
   onTogglePage,
@@ -30,7 +31,7 @@ export function PaginatedCandidatePicker({
       />
       {filters}
       <div className="overflow-hidden rounded-xl border border-(--mws-line)">
-        <label className="flex items-center gap-3 bg-(--mws-soft) px-4 py-3 text-sm font-semibold text-(--mws-charcoal)">
+        <label className={`flex items-center gap-3 bg-(--mws-soft) px-4 text-sm font-semibold text-(--mws-charcoal) ${dense ? "py-2" : "py-3"}`}>
           <input
             type="checkbox"
             checked={allPageSelected}
@@ -40,7 +41,7 @@ export function PaginatedCandidatePicker({
           />
           Select all on this page
         </label>
-        <div className="max-h-80 divide-y divide-(--mws-line) overflow-y-auto">
+        <div className={`divide-y divide-(--mws-line) overflow-y-auto ${dense ? "max-h-[28rem]" : "max-h-80"}`}>
           {isLoading ? (
             <p className="px-4 py-8 text-center text-sm text-(--mws-muted)">
               Loading {itemLabel}s...
@@ -50,7 +51,35 @@ export function PaginatedCandidatePicker({
               {emptyMessage}
             </p>
           ) : (
-            items.map((item) => (
+            items.map((item) =>
+              dense ? (
+                <label
+                  key={item.id}
+                  className={`flex items-center gap-3 px-4 py-2 text-sm ${
+                    item.disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-(--mws-soft)"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    aria-label={item.label}
+                    checked={selected.has(item.id)}
+                    disabled={item.disabled}
+                    onChange={(event) => onToggle(item, event.target.checked)}
+                    className="h-4 w-4 shrink-0 accent-(--mws-burgundy)"
+                  />
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="font-semibold text-(--mws-charcoal)">{item.label}</span>
+                    {item.sublabel ? (
+                      <span className="ml-2 text-xs text-(--mws-muted)">{item.sublabel}</span>
+                    ) : null}
+                  </span>
+                  {item.extra ? (
+                    <span className="shrink-0 rounded-full bg-(--mws-soft) px-2 py-0.5 text-xs text-(--mws-burgundy)">
+                      {item.extra}
+                    </span>
+                  ) : null}
+                </label>
+              ) : (
               <label
                 key={item.id}
                 className={`flex items-start gap-3 px-4 py-3 ${
@@ -83,7 +112,8 @@ export function PaginatedCandidatePicker({
                   ) : null}
                 </span>
               </label>
-            ))
+              ),
+            )
           )}
         </div>
         <PaginationBar

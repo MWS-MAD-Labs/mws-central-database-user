@@ -93,7 +93,10 @@ describe('GrantAccessPage', () => {
     await user.click(screen.getByLabelText('Beta Person'))
     expect(screen.getByText(/2 employees selected/)).toBeVisible()
     expect(screen.getByText(/Gets STAFF from a group/)).toBeVisible()
-    expect(screen.getByText(/Own access: ADMIN \(blocked\)/)).toBeVisible()
+    expect(screen.queryByText(/Own access/)).not.toBeInTheDocument()
+    expect(
+      fetchMock.mock.calls.some(([url]) => url.includes('/candidates') && url.includes('exclude_own_access=true')),
+    ).toBe(true)
     expect(await screen.findByText('org_exima_a1b2c3')).toBeVisible()
     expect(screen.queryByText('Organization ID', { selector: 'label' })).not.toBeInTheDocument()
 

@@ -62,6 +62,7 @@ export function GrantAccessPage() {
         application_id: application,
         coverage: coverage || undefined,
         group_id: groupId || undefined,
+        exclude_own_access: true,
         search: params.search || undefined,
         unit_id: filter.unit_id || undefined,
         job_position_id: filter.job_position_id || undefined,
@@ -88,14 +89,7 @@ export function GrantAccessPage() {
       id: employee.person_id,
       label: employee.full_name,
       sublabel: [employee.email, employee.unit, employee.job_position].filter(Boolean).join(" / "),
-      extra: [
-        inherited ? `Gets ${inherited} from a group${same ? ", pick a different role" : ""}` : null,
-        employee.own_access
-          ? `Own access: ${employee.own_access.role}${employee.own_access.is_active ? "" : " (blocked)"}`
-          : null,
-      ]
-        .filter(Boolean)
-        .join(" · "),
+      extra: inherited ? `Gets ${inherited} from a group${same ? ", pick a different role" : ""}` : null,
       disabled: same,
       inheritedRole: inherited,
     };
@@ -227,32 +221,10 @@ export function GrantAccessPage() {
         }
       />
       <form id="grant-access-form" onSubmit={submit} noValidate>
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <section className="min-w-0 space-y-5 rounded-2xl border border-(--mws-line) bg-white p-5">
-            <Field label="Who" hint="A group follows people automatically, new employees included.">
-              <SearchableSelect
-                value={mode}
-                onChange={setMode}
-                options={[
-                  { value: "PEOPLE", label: "Specific People" },
-                  { value: "GROUP", label: "A Group" },
-                ]}
-                placeholder="Select who"
-              />
-            </Field>
-
             {mode === "GROUP" ? (
-              <>
-                <Field label="Audience">
-                  <SearchableSelect
-                    value={audience}
-                    onChange={setAudience}
-                    options={Object.entries(audienceLabels).map(([value, label]) => ({ value, label }))}
-                    placeholder="Select an audience"
-                  />
-                </Field>
-                <GroupFilters audience={audience} options={options} state={groupFilters} showErrors={attempted} />
-              </>
+              <GroupFilters audience={audience} options={options} state={groupFilters} showErrors={attempted} />
             ) : (
               <Field
                 label="People"
@@ -266,6 +238,7 @@ export function GrantAccessPage() {
                   isLoading={employeesQuery.isLoading}
                   emptyMessage={application ? "No active employees match." : "Pick an application first to see who can be added."}
                   itemLabel="employee"
+                  dense
                   filters={
                     <div className="flex flex-wrap gap-3">
                       <FilterSelect
@@ -335,6 +308,27 @@ export function GrantAccessPage() {
 
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
             <div className="space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
+              <Field label="Who" hint="A group follows people automatically, new employees included.">
+                <SearchableSelect
+                  value={mode}
+                  onChange={setMode}
+                  options={[
+                    { value: "PEOPLE", label: "Specific People" },
+                    { value: "GROUP", label: "A Group" },
+                  ]}
+                  placeholder="Select who"
+                />
+              </Field>
+              {mode === "GROUP" ? (
+                <Field label="Audience">
+                  <SearchableSelect
+                    value={audience}
+                    onChange={setAudience}
+                    options={Object.entries(audienceLabels).map(([value, label]) => ({ value, label }))}
+                    placeholder="Select an audience"
+                  />
+                </Field>
+              ) : null}
               <Field label="Application" error={attempted && !application ? "Application is required." : undefined}>
                 <SearchableSelect
                   value={application}
