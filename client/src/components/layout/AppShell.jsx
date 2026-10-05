@@ -173,6 +173,7 @@ export function AppShell() {
             },
             { to: "/audit-logs", label: "Audit Logs", icon: FileClock },
             { to: "/api-clients", label: "API Clients", icon: KeyRound },
+            { to: "/application-access", label: "Application Access", icon: ShieldCheck },
           ],
         },
       );

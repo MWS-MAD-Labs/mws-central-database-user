@@ -16,6 +16,7 @@ const AcademicPage = lazy(() => import('../features/academic/pages/AcademicPage.
 const ClassDetailPage = lazy(() => import('../features/academic/pages/ClassDetailPage.jsx').then((module) => ({ default: module.ClassDetailPage })))
 const PcActivityRoomDetailPage = lazy(() => import('../features/academic/pages/PcActivityRoomDetailPage.jsx').then((module) => ({ default: module.PcActivityRoomDetailPage })))
 const ApiClientsPage = lazy(() => import('../features/api-clients/pages/ApiClientsPage.jsx').then((module) => ({ default: module.ApiClientsPage })))
+const ApplicationAccessPage = lazy(() => import('../features/application-access/pages/ApplicationAccessPage.jsx').then((module) => ({ default: module.ApplicationAccessPage })))
 const AuditLogsPage = lazy(() => import('../features/audit/pages/AuditLogsPage.jsx').then((module) => ({ default: module.AuditLogsPage })))
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage.jsx').then((module) => ({ default: module.LoginPage })))
 const DashboardPage = lazy(() => import('../features/dashboard/pages/DashboardPage.jsx').then((module) => ({ default: module.DashboardPage })))
@@ -81,6 +82,7 @@ export default function App() {
           <Route path="access" element={<AccessPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="api-clients" element={<ApiClientsPage />} />
+          <Route path="application-access" element={<ApplicationAccessPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route element={<CapabilityRoute allowed={(user) => Boolean(user?.is_employee_identifier_change_approver)} title="Approver Access Required" description="Only change request approvers can review requests." />}>
             <Route path="change-requests" element={<ChangeRequestsPage />} />
