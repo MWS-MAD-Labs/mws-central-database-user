@@ -6,6 +6,7 @@ export function PaginatedCandidatePicker({
   selected,
   paging,
   search,
+  filters,
   isLoading,
   emptyMessage,
   itemLabel,
@@ -26,6 +27,7 @@ export function PaginatedCandidatePicker({
         onChange={(event) => onSearchChange(event.target.value)}
         placeholder={`Search ${itemLabel}s`}
       />
+      {filters}
       <div className="overflow-hidden rounded-xl border border-(--mws-line)">
         <label className="flex items-center gap-3 bg-(--mws-soft) px-4 py-3 text-sm font-semibold text-(--mws-charcoal)">
           <input

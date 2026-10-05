@@ -68,19 +68,26 @@ describe('ApplicationAccessPage', () => {
     expect(within(screen.getByText('Dummy Staff').closest('tr')).getByText('Active')).toBeVisible()
   })
 
-  it('offers only active roles of the chosen application in the grant dialog', async () => {
+  it('bulk grants the checked employees with only the active roles of the chosen application', async () => {
     const fetchMock = createFetchRouter(baseRoutes([
       {
         path: /^\/api\/admin\/employees\?/,
         response: () => jsonResponse({
-          data: [{ id: 'emp-1', person_id: 'person-2', identity: { full_name: 'Alpha Person', email: 'alpha@millennia21.id' }, employment: { unit: 'MAD Lab' } }],
-          paging: { current_page: 1, total_page: 1, total_item: 1, size: 10 },
+          data: [
+            { id: 'emp-1', person_id: 'person-2', identity: { full_name: 'Alpha Person', email: 'alpha@millennia21.id' }, employment: { unit: 'MAD Lab', job_position: 'Developer' } },
+            { id: 'emp-2', person_id: 'person-3', identity: { full_name: 'Beta Person', email: 'beta@millennia21.id' }, employment: { unit: 'MAD Lab', job_position: 'Designer' } },
+          ],
+          paging: { current_page: 1, total_page: 1, total_item: 2, size: 10 },
         }),
       },
+      { path: /^\/api\/admin\/units/, response: () => jsonResponse({ data: [{ id: 'unit-1', name: 'MAD Lab' }] }) },
+      { path: /^\/api\/admin\/job-positions/, response: () => jsonResponse({ data: [] }) },
+      { path: /^\/api\/admin\/job-levels/, response: () => jsonResponse({ data: [] }) },
+      { path: /^\/api\/admin\/buildings/, response: () => jsonResponse({ data: [] }) },
       {
-        path: '/api/admin/application-entitlements',
+        path: '/api/admin/application-entitlements/bulk',
         method: 'POST',
-        response: () => jsonResponse({ data: entitlement }),
+        response: () => jsonResponse({ data: { total_count: 2, success_count: 2, failed_count: 0, items: [] } }),
       },
     ]))
     globalThis.fetch = fetchMock
@@ -89,23 +96,27 @@ describe('ApplicationAccessPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Grant Access' }))
     const dialog = await screen.findByRole('dialog', { name: 'Grant Access' })
-    await user.click(await within(dialog).findByLabelText(/Alpha Person/))
-    const [applicationSelect, roleSelect] = within(dialog).getAllByRole('combobox')
-    await user.selectOptions(applicationSelect, 'exima')
+    await user.click(await within(dialog).findByLabelText('Alpha Person'))
+    await user.click(within(dialog).getByLabelText('Beta Person'))
+    expect(within(dialog).getByText(/2 employees selected/)).toBeVisible()
 
-    const keys = within(roleSelect).getAllByRole('option').map((option) => option.textContent)
-    expect(keys).toEqual(['Select a role', 'ADMIN', 'STAFF'])
-
-    await user.selectOptions(roleSelect, 'STAFF')
+    await user.click(within(dialog).getByRole('button', { name: 'Select an application' }))
+    await user.click(screen.getByRole('option', { name: 'exima' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Select a role' }))
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      expect.stringContaining('ADMIN'),
+      expect.stringContaining('STAFF'),
+    ])
+    await user.click(screen.getByRole('option', { name: /STAFF/ }))
     expect(within(dialog).getByText('Permissions: store.use')).toBeVisible()
-    await user.type(within(dialog).getAllByRole('textbox').at(-1), 'mws')
+    await user.type(within(dialog).getAllByRole('textbox').find((input) => !input.placeholder), 'mws')
     await user.click(within(dialog).getByRole('button', { name: 'Grant' }))
 
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url, options]) =>
-        url === '/api/admin/application-entitlements' && options.method === 'POST')
+        url === '/api/admin/application-entitlements/bulk' && options.method === 'POST')
       expect(JSON.parse(call[1].body)).toEqual({
-        person_id: 'person-2',
+        person_ids: ['person-2', 'person-3'],
         application_id: 'exima',
         organization_id: 'mws',
         role: 'STAFF',
@@ -143,5 +154,70 @@ describe('ApplicationAccessPage', () => {
     expect(within(row).getByText('Inactive')).toBeVisible()
     const adminRow = screen.getByText('ADMIN').closest('tr')
     expect(within(adminRow).getByText('1')).toBeVisible()
+  })
+
+  it('sets a baseline rule for an application', async () => {
+    const fetchMock = createFetchRouter(baseRoutes([
+      { path: '/api/admin/application-access-rules', response: () => jsonResponse({ data: [] }) },
+      { path: /^\/api\/admin\/units/, response: () => jsonResponse({ data: [{ id: 'unit-1', name: 'MAD Lab' }] }) },
+      {
+        path: '/api/admin/application-access-rules/exima',
+        method: 'PUT',
+        response: () => jsonResponse({ data: {} }),
+      },
+    ]))
+    globalThis.fetch = fetchMock
+    const { user } = renderPage({ role: 'SUPER_ADMIN' }, '/application-access?tab=roles')
+    expect(await screen.findByText(/No baseline/)).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Set up' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Baseline access for exima' })
+    await user.click(within(dialog).getByRole('button', { name: 'Select a role' }))
+    await user.click(screen.getByRole('option', { name: /STAFF/ }))
+    await user.type(within(dialog).getByRole('textbox'), 'mws')
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url, options]) =>
+        url === '/api/admin/application-access-rules/exima' && options.method === 'PUT')
+      expect(JSON.parse(call[1].body)).toEqual({
+        audience: 'EMPLOYEES',
+        unit_ids: [],
+        default_role_key: 'STAFF',
+        organization_id: 'mws',
+        is_active: true,
+      })
+    })
+  })
+
+  it('edits permissions as a checklist with an all toggle', async () => {
+    const fetchMock = createFetchRouter(baseRoutes([
+      { path: '/api/admin/application-access-rules', response: () => jsonResponse({ data: [] }) },
+      { path: /^\/api\/admin\/units/, response: () => jsonResponse({ data: [] }) },
+      {
+        path: '/api/admin/application-roles/role-staff',
+        method: 'PATCH',
+        response: () => jsonResponse({ data: roles[1] }),
+      },
+    ]))
+    globalThis.fetch = fetchMock
+    const { user } = renderPage({ role: 'SUPER_ADMIN' }, '/application-access?tab=roles')
+    await screen.findByText('LEGACY')
+
+    await user.click(screen.getByRole('button', { name: 'Actions for exima STAFF' }))
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit STAFF' })
+    expect(within(dialog).getByLabelText('store.use')).toBeChecked()
+    expect(within(dialog).getByLabelText('app.admin')).not.toBeChecked()
+
+    await user.click(within(dialog).getByLabelText('All permissions'))
+    expect(within(dialog).getByLabelText('app.admin')).toBeChecked()
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url, options]) =>
+        url.endsWith('/application-roles/role-staff') && options.method === 'PATCH')
+      expect(JSON.parse(call[1].body).permissions.sort()).toEqual(['app.admin', 'store.use'])
+    })
   })
 })
