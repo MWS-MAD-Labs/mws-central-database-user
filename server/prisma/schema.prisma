@@ -313,6 +313,8 @@ enum AuditAction {
   APPLICATION_ENTITLEMENT_GRANT
   APPLICATION_ENTITLEMENT_UPDATE
   APPLICATION_ENTITLEMENT_REVOKE
+  APPLICATION_ROLE_CREATE
+  APPLICATION_ROLE_UPDATE
   ROLE_CHANGE
   PERMISSION_CHANGE
   REQUEST_IDENTIFIER_CHANGE
@@ -1579,6 +1581,21 @@ model ApplicationEntitlement {
   @@unique([person_id, application_id])
   @@index([application_id, organization_id, is_active])
   @@map("application_entitlements")
+}
+
+// Allowed roles per application. Entitlement roles must match a row here exactly.
+model ApplicationRole {
+  id             String   @id @default(cuid())
+  application_id String
+  key            String
+  label          String
+  permissions    String[] @default([])
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@unique([application_id, key])
+  @@map("application_roles")
 }
 
 model AuditLog {

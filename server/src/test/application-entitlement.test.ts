@@ -20,14 +20,14 @@ const ADMIN_PERMISSIONS = [
 ];
 
 const DAILY_CHECKIN_PERMISSIONS = {
-  participant: [
+  PARTICIPANT: [
     "checkin.self.read",
     "checkin.self.submit",
     "support.contacts.read",
     "notifications.self.manage",
     "assistant.use",
   ],
-  educator: [
+  EDUCATOR: [
     "checkin.self.read",
     "checkin.self.submit",
     "support.contacts.read",
@@ -35,7 +35,7 @@ const DAILY_CHECKIN_PERMISSIONS = {
     "assistant.use",
     "student_checkins.read",
   ],
-  support: [
+  SUPPORT: [
     "checkin.self.read",
     "checkin.self.submit",
     "support.contacts.read",
@@ -45,7 +45,7 @@ const DAILY_CHECKIN_PERMISSIONS = {
     "dashboard.read",
     "support_requests.manage",
   ],
-  admin: [
+  ADMIN: [
     "checkin.self.read",
     "checkin.self.submit",
     "support.contacts.read",
@@ -62,7 +62,7 @@ const DAILY_CHECKIN_PERMISSIONS = {
     "sync.run",
     "dev_topology.read",
   ],
-  superadmin: [
+  SUPERADMIN: [
     "checkin.self.read",
     "checkin.self.submit",
     "support.contacts.read",
@@ -218,7 +218,7 @@ describe("application entitlements", () => {
         person_id: person.id,
         application_id: "exima",
         organization_id: "mws",
-        role: "admin",
+        role: "ADMIN",
         permissions: ADMIN_PERMISSIONS,
       },
       accessToken,
@@ -259,7 +259,7 @@ describe("application entitlements", () => {
         person_id: person.id,
         application_id: "exima",
         organization_id: "mws",
-        role: "staff",
+        role: "STAFF",
         permissions: STAFF_PERMISSIONS,
       },
       accessToken,
@@ -293,7 +293,7 @@ describe("application entitlements", () => {
         person_id: person.id,
         application_id: "exima",
         organization_id: "mws",
-        role: "staff",
+        role: "STAFF",
         permissions: STAFF_PERMISSIONS,
       },
       accessToken,
@@ -302,12 +302,12 @@ describe("application entitlements", () => {
 
     const update = await TestRequest.patch(
       `/api/admin/application-entitlements/${granted.id}`,
-      { role: "admin", permissions: ADMIN_PERMISSIONS },
+      { role: "ADMIN", permissions: ADMIN_PERMISSIONS },
       accessToken,
     );
     const updated = (await update.json()).data;
     expect(update.status).toBe(200);
-    expect(updated.role).toBe("admin");
+    expect(updated.role).toBe("ADMIN");
     expect(updated.permissions).toEqual(ADMIN_PERMISSIONS);
     expect(updated.version).toBe(2);
 
@@ -337,7 +337,7 @@ describe("application entitlements", () => {
         person_id: inactive.id,
         application_id: "exima",
         organization_id: "mws",
-        role: "staff",
+        role: "STAFF",
         permissions: STAFF_PERMISSIONS,
       },
       accessToken,
@@ -349,7 +349,7 @@ describe("application entitlements", () => {
         person_id: inactive.id,
         application_id: "exima",
         organization_id: "mws",
-        role: "staff",
+        role: "STAFF",
         permissions: STAFF_PERMISSIONS,
       },
     });
@@ -375,7 +375,7 @@ describe("application entitlements", () => {
         person_id: person.id,
         application_id: "exima",
         organization_id: "mws",
-        role: "viewer",
+        role: "VIEWER",
         permissions: ["reports.read"],
       },
       accessToken,
@@ -409,9 +409,9 @@ describe("application entitlements", () => {
   it("rejects Daily Check-in unsupported roles and non-exact bundles", async () => {
     const { accessToken } = await createSuperAdmin();
     const cases = [
-      { role: "viewer", permissions: DAILY_CHECKIN_PERMISSIONS.participant },
-      { role: "participant", permissions: DAILY_CHECKIN_PERMISSIONS.participant.slice(1) },
-      { role: "educator", permissions: [...DAILY_CHECKIN_PERMISSIONS.educator, "dashboard.read"] },
+      { role: "VIEWER", permissions: DAILY_CHECKIN_PERMISSIONS.PARTICIPANT },
+      { role: "PARTICIPANT", permissions: DAILY_CHECKIN_PERMISSIONS.PARTICIPANT.slice(1) },
+      { role: "EDUCATOR", permissions: [...DAILY_CHECKIN_PERMISSIONS.EDUCATOR, "dashboard.read"] },
     ];
 
     for (const testCase of cases) {
@@ -428,5 +428,70 @@ describe("application entitlements", () => {
       );
       expect(response.status).toBe(400);
     }
+  });
+  it("is strict about role keys: lowercase and unknown roles are rejected, permissions default from the registry", async () => {
+    const { accessToken } = await createSuperAdmin();
+    const base = { application_id: "exima", organization_id: "mws" };
+
+    const lower = await TestRequest.post(
+      "/api/admin/application-entitlements",
+      { ...base, person_id: (await createEmployee()).id, role: "admin" },
+      accessToken,
+    );
+    expect(lower.status).toBe(400);
+
+    const unknown = await TestRequest.post(
+      "/api/admin/application-entitlements",
+      { ...base, person_id: (await createEmployee()).id, role: "MANAGER" },
+      accessToken,
+    );
+    expect(unknown.status).toBe(400);
+    expect((await unknown.json()).errors).toContain("not an active role");
+
+    const defaulted = await TestRequest.post(
+      "/api/admin/application-entitlements",
+      { ...base, person_id: (await createEmployee()).id, role: "STAFF" },
+      accessToken,
+    );
+    const data = await responseData(defaulted);
+    expect(defaulted.status).toBe(200);
+    expect(data.permissions).toEqual(STAFF_PERMISSIONS);
+  });
+
+  it("pages and filters the entitlement list with the person's name and unit", async () => {
+    const { accessToken } = await createSuperAdmin();
+    for (const role of ["STAFF", "STAFF", "CASHIER"]) {
+      const response = await TestRequest.post(
+        "/api/admin/application-entitlements",
+        {
+          person_id: (await createEmployee()).id,
+          application_id: "exima",
+          organization_id: "mws",
+          role,
+        },
+        accessToken,
+      );
+      await responseData(response);
+    }
+
+    const paged = await (await TestRequest.get(
+      "/api/admin/application-entitlements?application_id=exima&size=2",
+      accessToken,
+    )).json();
+    expect(paged.data).toHaveLength(2);
+    expect(paged.paging.total_item).toBe(3);
+    expect(paged.data[0].person.unit).toBe(`TEST_ENTITLEMENT_UNIT_${fixtureKey}`);
+
+    const cashiers = await (await TestRequest.get(
+      "/api/admin/application-entitlements?application_id=exima&role=CASHIER",
+      accessToken,
+    )).json();
+    expect(cashiers.data).toHaveLength(1);
+
+    const searched = await (await TestRequest.get(
+      `/api/admin/application-entitlements?application_id=exima&search=nomatch_${fixtureKey}`,
+      accessToken,
+    )).json();
+    expect(searched.data).toHaveLength(0);
   });
 });

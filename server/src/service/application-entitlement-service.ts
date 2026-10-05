@@ -13,14 +13,24 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toApplicationEntitlementResponse,
   type ApplicationEntitlementLookupRequest,
+  type ApplicationEntitlementListItem,
   type ApplicationEntitlementResponse,
+  type ApplicationRoleResponse,
+  type CreateApplicationRoleRequest,
+  type ListApplicationRolesRequest,
+  toApplicationRoleResponse,
+  type UpdateApplicationRoleRequest,
   type GrantApplicationEntitlementRequest,
   type ListApplicationEntitlementsRequest,
   type RevokeApplicationEntitlementRequest,
   type UpdateApplicationEntitlementRequest,
 } from "../model/application-entitlement-model";
+import { paginate, type Pageable } from "../model/page-model";
 import type { ApiClientVariables } from "../type/hono-context";
-import { ApplicationEntitlementValidation } from "../validation/application-entitlement-validation";
+import {
+  ApplicationEntitlementValidation,
+  ApplicationRoleValidation,
+} from "../validation/application-entitlement-validation";
 import { Validation } from "../validation/validation";
 import { AuditService } from "./audit-service";
 
@@ -43,6 +53,32 @@ function auditSnapshot(entitlement: ApplicationEntitlement) {
     version: entitlement.version,
     is_active: entitlement.is_active,
   };
+}
+
+// The registry decides what a role may do. Keys match exactly, no mapping.
+async function resolveRolePermissions(
+  applicationId: string,
+  role: string,
+  permissions: string[] | undefined,
+): Promise<string[]> {
+  const entry = await prismaClient.applicationRole.findUnique({
+    where: { application_id_key: { application_id: applicationId, key: role } },
+  });
+  if (!entry || !entry.is_active) {
+    throw new ResponseError(
+      400,
+      `Role "${role}" is not an active role of ${applicationId}. Use a role from the registry, spelled exactly.`,
+    );
+  }
+  if (permissions !== undefined) {
+    const same =
+      permissions.length === entry.permissions.length &&
+      entry.permissions.every((permission) => permissions.includes(permission));
+    if (!same) {
+      throw new ResponseError(400, `Permissions must match the ${role} role of ${applicationId}`);
+    }
+  }
+  return entry.permissions;
 }
 
 export class ApplicationEntitlementService {
@@ -116,6 +152,12 @@ export class ApplicationEntitlementService {
       throw new ResponseError(404, "Active employee person not found");
     }
 
+    const rolePermissions = await resolveRolePermissions(
+      grant.application_id,
+      grant.role,
+      grant.permissions,
+    );
+
     const existing = await prismaClient.applicationEntitlement.findUnique({
       where: {
         person_id_application_id: {
@@ -134,13 +176,21 @@ export class ApplicationEntitlementService {
             where: { id: existing.id },
             data: {
               role: grant.role,
-              permissions: grant.permissions,
+              permissions: rolePermissions,
               is_active: true,
               version: { increment: 1 },
               granted_at: new Date(),
             },
           })
-        : await tx.applicationEntitlement.create({ data: grant });
+        : await tx.applicationEntitlement.create({
+            data: {
+              person_id: grant.person_id,
+              application_id: grant.application_id,
+              organization_id: grant.organization_id,
+              role: grant.role,
+              permissions: rolePermissions,
+            },
+          });
 
       await AuditService.record(
         {
@@ -179,23 +229,19 @@ export class ApplicationEntitlementService {
     if (!existing.is_active) {
       throw new ResponseError(400, "Cannot update a revoked application entitlement");
     }
-    const normalizedUpdate = Validation.validate(
-      ApplicationEntitlementValidation.GRANT,
-      {
-        person_id: existing.person_id,
-        application_id: existing.application_id,
-        organization_id: existing.organization_id,
-        role: update.role ?? existing.role,
-        permissions: update.permissions ?? existing.permissions,
-      },
+    const nextRole = update.role ?? existing.role;
+    const nextPermissions = await resolveRolePermissions(
+      existing.application_id,
+      nextRole,
+      update.permissions,
     );
 
     const entitlement = await prismaClient.$transaction(async (tx) => {
       const saved = await tx.applicationEntitlement.update({
         where: { id: update.id },
         data: {
-          role: normalizedUpdate.role,
-          permissions: normalizedUpdate.permissions,
+          role: nextRole,
+          permissions: nextPermissions,
           version: { increment: 1 },
         },
       });
@@ -265,16 +311,183 @@ export class ApplicationEntitlementService {
   static async list(
     admin: AdminUser,
     request: ListApplicationEntitlementsRequest,
-  ): Promise<ApplicationEntitlementResponse[]> {
+  ): Promise<Pageable<ApplicationEntitlementListItem>> {
     assertSuperAdmin(admin);
     const filters = Validation.validate(
       ApplicationEntitlementValidation.LIST,
       request,
     );
-    const entitlements = await prismaClient.applicationEntitlement.findMany({
-      where: filters,
-      orderBy: { updated_at: "desc" },
+    const { page: pageInput, size: sizeInput, search, ...exact } = filters;
+    const page = pageInput ?? 1;
+    const size = sizeInput ?? 10;
+    const where = {
+      ...exact,
+      ...(search
+        ? {
+            person: {
+              OR: [
+                { full_name: { contains: search, mode: "insensitive" as const } },
+                { email: { contains: search, mode: "insensitive" as const } },
+              ],
+            },
+          }
+        : {}),
+    };
+    return paginate(page, size, {
+      count: () => prismaClient.applicationEntitlement.count({ where }),
+      findMany: async () => {
+        const rows = await prismaClient.applicationEntitlement.findMany({
+          where,
+          include: {
+            person: {
+              select: {
+                full_name: true,
+                email: true,
+                employee: { select: { unit: { select: { name: true } } } },
+              },
+            },
+          },
+          orderBy: [{ updated_at: "desc" }, { id: "desc" }],
+          skip: (page - 1) * size,
+          take: size,
+        });
+        return rows.map((row) => ({
+          ...toApplicationEntitlementResponse(row),
+          person: {
+            full_name: row.person.full_name,
+            email: row.person.email,
+            unit: row.person.employee?.unit.name ?? null,
+          },
+        }));
+      },
     });
-    return entitlements.map(toApplicationEntitlementResponse);
+  }
+}
+
+function roleAuditSnapshot(role: {
+  application_id: string;
+  key: string;
+  label: string;
+  permissions: string[];
+  is_active: boolean;
+}) {
+  return {
+    application_id: role.application_id,
+    key: role.key,
+    label: role.label,
+    permissions: role.permissions,
+    is_active: role.is_active,
+  };
+}
+
+export class ApplicationRoleService {
+  static async list(
+    admin: AdminUser,
+    request: ListApplicationRolesRequest,
+  ): Promise<ApplicationRoleResponse[]> {
+    assertSuperAdmin(admin);
+    const filters = Validation.validate(ApplicationRoleValidation.LIST, request);
+    const roles = await prismaClient.applicationRole.findMany({
+      where: filters,
+      orderBy: [{ application_id: "asc" }, { key: "asc" }],
+    });
+    const counts = await prismaClient.applicationEntitlement.groupBy({
+      by: ["application_id", "role"],
+      where: { is_active: true },
+      _count: { _all: true },
+    });
+    const countOf = (role: { application_id: string; key: string }) =>
+      counts.find((c) => c.application_id === role.application_id && c.role === role.key)
+        ?._count._all ?? 0;
+    return roles.map((role) => toApplicationRoleResponse(role, countOf(role)));
+  }
+
+  static async create(
+    admin: AdminUser,
+    request: CreateApplicationRoleRequest,
+    context: AuditRequestContext = {},
+  ): Promise<ApplicationRoleResponse> {
+    assertSuperAdmin(admin);
+    const input = Validation.validate(ApplicationRoleValidation.CREATE, request);
+    const existing = await prismaClient.applicationRole.findUnique({
+      where: { application_id_key: { application_id: input.application_id, key: input.key } },
+    });
+    if (existing) {
+      throw new ResponseError(400, `Role ${input.key} already exists for ${input.application_id}`);
+    }
+    const created = await prismaClient.$transaction(async (tx) => {
+      const saved = await tx.applicationRole.create({ data: input });
+      await AuditService.record(
+        {
+          action: AuditAction.APPLICATION_ROLE_CREATE,
+          source: AuditSource.UI,
+          entity_type: "ApplicationRole",
+          entity_id: saved.id,
+          admin_id: admin.id,
+          new_values: roleAuditSnapshot(saved),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+      return saved;
+    });
+    return toApplicationRoleResponse(created, 0);
+  }
+
+  // Changing a role's permissions also updates every active entitlement that
+  // holds it, so the registry stays the single source of truth.
+  static async update(
+    admin: AdminUser,
+    request: UpdateApplicationRoleRequest,
+    context: AuditRequestContext = {},
+  ): Promise<ApplicationRoleResponse> {
+    assertSuperAdmin(admin);
+    const input = Validation.validate(ApplicationRoleValidation.UPDATE, request);
+    const existing = await prismaClient.applicationRole.findUnique({ where: { id: input.id } });
+    if (!existing) throw new ResponseError(404, "Application role not found");
+
+    const activeCount = await prismaClient.applicationEntitlement.count({
+      where: { application_id: existing.application_id, role: existing.key, is_active: true },
+    });
+    if (input.is_active === false && existing.is_active && activeCount > 0) {
+      throw new ResponseError(
+        400,
+        `${activeCount} active entitlement(s) still use this role. Move or revoke them first.`,
+      );
+    }
+
+    const updated = await prismaClient.$transaction(async (tx) => {
+      const saved = await tx.applicationRole.update({
+        where: { id: input.id },
+        data: {
+          label: input.label,
+          permissions: input.permissions,
+          is_active: input.is_active,
+        },
+      });
+      if (input.permissions !== undefined) {
+        await tx.applicationEntitlement.updateMany({
+          where: { application_id: existing.application_id, role: existing.key, is_active: true },
+          data: { permissions: input.permissions, version: { increment: 1 } },
+        });
+      }
+      await AuditService.record(
+        {
+          action: AuditAction.APPLICATION_ROLE_UPDATE,
+          source: AuditSource.UI,
+          entity_type: "ApplicationRole",
+          entity_id: saved.id,
+          admin_id: admin.id,
+          old_values: roleAuditSnapshot(existing),
+          new_values: roleAuditSnapshot(saved),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+      return saved;
+    });
+    return toApplicationRoleResponse(updated, activeCount);
   }
 }

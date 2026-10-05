@@ -1,4 +1,4 @@
-import type { ApplicationEntitlement } from "../generated/prisma/client";
+import type { ApplicationEntitlement, ApplicationRole } from "../generated/prisma/client";
 
 export type ApplicationEntitlementResponse = {
   id: string;
@@ -23,7 +23,8 @@ export type GrantApplicationEntitlementRequest = {
   application_id: string;
   organization_id: string;
   role: string;
-  permissions: string[];
+  // Optional: the registry role decides them. When sent they must match.
+  permissions?: string[];
 };
 
 export type UpdateApplicationEntitlementRequest = {
@@ -38,8 +39,64 @@ export type ListApplicationEntitlementsRequest = {
   person_id?: string;
   application_id?: string;
   organization_id?: string;
+  role?: string;
+  is_active?: boolean;
+  search?: string;
+  page?: number;
+  size?: number;
+};
+
+export type ApplicationEntitlementListItem = ApplicationEntitlementResponse & {
+  person: { full_name: string; email: string; unit: string | null };
+};
+
+export type ApplicationRoleResponse = {
+  id: string;
+  application_id: string;
+  key: string;
+  label: string;
+  permissions: string[];
+  is_active: boolean;
+  active_entitlement_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateApplicationRoleRequest = {
+  application_id: string;
+  key: string;
+  label: string;
+  permissions: string[];
+};
+
+export type UpdateApplicationRoleRequest = {
+  id: string;
+  label?: string;
+  permissions?: string[];
   is_active?: boolean;
 };
+
+export type ListApplicationRolesRequest = {
+  application_id?: string;
+  is_active?: boolean;
+};
+
+export function toApplicationRoleResponse(
+  role: ApplicationRole,
+  activeEntitlementCount: number,
+): ApplicationRoleResponse {
+  return {
+    id: role.id,
+    application_id: role.application_id,
+    key: role.key,
+    label: role.label,
+    permissions: role.permissions,
+    is_active: role.is_active,
+    active_entitlement_count: activeEntitlementCount,
+    created_at: role.created_at.toISOString(),
+    updated_at: role.updated_at.toISOString(),
+  };
+}
 
 export function toApplicationEntitlementResponse(
   entitlement: ApplicationEntitlement,

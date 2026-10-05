@@ -136,6 +136,8 @@ export const ENTITY_AUDIT_ACTIONS = [
   "APPLICATION_ENTITLEMENT_GRANT",
   "APPLICATION_ENTITLEMENT_UPDATE",
   "APPLICATION_ENTITLEMENT_REVOKE",
+  "APPLICATION_ROLE_CREATE",
+  "APPLICATION_ROLE_UPDATE",
 ] as const satisfies readonly AuditAction[];
 
 export type EntityAuditAction = (typeof ENTITY_AUDIT_ACTIONS)[number];
