@@ -22,6 +22,8 @@ applicationAccessRuleRouter.delete("/:id", (c) => ApplicationAccessRuleControlle
 
 export const applicationAccessRouter = new Hono<{ Variables: AdminVariables }>();
 
+applicationAccessRouter.get("/applications", (c) => ApplicationAccessController.applications(c));
+applicationAccessRouter.get("/apps/:applicationId", (c) => ApplicationAccessController.application(c));
 applicationAccessRouter.get("/candidates", (c) => ApplicationAccessController.candidates(c));
 applicationAccessRouter.get("/", (c) => ApplicationAccessController.list(c));
 

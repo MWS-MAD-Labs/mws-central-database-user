@@ -185,6 +185,16 @@ export class ApplicationAccessRuleController {
 }
 
 export class ApplicationAccessController {
+  static async applications(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: await ApplicationAccessService.applications(c.var.admin) });
+  }
+
+  static async application(c: Context<{ Variables: AdminVariables }>) {
+    const applicationId = c.req.param("applicationId");
+    if (!applicationId) throw new ResponseError(400, "Application ID is required");
+    return c.json({ data: await ApplicationAccessService.application(c.var.admin, applicationId) });
+  }
+
   static async candidates(c: Context<{ Variables: AdminVariables }>) {
     const applicationId = c.req.query("application_id");
     if (!applicationId) throw new ResponseError(400, "application_id is required");

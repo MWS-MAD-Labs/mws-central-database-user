@@ -152,6 +152,42 @@ export function toApplicationAccessRuleResponse(
   };
 }
 
+export type ApplicationSummary = {
+  application_id: string;
+  organization_id: string | null;
+  active_group_count: number;
+  exception_count: number;
+};
+
+export type ApplicationExceptionRow = {
+  id: string;
+  person_id: string;
+  full_name: string;
+  email: string;
+  unit: string | null;
+  role: string;
+  permissions: string[];
+  is_active: boolean;
+  granted_at: string;
+};
+
+export type ApplicationGroupCard = ApplicationAccessRuleResponse & {
+  parent_group_id: string | null;
+  units: { id: string; name: string }[];
+  job_positions: { id: string; name: string }[];
+  job_levels: { id: string; name: string }[];
+  permissions: string[];
+  exceptions: ApplicationExceptionRow[];
+};
+
+export type ApplicationDetail = {
+  application_id: string;
+  organization_id: string | null;
+  groups: ApplicationGroupCard[];
+  // Older rows of people no group covers.
+  other: ApplicationExceptionRow[];
+};
+
 // One row of the combined Access list: a group rule or a person's entitlement.
 export type ApplicationAccessRow = {
   kind: "GROUP" | "PERSON";

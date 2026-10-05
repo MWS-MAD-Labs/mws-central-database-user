@@ -27,6 +27,10 @@ import {
   type ListApplicationAccessRequest,
   type ListApplicationCandidatesRequest,
   type ApplicationCandidate,
+  type ApplicationDetail,
+  type ApplicationExceptionRow,
+  type ApplicationGroupCard,
+  type ApplicationSummary,
   type UpdateApplicationAccessRuleRequest,
   toApplicationAccessRuleResponse,
   type ApplicationEntitlementResponse,
@@ -58,6 +62,8 @@ import {
   loadRuleSubject,
   ruleMatches,
   inheritedRole,
+  parentRule,
+  toRuleSubject,
   ruleSpecificity,
   type GateRule,
   type RuleFilter,
@@ -969,6 +975,157 @@ export class ApplicationAccessRuleService {
 
 // One list for the Access page: group rules first, then people.
 export class ApplicationAccessService {
+  // One row per application with how much access it has.
+  static async applications(admin: AdminUser): Promise<ApplicationSummary[]> {
+    assertSuperAdmin(admin);
+    const [roleApps, organizations, groups, exceptions] = await Promise.all([
+      prismaClient.applicationRole.findMany({ distinct: ["application_id"], select: { application_id: true } }),
+      prismaClient.applicationOrganization.findMany(),
+      prismaClient.applicationAccessRule.groupBy({
+        by: ["application_id"],
+        where: { is_active: true },
+        _count: { _all: true },
+      }),
+      prismaClient.applicationEntitlement.groupBy({
+        by: ["application_id"],
+        where: { is_active: true },
+        _count: { _all: true },
+      }),
+    ]);
+    const ids = new Set([
+      ...roleApps.map((row) => row.application_id),
+      ...organizations.map((row) => row.application_id),
+      ...groups.map((row) => row.application_id),
+      ...exceptions.map((row) => row.application_id),
+    ]);
+    return [...ids].sort().map((applicationId) => ({
+      application_id: applicationId,
+      organization_id:
+        organizations.find((row) => row.application_id === applicationId)?.organization_id ?? null,
+      active_group_count: groups.find((row) => row.application_id === applicationId)?._count._all ?? 0,
+      exception_count: exceptions.find((row) => row.application_id === applicationId)?._count._all ?? 0,
+    }));
+  }
+
+  // Everything of one application: its groups, and the exceptions under each.
+  static async application(admin: AdminUser, applicationId: string): Promise<ApplicationDetail> {
+    assertSuperAdmin(admin);
+    const [rules, entitlements, organization, roles] = await Promise.all([
+      prismaClient.applicationAccessRule.findMany({
+        where: { application_id: applicationId },
+        orderBy: { created_at: "asc" },
+      }),
+      prismaClient.applicationEntitlement.findMany({
+        where: { application_id: applicationId },
+        include: {
+          person: {
+            select: {
+              person_type: true,
+              full_name: true,
+              email: true,
+              student: {
+                select: { status: true, deleted_at: true, current_grade: { select: { unit_id: true } } },
+              },
+              employee: {
+                select: {
+                  status: true,
+                  deleted_at: true,
+                  unit_id: true,
+                  job_position_id: true,
+                  job_level_id: true,
+                  unit: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ updated_at: "desc" }, { id: "asc" }],
+      }),
+      prismaClient.applicationOrganization.findUnique({ where: { application_id: applicationId } }),
+      prismaClient.applicationRole.findMany({ where: { application_id: applicationId } }),
+    ]);
+    if (rules.length === 0 && entitlements.length === 0 && roles.length === 0 && !organization) {
+      throw new ResponseError(404, "Application not found");
+    }
+
+    const gateRules: GateRule[] = rules.map((rule) => ({
+      id: rule.id,
+      audience: rule.audience,
+      unit_ids: rule.unit_ids,
+      job_position_ids: rule.job_position_ids,
+      job_level_ids: rule.job_level_ids,
+      default_role_key: rule.default_role_key,
+      is_active: rule.is_active,
+    }));
+    const active = gateRules.filter((rule) => rule.is_active);
+
+    const [units, positions, levels] = await Promise.all([
+      prismaClient.masterUnit.findMany({
+        where: { id: { in: rules.flatMap((rule) => rule.unit_ids) } },
+        select: { id: true, name: true },
+      }),
+      prismaClient.masterJobPosition.findMany({
+        where: { id: { in: rules.flatMap((rule) => rule.job_position_ids) } },
+        select: { id: true, name: true },
+      }),
+      prismaClient.masterJobLevel.findMany({
+        where: { id: { in: rules.flatMap((rule) => rule.job_level_ids) } },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const named = (list: { id: string; name: string }[], ids: string[]) =>
+      ids.map((id) => ({ id, name: list.find((item) => item.id === id)?.name ?? id }));
+
+    const parentOfPerson = new Map<string, string | null>();
+    const rows = new Map<string, ApplicationExceptionRow>();
+    for (const row of entitlements) {
+      const subject = toRuleSubject(row.person);
+      parentOfPerson.set(row.id, subject ? (inheritedRole(subject, active)?.id ?? null) : null);
+      rows.set(row.id, {
+        id: row.id,
+        person_id: row.person_id,
+        full_name: row.person.full_name,
+        email: row.person.email,
+        unit: row.person.employee?.unit.name ?? null,
+        role: row.role,
+        permissions: row.permissions,
+        is_active: row.is_active,
+        granted_at: row.granted_at.toISOString(),
+      });
+    }
+
+    const groups: ApplicationGroupCard[] = rules
+      .map((rule, index) => {
+        const gate = gateRules[index];
+        return {
+          ...toApplicationAccessRuleResponse(rule),
+          parent_group_id: rule.is_active ? (parentRule(gate, active)?.id ?? null) : null,
+          units: named(units, rule.unit_ids),
+          job_positions: named(positions, rule.job_position_ids),
+          job_levels: named(levels, rule.job_level_ids),
+          permissions: roles.find((role) => role.key === rule.default_role_key)?.permissions ?? [],
+          exceptions: entitlements
+            .filter((row) => parentOfPerson.get(row.id) === rule.id)
+            .map((row) => rows.get(row.id)!),
+        };
+      })
+      // Broad groups first, then narrower ones.
+      .sort(
+        (left, right) =>
+          ruleSpecificity(gateRules.find((rule) => rule.id === left.id)!) -
+          ruleSpecificity(gateRules.find((rule) => rule.id === right.id)!),
+      );
+
+    return {
+      application_id: applicationId,
+      organization_id: organization?.organization_id ?? null,
+      groups,
+      other: entitlements
+        .filter((row) => parentOfPerson.get(row.id) === null)
+        .map((row) => rows.get(row.id)!),
+    };
+  }
+
   // Active employees to pick from, filterable by how the application's groups cover them.
   static async candidates(
     admin: AdminUser,
