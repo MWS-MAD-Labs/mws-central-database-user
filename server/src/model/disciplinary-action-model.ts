@@ -37,6 +37,8 @@ export type RevokeDisciplinaryActionRequest = {
 
 export type ListDisciplinaryActionsRequest = {
   employee_id: string;
+  page: number;
+  size: number;
 };
 
 export type DisciplinaryActionResponse = {

@@ -9,6 +9,7 @@ import {
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import type { AuditRequestContext } from "../model/audit-log-model";
+import { paginate, type Pageable } from "../model/page-model";
 import {
   toDisciplinaryActionResponse,
   type CreateDisciplinaryActionRequest,
@@ -123,7 +124,7 @@ export class DisciplinaryActionService {
     admin: AdminUserWithEmployeeScope,
     request: ListDisciplinaryActionsRequest,
     context: AuditRequestContext = {},
-  ): Promise<DisciplinaryActionResponse[]> {
+  ): Promise<Pageable<DisciplinaryActionResponse>> {
     const listRequest = Validation.validate(
       DisciplinaryActionValidation.LIST,
       request,
@@ -140,13 +141,20 @@ export class DisciplinaryActionService {
       listRequest.employee_id,
     );
 
-    const actions = await prismaClient.employeeDisciplinaryAction.findMany({
-      where: { employee_id: listRequest.employee_id },
-      include: { issued_by_admin: { select: { full_name: true } }, _count: { select: { attachments: { where: { deleted_at: null } } } } },
-      orderBy: { issued_date: "desc" },
+    const where = { employee_id: listRequest.employee_id };
+    const page = await paginate(listRequest.page, listRequest.size, {
+      count: () => prismaClient.employeeDisciplinaryAction.count({ where }),
+      findMany: () =>
+        prismaClient.employeeDisciplinaryAction.findMany({
+          where,
+          include: { issued_by_admin: { select: { full_name: true } }, _count: { select: { attachments: { where: { deleted_at: null } } } } },
+          orderBy: [{ issued_date: "desc" }, { id: "desc" }],
+          skip: (listRequest.page - 1) * listRequest.size,
+          take: listRequest.size,
+        }),
     });
 
-    return actions.map(toDisciplinaryActionResponse);
+    return { ...page, data: page.data.map(toDisciplinaryActionResponse) };
   }
 
   // Masked-by-default on the client; this records the reveal for audit,

@@ -84,6 +84,23 @@ describe("Employee disciplinary actions (Surat Teguran / Surat Peringatan)", () 
     return { response, body };
   }
 
+  it("should page the disciplinary history on the server", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(accessToken, "899", "test_disc_paging@millennia21.id");
+    await issue(accessToken, employee.id, { type: "SURAT_TEGURAN", reason: "First" });
+    await issue(accessToken, employee.id, { type: "SURAT_TEGURAN", reason: "Second" });
+
+    const url = `/api/admin/employees/${employee.id}/disciplinary-actions`;
+    const first = await (await TestRequest.get(`${url}?page=1&size=1`, accessToken)).json();
+    expect(first.data).toHaveLength(1);
+    expect(first.paging.total_item).toBe(2);
+    expect(first.paging.total_page).toBe(2);
+
+    const second = await (await TestRequest.get(`${url}?page=2&size=1`, accessToken)).json();
+    expect(second.data).toHaveLength(1);
+    expect(second.data[0].id).not.toBe(first.data[0].id);
+  });
+
   it("should issue ST1 for an employee with no prior disciplinary history", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const employee = await createEmployee(accessToken, "801", "test_disc_st1@millennia21.id");

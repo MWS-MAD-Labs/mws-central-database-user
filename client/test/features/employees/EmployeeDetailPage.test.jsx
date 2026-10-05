@@ -34,7 +34,7 @@ function detailRoutes({ employee = employeeFixture(), status = 200, history = []
         ? jsonResponse({ data: { id: 'employee-1' } })
         : jsonResponse(status === 200 ? { data: redacted } : { message: 'Unavailable' }, status),
     },
-    { path: '/api/admin/employees/employee-1/disciplinary-actions', response: jsonResponse({ data: [] }) },
+    { path: '/api/admin/employees/employee-1/disciplinary-actions?page=1&size=10', response: jsonResponse({ data: [] }) },
     { path: '/api/admin/employees/employee-1/disciplinary-actions/access', method: 'POST', response: jsonResponse({ data: true }) },
     { path: '/api/admin/employees/employee-1/mutation-history', response: jsonResponse({ data: history }) },
     { path: '/api/admin/employees/employee-1/teaching-assignments', response: jsonResponse({ data: [] }) },

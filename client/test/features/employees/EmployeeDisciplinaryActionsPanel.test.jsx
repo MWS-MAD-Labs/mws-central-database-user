@@ -49,7 +49,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     globalThis.fetch = createFetchRouter([
       accessRoute,
       {
-        path: '/api/admin/employees/employee-1/disciplinary-actions',
+        path: '/api/admin/employees/employee-1/disciplinary-actions?page=1&size=10',
         response: jsonResponse({ data: [] }),
       },
     ])
@@ -66,7 +66,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     const fetchMock = createFetchRouter([
       accessRoute,
       {
-        path: '/api/admin/employees/employee-1/disciplinary-actions',
+        path: /^\/api\/admin\/employees\/employee-1\/disciplinary-actions(\?.*)?$/,
         response: ({ method }) => {
           if (method === 'POST') {
             return jsonResponse({ data: activeAction })
@@ -145,7 +145,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     globalThis.fetch = createFetchRouter([
       accessRoute,
       {
-        path: '/api/admin/employees/employee-1/disciplinary-actions',
+        path: '/api/admin/employees/employee-1/disciplinary-actions?page=1&size=10',
         response: jsonResponse({ data: [activeAction] }),
       },
       {
@@ -175,7 +175,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     const fetchMock = createFetchRouter([
       accessRoute,
       {
-        path: '/api/admin/employees/employee-1/disciplinary-actions',
+        path: '/api/admin/employees/employee-1/disciplinary-actions?page=1&size=10',
         response: jsonResponse({ data: [activeAction] }),
       },
       {
@@ -210,7 +210,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     const fetchMock = createFetchRouter([
       accessRoute,
       {
-        path: '/api/admin/employees/employee-1/disciplinary-actions',
+        path: '/api/admin/employees/employee-1/disciplinary-actions?page=1&size=10',
         response: jsonResponse({ data: [activeAction] }),
       },
       {
@@ -268,7 +268,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     const fetchMock = createFetchRouter([
       accessRoute,
       {
-        path: '/api/admin/employees/employee-1/disciplinary-actions',
+        path: '/api/admin/employees/employee-1/disciplinary-actions?page=1&size=10',
         response: jsonResponse({ data: [activeAction] }),
       },
       {
@@ -335,7 +335,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     globalThis.fetch = createFetchRouter([
       accessRoute,
       {
-        path: '/api/admin/employees/employee-1/disciplinary-actions',
+        path: '/api/admin/employees/employee-1/disciplinary-actions?page=1&size=10',
         response: jsonResponse({ message: 'Denied' }, 403),
       },
     ])
@@ -347,7 +347,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     globalThis.fetch = createFetchRouter([
       accessRoute,
       {
-        path: '/api/admin/employees/employee-1/disciplinary-actions',
+        path: '/api/admin/employees/employee-1/disciplinary-actions?page=1&size=10',
         response: jsonResponse({ data: [activeAction] }),
       },
       {
@@ -367,7 +367,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     const fetchMock = createFetchRouter([
       accessRoute,
       {
-        path: '/api/admin/employees/employee-1/disciplinary-actions',
+        path: /^\/api\/admin\/employees\/employee-1\/disciplinary-actions(\?.*)?$/,
         response: ({ method }) => method === 'POST'
           ? jsonResponse({ data: activeAction })
           : jsonResponse({ data: [activeAction] }),

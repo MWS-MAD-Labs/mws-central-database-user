@@ -14,11 +14,14 @@ export class DisciplinaryActionController {
       throw new ResponseError(400, "Employee ID is required in parameter");
     }
 
+    const query = c.req.query();
     const response = await DisciplinaryActionService.list(admin, {
       employee_id: employeeId,
+      page: query.page ? Number(query.page) : 1,
+      size: query.size ? Number(query.size) : 10,
     }, getAuditRequestContext(c));
 
-    return c.json({ data: response });
+    return c.json(response);
   }
 
   static async recordAccess(c: Context<{ Variables: AdminVariables }>) {

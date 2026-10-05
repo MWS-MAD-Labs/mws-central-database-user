@@ -8,7 +8,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
@@ -103,9 +103,11 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage }) {
   }
 
   const historyQuery = useQuery({
-    queryKey: ['employees', employeeId, 'disciplinary-actions'],
-    queryFn: () => employeesApi.getDisciplinaryActions(employeeId),
+    queryKey: ['employees', employeeId, 'disciplinary-actions', page],
+    queryFn: () =>
+      employeesApi.getDisciplinaryActions(employeeId, { page, size: ACTION_PAGE_SIZE }),
     enabled: Boolean(employeeId) && revealed,
+    placeholderData: keepPreviousData,
   })
 
   const invalidate = () => {
@@ -212,13 +214,9 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage }) {
     )
   }
 
-  const rows = historyQuery.data || []
-  const totalPages = Math.max(Math.ceil(rows.length / ACTION_PAGE_SIZE), 1)
-  const clampedPage = Math.min(page, totalPages)
-  const pagedRows = rows.slice(
-    (clampedPage - 1) * ACTION_PAGE_SIZE,
-    clampedPage * ACTION_PAGE_SIZE,
-  )
+  const pagedRows = historyQuery.data?.data || []
+  const paging = historyQuery.data?.paging
+  const totalPages = Math.max(paging?.total_page || 1, 1)
 
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
@@ -264,7 +262,7 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage }) {
                   Disciplinary history is unavailable.
                 </td>
               </tr>
-            ) : rows.length === 0 ? (
+            ) : pagedRows.length === 0 ? (
               <tr>
                 <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
                   No disciplinary actions on file.
@@ -344,14 +342,9 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage }) {
         </table>
       </div>
 
-      {rows.length > ACTION_PAGE_SIZE ? (
+      {paging && paging.total_item > ACTION_PAGE_SIZE ? (
         <PaginationBar
-          paging={{
-            current_page: clampedPage,
-            total_page: totalPages,
-            total_item: rows.length,
-            size: ACTION_PAGE_SIZE,
-          }}
+          paging={paging}
           itemLabel="records"
           onPrevious={() => setPage((current) => Math.max(current - 1, 1))}
           onNext={() => setPage((current) => Math.min(current + 1, totalPages))}

@@ -191,11 +191,11 @@ export const employeesApi = {
     return response.data
   },
 
-  async getDisciplinaryActions(id) {
-    const response = await apiRequest(
-      `/api/admin/employees/${id}/disciplinary-actions`,
+  async getDisciplinaryActions(id, params) {
+    const query = compactSearchParams(params).toString()
+    return apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions${query ? `?${query}` : ''}`,
     )
-    return response.data
   },
 
   async recordDisciplinaryAccess(id) {

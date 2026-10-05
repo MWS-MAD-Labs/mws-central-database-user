@@ -58,5 +58,7 @@ export class DisciplinaryActionValidation {
 
   static readonly LIST = z.object({
     employee_id: z.string().min(1, "Employee ID is required"),
+    page: z.number().min(1).positive().default(1),
+    size: z.number().min(1).positive().max(100).default(10),
   });
 }
