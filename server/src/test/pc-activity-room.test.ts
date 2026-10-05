@@ -417,6 +417,38 @@ describe("PC Activity Rooms", () => {
       expect(blocked.status).toBe(403);
     });
 
+    it("shows a room to an admin with only employee scope, mentors open, students and room edits locked", async () => {
+      const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
+      const created = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        activity_id: activityId,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        unit_ids: [unitId],
+        grade_ids: [gradeId],
+      }, superToken);
+      const roomId = (await created.json()).data.id;
+
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_ROOM_MENTOR_ONLY_${Date.now()}` },
+      });
+      const mentorOnly = await AdminUserTest.createDatabaseAdmin(otherUnit.id, {
+        id: "test-room-mentor-only",
+        email: "test_room_mentor_only@millennia21.id",
+        canViewStudentData: false,
+        canViewEmployeeData: true,
+        canViewAllEmployeeUnits: true,
+        canManageTeacherAssignments: true,
+      });
+
+      const list = await (await TestRequest.get("/api/admin/pc-activity-rooms", mentorOnly.accessToken)).json();
+      expect(list.data.some((room: { id: string }) => room.id === roomId)).toBe(true);
+      expect((await TestRequest.get(`/api/admin/pc-activity-rooms/${roomId}`, mentorOnly.accessToken)).status).toBe(200);
+      expect((await TestRequest.get(`/api/admin/pc-activity-rooms/${roomId}/mentors`, mentorOnly.accessToken)).status).toBe(200);
+
+      const edit = await TestRequest.patch(`/api/admin/pc-activity-rooms/${roomId}`, { label: "X" }, mentorOnly.accessToken);
+      expect(edit.status).toBe(403);
+    });
+
     it("lets a DATABASE_ADMIN with a custom student unit list create rooms only inside that list", async () => {
       const otherUnit = await prismaClient.masterUnit.create({ data: { name: `TEST_ROOM_LIST_OTHER_${Date.now()}` } });
       const otherGrade = await prismaClient.grade.create({

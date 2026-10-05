@@ -272,9 +272,7 @@ export function PcActivityRoomsPanel() {
       notice={
         !isSuperAdmin && !isDatabaseAdmin
           ? "Only Super Admin or your unit's Database Admin can manage PC Activity rooms."
-          : isDatabaseAdmin && !hasWritableUnit
-            ? "PC Activity rooms don't apply to your units."
-            : null
+          : null
       }
     >
       <table className="w-full min-w-[1010px] table-fixed text-left text-sm">

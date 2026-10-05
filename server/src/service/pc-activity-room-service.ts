@@ -85,6 +85,7 @@ import {
 import {
   assertCanManageEnrollments,
   assertCanManageTeacherAssignments,
+  resolveAcademicUnitScope,
   resolveEmployeeUnitScope,
   resolveStudentUnitScope,
   isUnitWritable,
@@ -174,14 +175,14 @@ async function assertMentorWriteAllowed(
   }
 }
 
-// Reading a room follows the student view scope (all units, custom units, or
-// own unit). Writing uses the same scope, see assertRoomInAdminUnit.
+// A room is visible when its units fall in the student or the employee view
+// scope (same union the Class page uses). Rows inside stay scoped per domain.
 function assertRoomReadable(
   admin: AdminUserWithAcademicScope,
   unitIds: string[],
 ): void {
   if (admin.role !== AdminRole.DATABASE_ADMIN) return;
-  const scope = resolveStudentUnitScope(admin);
+  const scope = resolveAcademicUnitScope(admin);
   if (scope === undefined) return;
   if (!unitIds.some((unitId) => scope.includes(unitId))) {
     throw new ResponseError(
@@ -232,6 +233,23 @@ function mentorsInScope<
         ? scope.includes(mentor.intern.unit_id)
         : false,
   );
+}
+
+// Mentor changes only need one room unit inside the employee scope; the mentor
+// themselves is checked separately by assertMentorInAdminUnit.
+function assertRoomMentorWritable(
+  admin: AdminUser & AdminWithOptionalScope,
+  unitIds: string[],
+): void {
+  if (
+    admin.role === AdminRole.DATABASE_ADMIN &&
+    !unitIds.some((unitId) => isUnitWritable(admin, unitId, "employee"))
+  ) {
+    throw new ResponseError(
+      403,
+      "Forbidden: This room is outside your unit scope",
+    );
+  }
 }
 
 // Room-wide mutations require every room unit to be in student scope.
@@ -723,7 +741,7 @@ export class PCActivityRoomService {
     const skip = (searchRequest.page - 1) * searchRequest.size;
     const readScope =
       admin.role === AdminRole.DATABASE_ADMIN
-        ? resolveStudentUnitScope(admin)
+        ? resolveAcademicUnitScope(admin)
         : undefined;
     const where = {
       deleted_at: null,
@@ -1230,7 +1248,7 @@ export class PCActivityRoomService {
     const listRequest = Validation.validate(PcActivityRoomValidation.LIST_ELIGIBLE_MENTORS, request);
     const room = await findRoomOrThrow(listRequest.room_id);
     const unitIds = room.units.map((entry) => entry.unit_id);
-    assertRoomInAdminUnit(admin, unitIds);
+    assertRoomMentorWritable(admin, unitIds);
     const [employees, interns, assignments] = await Promise.all([
       prismaClient.employee.findMany({
         where: {
@@ -1313,7 +1331,7 @@ export class PCActivityRoomService {
 
     const room = await findRoomOrThrow(assignRequest.room_id);
     const unitIds = room.units.map((u) => u.unit_id);
-    assertRoomInAdminUnit(admin, unitIds);
+    assertRoomMentorWritable(admin, unitIds);
     await assertMentorInAdminUnit(
       admin,
       assignRequest.employee_id ?? null,
@@ -1442,7 +1460,7 @@ export class PCActivityRoomService {
     await assertMentorWriteAllowed(admin, context, now);
     const updateRequest = Validation.validate(PcActivityRoomValidation.UPDATE_START_DATE, request);
     const room = await findRoomOrThrow(updateRequest.room_id);
-    assertRoomInAdminUnit(admin, room.units.map((entry) => entry.unit_id));
+    assertRoomMentorWritable(admin, room.units.map((entry) => entry.unit_id));
     const assignment = await prismaClient.pcActivityRoomMentorAssignment.findFirst({
       where: { id: updateRequest.assignment_id, room_id: room.id },
       include: { next_assignment: { select: { id: true } } },
@@ -1515,7 +1533,7 @@ export class PCActivityRoomService {
     );
 
     const room = await findRoomOrThrow(endRequest.room_id);
-    assertRoomInAdminUnit(admin, room.units.map((u) => u.unit_id));
+    assertRoomMentorWritable(admin, room.units.map((u) => u.unit_id));
 
     const existing = await prismaClient.pcActivityRoomMentorAssignment.findFirst({
       where: { id: endRequest.id, room_id: endRequest.room_id, deleted_at: null },
@@ -1577,7 +1595,7 @@ export class PCActivityRoomService {
     );
 
     const room = await findRoomOrThrow(removeRequest.room_id);
-    assertRoomInAdminUnit(admin, room.units.map((u) => u.unit_id));
+    assertRoomMentorWritable(admin, room.units.map((u) => u.unit_id));
 
     const existing = await prismaClient.pcActivityRoomMentorAssignment.findFirst({
       where: { id: removeRequest.id, room_id: removeRequest.room_id, deleted_at: null },
@@ -1630,7 +1648,7 @@ export class PCActivityRoomService {
     );
 
     const room = await findRoomOrThrow(reopenRequest.room_id);
-    assertRoomInAdminUnit(admin, room.units.map((u) => u.unit_id));
+    assertRoomMentorWritable(admin, room.units.map((u) => u.unit_id));
 
     const existing = await prismaClient.pcActivityRoomMentorAssignment.findFirst({
       where: { id: reopenRequest.id, room_id: reopenRequest.room_id, deleted_at: null },
@@ -1723,8 +1741,8 @@ export class PCActivityRoomService {
       findRoomOrThrow(moveRequest.room_id),
       findRoomOrThrow(moveRequest.target_room_id),
     ]);
-    assertRoomInAdminUnit(admin, sourceRoom.units.map((entry) => entry.unit_id));
-    assertRoomInAdminUnit(admin, targetRoom.units.map((entry) => entry.unit_id));
+    assertRoomMentorWritable(admin, sourceRoom.units.map((entry) => entry.unit_id));
+    assertRoomMentorWritable(admin, targetRoom.units.map((entry) => entry.unit_id));
     const source = await prismaClient.pcActivityRoomMentorAssignment.findFirst({
       where: { id: moveRequest.id, room_id: sourceRoom.id, deleted_at: null },
     });

@@ -89,9 +89,15 @@ export function PcActivityRoomDetailPage() {
     (isDatabaseAdmin &&
       Boolean(room) &&
       room.units.every((unit) => canWriteInUnit(user, unit.id, 'student')))
+  // Mentors follow Employee Units: one room unit in scope is enough.
+  const mentorUnitsMatch =
+    isSuperAdmin ||
+    (isDatabaseAdmin &&
+      Boolean(room) &&
+      room.units.some((unit) => canWriteInUnit(user, unit.id, 'employee')))
   const canEditRoom = roomUnitsMatch
   const canManageStudents = roomUnitsMatch && canManageEnrollments(user)
-  const canManageMentors = roomUnitsMatch && canManageTeacherAssignments(user)
+  const canManageMentors = mentorUnitsMatch && canManageTeacherAssignments(user)
 
   const backAction = (
     <Button asChild variant="secondary">
