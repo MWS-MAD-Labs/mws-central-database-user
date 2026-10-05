@@ -477,7 +477,7 @@ describe('Access role change summary', () => {
     expect(screen.queryByRole('button', { name: 'Demote' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Actions for dummystaff@millennia21.id' }))
     expect(screen.getByRole('button', { name: /History/ })).toBeVisible()
-    expect(screen.getByRole('button', { name: /Grant after-hours write/ })).toBeVisible()
+    expect(screen.getByRole('button', { name: /Grant after-hours/ })).toBeVisible()
     expect(screen.getByRole('button', { name: /Make Viewer/ })).toBeVisible()
     expect(screen.getByRole('button', { name: /Demote/ })).toBeVisible()
   })
