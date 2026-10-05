@@ -116,6 +116,35 @@ describe("Identifier change requests", () => {
     return { response, body: await response.json(), newValue };
   }
 
+  it("does not open a new grace window after an approved change or an approver edit", async () => {
+    const { employee, requester, approver } = await setup();
+    const { body } = await submit(employee.id, requester.accessToken);
+    const approved = await TestRequest.patch(`${BASE}/${body.data.id}/approve`, {}, approver.accessToken);
+    expect(approved.status).toBe(200);
+
+    // Still locked for a normal admin right after the approved change.
+    const afterApproval = await TestRequest.patch(
+      `/api/admin/employees/${employee.id}`,
+      { nik: randomNik() },
+      requester.accessToken,
+    );
+    expect(afterApproval.status).toBe(400);
+
+    // The approver edits directly, and that does not unlock it either.
+    const direct = await TestRequest.patch(
+      `/api/admin/employees/${employee.id}`,
+      { nik: randomNik() },
+      approver.accessToken,
+    );
+    expect(direct.status).toBe(200);
+    const afterDirect = await TestRequest.patch(
+      `/api/admin/employees/${employee.id}`,
+      { nik: randomNik() },
+      requester.accessToken,
+    );
+    expect(afterDirect.status).toBe(400);
+  });
+
   it("lets the requester see decisions and notes, counts unseen ones, and clears them when opened", async () => {
     const { employee, requester, approver } = await setup();
     const { body } = await submit(employee.id, requester.accessToken);

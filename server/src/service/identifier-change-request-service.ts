@@ -218,6 +218,7 @@ async function entityNames(
           where: { id: { in: actionIds } },
           select: {
             id: true,
+            employee_id: true,
             employee: { select: { person: { select: { full_name: true } } } },
           },
         })
@@ -227,6 +228,7 @@ async function entityNames(
     ...actions.map(
       (a) => [`DisciplinaryAction:${a.id}`, a.employee.person.full_name] as const,
     ),
+    ...actions.map((a) => [`parent:DisciplinaryAction:${a.id}`, a.employee_id] as const),
     ...employees.map((e) => [`Employee:${e.id}`, e.person.full_name] as const),
     ...students.map((s) => [`Student:${s.id}`, s.person.full_name] as const),
   ]);
@@ -637,6 +639,7 @@ export class IdentifierChangeRequestService {
         : record;
     return toIdentifierChangeRequestResponse(shown, {
       entityName: names.get(`${record.entity_type}:${record.entity_id}`) ?? null,
+      parentId: names.get(`parent:${record.entity_type}:${record.entity_id}`) ?? null,
       masked,
       canDecide:
         isPending &&

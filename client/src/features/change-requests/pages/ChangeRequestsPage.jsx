@@ -28,9 +28,29 @@ const statusTones = {
 };
 
 function entityHref(request) {
+  if (request.entity_type === "DisciplinaryAction") {
+    return `/employees/${request.entity_parent_id}`;
+  }
   return request.entity_type === "Employee"
     ? `/employees/${request.entity_id}`
     : `/students/${request.entity_id}`;
+}
+
+function entityLabel(request) {
+  return request.entity_type === "DisciplinaryAction" ? "Disciplinary letter" : request.entity_type;
+}
+
+// Attachment rows only carry the file name, in old_value.
+function RequestValues({ request }) {
+  if (request.field_name?.startsWith("attachment_")) {
+    return <span className="font-semibold text-(--mws-charcoal)">{request.old_value}</span>;
+  }
+  return (
+    <>
+      <span className="text-(--mws-muted) line-through">{request.old_value || "(empty)"}</span>{" "}
+      <span className="font-semibold text-(--mws-charcoal)">{request.new_value}</span>
+    </>
+  );
 }
 
 export function ChangeRequestsPage() {
@@ -155,7 +175,7 @@ export function ChangeRequestsPage() {
                         {request.entity_name || request.entity_id}
                       </Link>
                       <span className="text-xs text-(--mws-muted)">
-                        {request.entity_type} · {request.field_label}
+                        {entityLabel(request)} · {request.field_label}
                       </span>
                     </td>
                     <td className="max-w-56 px-3 py-2">
@@ -166,10 +186,7 @@ export function ChangeRequestsPage() {
                           className="block truncate"
                           title={`${request.old_value || "(empty)"} to ${request.new_value}`}
                         >
-                          <span className="text-(--mws-muted) line-through">
-                            {request.old_value || "(empty)"}
-                          </span>{" "}
-                          <span className="font-semibold text-(--mws-charcoal)">{request.new_value}</span>
+                          <RequestValues request={request} />
                         </span>
                       )}
                     </td>
@@ -304,7 +321,9 @@ function DecisionDialog({ mode, request, isSubmitting, onClose, onSubmit }) {
       description={
         isReject
           ? `${request.field_label} for ${request.entity_name} stays unchanged.`
-          : `${request.field_label} for ${request.entity_name} will be changed right away. The field stays locked afterwards.`
+          : request.entity_type === "DisciplinaryAction"
+            ? `${request.field_label} for ${request.entity_name} will be applied right away.`
+            : `${request.field_label} for ${request.entity_name} will be changed right away. The field stays locked afterwards.`
       }
       onClose={onClose}
       footer={

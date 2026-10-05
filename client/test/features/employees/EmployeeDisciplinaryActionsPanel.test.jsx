@@ -27,10 +27,14 @@ const accessRoute = {
   response: () => jsonResponse({ data: true }),
 }
 
-function renderPanel(canWrite = true) {
+function renderPanel(canWrite = true, canEditDirectly = true) {
   return renderWithProviders(
     <ConfirmProvider>
-      <EmployeeDisciplinaryActionsPanel employeeId="employee-1" canManage={canWrite} />
+      <EmployeeDisciplinaryActionsPanel
+        employeeId="employee-1"
+        canManage={canWrite}
+        canEditDirectly={canEditDirectly}
+      />
     </ConfirmProvider>,
   )
 }
@@ -245,6 +249,49 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
         notes: 'Updated notes',
       })
     })
+  })
+
+  it('sends a change request instead of editing when the admin is not an approver', async () => {
+    const fetchMock = createFetchRouter([
+      accessRoute,
+      {
+        path: '/api/admin/employees/employee-1/disciplinary-actions?page=1&size=10',
+        response: jsonResponse({ data: [activeAction] }),
+      },
+      {
+        path: '/api/admin/employees/employee-1/disciplinary-actions/action-1/attachments?is_deleted=false',
+        response: jsonResponse({ data: [] }),
+      },
+      {
+        path: '/api/admin/employees/employee-1/disciplinary-actions/action-1/change-requests',
+        method: 'POST',
+        response: jsonResponse({ data: { request_ids: ['request-1'] } }),
+      },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderPanel(true, false)
+    await reveal(user)
+    await screen.findByText('Repeated lateness')
+
+    await user.click(screen.getByTitle('Edit reason/notes and manage attachments'))
+    const dialog = screen.getByRole('dialog', { name: 'Edit Warning Letter 1' })
+    const textareas = dialog.querySelectorAll('textarea')
+    await user.clear(textareas[0])
+    await user.type(textareas[0], 'Corrected reason')
+    await user.click(within(dialog).getByRole('button', { name: 'Send Request' }))
+    expect(await within(dialog).findByText('Explain why, at least 5 characters.')).toBeVisible()
+    await user.type(textareas[2], 'Wrong date cited')
+    await user.click(within(dialog).getByRole('button', { name: 'Send Request' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url, options]) =>
+        url.endsWith('/action-1/change-requests') && options.method === 'POST')
+      expect(JSON.parse(call[1].body)).toEqual({
+        change_reason: 'Wrong date cited',
+        reason: 'Corrected reason',
+      })
+    })
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(false)
   })
 
   it('uploads multipart attachments, deletes them, lists deleted files without previews, and restores them, from the Edit dialog', async () => {

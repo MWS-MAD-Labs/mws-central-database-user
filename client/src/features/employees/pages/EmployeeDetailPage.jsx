@@ -506,6 +506,9 @@ export function EmployeeDetailPage() {
           <EmployeeDisciplinaryActionsPanel
             employeeId={employeeId}
             canManage={canManageDisciplinary}
+            canEditDirectly={
+              user?.role === 'SUPER_ADMIN' || Boolean(user?.is_employee_identifier_change_approver)
+            }
           />
         ) : null}
         <EmployeeMutationHistoryPanel employeeId={employeeId} canWrite={canWrite} />

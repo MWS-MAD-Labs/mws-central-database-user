@@ -71,7 +71,7 @@ function typeOptions() {
   }))
 }
 
-export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage }) {
+export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage, canEditDirectly = true }) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
   const [revealed, setRevealed] = useState(
@@ -154,6 +154,17 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage }) {
       showSuccessToast('Record updated.')
     },
     onError: (error) => showErrorToast(error, 'Could not update this record.'),
+  })
+
+  const requestEditMutation = useMutation({
+    mutationFn: ({ id, payload }) =>
+      employeesApi.requestDisciplinaryActionEdit(employeeId, id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['change-requests'] })
+      setEditTarget(null)
+      showSuccessToast('Change request sent. An approver will review it.')
+    },
+    onError: (error) => showErrorToast(error, 'Could not send this request.'),
   })
 
   const resolveMutation = useMutation({
@@ -371,9 +382,14 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage }) {
         <EditDisciplinaryActionDialog
           employeeId={employeeId}
           entry={editTarget}
-          isSubmitting={updateMutation.isPending}
+          needsApproval={!canEditDirectly}
+          isSubmitting={updateMutation.isPending || requestEditMutation.isPending}
           onClose={() => setEditTarget(null)}
-          onSubmit={(payload) => updateMutation.mutate({ id: editTarget.id, payload })}
+          onSubmit={(payload) =>
+            canEditDirectly
+              ? updateMutation.mutate({ id: editTarget.id, payload })
+              : requestEditMutation.mutate({ id: editTarget.id, payload })
+          }
         />
       ) : null}
 
@@ -451,9 +467,11 @@ function formatAttachmentFileSize(size) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function DisciplinaryActionAttachments({ employeeId, actionId, canManage }) {
+function DisciplinaryActionAttachments({ employeeId, actionId, canManage, needsApproval = false }) {
   const queryClient = useQueryClient()
   const [showDeleted, setShowDeleted] = useState(false)
+  // Non-approvers pick the change first, then explain it in a small dialog.
+  const [pendingChange, setPendingChange] = useState(null)
 
   const queryKey = ['employees', employeeId, 'disciplinary-actions', actionId, 'attachments', showDeleted]
   const attachmentsQuery = useQuery({
@@ -487,6 +505,27 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canManage }) {
     onError: (error) => showErrorToast(error, 'Could not restore this attachment.'),
   })
 
+  const requestMutation = useMutation({
+    mutationFn: ({ change, changeReason }) =>
+      change.kind === 'add'
+        ? employeesApi.requestDisciplinaryAttachmentUpload(employeeId, actionId, change.file, changeReason)
+        : employeesApi.requestDisciplinaryAttachmentChange(employeeId, actionId, change.attachmentId, {
+            kind: change.kind,
+            change_reason: changeReason,
+          }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['change-requests'] })
+      setPendingChange(null)
+      showSuccessToast('Change request sent. An approver will review it.')
+    },
+    onError: (error) => showErrorToast(error, 'Could not send this request.'),
+  })
+
+  function startChange(change, direct) {
+    if (needsApproval) setPendingChange(change)
+    else direct()
+  }
+
   const attachments = attachmentsQuery.data || []
 
   return (
@@ -519,7 +558,7 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canManage }) {
                     showErrorToast(sizeError)
                     return
                   }
-                  uploadMutation.mutate(file)
+                  startChange({ kind: 'add', file }, () => uploadMutation.mutate(file))
                 }}
               />
             </label>
@@ -583,7 +622,11 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canManage }) {
                       variant="ghost"
                       size="sm"
                       disabled={restoreMutation.isPending}
-                      onClick={() => restoreMutation.mutate(attachment.id)}
+                      onClick={() =>
+                        startChange({ kind: 'restore', attachmentId: attachment.id }, () =>
+                          restoreMutation.mutate(attachment.id),
+                        )
+                      }
                     >
                       <RotateCcw size={15} />
                     </Button>
@@ -593,7 +636,11 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canManage }) {
                       variant="ghost"
                       size="sm"
                       disabled={deleteMutation.isPending}
-                      onClick={() => deleteMutation.mutate(attachment.id)}
+                      onClick={() =>
+                        startChange({ kind: 'remove', attachmentId: attachment.id }, () =>
+                          deleteMutation.mutate(attachment.id),
+                        )
+                      }
                     >
                       <Trash2 size={15} />
                     </Button>
@@ -604,7 +651,71 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canManage }) {
           ))}
         </div>
       )}
+
+      {pendingChange ? (
+        <ChangeReasonDialog
+          change={pendingChange}
+          isSubmitting={requestMutation.isPending}
+          onClose={() => setPendingChange(null)}
+          onSubmit={(changeReason) =>
+            requestMutation.mutate({ change: pendingChange, changeReason })
+          }
+        />
+      ) : null}
     </div>
+  )
+}
+
+const CHANGE_TITLES = {
+  add: 'Request attachment upload',
+  remove: 'Request attachment removal',
+  restore: 'Request attachment restore',
+}
+
+function ChangeReasonDialog({ change, isSubmitting, onClose, onSubmit }) {
+  const [text, setText] = useState('')
+  const [attempted, setAttempted] = useState(false)
+  const error = attempted && text.trim().length < 5 ? 'Explain why, at least 5 characters.' : undefined
+
+  function handleSubmit(event) {
+    event.preventDefault()
+    setAttempted(true)
+    if (text.trim().length < 5) return
+    onSubmit(text.trim())
+  }
+
+  return (
+    <CrudDialog
+      title={CHANGE_TITLES[change.kind]}
+      description={
+        change.file
+          ? `${change.file.name} is held until an approver approves it.`
+          : 'This is applied once an approver approves it.'
+      }
+      onClose={onClose}
+      panelClassName="max-w-md"
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button type="submit" form="attachment-change-form" loading={isSubmitting}>
+            Send Request
+          </Button>
+        </>
+      }
+    >
+      <form id="attachment-change-form" onSubmit={handleSubmit} noValidate>
+        <Field label="Why this change" error={error} hint={`${text.length}/100`}>
+          <TextAreaInput
+            invalid={Boolean(error)}
+            value={text}
+            maxLength={100}
+            onChange={(event) => setText(event.target.value)}
+          />
+        </Field>
+      </form>
+    </CrudDialog>
   )
 }
 
@@ -773,24 +884,53 @@ function IssueDisciplinaryActionDialog({ isSubmitting, onClose, onSubmit }) {
   )
 }
 
-function EditDisciplinaryActionDialog({ employeeId, entry, isSubmitting, onClose, onSubmit }) {
+function EditDisciplinaryActionDialog({
+  employeeId,
+  entry,
+  needsApproval = false,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}) {
   const [reason, setReason] = useState(entry.reason || '')
   const [notes, setNotes] = useState(entry.notes || '')
+  const [changeReason, setChangeReason] = useState('')
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
   const reasonError =
     hasAttemptedSubmit && !reason.trim() ? 'Reason is required.' : undefined
+  const changeReasonError =
+    hasAttemptedSubmit && needsApproval && changeReason.trim().length < 5
+      ? 'Explain why, at least 5 characters.'
+      : undefined
 
   function handleSubmit(event) {
     event.preventDefault()
     setHasAttemptedSubmit(true)
     if (!reason.trim()) return
-    onSubmit({ reason: reason.trim(), notes: notes.trim() })
+    if (!needsApproval) {
+      onSubmit({ reason: reason.trim(), notes: notes.trim() })
+      return
+    }
+    if (changeReason.trim().length < 5) return
+    // Only what changed goes into the request.
+    const payload = { change_reason: changeReason.trim() }
+    if (reason.trim() !== (entry.reason || '')) payload.reason = reason.trim()
+    if (notes.trim() !== (entry.notes || '')) payload.notes = notes.trim()
+    if (payload.reason === undefined && payload.notes === undefined) {
+      showErrorToast('Change the reason or notes first.')
+      return
+    }
+    onSubmit(payload)
   }
 
   return (
     <CrudDialog
       title={`Edit ${formatDisciplinaryType(entry.type)} ${entry.level}`}
-      description="Update the reason, notes, or attachments. Type, level, and status stay as issued."
+      description={
+        needsApproval
+          ? 'Changes to a saved letter are applied once an approver approves them. Type, level, and status stay as issued.'
+          : 'Update the reason, notes, or attachments. Type, level, and status stay as issued.'
+      }
       onClose={onClose}
       panelClassName="max-w-lg"
       footer={
@@ -799,7 +939,7 @@ function EditDisciplinaryActionDialog({ employeeId, entry, isSubmitting, onClose
             Cancel
           </Button>
           <Button type="submit" form="edit-disciplinary-form" loading={isSubmitting}>
-            Save Changes
+            {needsApproval ? 'Send Request' : 'Save Changes'}
           </Button>
         </>
       }
@@ -821,9 +961,24 @@ function EditDisciplinaryActionDialog({ employeeId, entry, isSubmitting, onClose
               onChange={(event) => setNotes(event.target.value)}
             />
           </Field>
+          {needsApproval ? (
+            <Field label="Why this change" error={changeReasonError} hint={`${changeReason.length}/100`}>
+              <TextAreaInput
+                invalid={Boolean(changeReasonError)}
+                value={changeReason}
+                maxLength={100}
+                onChange={(event) => setChangeReason(event.target.value)}
+              />
+            </Field>
+          ) : null}
         </form>
-        {/* Uploads/deletes save immediately on their own, independent of Save Changes below. */}
-        <DisciplinaryActionAttachments employeeId={employeeId} actionId={entry.id} canManage />
+        {/* Uploads/deletes save immediately on their own (or go to an approver), independent of the form above. */}
+        <DisciplinaryActionAttachments
+          employeeId={employeeId}
+          actionId={entry.id}
+          canManage
+          needsApproval={needsApproval}
+        />
       </div>
     </CrudDialog>
   )

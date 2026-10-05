@@ -85,6 +85,8 @@ export type IdentifierChangeRequestResponse = {
   entity_type: string;
   entity_id: string;
   entity_name: string | null;
+  // For a disciplinary letter, the employee it belongs to (for the link).
+  entity_parent_id: string | null;
   field_name: string;
   field_label: string;
   // Null when the viewer can't see this field's PII.
@@ -115,6 +117,7 @@ export function toIdentifierChangeRequestResponse(
   },
   options: {
     entityName: string | null;
+    parentId?: string | null;
     masked: boolean;
     canDecide: boolean;
     canCancel: boolean;
@@ -125,6 +128,7 @@ export function toIdentifierChangeRequestResponse(
     entity_type: record.entity_type,
     entity_id: record.entity_id,
     entity_name: options.entityName,
+    entity_parent_id: options.parentId ?? null,
     field_name: record.field_name,
     field_label: IDENTIFIER_FIELD_LABELS[record.field_name] ?? record.field_name,
     old_value: options.masked ? null : record.old_value,

@@ -238,6 +238,34 @@ export const employeesApi = {
     return response.data
   },
 
+  // Non-approvers cannot edit a saved letter directly, they file a request.
+  async requestDisciplinaryActionEdit(id, actionId, payload) {
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions/${actionId}/change-requests`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async requestDisciplinaryAttachmentUpload(id, actionId, file, changeReason) {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('change_reason', changeReason)
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions/${actionId}/attachments/change-requests`,
+      { method: 'POST', body: formData },
+    )
+    return response.data
+  },
+
+  async requestDisciplinaryAttachmentChange(id, actionId, attachmentId, payload) {
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions/${actionId}/attachments/${attachmentId}/change-requests`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
   async getDisciplinaryActionAttachments(id, actionId, params) {
     const searchParams = compactSearchParams(params)
     const query = searchParams.toString()

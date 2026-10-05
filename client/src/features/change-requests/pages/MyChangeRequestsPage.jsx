@@ -21,9 +21,29 @@ const statusTones = {
 };
 
 function entityHref(request) {
+  if (request.entity_type === "DisciplinaryAction") {
+    return `/employees/${request.entity_parent_id}`;
+  }
   return request.entity_type === "Employee"
     ? `/employees/${request.entity_id}`
     : `/students/${request.entity_id}`;
+}
+
+function entityLabel(request) {
+  return request.entity_type === "DisciplinaryAction" ? "Disciplinary letter" : request.entity_type;
+}
+
+// Attachment rows only carry the file name, in old_value.
+function RequestValues({ request }) {
+  if (request.field_name?.startsWith("attachment_")) {
+    return <span className="font-semibold text-(--mws-charcoal)">{request.old_value}</span>;
+  }
+  return (
+    <>
+      <span className="text-(--mws-muted) line-through">{request.old_value || "(empty)"}</span>{" "}
+      <span className="font-semibold text-(--mws-charcoal)">{request.new_value}</span>
+    </>
+  );
 }
 
 // The requester's own requests and what became of them.
@@ -122,7 +142,7 @@ export function MyChangeRequestsPage() {
                   {request.entity_name || request.entity_id}
                 </Link>
                 <span className="text-xs text-(--mws-muted)">
-                  {request.entity_type} · {request.field_label}
+                  {entityLabel(request)} · {request.field_label}
                 </span>
               </td>
               <td className={`${denseCellClass} max-w-56`}>
@@ -133,8 +153,7 @@ export function MyChangeRequestsPage() {
                     className="block truncate"
                     title={`${request.old_value || "(empty)"} to ${request.new_value}`}
                   >
-                    <span className="text-(--mws-muted) line-through">{request.old_value || "(empty)"}</span>{" "}
-                    <span className="font-semibold text-(--mws-charcoal)">{request.new_value}</span>
+                    <RequestValues request={request} />
                   </span>
                 )}
               </td>
