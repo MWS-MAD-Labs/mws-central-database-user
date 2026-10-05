@@ -19,6 +19,12 @@ import {
 import type { AdminVariables } from "../../type/hono-context";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 
+// "a,b,c" in a query string becomes ["a", "b", "c"].
+function listQuery(value: string | undefined): string[] | undefined {
+  const items = value?.split(",").map((item) => item.trim()).filter(Boolean);
+  return items?.length ? items : undefined;
+}
+
 export class ApplicationEntitlementController {
   static async grant(c: Context<{ Variables: AdminVariables }>) {
     const request = (await c.req.json()) as GrantApplicationEntitlementRequest;
@@ -196,6 +202,9 @@ export class ApplicationAccessController {
       unit_id: c.req.query("unit_id"),
       job_position_id: c.req.query("job_position_id"),
       job_level_id: c.req.query("job_level_id"),
+      unit_ids: listQuery(c.req.query("unit_ids")),
+      job_position_ids: listQuery(c.req.query("job_position_ids")),
+      job_level_ids: listQuery(c.req.query("job_level_ids")),
       employment_type: c.req.query("employment_type"),
       search: c.req.query("search"),
       page: page ? Number(page) : undefined,

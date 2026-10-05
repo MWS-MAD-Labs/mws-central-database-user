@@ -52,7 +52,8 @@ import { Validation } from "../validation/validation";
 import { AuditService } from "./audit-service";
 import {
   loadActiveRules,
-  assertPersonNotRedundant,
+  assertHasGroup,
+  assertPersonException,
   assertRuleGate,
   loadRuleSubject,
   ruleMatches,
@@ -262,7 +263,7 @@ export class ApplicationEntitlementService {
       grant.permissions,
     );
 
-    await assertPersonNotRedundant(
+    await assertPersonException(
       grant.application_id,
       grant.person_id,
       grant.role,
@@ -334,6 +335,7 @@ export class ApplicationEntitlementService {
     const input = Validation.validate(ApplicationEntitlementValidation.BULK_GRANT, request);
     // Fail the whole call early on a bad role instead of once per person.
     await resolveRolePermissions(input.application_id, input.role, undefined);
+    assertHasGroup(input.application_id, await loadActiveRules(input.application_id));
 
     const items = [];
     for (const personId of input.person_ids) {
@@ -378,7 +380,7 @@ export class ApplicationEntitlementService {
     }
     const nextRole = update.role ?? existing.role;
     if (nextRole !== existing.role) {
-      await assertPersonNotRedundant(
+      await assertPersonException(
         existing.application_id,
         existing.person_id,
         nextRole,
@@ -1000,9 +1002,21 @@ export class ApplicationAccessService {
     const where: Prisma.EmployeeWhereInput = {
       status: EmployeeStatus.ACTIVE,
       deleted_at: null,
-      ...(filters.unit_id ? { unit_id: filters.unit_id } : {}),
-      ...(filters.job_position_id ? { job_position_id: filters.job_position_id } : {}),
-      ...(filters.job_level_id ? { job_level_id: filters.job_level_id } : {}),
+      ...(filters.unit_ids?.length
+        ? { unit_id: { in: filters.unit_ids } }
+        : filters.unit_id
+          ? { unit_id: filters.unit_id }
+          : {}),
+      ...(filters.job_position_ids?.length
+        ? { job_position_id: { in: filters.job_position_ids } }
+        : filters.job_position_id
+          ? { job_position_id: filters.job_position_id }
+          : {}),
+      ...(filters.job_level_ids?.length
+        ? { job_level_id: { in: filters.job_level_ids } }
+        : filters.job_level_id
+          ? { job_level_id: filters.job_level_id }
+          : {}),
       ...(filters.employment_type ? { employment_type: filters.employment_type as EmploymentType } : {}),
       ...(filters.search
         ? {

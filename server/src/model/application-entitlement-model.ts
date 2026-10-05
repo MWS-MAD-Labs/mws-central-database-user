@@ -97,6 +97,9 @@ export type ListApplicationCandidatesRequest = {
   unit_id?: string;
   job_position_id?: string;
   job_level_id?: string;
+  unit_ids?: string[];
+  job_position_ids?: string[];
+  job_level_ids?: string[];
   employment_type?: string;
   search?: string;
   page?: number;

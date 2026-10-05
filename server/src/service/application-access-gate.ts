@@ -151,17 +151,33 @@ export async function loadActiveRules(applicationId: string): Promise<GateRule[]
   }));
 }
 
-// A person's own role has to differ from what they already get from groups.
-export async function assertPersonNotRedundant(
+// Exceptions only exist inside a group's scope.
+export function assertHasGroup(applicationId: string, rules: GateRule[]): void {
+  const hasEmployeeGroup = rules.some((rule) => rule.is_active && rule.audience !== ApplicationAudience.STUDENTS);
+  if (!hasEmployeeGroup) {
+    throw new ResponseError(400, `Set up a group for ${applicationId} first. It decides who can use the app.`);
+  }
+}
+
+// A person's own access is an exception to a group: they must be covered by
+// one, and their role has to differ from what that group already gives them.
+export async function assertPersonException(
   applicationId: string,
   personId: string,
   role: string,
   rules: GateRule[],
 ): Promise<void> {
+  assertHasGroup(applicationId, rules);
   const subject = await loadRuleSubject(personId);
-  if (!subject) return;
-  const inherited = inheritedRole(subject, rules);
-  if (inherited && inherited.default_role_key === role) {
+  const inherited = subject ? inheritedRole(subject, rules) : undefined;
+  if (!inherited) {
+    const person = await prismaClient.person.findUnique({ where: { id: personId }, select: { full_name: true } });
+    throw new ResponseError(
+      400,
+      `${person?.full_name ?? "This person"} is not covered by any group of ${applicationId}. Add them to a group's scope first.`,
+    );
+  }
+  if (inherited.default_role_key === role) {
     throw new ResponseError(
       400,
       `This person already gets ${role} on ${applicationId} from group access. Pick a different role, or leave them on the group.`,

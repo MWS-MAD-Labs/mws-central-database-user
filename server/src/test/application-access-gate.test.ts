@@ -95,17 +95,54 @@ describe("application access gate: no redundant access, parent removed last", ()
     return response.status === 200 ? (await response.json()).data.role : null;
   }
 
-  it("lets people and narrower groups exist without an all-people group", async () => {
+  it("refuses an exception before any group exists", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const person = await createEmployee("test_gate_a@millennia21.id");
-    const other = await createEmployee("test_gate_a2@millennia21.id");
 
-    // A restricted app: named people on their own, and a first group that is already narrow.
-    expect((await grant(accessToken, person.id, "ADMIN")).status).toBe(200);
-    expect((await addRule(accessToken, { unit_ids: [masterData.unit.id], default_role_key: "STAFF" })).status).toBe(200);
-    // The person is now covered by the group with a different role, so their own access is an override.
-    expect(await lookupRole(person.id)).toBe("ADMIN");
-    expect(await lookupRole(other.id)).toBe("STAFF");
+    const single = await grant(accessToken, person.id, "ADMIN");
+    expect(single.status).toBe(400);
+    expect(await message(single)).toContain(`Set up a group for ${appId} first`);
+    const bulk = await TestRequest.post(
+      `${ENTITLEMENTS}/bulk`,
+      { person_ids: [person.id], application_id: appId, role: "ADMIN" },
+      accessToken,
+    );
+    expect(bulk.status).toBe(400);
+    // A student-only group does not give employees a scope either.
+    await addRule(accessToken, { audience: "STUDENTS" });
+    expect((await grant(accessToken, person.id, "ADMIN")).status).toBe(400);
+  });
+
+  it("only accepts exceptions for people the groups cover, with a different role", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const inside = await createEmployee("test_gate_a2@millennia21.id");
+    const otherUnit = await prismaClient.masterUnit.create({ data: { name: `TEST_GATE_SCOPE_${randomBytes(3).toString("hex")}` } });
+    const outside = await EmployeeTest.create({
+      email: "test_gate_a3@millennia21.id",
+      unitId: otherUnit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+
+    expect((await addRule(accessToken, { unit_ids: [masterData.unit.id] })).status).toBe(200);
+
+    const notCovered = await grant(accessToken, outside.id, "ADMIN");
+    expect(notCovered.status).toBe(400);
+    expect(await message(notCovered)).toContain("is not covered by any group");
+    const bulk = await (await TestRequest.post(
+      `${ENTITLEMENTS}/bulk`,
+      { person_ids: [inside.id, outside.id], application_id: appId, role: "ADMIN" },
+      accessToken,
+    )).json();
+    expect(bulk.data.success_count).toBe(1);
+    expect(bulk.data.failed_count).toBe(1);
+
+    // Inside the scope: the same role as the group is refused, a different one is the exception.
+    expect(await lookupRole(inside.id)).toBe("ADMIN");
+    const granted = await prismaClient.applicationEntitlement.findFirstOrThrow({ where: { person_id: inside.id, application_id: appId } });
+    const back = await TestRequest.patch(`${ENTITLEMENTS}/${granted.id}`, { role: "STAFF" }, accessToken);
+    expect(back.status).toBe(400);
   });
 
   it("refuses a role that the person or group already gets from its parent", async () => {
@@ -191,14 +228,18 @@ describe("application access gate: no redundant access, parent removed last", ()
     expect((await TestRequest.delete(`${RULES}/${groupId}`, accessToken)).status).toBe(200);
   });
 
-  it("does not hold a group back for people it does not cover", async () => {
+  it("lets an older standalone row be removed and does not hold a group back", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const outsider = await createEmployee("test_gate_h@millennia21.id");
     const otherUnit = await prismaClient.masterUnit.create({ data: { name: `TEST_GATE_LONE_${randomBytes(3).toString("hex")}` } });
     const group = await (await addRule(accessToken, { unit_ids: [otherUnit.id] })).json();
-    // The person is outside the group, so their own access has no parent.
-    expect((await grant(accessToken, outsider.id, "ADMIN")).status).toBe(200);
+    // Data from before the rule: a person with their own access and no group over them.
+    const row = await prismaClient.applicationEntitlement.create({
+      data: { person_id: outsider.id, application_id: appId, organization_id: "org_old", role: "ADMIN", permissions: ["store.use", "app.admin"] },
+    });
+    // It does not depend on the group, so the group can go, and the row can still be removed.
     expect((await TestRequest.delete(`${RULES}/${group.data.id}`, accessToken)).status).toBe(200);
+    expect((await TestRequest.delete(`${ENTITLEMENTS}/${row.id}`, accessToken)).status).toBe(200);
   });
 
   it("removes a person's own access, audits it and falls back to the group", async () => {
@@ -259,6 +300,10 @@ describe("application access gate: no redundant access, parent removed last", ()
     expect(await ids("coverage=UNCOVERED")).not.toContain(covered.id);
     expect(await ids(`coverage=GROUP&group_id=${group.data.id}`)).toEqual(await ids("coverage=COVERED"));
     expect(await ids(`job_position_id=${position.id}`)).toEqual([uncovered.id]);
+    expect(await ids(`job_position_ids=${position.id},${masterData.position.id}`)).toEqual(
+      expect.arrayContaining([covered.id, uncovered.id]),
+    );
+    expect(await ids(`unit_ids=${masterData.unit.id}&job_position_ids=${position.id}`)).toEqual([uncovered.id]);
     expect((await TestRequest.get(`${url}&coverage=GROUP&group_id=missing`, accessToken)).status).toBe(404);
     expect((await TestRequest.get(`${url}&coverage=NOPE`, accessToken)).status).toBe(400);
 
