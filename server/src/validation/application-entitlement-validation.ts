@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ApplicationAudience } from "../generated/prisma/client";
+import { ApplicationAudience, EmploymentType } from "../generated/prisma/client";
 
 const applicationId = z
   .string()
@@ -103,7 +103,23 @@ const accessRuleFields = {
   is_active: z.boolean().default(true),
 };
 
+const EMPLOYMENT_TYPES = Object.values(EmploymentType) as [EmploymentType, ...EmploymentType[]];
+
 export class ApplicationAccessRuleValidation {
+  // Who a person could be given access: filters plus how a group covers them.
+  static readonly CANDIDATES = z.object({
+    application_id: applicationId,
+    coverage: z.enum(["ANY", "COVERED", "UNCOVERED", "GROUP"]).default("ANY"),
+    group_id: nonemptyId("Group ID").optional(),
+    unit_id: nonemptyId("Unit ID").optional(),
+    job_position_id: nonemptyId("Job position ID").optional(),
+    job_level_id: nonemptyId("Job level ID").optional(),
+    employment_type: z.enum(EMPLOYMENT_TYPES).optional(),
+    search: z.string().trim().max(100).optional(),
+    page: z.number().int().min(1).default(1),
+    size: z.number().int().min(1).max(100).default(10),
+  });
+
   static readonly CREATE = z.object({
     application_id: applicationId,
     ...accessRuleFields,

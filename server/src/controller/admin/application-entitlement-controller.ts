@@ -179,6 +179,30 @@ export class ApplicationAccessRuleController {
 }
 
 export class ApplicationAccessController {
+  static async candidates(c: Context<{ Variables: AdminVariables }>) {
+    const applicationId = c.req.query("application_id");
+    if (!applicationId) throw new ResponseError(400, "application_id is required");
+    const coverage = c.req.query("coverage");
+    if (coverage !== undefined && !["ANY", "COVERED", "UNCOVERED", "GROUP"].includes(coverage)) {
+      throw new ResponseError(400, "coverage must be ANY, COVERED, UNCOVERED or GROUP");
+    }
+    const page = c.req.query("page");
+    const size = c.req.query("size");
+    const response = await ApplicationAccessService.candidates(c.var.admin, {
+      application_id: applicationId,
+      coverage: coverage as "ANY" | "COVERED" | "UNCOVERED" | "GROUP" | undefined,
+      group_id: c.req.query("group_id"),
+      unit_id: c.req.query("unit_id"),
+      job_position_id: c.req.query("job_position_id"),
+      job_level_id: c.req.query("job_level_id"),
+      employment_type: c.req.query("employment_type"),
+      search: c.req.query("search"),
+      page: page ? Number(page) : undefined,
+      size: size ? Number(size) : undefined,
+    });
+    return c.json(response);
+  }
+
   static async list(c: Context<{ Variables: AdminVariables }>) {
     const active = c.req.query("is_active");
     if (active !== undefined && active !== "true" && active !== "false") {

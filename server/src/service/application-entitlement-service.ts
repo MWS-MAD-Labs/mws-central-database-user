@@ -4,8 +4,10 @@ import {
   AuditAction,
   AuditSource,
   EmployeeStatus,
+  EmploymentType,
   ApplicationAudience,
   PersonType,
+  Prisma,
   StudentStatus,
   type AdminUser,
   type ApplicationEntitlement,
@@ -23,6 +25,8 @@ import {
   type CreateApplicationAccessRuleRequest,
   type DeleteApplicationAccessRuleRequest,
   type ListApplicationAccessRequest,
+  type ListApplicationCandidatesRequest,
+  type ApplicationCandidate,
   type UpdateApplicationAccessRuleRequest,
   toApplicationAccessRuleResponse,
   type ApplicationEntitlementResponse,
@@ -47,11 +51,12 @@ import {
 import { Validation } from "../validation/validation";
 import { AuditService } from "./audit-service";
 import {
-  assertBaselineForPerson,
+  loadActiveRules,
   assertPersonNotRedundant,
   assertRuleGate,
   loadRuleSubject,
   ruleMatches,
+  inheritedRole,
   ruleSpecificity,
   type GateRule,
   type RuleFilter,
@@ -257,8 +262,12 @@ export class ApplicationEntitlementService {
       grant.permissions,
     );
 
-    const gateRules = await assertBaselineForPerson(grant.application_id);
-    await assertPersonNotRedundant(grant.application_id, grant.person_id, grant.role, gateRules);
+    await assertPersonNotRedundant(
+      grant.application_id,
+      grant.person_id,
+      grant.role,
+      await loadActiveRules(grant.application_id),
+    );
     const organizationId = await resolveOrganizationId(grant.application_id);
 
     const existing = await prismaClient.applicationEntitlement.findUnique({
@@ -323,9 +332,8 @@ export class ApplicationEntitlementService {
   ): Promise<BulkActionResponse<ApplicationEntitlementResponse>> {
     assertSuperAdmin(admin);
     const input = Validation.validate(ApplicationEntitlementValidation.BULK_GRANT, request);
-    // Fail the whole call early on a bad role or a missing baseline instead of once per person.
+    // Fail the whole call early on a bad role instead of once per person.
     await resolveRolePermissions(input.application_id, input.role, undefined);
-    await assertBaselineForPerson(input.application_id);
 
     const items = [];
     for (const personId of input.person_ids) {
@@ -370,8 +378,12 @@ export class ApplicationEntitlementService {
     }
     const nextRole = update.role ?? existing.role;
     if (nextRole !== existing.role) {
-      const gateRules = await assertBaselineForPerson(existing.application_id);
-      await assertPersonNotRedundant(existing.application_id, existing.person_id, nextRole, gateRules);
+      await assertPersonNotRedundant(
+        existing.application_id,
+        existing.person_id,
+        nextRole,
+        await loadActiveRules(existing.application_id),
+      );
     }
     const nextPermissions = await resolveRolePermissions(
       existing.application_id,
@@ -955,6 +967,105 @@ export class ApplicationAccessRuleService {
 
 // One list for the Access page: group rules first, then people.
 export class ApplicationAccessService {
+  // Active employees to pick from, filterable by how the application's groups cover them.
+  static async candidates(
+    admin: AdminUser,
+    request: ListApplicationCandidatesRequest,
+  ): Promise<Pageable<ApplicationCandidate>> {
+    assertSuperAdmin(admin);
+    const filters = Validation.validate(ApplicationAccessRuleValidation.CANDIDATES, request);
+    const page = filters.page ?? 1;
+    const size = filters.size ?? 10;
+    const coverage = filters.coverage ?? "ANY";
+
+    const rules = await loadActiveRules(filters.application_id);
+    const employeeRules = rules.filter((rule) => rule.audience !== ApplicationAudience.STUDENTS);
+    const fragment = (rule: GateRule): Prisma.EmployeeWhereInput => ({
+      ...(rule.unit_ids.length ? { unit_id: { in: rule.unit_ids } } : {}),
+      ...(rule.job_position_ids.length ? { job_position_id: { in: rule.job_position_ids } } : {}),
+      ...(rule.job_level_ids.length ? { job_level_id: { in: rule.job_level_ids } } : {}),
+    });
+
+    let coverageWhere: Prisma.EmployeeWhereInput = {};
+    if (coverage === "GROUP") {
+      const group = employeeRules.find((rule) => rule.id === filters.group_id);
+      if (!group) throw new ResponseError(404, "Group access not found");
+      coverageWhere = fragment(group);
+    } else if (coverage === "COVERED") {
+      coverageWhere = employeeRules.length ? { OR: employeeRules.map(fragment) } : { id: "none" };
+    } else if (coverage === "UNCOVERED" && employeeRules.length) {
+      coverageWhere = { NOT: { OR: employeeRules.map(fragment) } };
+    }
+
+    const where: Prisma.EmployeeWhereInput = {
+      status: EmployeeStatus.ACTIVE,
+      deleted_at: null,
+      ...(filters.unit_id ? { unit_id: filters.unit_id } : {}),
+      ...(filters.job_position_id ? { job_position_id: filters.job_position_id } : {}),
+      ...(filters.job_level_id ? { job_level_id: filters.job_level_id } : {}),
+      ...(filters.employment_type ? { employment_type: filters.employment_type as EmploymentType } : {}),
+      ...(filters.search
+        ? {
+            OR: [
+              { person: { full_name: { contains: filters.search, mode: "insensitive" } } },
+              { person: { email: { contains: filters.search, mode: "insensitive" } } },
+              { employee_id: { contains: filters.search, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+      AND: [coverageWhere],
+    };
+
+    return paginate(page, size, {
+      count: () => prismaClient.employee.count({ where }),
+      findMany: async () => {
+        const employees = await prismaClient.employee.findMany({
+          where,
+          include: {
+            person: { select: { id: true, full_name: true, email: true } },
+            unit: { select: { name: true } },
+            job_position: { select: { name: true } },
+            job_level: { select: { name: true } },
+          },
+          orderBy: [{ person: { full_name: "asc" } }, { id: "asc" }],
+          skip: (page - 1) * size,
+          take: size,
+        });
+        const own = await prismaClient.applicationEntitlement.findMany({
+          where: {
+            application_id: filters.application_id,
+            person_id: { in: employees.map((employee) => employee.person_id) },
+          },
+          select: { person_id: true, role: true, is_active: true },
+        });
+        return employees.map((employee) => {
+          const inherited = inheritedRole(
+            {
+              kind: "EMPLOYEE",
+              unitId: employee.unit_id,
+              positionId: employee.job_position_id,
+              levelId: employee.job_level_id,
+            },
+            rules,
+          );
+          const ownRow = own.find((row) => row.person_id === employee.person_id);
+          return {
+            person_id: employee.person_id,
+            employee_id: employee.employee_id,
+            full_name: employee.person.full_name,
+            email: employee.person.email,
+            unit: employee.unit.name,
+            job_position: employee.job_position.name,
+            job_level: employee.job_level.name,
+            inherited_role: inherited?.default_role_key ?? null,
+            inherited_group_id: inherited?.id ?? null,
+            own_access: ownRow ? { role: ownRow.role, is_active: ownRow.is_active } : null,
+          };
+        });
+      },
+    });
+  }
+
   static async list(
     admin: AdminUser,
     request: ListApplicationAccessRequest,

@@ -89,6 +89,33 @@ export type ListApplicationAccessRequest = {
   size?: number;
 };
 
+export type ListApplicationCandidatesRequest = {
+  application_id: string;
+  coverage?: "ANY" | "COVERED" | "UNCOVERED" | "GROUP";
+  group_id?: string;
+  unit_id?: string;
+  job_position_id?: string;
+  job_level_id?: string;
+  employment_type?: string;
+  search?: string;
+  page?: number;
+  size?: number;
+};
+
+// An active employee with what the application's groups already give them.
+export type ApplicationCandidate = {
+  person_id: string;
+  employee_id: string;
+  full_name: string;
+  email: string;
+  unit: string;
+  job_position: string;
+  job_level: string;
+  inherited_role: string | null;
+  inherited_group_id: string | null;
+  own_access: { role: string; is_active: boolean } | null;
+};
+
 export type ApplicationAccessRuleResponse = {
   id: string;
   application_id: string;

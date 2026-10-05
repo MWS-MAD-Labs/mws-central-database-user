@@ -102,13 +102,6 @@ export function ruleMatches(rule: RuleFilter, subject: RuleSubject): boolean {
   return rule.audience !== ApplicationAudience.EMPLOYEES && has(rule.unit_ids, subject.unitId);
 }
 
-// A baseline has no unit, job position or job level filter.
-export function isBaseline(rule: RuleFilter): boolean {
-  return (
-    rule.unit_ids.length === 0 && rule.job_position_ids.length === 0 && rule.job_level_ids.length === 0
-  );
-}
-
 // Does an audience include everyone of the target audience?
 function audienceIncludes(audience: ApplicationAudience, target: ApplicationAudience): boolean {
   return audience === ApplicationAudience.EMPLOYEES_AND_STUDENTS || audience === target;
@@ -128,10 +121,6 @@ export function covers(outer: RuleFilter, inner: RuleFilter): boolean {
     if (!dimensionCovers(outer.job_level_ids, inner.job_level_ids)) return false;
   }
   return true;
-}
-
-export function hasBaselineFor(rules: GateRule[], audience: ApplicationAudience): boolean {
-  return rules.some((rule) => rule.is_active && isBaseline(rule) && audienceIncludes(rule.audience, audience));
 }
 
 // The most specific other rule that covers this one.
@@ -162,18 +151,6 @@ export async function loadActiveRules(applicationId: string): Promise<GateRule[]
   }));
 }
 
-const baselineMessage = (applicationId: string) =>
-  `Set up the baseline for ${applicationId} first: a group with all units, positions and levels.`;
-
-// People get access on top of a baseline, never instead of one.
-export async function assertBaselineForPerson(applicationId: string): Promise<GateRule[]> {
-  const rules = await loadActiveRules(applicationId);
-  if (!hasBaselineFor(rules, ApplicationAudience.EMPLOYEES)) {
-    throw new ResponseError(400, baselineMessage(applicationId));
-  }
-  return rules;
-}
-
 // A person's own role has to differ from what they already get from groups.
 export async function assertPersonNotRedundant(
   applicationId: string,
@@ -192,29 +169,23 @@ export async function assertPersonNotRedundant(
   }
 }
 
-type EntitlementSubject = { role: string; subject: RuleSubject | null };
+type EntitlementSubject = { role: string; isActive: boolean; subject: RuleSubject | null };
 
-async function loadEntitlementSubjects(applicationId: string): Promise<{
-  active: EntitlementSubject[];
-  total: number;
-}> {
+async function loadEntitlementSubjects(applicationId: string): Promise<EntitlementSubject[]> {
   const rows = await prismaClient.applicationEntitlement.findMany({
     where: { application_id: applicationId },
     select: { role: true, is_active: true, person: { select: SUBJECT_SELECT } },
   });
-  return {
-    total: rows.length,
-    active: rows
-      .filter((row) => row.is_active)
-      .map((row) => ({ role: row.role, subject: toRuleSubject(row.person) })),
-  };
+  return rows.map((row) => ({
+    role: row.role,
+    isActive: row.is_active,
+    subject: toRuleSubject(row.person),
+  }));
 }
 
-const describeRole = (role: string) => role;
-
 // Checks one change of a group access (create, update or delete) against the
-// "baseline first, no redundant access" rules. `previous` is the stored rule
-// (null when creating), `next` the rule afterwards (null when deleting).
+// "no redundant access, parent removed last" rules. `previous` is the stored
+// rule (null when creating), `next` the rule afterwards (null when deleting).
 export async function assertRuleGate(
   applicationId: string,
   previous: GateRule | null,
@@ -224,28 +195,25 @@ export async function assertRuleGate(
   const withoutThis = before.filter((rule) => rule.id !== previous?.id);
   const after = next && next.is_active ? [...withoutThis, next] : withoutThis;
 
-  // 1 and 2: a narrower group needs a baseline and a role of its own.
-  if (next && next.is_active && !isBaseline(next)) {
-    if (!hasBaselineFor(withoutThis, next.audience)) {
-      throw new ResponseError(400, baselineMessage(applicationId));
-    }
+  // A group may not hand out the role its parent group already hands out.
+  if (next && next.is_active) {
     const parent = parentRule(next, after);
     if (parent && parent.default_role_key === next.default_role_key) {
       throw new ResponseError(
         400,
-        `This group already gets ${describeRole(next.default_role_key)} from a broader group access. Pick a different role.`,
+        `This group already gets ${next.default_role_key} from a broader group access. Pick a different role.`,
       );
     }
   }
 
-  const { active: people, total: personRows } = await loadEntitlementSubjects(applicationId);
+  const people = await loadEntitlementSubjects(applicationId);
 
-  // 3: widening a group must not make narrower access redundant.
+  // Widening a group must not make narrower access redundant.
   if (next && next.is_active) {
     let redundantGroups = 0;
     let redundantPeople = 0;
     for (const rule of after) {
-      if (rule.id === next.id || isBaseline(rule)) continue;
+      if (rule.id === next.id) continue;
       const nowRedundant = parentRule(rule, after)?.default_role_key === rule.default_role_key;
       const wasRedundant =
         before.some((existing) => existing.id === rule.id) &&
@@ -253,7 +221,7 @@ export async function assertRuleGate(
       if (nowRedundant && !wasRedundant) redundantGroups += 1;
     }
     for (const person of people) {
-      if (!person.subject) continue;
+      if (!person.isActive || !person.subject) continue;
       const nowRedundant = inheritedRole(person.subject, after)?.default_role_key === person.role;
       const wasRedundant = inheritedRole(person.subject, before)?.default_role_key === person.role;
       if (nowRedundant && !wasRedundant) redundantPeople += 1;
@@ -261,24 +229,31 @@ export async function assertRuleGate(
     if (redundantGroups + redundantPeople > 0) {
       throw new ResponseError(
         400,
-        `${redundantPeople} people and ${redundantGroups} groups already have ${describeRole(next.default_role_key)} inside this group. Remove them first.`,
+        `${redundantPeople} people and ${redundantGroups} groups already have ${next.default_role_key} inside this group. Remove them first.`,
       );
     }
   }
 
-  // 4: taking a baseline away must not strand narrower access.
-  let dependents = 0;
-  for (const rule of before) {
-    if (isBaseline(rule) || rule.id === previous?.id) continue;
-    if (hasBaselineFor(before, rule.audience) && !hasBaselineFor(after, rule.audience)) dependents += 1;
-  }
-  if (personRows > 0 && hasBaselineFor(before, ApplicationAudience.EMPLOYEES) && !hasBaselineFor(after, ApplicationAudience.EMPLOYEES)) {
-    dependents += personRows;
-  }
-  if (dependents > 0) {
-    throw new ResponseError(
-      400,
-      `${dependents} specific access entries still depend on this baseline. Remove them first.`,
-    );
+  // A group cannot go while specific access still has it as its parent.
+  if (previous) {
+    let dependents = 0;
+    for (const rule of before) {
+      if (rule.id === previous.id) continue;
+      if (parentRule(rule, before)?.id === previous.id && parentRule(rule, after)?.id !== previous.id) {
+        dependents += 1;
+      }
+    }
+    for (const person of people) {
+      if (!person.subject) continue;
+      if (inheritedRole(person.subject, before)?.id === previous.id && inheritedRole(person.subject, after)?.id !== previous.id) {
+        dependents += 1;
+      }
+    }
+    if (dependents > 0) {
+      throw new ResponseError(
+        400,
+        `${dependents} specific access entries still depend on this group. Remove them first.`,
+      );
+    }
   }
 }
