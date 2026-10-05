@@ -183,7 +183,7 @@ describe("Disciplinary action attachments", () => {
       expect(response.status).toBe(403);
     });
 
-    it.skipIf(!minioAvailable)("should allow a DATABASE_ADMIN with can_write_employee_data in-unit", async () => {
+    it("should refuse a direct upload from a DATABASE_ADMIN who is not an approver", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin(
         masterData.unit.id,
         { canViewEmployeeDisciplinaryData: true },
@@ -199,10 +199,9 @@ describe("Disciplinary action attachments", () => {
         formData,
         accessToken,
       );
-      const body = await response.json();
 
-      expect(response.status).toBe(200);
-      await DisciplinaryActionAttachmentTest.removeFromMinio(body.data.id);
+      expect(response.status).toBe(403);
+      expect((await response.json()).errors).toContain("needs approval");
     });
 
     it("should reject (400) an unsupported file type", async () => {
