@@ -31,6 +31,7 @@ import { applicationAccessApi } from "../api/applicationAccessApi.js";
 
 const tabs = [
   { id: "entitlements", label: "Entitlements" },
+  { id: "baseline", label: "Baseline Access" },
   { id: "roles", label: "Roles" },
 ];
 
@@ -74,7 +75,13 @@ export function ApplicationAccessPage() {
           </Button>
         ))}
       </div>
-      {activeTab === "roles" ? <RolesPanel /> : <EntitlementsPanel />}
+      {activeTab === "roles" ? (
+        <RolesPanel />
+      ) : activeTab === "baseline" ? (
+        <BaselinePanel />
+      ) : (
+        <EntitlementsPanel />
+      )}
       <PageHint id="application-access-source-of-truth">
         Roles are exact, uppercase keys such as ADMIN. An application cannot invent its own role,
         it only receives the one set here.
@@ -610,29 +617,20 @@ function useRules() {
   });
 }
 
-function RolesPanel() {
-  const queryClient = useQueryClient();
-  const confirm = useConfirm();
+function BaselinePanel() {
   const rolesQuery = useRoles();
   const rulesQuery = useRules();
-  const unitsQuery = useQuery({ queryKey: ["application-access", "units"], queryFn: () => unitsApi.list({ page: 1, size: 100 }) });
+  const unitsQuery = useQuery({
+    queryKey: ["application-access", "units"],
+    queryFn: () => unitsApi.list({ page: 1, size: 100 }),
+  });
   const roles = rolesQuery.data || [];
   const rules = rulesQuery.data || [];
   const units = unitsQuery.data?.data || [];
   const applications = [...new Set(roles.map((role) => role.application_id))].sort();
-  const [dialog, setDialog] = useState(null);
   const [ruleDialog, setRuleDialog] = useState(null);
   const [baselineSearch, setBaselineSearch] = useState("");
   const [baselinePage, setBaselinePage] = useState(1);
-
-  const toggleMutation = useMutation({
-    mutationFn: (role) => applicationAccessApi.updateRole(role.id, { is_active: !role.is_active }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["application-access"] });
-      showSuccessToast("Role updated.");
-    },
-    onError: (error) => showErrorToast(error, "Could not update this role."),
-  });
 
   const unitSummary = (rule) =>
     rule.unit_ids.length === 0
@@ -654,7 +652,7 @@ function RolesPanel() {
   );
 
   return (
-    <section className="min-w-0 space-y-6">
+    <section className="min-w-0 space-y-4">
       <div className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
@@ -743,6 +741,38 @@ function RolesPanel() {
         )}
       </div>
 
+      {ruleDialog ? (
+        <RuleDialog
+          application={ruleDialog.application}
+          rule={ruleDialog.rule}
+          roles={roles.filter((role) => role.application_id === ruleDialog.application && role.is_active)}
+          units={units}
+          onClose={() => setRuleDialog(null)}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function RolesPanel() {
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const rolesQuery = useRoles();
+  const roles = rolesQuery.data || [];
+  const applications = [...new Set(roles.map((role) => role.application_id))].sort();
+  const [dialog, setDialog] = useState(null);
+
+  const toggleMutation = useMutation({
+    mutationFn: (role) => applicationAccessApi.updateRole(role.id, { is_active: !role.is_active }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["application-access"] });
+      showSuccessToast("Role updated.");
+    },
+    onError: (error) => showErrorToast(error, "Could not update this role."),
+  });
+
+  return (
+    <section className="min-w-0 space-y-4">
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display text-lg font-bold text-(--mws-charcoal)">Roles</h2>
@@ -825,15 +855,6 @@ function RolesPanel() {
 
       {dialog ? (
         <RoleDialog dialog={dialog} roles={roles} applications={applications} onClose={() => setDialog(null)} />
-      ) : null}
-      {ruleDialog ? (
-        <RuleDialog
-          application={ruleDialog.application}
-          rule={ruleDialog.rule}
-          roles={roles.filter((role) => role.application_id === ruleDialog.application && role.is_active)}
-          units={units}
-          onClose={() => setRuleDialog(null)}
-        />
       ) : null}
     </section>
   );

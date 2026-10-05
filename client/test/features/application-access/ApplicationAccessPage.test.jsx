@@ -154,6 +154,25 @@ describe('ApplicationAccessPage', () => {
     expect(within(row).getByText('Inactive')).toBeVisible()
     const adminRow = screen.getByText('ADMIN').closest('tr')
     expect(within(adminRow).getByText('1')).toBeVisible()
+    expect(screen.queryByText('Baseline access')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Set Up' })).not.toBeInTheDocument()
+  })
+
+  it('switches between the Entitlements, Baseline Access and Roles tabs', async () => {
+    globalThis.fetch = createFetchRouter(baseRoutes([
+      { path: '/api/admin/application-access-rules', response: () => jsonResponse({ data: [] }) },
+      { path: /^\/api\/admin\/units/, response: () => jsonResponse({ data: [] }) },
+    ]))
+    const { user } = renderPage()
+    await screen.findByText('Dummy Staff')
+
+    await user.click(screen.getByRole('button', { name: 'Baseline Access' }))
+    expect(await screen.findByText('Baseline access')).toBeVisible()
+    expect(screen.queryByText('Dummy Staff')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Roles' }))
+    expect(await screen.findByText('LEGACY')).toBeVisible()
+    expect(screen.queryByText('Baseline access')).not.toBeInTheDocument()
   })
 
   it('sets a baseline rule for an application', async () => {
@@ -167,7 +186,7 @@ describe('ApplicationAccessPage', () => {
       },
     ]))
     globalThis.fetch = fetchMock
-    const { user } = renderPage({ role: 'SUPER_ADMIN' }, '/application-access?tab=roles')
+    const { user } = renderPage({ role: 'SUPER_ADMIN' }, '/application-access?tab=baseline')
     expect(await screen.findByText('No baseline')).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: 'Set Up' }))
