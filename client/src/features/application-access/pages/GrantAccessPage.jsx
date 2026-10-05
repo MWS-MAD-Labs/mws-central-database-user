@@ -10,7 +10,7 @@ import { enumOptions } from "../../../lib/format.js";
 import { showBulkFailureToast, showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { PaginatedCandidatePicker } from "../../academic/components/pc-activity-room/PaginatedCandidatePicker.jsx";
-import { employeesApi, employmentTypes } from "../../employees/api/employeesApi.js";
+import { employmentTypes } from "../../employees/api/employeesApi.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { GroupFilters } from "../components/GroupFilters.jsx";
@@ -31,7 +31,7 @@ export function GrantAccessPage() {
   const queryClient = useQueryClient();
   const [mode, setMode] = useState("PEOPLE");
   const [params, setParams] = useState({ page: 1, size: 10, search: "" });
-  const [filter, setFilter] = useState({ unit_id: "", job_position_id: "", job_level_id: "", employment_type: "" });
+  const [filter, setFilter] = useState({ coverage: "", unit_id: "", job_position_id: "", job_level_id: "", employment_type: "" });
   const [selected, setSelected] = useState(() => new Map());
   const [audience, setAudience] = useState("EMPLOYEES");
   const groupFilters = useGroupFilterState();
@@ -54,11 +54,14 @@ export function GrantAccessPage() {
       }),
     enabled: Boolean(application),
   });
+  const [coverage, groupId] = filter.coverage.split(":");
   const employeesQuery = useQuery({
-    queryKey: ["application-access", "employees", params, filter],
+    queryKey: ["application-access", "candidates", application, params, filter],
     queryFn: () =>
-      employeesApi.list({
-        status: "ACTIVE",
+      applicationAccessApi.listCandidates({
+        application_id: application,
+        coverage: coverage || undefined,
+        group_id: groupId || undefined,
         search: params.search || undefined,
         unit_id: filter.unit_id || undefined,
         job_position_id: filter.job_position_id || undefined,
@@ -67,7 +70,7 @@ export function GrantAccessPage() {
         page: params.page,
         size: params.size,
       }),
-    enabled: mode === "PEOPLE",
+    enabled: mode === "PEOPLE" && Boolean(application),
     placeholderData: (previous) => previous,
   });
 
@@ -78,36 +81,54 @@ export function GrantAccessPage() {
     total_item: rows.length,
     size: params.size,
   };
-  const items = rows.map((employee) => ({
-    id: employee.person_id,
-    label: employee.identity.full_name,
-    sublabel: [employee.identity.email, employee.employment?.unit, employee.employment?.job_position]
-      .filter(Boolean)
-      .join(" / "),
-  }));
+  const items = rows.map((employee) => {
+    const inherited = employee.inherited_role;
+    const same = Boolean(roleKey) && inherited === roleKey;
+    return {
+      id: employee.person_id,
+      label: employee.full_name,
+      sublabel: [employee.email, employee.unit, employee.job_position].filter(Boolean).join(" / "),
+      extra: [
+        inherited ? `Gets ${inherited} from a group${same ? ", pick a different role" : ""}` : null,
+        employee.own_access
+          ? `Own access: ${employee.own_access.role}${employee.own_access.is_active ? "" : " (blocked)"}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      disabled: same,
+      inheritedRole: inherited,
+    };
+  });
 
   const applications = [...new Set(roles.map((role) => role.application_id))].sort();
   const roleOptions = roles.filter((role) => role.application_id === application && role.is_active);
   const selectedRole = roleOptions.find((role) => role.key === roleKey);
   const hasActiveFilter = Object.values(filter).some(Boolean);
 
-  // Specific access sits on top of a baseline: a group with no filters.
-  const groups = groupsQuery.data?.data || [];
-  const baselines = groups.filter(
-    (row) =>
-      row.group.units.length === 0 &&
-      row.group.job_positions.length === 0 &&
-      row.group.job_levels.length === 0,
-  );
-  const covers = (rowAudience, target) => rowAudience === "EMPLOYEES_AND_STUDENTS" || rowAudience === target;
-  const targetAudience = mode === "PEOPLE" ? "EMPLOYEES" : audience;
-  const matchingBaseline = baselines.find((row) => covers(row.group.audience, targetAudience));
-  const groupIsBaseline =
-    mode === "GROUP" &&
-    groupFilters.units.selected === null &&
-    (audience === "STUDENTS" ||
-      (groupFilters.positions.selected === null && groupFilters.levels.selected === null));
-  const needsBaseline = Boolean(application) && groupsQuery.isSuccess && !matchingBaseline && !groupIsBaseline;
+  // Groups of this application, to filter the people list and to explain what they already get.
+  const groups = (groupsQuery.data?.data || []).filter((row) => row.group.audience !== "STUDENTS");
+  const groupSummary = (row) =>
+    [
+      audienceLabels[row.group.audience],
+      row.group.units.length ? row.group.units.map((item) => item.name).join(", ") : null,
+      row.group.job_positions.length ? row.group.job_positions.map((item) => item.name).join(", ") : null,
+      row.group.job_levels.length ? row.group.job_levels.map((item) => item.name).join(", ") : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  const coverageOptions = [
+    { value: "", label: "Anyone" },
+    { value: "COVERED", label: "Covered by a group" },
+    { value: "UNCOVERED", label: "Not covered by any group" },
+    ...groups.map((row) => ({ value: `GROUP:${row.id}`, label: `Group: ${groupSummary(row)}` })),
+  ];
+
+  // Someone who already gets this role from a group cannot be picked for it.
+  function chooseRole(value) {
+    setRoleKey(value);
+    setSelected((current) => new Map([...current].filter(([, item]) => item.inheritedRole !== value)));
+  }
 
   function setFilterValue(patch) {
     setFilter((current) => ({ ...current, ...patch }));
@@ -181,7 +202,7 @@ export function GrantAccessPage() {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!application || !roleKey || needsBaseline) return;
+    if (!application || !roleKey) return;
     if (mode === "PEOPLE") {
       if (selected.size === 0) return;
       peopleMutation.mutate();
@@ -243,10 +264,16 @@ export function GrantAccessPage() {
                   paging={paging}
                   search={params.search}
                   isLoading={employeesQuery.isLoading}
-                  emptyMessage="No active employees match."
+                  emptyMessage={application ? "No active employees match." : "Pick an application first to see who can be added."}
                   itemLabel="employee"
                   filters={
                     <div className="flex flex-wrap gap-3">
+                      <FilterSelect
+                        label="Group Scope"
+                        value={filter.coverage}
+                        onChange={(value) => setFilterValue({ coverage: value })}
+                        options={coverageOptions}
+                      />
                       <FilterSelect
                         label="Unit"
                         value={filter.unit_id}
@@ -287,7 +314,7 @@ export function GrantAccessPage() {
                           size="sm"
                           className="self-end"
                           onClick={() => {
-                            setFilter({ unit_id: "", job_position_id: "", job_level_id: "", employment_type: "" });
+                            setFilter({ coverage: "", unit_id: "", job_position_id: "", job_level_id: "", employment_type: "" });
                             setParams((current) => ({ ...current, page: 1 }));
                           }}
                         >
@@ -324,7 +351,7 @@ export function GrantAccessPage() {
                 <SearchableSelect
                   value={roleKey}
                   disabled={!application}
-                  onChange={setRoleKey}
+                  onChange={chooseRole}
                   options={roleOptions.map((role) => ({ value: role.key, label: role.key, description: role.label }))}
                   placeholder="Select a role"
                   searchPlaceholder="Search role"
@@ -337,16 +364,18 @@ export function GrantAccessPage() {
                     : `Permissions: ${selectedRole.permissions.join(", ")}`}
                 </p>
               ) : null}
-              {needsBaseline ? (
-                <p className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-3 py-2 text-xs text-[#805b18]">
-                  Set up the baseline for {application} first. Switch Who to A Group, keep every filter on All,
-                  and grant that group a role. People and narrower groups come after it.
-                </p>
-              ) : matchingBaseline && !groupIsBaseline ? (
-                <p className="text-xs text-(--mws-muted)">
-                  {audienceLabels[matchingBaseline.group.audience]} already get {matchingBaseline.role}. Pick a
-                  different role to give someone more or less.
-                </p>
+              {groups.length > 0 ? (
+                <div className="space-y-1 text-xs text-(--mws-muted)">
+                  <p>Groups on {application} (employees):</p>
+                  <ul className="list-disc space-y-0.5 pl-4">
+                    {groups.map((row) => (
+                      <li key={row.id}>
+                        {groupSummary(row)} get {row.role}
+                      </li>
+                    ))}
+                  </ul>
+                  <p>Someone a group covers already gets its role. Pick a different role to give them more or less.</p>
+                </div>
               ) : null}
               <OrganizationNote applicationId={application} />
             </div>
@@ -357,7 +386,6 @@ export function GrantAccessPage() {
               <Button
                 type="submit"
                 className="flex-1"
-                disabled={needsBaseline}
                 loading={peopleMutation.isPending || groupMutation.isPending}
               >
                 Grant

@@ -13,6 +13,12 @@ export const applicationAccessApi = {
     return apiRequest(`${ACCESS}${query ? `?${query}` : ''}`)
   },
 
+  // Active employees with what the application's groups already give them.
+  async listCandidates(params = {}) {
+    const query = compactSearchParams(params).toString()
+    return apiRequest(`${ACCESS}/candidates${query ? `?${query}` : ''}`)
+  },
+
   async grant(payload) {
     const response = await apiRequest(ENTITLEMENTS, { method: 'POST', body: payload })
     return response.data

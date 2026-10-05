@@ -80,11 +80,11 @@ export function ApplicationAccessPage() {
       </div>
       {activeTab === "roles" ? <RolesPanel /> : <AccessPanel />}
       <PageHint id="application-access-source-of-truth">
-        Start with a baseline for each application: a group for everyone with all units, positions and
-        levels. Then add people or narrower groups only when they need a different role. The most specific
-        access wins: the person, then job position, job level, unit, and the baseline last. Someone who
-        is blocked stays blocked even if a group covers them. To remove a baseline, handle the specific
-        access under it first.
+        Give access to a group or to specific people. An app for a few units, positions or people needs no
+        group for everyone. The most specific access wins: the person, then job position, job level, unit,
+        and the broadest group last. Someone a group covers must get a different role than the group, and a
+        group can only be removed after the specific access under it. Someone who is blocked stays blocked
+        even if a group covers them.
       </PageHint>
     </div>
   );

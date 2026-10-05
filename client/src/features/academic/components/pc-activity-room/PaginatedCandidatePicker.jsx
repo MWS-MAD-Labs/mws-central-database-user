@@ -16,7 +16,8 @@ export function PaginatedCandidatePicker({
   onPageChange,
   onPageSizeChange,
 }) {
-  const pageIds = items.map((item) => item.id);
+  const selectable = items.filter((item) => !item.disabled);
+  const pageIds = selectable.map((item) => item.id);
   const allPageSelected =
     pageIds.length > 0 && pageIds.every((id) => selected.has(id));
 
@@ -33,8 +34,8 @@ export function PaginatedCandidatePicker({
           <input
             type="checkbox"
             checked={allPageSelected}
-            disabled={isLoading || items.length === 0}
-            onChange={(event) => onTogglePage(event.target.checked, items)}
+            disabled={isLoading || selectable.length === 0}
+            onChange={(event) => onTogglePage(event.target.checked, selectable)}
             className="h-4 w-4 accent-(--mws-burgundy)"
           />
           Select all on this page
@@ -52,12 +53,15 @@ export function PaginatedCandidatePicker({
             items.map((item) => (
               <label
                 key={item.id}
-                className="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-(--mws-soft)"
+                className={`flex items-start gap-3 px-4 py-3 ${
+                  item.disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-(--mws-soft)"
+                }`}
               >
                 <input
                   type="checkbox"
                   aria-label={item.label}
                   checked={selected.has(item.id)}
+                  disabled={item.disabled}
                   onChange={(event) =>
                     onToggle(item, event.target.checked)
                   }
