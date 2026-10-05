@@ -10,6 +10,7 @@ import {
   TestRequest,
 } from "./test-utils";
 
+const BASELINE_MARKER = "test_baseline_org";
 const STAFF_PERMISSIONS = ["credentials.read", "pos.catalog.read", "store.use"];
 const ADMIN_PERMISSIONS = [
   "app.admin", "dashboard.read", "analytics.read", "users.manage",
@@ -105,9 +106,26 @@ describe("application entitlements", () => {
       prismaClient.masterBuilding.create({ data: { name: `TEST_ENTITLEMENT_BUILDING_${fixtureKey}` } }),
     ]);
     masterData = { unit, position, level, building };
+
+    // People are only granted on top of a baseline. Use roles these tests never grant.
+    await prismaClient.applicationRole.upsert({
+      where: { application_id_key: { application_id: "daily-checkin", key: "BASELINE_TEST" } },
+      update: {},
+      create: { application_id: "daily-checkin", key: "BASELINE_TEST", label: "Baseline test", permissions: [] },
+    });
+    await prismaClient.applicationAccessRule.createMany({
+      data: [
+        { application_id: "exima", audience: "EMPLOYEES", default_role_key: "RESOURCE", organization_id: BASELINE_MARKER },
+        { application_id: "daily-checkin", audience: "EMPLOYEES", default_role_key: "BASELINE_TEST", organization_id: BASELINE_MARKER },
+      ],
+    });
   });
 
   afterEach(async () => {
+    await prismaClient.applicationAccessRule.deleteMany({ where: { organization_id: BASELINE_MARKER } });
+    await prismaClient.applicationRole.deleteMany({
+      where: { application_id: "daily-checkin", key: "BASELINE_TEST" },
+    });
     if (adminIds.length || apiClientIds.length || entitlementIds.length) {
       await prismaClient.auditLog.deleteMany({
         where: {

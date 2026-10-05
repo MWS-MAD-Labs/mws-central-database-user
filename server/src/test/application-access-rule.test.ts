@@ -28,6 +28,7 @@ describe("application baseline access rules", () => {
       data: [
         { application_id: appId, key: "STAFF", label: "Staff", permissions: ["store.use"] },
         { application_id: appId, key: "ADMIN", label: "Admin", permissions: ["store.use", "app.admin"] },
+        { application_id: appId, key: "MEMBER", label: "Member", permissions: [] },
       ],
     });
   });
@@ -129,24 +130,29 @@ describe("application baseline access rules", () => {
     const outUnit = await createEmployee("test_rule_out@millennia21.id", EmployeeStatus.ACTIVE, otherUnit.id);
     const inactive = await createEmployee("test_rule_inactive@millennia21.id", EmployeeStatus.INACTIVE);
 
-    const id = await ruleId(await addRule(accessToken, { audience: "EMPLOYEES", unit_ids: [masterData.unit.id] }));
-    expect((await lookup(inUnit.id)).status).toBe(200);
-    expect((await lookup(outUnit.id)).status).toBe(404);
+    const role = async (id: string) => (await (await lookup(id)).json()).data?.role;
+
+    // Employees: baseline ADMIN, a unit narrows it to STAFF.
+    expect((await addRule(accessToken, { default_role_key: "ADMIN" })).status).toBe(200);
+    const narrow = await ruleId(await addRule(accessToken, { unit_ids: [masterData.unit.id] }));
+    expect(await role(inUnit.id)).toBe("STAFF");
+    expect(await role(outUnit.id)).toBe("ADMIN");
     expect((await lookup(inactive.id)).status).toBe(404);
     expect((await lookup(student.id)).status).toBe(404);
 
-    await TestRequest.delete(`${RULES}/${id}`, accessToken);
-    const both = await ruleId(await addRule(accessToken, { audience: "EMPLOYEES_AND_STUDENTS", unit_ids: [masterData.unit.id] }));
-    expect((await lookup(student.id)).status).toBe(200);
+    // Students have their own baseline, and a unit narrows it too.
+    const studentBaseline = await ruleId(await addRule(accessToken, { audience: "STUDENTS", default_role_key: "ADMIN" }));
+    expect(await role(student.id)).toBe("ADMIN");
+    const studentUnit = await ruleId(await addRule(accessToken, { audience: "STUDENTS", unit_ids: [masterData.unit.id] }));
+    expect(await role(student.id)).toBe("STAFF");
 
-    await TestRequest.delete(`${RULES}/${both}`, accessToken);
-    const students = await ruleId(await addRule(accessToken, { audience: "STUDENTS" }));
-    expect((await lookup(inUnit.id)).status).toBe(404);
-    expect((await lookup(student.id)).status).toBe(200);
-
-    await TestRequest.patch(`${RULES}/${students}`, { is_active: false }, accessToken);
+    // The baseline cannot go while the narrower group depends on it.
+    expect((await TestRequest.patch(`${RULES}/${studentBaseline}`, { is_active: false }, accessToken)).status).toBe(400);
+    await TestRequest.delete(`${RULES}/${studentUnit}`, accessToken);
+    expect((await TestRequest.patch(`${RULES}/${studentBaseline}`, { is_active: false }, accessToken)).status).toBe(200);
     expect((await lookup(student.id)).status).toBe(404);
 
+    await TestRequest.delete(`${RULES}/${narrow}`, accessToken);
     await prismaClient.employee.deleteMany({ where: { person_id: outUnit.id } });
   });
 
@@ -174,18 +180,18 @@ describe("application baseline access rules", () => {
 
     expect((await addRule(accessToken)).status).toBe(200);
     expect((await addRule(accessToken, { default_role_key: "ADMIN" })).status).toBe(400);
-    // Students and employees never share a person, so a student-only rule is fine.
+    // Students and employees never share a person, so a student-only baseline is fine.
     expect((await addRule(accessToken, { audience: "STUDENTS" })).status).toBe(200);
 
-    expect((await addRule(accessToken, { unit_ids: [masterData.unit.id] })).status).toBe(200);
-    expect((await addRule(accessToken, { unit_ids: [masterData.unit.id, otherUnit.id] })).status).toBe(400);
-    const second = await addRule(accessToken, { unit_ids: [otherUnit.id] });
+    expect((await addRule(accessToken, { unit_ids: [masterData.unit.id], default_role_key: "ADMIN" })).status).toBe(200);
+    expect((await addRule(accessToken, { unit_ids: [masterData.unit.id, otherUnit.id], default_role_key: "ADMIN" })).status).toBe(400);
+    const second = await addRule(accessToken, { unit_ids: [otherUnit.id], default_role_key: "ADMIN" });
     expect(second.status).toBe(200);
 
     // Re-activating a rule runs the same check.
     const id = await ruleId(second);
     await TestRequest.patch(`${RULES}/${id}`, { is_active: false }, accessToken);
-    expect((await addRule(accessToken, { unit_ids: [otherUnit.id] })).status).toBe(200);
+    expect((await addRule(accessToken, { unit_ids: [otherUnit.id], default_role_key: "ADMIN" })).status).toBe(200);
     expect((await TestRequest.patch(`${RULES}/${id}`, { is_active: true }, accessToken)).status).toBe(400);
   });
 
@@ -247,6 +253,7 @@ describe("application baseline access rules", () => {
     const a = await createEmployee("test_rule_bulk_a@millennia21.id");
     const b = await createEmployee("test_rule_bulk_b@millennia21.id");
     const inactive = await createEmployee("test_rule_bulk_c@millennia21.id", EmployeeStatus.INACTIVE);
+    await addRule(accessToken, { default_role_key: "MEMBER" });
 
     const response = await TestRequest.post(
       `${ENTITLEMENTS}/bulk`,
@@ -271,6 +278,7 @@ describe("application baseline access rules", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const first = await createEmployee("test_rule_org_a@millennia21.id");
     const second = await createEmployee("test_rule_org_b@millennia21.id");
+    const baseline = await (await addRule(accessToken, { default_role_key: "MEMBER" })).json();
 
     const one = await (await TestRequest.post(
       ENTITLEMENTS,
@@ -286,8 +294,7 @@ describe("application baseline access rules", () => {
     // Whatever is typed is ignored, the application's own organization is used.
     expect(two.data.organization_id).toBe(one.data.organization_id);
 
-    const rule = await (await addRule(accessToken)).json();
-    expect(rule.data.organization_id).toBe(one.data.organization_id);
+    expect(baseline.data.organization_id).toBe(one.data.organization_id);
 
     const listed = (await (await TestRequest.get("/api/admin/application-organizations", accessToken)).json()).data;
     expect(listed.find((row: { application_id: string }) => row.application_id === appId).organization_id).toBe(
@@ -299,6 +306,7 @@ describe("application baseline access rules", () => {
 
   it("reads one group access by id", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await addRule(accessToken, { default_role_key: "MEMBER" });
     const id = await ruleId(await addRule(accessToken, { unit_ids: [masterData.unit.id] }));
     const response = await TestRequest.get(`${RULES}/${id}`, accessToken);
     const body = await response.json();

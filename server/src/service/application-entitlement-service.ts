@@ -46,6 +46,16 @@ import {
 } from "../validation/application-entitlement-validation";
 import { Validation } from "../validation/validation";
 import { AuditService } from "./audit-service";
+import {
+  assertBaselineForPerson,
+  assertPersonNotRedundant,
+  assertRuleGate,
+  loadRuleSubject,
+  ruleMatches,
+  ruleSpecificity,
+  type GateRule,
+  type RuleFilter,
+} from "./application-access-gate";
 
 function assertSuperAdmin(admin: AdminUser) {
   if (admin.role !== AdminRole.SUPER_ADMIN) {
@@ -117,73 +127,6 @@ async function resolveRolePermissions(
     }
   }
   return entry.permissions;
-}
-
-type RuleFilter = {
-  audience: ApplicationAudience;
-  unit_ids: string[];
-  job_position_ids: string[];
-  job_level_ids: string[];
-};
-
-type RuleSubject =
-  | { kind: "EMPLOYEE"; unitId: string; positionId: string; levelId: string }
-  | { kind: "STUDENT"; unitId: string | null };
-
-// How narrow a rule is. The weights are distinct powers of two, so two rules
-// with different filters never tie.
-function ruleSpecificity(rule: RuleFilter): number {
-  return (
-    (rule.job_position_ids.length > 0 ? 4 : 0) +
-    (rule.job_level_ids.length > 0 ? 2 : 0) +
-    (rule.unit_ids.length > 0 ? 1 : 0)
-  );
-}
-
-// Only active employees and active students can receive group access.
-async function loadRuleSubject(personId: string): Promise<RuleSubject | null> {
-  const person = await prismaClient.person.findFirst({
-    where: { id: personId, deleted_at: null },
-    select: {
-      person_type: true,
-      employee: {
-        select: { status: true, deleted_at: true, unit_id: true, job_position_id: true, job_level_id: true },
-      },
-      student: {
-        select: { status: true, deleted_at: true, current_grade: { select: { unit_id: true } } },
-      },
-    },
-  });
-  if (!person) return null;
-  if (person.person_type === PersonType.EMPLOYEE) {
-    const employee = person.employee;
-    if (!employee || employee.status !== EmployeeStatus.ACTIVE || employee.deleted_at !== null) return null;
-    return {
-      kind: "EMPLOYEE",
-      unitId: employee.unit_id,
-      positionId: employee.job_position_id,
-      levelId: employee.job_level_id,
-    };
-  }
-  if (person.person_type === PersonType.STUDENT) {
-    const student = person.student;
-    if (!student || student.status !== StudentStatus.ACTIVE || student.deleted_at !== null) return null;
-    return { kind: "STUDENT", unitId: student.current_grade?.unit_id ?? null };
-  }
-  return null;
-}
-
-function ruleMatches(rule: RuleFilter, subject: RuleSubject): boolean {
-  const has = (ids: string[], id: string | null) => ids.length === 0 || (id !== null && ids.includes(id));
-  if (subject.kind === "EMPLOYEE") {
-    return (
-      rule.audience !== ApplicationAudience.STUDENTS &&
-      has(rule.unit_ids, subject.unitId) &&
-      has(rule.job_position_ids, subject.positionId) &&
-      has(rule.job_level_ids, subject.levelId)
-    );
-  }
-  return rule.audience !== ApplicationAudience.EMPLOYEES && has(rule.unit_ids, subject.unitId);
 }
 
 async function resolveBaselineEntitlement(
@@ -314,6 +257,8 @@ export class ApplicationEntitlementService {
       grant.permissions,
     );
 
+    const gateRules = await assertBaselineForPerson(grant.application_id);
+    await assertPersonNotRedundant(grant.application_id, grant.person_id, grant.role, gateRules);
     const organizationId = await resolveOrganizationId(grant.application_id);
 
     const existing = await prismaClient.applicationEntitlement.findUnique({
@@ -378,8 +323,9 @@ export class ApplicationEntitlementService {
   ): Promise<BulkActionResponse<ApplicationEntitlementResponse>> {
     assertSuperAdmin(admin);
     const input = Validation.validate(ApplicationEntitlementValidation.BULK_GRANT, request);
-    // Fail the whole call early on a bad role instead of once per person.
+    // Fail the whole call early on a bad role or a missing baseline instead of once per person.
     await resolveRolePermissions(input.application_id, input.role, undefined);
+    await assertBaselineForPerson(input.application_id);
 
     const items = [];
     for (const personId of input.person_ids) {
@@ -423,6 +369,10 @@ export class ApplicationEntitlementService {
       throw new ResponseError(400, "Cannot update a revoked application entitlement");
     }
     const nextRole = update.role ?? existing.role;
+    if (nextRole !== existing.role) {
+      const gateRules = await assertBaselineForPerson(existing.application_id);
+      await assertPersonNotRedundant(existing.application_id, existing.person_id, nextRole, gateRules);
+    }
     const nextPermissions = await resolveRolePermissions(
       existing.application_id,
       nextRole,
@@ -499,6 +449,35 @@ export class ApplicationEntitlementService {
     });
 
     return toApplicationEntitlementResponse(entitlement);
+  }
+
+  // Deletes the person's own access row: they fall back to group access, if any.
+  static async remove(
+    admin: AdminUser,
+    request: RevokeApplicationEntitlementRequest,
+    context: AuditRequestContext = {},
+  ): Promise<boolean> {
+    assertSuperAdmin(admin);
+    const input = Validation.validate(ApplicationEntitlementValidation.REVOKE, request);
+    const existing = await prismaClient.applicationEntitlement.findUnique({ where: { id: input.id } });
+    if (!existing) throw new ResponseError(404, "Application entitlement not found");
+    await prismaClient.$transaction(async (tx) => {
+      await tx.applicationEntitlement.delete({ where: { id: existing.id } });
+      await AuditService.record(
+        {
+          action: AuditAction.APPLICATION_ENTITLEMENT_DELETE,
+          source: AuditSource.UI,
+          entity_type: "ApplicationEntitlement",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: auditSnapshot(existing),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+    return true;
   }
 
   static async list(
@@ -793,6 +772,26 @@ function ruleAuditSnapshot(rule: {
   };
 }
 
+function toGateRule(rule: {
+  id: string;
+  audience: ApplicationAudience;
+  unit_ids: string[];
+  job_position_ids: string[];
+  job_level_ids: string[];
+  default_role_key: string;
+  is_active: boolean;
+}): GateRule {
+  return {
+    id: rule.id,
+    audience: rule.audience,
+    unit_ids: rule.unit_ids,
+    job_position_ids: rule.job_position_ids,
+    job_level_ids: rule.job_level_ids,
+    default_role_key: rule.default_role_key,
+    is_active: rule.is_active,
+  };
+}
+
 export class ApplicationOrganizationService {
   static async list(admin: AdminUser) {
     assertSuperAdmin(admin);
@@ -830,6 +829,15 @@ export class ApplicationAccessRuleService {
     };
     await assertRuleReferences(input);
     if (input.is_active) await assertNoOverlap(input.application_id, input);
+    await assertRuleGate(input.application_id, null, {
+      id: "new",
+      audience: input.audience,
+      unit_ids: input.unit_ids,
+      job_position_ids: input.job_position_ids,
+      job_level_ids: input.job_level_ids,
+      default_role_key: input.default_role_key,
+      is_active: input.is_active,
+    });
     const organizationId = await resolveOrganizationId(input.application_id);
 
     const saved = await prismaClient.$transaction(async (tx) => {
@@ -875,6 +883,15 @@ export class ApplicationAccessRuleService {
     };
     await assertRuleReferences(next);
     if (next.is_active) await assertNoOverlap(existing.application_id, next, existing.id);
+    await assertRuleGate(existing.application_id, toGateRule(existing), {
+      id: existing.id,
+      audience: next.audience,
+      unit_ids: next.unit_ids,
+      job_position_ids: next.job_position_ids,
+      job_level_ids: next.job_level_ids,
+      default_role_key: next.default_role_key,
+      is_active: next.is_active,
+    });
 
     const saved = await prismaClient.$transaction(async (tx) => {
       const rule = await tx.applicationAccessRule.update({
@@ -915,6 +932,7 @@ export class ApplicationAccessRuleService {
     const input = Validation.validate(ApplicationAccessRuleValidation.DELETE, request);
     const existing = await prismaClient.applicationAccessRule.findUnique({ where: { id: input.id } });
     if (!existing) throw new ResponseError(404, "Group access not found");
+    await assertRuleGate(existing.application_id, toGateRule(existing), null);
     await prismaClient.$transaction(async (tx) => {
       await tx.applicationAccessRule.delete({ where: { id: existing.id } });
       await AuditService.record(

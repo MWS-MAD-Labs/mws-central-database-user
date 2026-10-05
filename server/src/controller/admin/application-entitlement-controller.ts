@@ -63,6 +63,17 @@ export class ApplicationEntitlementController {
     return c.json({ data: response });
   }
 
+  static async remove(c: Context<{ Variables: AdminVariables }>) {
+    const id = c.req.param("id");
+    if (!id) throw new ResponseError(400, "Entitlement ID is required");
+    const response = await ApplicationEntitlementService.remove(
+      c.var.admin,
+      { id },
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
   static async list(c: Context<{ Variables: AdminVariables }>) {
     const active = c.req.query("is_active");
     if (active !== undefined && active !== "true" && active !== "false") {

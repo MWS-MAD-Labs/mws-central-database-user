@@ -21,6 +21,7 @@ describe("application role registry", () => {
       where: { entity_id: { in: roles.map((role) => role.id) } },
     });
     await prismaClient.applicationEntitlement.deleteMany({ where: { application_id: appId } });
+    await prismaClient.applicationAccessRule.deleteMany({ where: { application_id: appId } });
     await prismaClient.applicationRole.deleteMany({ where: { application_id: appId } });
     await prismaClient.applicationOrganization.deleteMany({ where: { application_id: appId } });
     await EmployeeTest.delete();
@@ -35,7 +36,7 @@ describe("application role registry", () => {
       body.data.filter((r: { application_id: string }) => r.application_id === app).map((r: { key: string }) => r.key);
     expect(keys("exima")).toEqual(["ADMIN", "CASHIER", "RESOURCE", "STAFF"]);
     expect(keys("daily-checkin")).toEqual(["ADMIN", "EDUCATOR", "PARTICIPANT", "SUPERADMIN", "SUPPORT"]);
-    expect(keys("hub")).toEqual(["ADMIN"]);
+    expect(keys("hub")).toEqual(["ADMIN", "MEMBER"]);
   });
 
   it("is Super Admin only", async () => {
@@ -76,6 +77,12 @@ describe("application role registry", () => {
       jobPositionId: position.id,
       jobLevelId: level.id,
       buildingId: building.id,
+    });
+    await prismaClient.applicationRole.create({
+      data: { application_id: appId, key: "BASE", label: "Base", permissions: [] },
+    });
+    await prismaClient.applicationAccessRule.create({
+      data: { application_id: appId, audience: "EMPLOYEES", default_role_key: "BASE", organization_id: "org_test" },
     });
     const granted = await TestRequest.post(
       "/api/admin/application-entitlements",
