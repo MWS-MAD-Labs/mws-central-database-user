@@ -2,7 +2,8 @@ import type { Context } from "hono";
 import type {
   BulkGrantApplicationEntitlementRequest,
   CreateApplicationRoleRequest,
-  SetApplicationAccessRuleRequest,
+  CreateApplicationAccessRuleRequest,
+  UpdateApplicationAccessRuleRequest,
   GrantApplicationEntitlementRequest,
   UpdateApplicationEntitlementRequest,
   UpdateApplicationRoleRequest,
@@ -10,6 +11,7 @@ import type {
 import { ResponseError } from "../../error/response-error";
 import {
   ApplicationAccessRuleService,
+  ApplicationAccessService,
   ApplicationEntitlementService,
   ApplicationRoleService,
 } from "../../service/application-entitlement-service";
@@ -118,19 +120,61 @@ export class ApplicationRoleController {
 }
 
 export class ApplicationAccessRuleController {
-  static async list(c: Context<{ Variables: AdminVariables }>) {
-    return c.json({ data: await ApplicationAccessRuleService.list(c.var.admin) });
-  }
-
-  static async set(c: Context<{ Variables: AdminVariables }>) {
-    const applicationId = c.req.param("applicationId");
-    if (!applicationId) throw new ResponseError(400, "Application ID is required");
-    const body = (await c.req.json()) as Omit<SetApplicationAccessRuleRequest, "application_id">;
-    const response = await ApplicationAccessRuleService.set(
+  static async create(c: Context<{ Variables: AdminVariables }>) {
+    const request = (await c.req.json()) as CreateApplicationAccessRuleRequest;
+    const response = await ApplicationAccessRuleService.create(
       c.var.admin,
-      { application_id: applicationId, ...body },
+      request,
       getAuditRequestContext(c),
     );
     return c.json({ data: response });
+  }
+
+  static async update(c: Context<{ Variables: AdminVariables }>) {
+    const id = c.req.param("id");
+    if (!id) throw new ResponseError(400, "Rule ID is required");
+    const body = (await c.req.json()) as Omit<UpdateApplicationAccessRuleRequest, "id">;
+    const response = await ApplicationAccessRuleService.update(
+      c.var.admin,
+      { id, ...body },
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
+  static async remove(c: Context<{ Variables: AdminVariables }>) {
+    const id = c.req.param("id");
+    if (!id) throw new ResponseError(400, "Rule ID is required");
+    const response = await ApplicationAccessRuleService.remove(
+      c.var.admin,
+      { id },
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+}
+
+export class ApplicationAccessController {
+  static async list(c: Context<{ Variables: AdminVariables }>) {
+    const active = c.req.query("is_active");
+    if (active !== undefined && active !== "true" && active !== "false") {
+      throw new ResponseError(400, "is_active must be 'true' or 'false'");
+    }
+    const kind = c.req.query("kind");
+    if (kind !== undefined && kind !== "GROUP" && kind !== "PERSON") {
+      throw new ResponseError(400, "kind must be 'GROUP' or 'PERSON'");
+    }
+    const page = c.req.query("page");
+    const size = c.req.query("size");
+    const response = await ApplicationAccessService.list(c.var.admin, {
+      kind,
+      application_id: c.req.query("application_id"),
+      role: c.req.query("role"),
+      search: c.req.query("search"),
+      is_active: active === undefined ? undefined : active === "true",
+      page: page ? Number(page) : undefined,
+      size: size ? Number(size) : undefined,
+    });
+    return c.json(response);
   }
 }

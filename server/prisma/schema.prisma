@@ -316,6 +316,9 @@ enum AuditAction {
   APPLICATION_ROLE_CREATE
   APPLICATION_ROLE_UPDATE
   APPLICATION_ACCESS_RULE_SET
+  APPLICATION_ACCESS_RULE_CREATE
+  APPLICATION_ACCESS_RULE_UPDATE
+  APPLICATION_ACCESS_RULE_DELETE
   ROLE_CHANGE
   PERMISSION_CHANGE
   REQUEST_IDENTIFIER_CHANGE
@@ -1590,21 +1593,25 @@ enum ApplicationAudience {
   EMPLOYEES_AND_STUDENTS
 }
 
-// Baseline access for ordinary users: everyone in the audience (optionally
-// limited to some units) gets default_role_key without a per-person row. An
-// explicit entitlement for the same person always wins, including a revoked one.
+// Group access: everyone in the audience who matches the unit, job position and
+// job level filters (empty means all) gets default_role_key without a
+// per-person row. The most specific matching rule wins, and a person's own
+// entitlement (even a revoked one) always wins over any rule.
 model ApplicationAccessRule {
   id               String              @id @default(cuid())
-  application_id   String              @unique
+  application_id   String
   audience         ApplicationAudience
-  // Empty means every unit.
+  // Empty means every unit, position or level.
   unit_ids         String[]            @default([])
+  job_position_ids String[]            @default([])
+  job_level_ids    String[]            @default([])
   default_role_key String
   organization_id  String
   is_active        Boolean             @default(true)
   created_at       DateTime            @default(now())
   updated_at       DateTime            @updatedAt
 
+  @@index([application_id])
   @@map("application_access_rules")
 }
 

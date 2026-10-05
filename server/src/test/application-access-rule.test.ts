@@ -13,6 +13,7 @@ import {
 } from "./test-utils";
 
 const RULES = "/api/admin/application-access-rules";
+const ACCESS = "/api/admin/application-access";
 const ENTITLEMENTS = "/api/admin/application-entitlements";
 
 describe("application baseline access rules", () => {
@@ -71,21 +72,26 @@ describe("application baseline access rules", () => {
     );
   }
 
-  async function setRule(token: string, body: Record<string, unknown> = {}) {
-    return TestRequest.put(
-      `${RULES}/${appId}`,
-      { audience: "EMPLOYEES", default_role_key: "STAFF", organization_id: "mws", ...body },
+  // Creates a group access and returns the response.
+  async function addRule(token: string, body: Record<string, unknown> = {}) {
+    return TestRequest.post(
+      RULES,
+      { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF", organization_id: "mws", ...body },
       token,
     );
   }
 
-  it("gives every active employee the default role and marks it as baseline", async () => {
+  async function ruleId(response: Response) {
+    return (await response.json()).data.id as string;
+  }
+
+  it("gives every active employee the default role and marks it as group access", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const person = await createEmployee("test_rule_employee@millennia21.id");
 
     expect((await lookup(person.id)).status).toBe(404);
 
-    expect((await setRule(accessToken)).status).toBe(200);
+    expect((await addRule(accessToken)).status).toBe(200);
     const response = await lookup(person.id);
     const body = await response.json();
     expect(response.status).toBe(200);
@@ -96,9 +102,9 @@ describe("application baseline access rules", () => {
     expect(body.data.organization_id).toBe("mws");
   });
 
-  it("lets an explicit entitlement win and a revoked one block the baseline", async () => {
+  it("lets an explicit entitlement win and a revoked one block group access", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    await setRule(accessToken);
+    await addRule(accessToken);
     const person = await createEmployee("test_rule_explicit@millennia21.id");
 
     const granted = await (await TestRequest.post(
@@ -114,7 +120,7 @@ describe("application baseline access rules", () => {
     expect((await lookup(person.id)).status).toBe(404);
   });
 
-  it("follows the audience, unit filter, active status and employee status", async () => {
+  it("follows the audience, unit, active status and employee status", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({ email: "test_rule_student@millennia21.id", status: StudentStatus.ACTIVE });
     const otherUnit = await prismaClient.masterUnit.create({ data: { name: `TEST_RULE_OTHER_${randomBytes(3).toString("hex")}` } });
@@ -122,38 +128,117 @@ describe("application baseline access rules", () => {
     const outUnit = await createEmployee("test_rule_out@millennia21.id", EmployeeStatus.ACTIVE, otherUnit.id);
     const inactive = await createEmployee("test_rule_inactive@millennia21.id", EmployeeStatus.INACTIVE);
 
-    await setRule(accessToken, { audience: "EMPLOYEES", unit_ids: [masterData.unit.id] });
+    const id = await ruleId(await addRule(accessToken, { audience: "EMPLOYEES", unit_ids: [masterData.unit.id] }));
     expect((await lookup(inUnit.id)).status).toBe(200);
     expect((await lookup(outUnit.id)).status).toBe(404);
     expect((await lookup(inactive.id)).status).toBe(404);
     expect((await lookup(student.id)).status).toBe(404);
 
-    await setRule(accessToken, { audience: "EMPLOYEES_AND_STUDENTS", unit_ids: [masterData.unit.id] });
+    await TestRequest.delete(`${RULES}/${id}`, accessToken);
+    const both = await ruleId(await addRule(accessToken, { audience: "EMPLOYEES_AND_STUDENTS", unit_ids: [masterData.unit.id] }));
     expect((await lookup(student.id)).status).toBe(200);
 
-    await setRule(accessToken, { audience: "STUDENTS", unit_ids: [] });
+    await TestRequest.delete(`${RULES}/${both}`, accessToken);
+    const students = await ruleId(await addRule(accessToken, { audience: "STUDENTS" }));
     expect((await lookup(inUnit.id)).status).toBe(404);
     expect((await lookup(student.id)).status).toBe(200);
 
-    await setRule(accessToken, { audience: "EMPLOYEES", is_active: false });
-    expect((await lookup(inUnit.id)).status).toBe(404);
+    await TestRequest.patch(`${RULES}/${students}`, { is_active: false }, accessToken);
+    expect((await lookup(student.id)).status).toBe(404);
 
     await prismaClient.employee.deleteMany({ where: { person_id: outUnit.id } });
   });
 
-  it("validates the rule and is Super Admin only", async () => {
+  it("gives the most specific matching group access: position, then level, then unit, then everyone", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    expect((await setRule(accessToken, { default_role_key: "staff" })).status).toBe(400);
-    expect((await setRule(accessToken, { default_role_key: "NOPE" })).status).toBe(400);
-    expect((await setRule(accessToken, { unit_ids: ["missing-unit"] })).status).toBe(400);
+    const position = await prismaClient.masterJobPosition.create({ data: { name: `TEST_RULE_POS_${randomBytes(3).toString("hex")}` } });
+    const special = await createEmployee("test_rule_special@millennia21.id");
+    await prismaClient.employee.update({ where: { person_id: special.id }, data: { job_position_id: position.id } });
+    const regular = await createEmployee("test_rule_regular@millennia21.id");
+
+    await addRule(accessToken, { default_role_key: "STAFF" });
+    await addRule(accessToken, { default_role_key: "ADMIN", job_position_ids: [position.id] });
+
+    expect((await (await lookup(special.id)).json()).data.role).toBe("ADMIN");
+    expect((await (await lookup(regular.id)).json()).data.role).toBe("STAFF");
+
+    // A unit rule sits between "everyone" and a position rule.
+    await addRule(accessToken, { default_role_key: "ADMIN", unit_ids: [masterData.unit.id] });
+    expect((await (await lookup(regular.id)).json()).data.role).toBe("ADMIN");
+  });
+
+  it("rejects group accesses that cover the same people at the same level of detail", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const otherUnit = await prismaClient.masterUnit.create({ data: { name: `TEST_RULE_OVERLAP_${randomBytes(3).toString("hex")}` } });
+
+    expect((await addRule(accessToken)).status).toBe(200);
+    expect((await addRule(accessToken, { default_role_key: "ADMIN" })).status).toBe(400);
+    // Students and employees never share a person, so a student-only rule is fine.
+    expect((await addRule(accessToken, { audience: "STUDENTS" })).status).toBe(200);
+
+    expect((await addRule(accessToken, { unit_ids: [masterData.unit.id] })).status).toBe(200);
+    expect((await addRule(accessToken, { unit_ids: [masterData.unit.id, otherUnit.id] })).status).toBe(400);
+    const second = await addRule(accessToken, { unit_ids: [otherUnit.id] });
+    expect(second.status).toBe(200);
+
+    // Re-activating a rule runs the same check.
+    const id = await ruleId(second);
+    await TestRequest.patch(`${RULES}/${id}`, { is_active: false }, accessToken);
+    expect((await addRule(accessToken, { unit_ids: [otherUnit.id] })).status).toBe(200);
+    expect((await TestRequest.patch(`${RULES}/${id}`, { is_active: true }, accessToken)).status).toBe(400);
+  });
+
+  it("validates, audits and restricts group access management to Super Admin", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    expect((await addRule(accessToken, { default_role_key: "staff" })).status).toBe(400);
+    expect((await addRule(accessToken, { default_role_key: "NOPE" })).status).toBe(400);
+    expect((await addRule(accessToken, { unit_ids: ["missing-unit"] })).status).toBe(400);
+    expect((await addRule(accessToken, { job_position_ids: ["missing-position"] })).status).toBe(400);
+    expect((await addRule(accessToken, { audience: "STUDENTS", job_level_ids: [masterData.level.id] })).status).toBe(400);
 
     const dbAdmin = await AdminUserTest.createDatabaseAdmin();
-    expect((await setRule(dbAdmin.accessToken)).status).toBe(403);
-    expect((await TestRequest.get(RULES, dbAdmin.accessToken)).status).toBe(403);
+    expect((await addRule(dbAdmin.accessToken)).status).toBe(403);
+    expect((await TestRequest.get(ACCESS, dbAdmin.accessToken)).status).toBe(403);
 
-    expect((await setRule(accessToken)).status).toBe(200);
-    const listed = (await (await TestRequest.get(RULES, accessToken)).json()).data;
-    expect(listed.some((rule: { application_id: string }) => rule.application_id === appId)).toBe(true);
+    const created = await addRule(accessToken);
+    const id = await ruleId(created);
+    expect(await prismaClient.auditLog.findFirst({ where: { action: "APPLICATION_ACCESS_RULE_CREATE", entity_id: id } })).not.toBeNull();
+    expect((await TestRequest.patch(`${RULES}/${id}`, { default_role_key: "ADMIN" }, accessToken)).status).toBe(200);
+    expect(await prismaClient.auditLog.findFirst({ where: { action: "APPLICATION_ACCESS_RULE_UPDATE", entity_id: id } })).not.toBeNull();
+    expect((await TestRequest.delete(`${RULES}/${id}`, accessToken)).status).toBe(200);
+    expect(await prismaClient.auditLog.findFirst({ where: { action: "APPLICATION_ACCESS_RULE_DELETE", entity_id: id } })).not.toBeNull();
+    expect((await TestRequest.delete(`${RULES}/${id}`, accessToken)).status).toBe(404);
+  });
+
+  it("lists group accesses before people in one paged list and filters by type", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await addRule(accessToken);
+    await addRule(accessToken, { audience: "STUDENTS" });
+    for (const email of ["test_rule_list_a@millennia21.id", "test_rule_list_b@millennia21.id"]) {
+      const person = await createEmployee(email);
+      await TestRequest.post(
+        ENTITLEMENTS,
+        { person_id: person.id, application_id: appId, organization_id: "mws", role: "ADMIN" },
+        accessToken,
+      );
+    }
+    const url = `${ACCESS}?application_id=${appId}`;
+
+    const first = await (await TestRequest.get(`${url}&size=3`, accessToken)).json();
+    expect(first.paging.total_item).toBe(4);
+    expect(first.data.map((row: { kind: string }) => row.kind)).toEqual(["GROUP", "GROUP", "PERSON"]);
+    expect(first.data[0].group.audience).toBeDefined();
+    expect(first.data[0].permissions).toEqual(["store.use"]);
+    expect(first.data[2].person.email).toContain("@millennia21.id");
+
+    const second = await (await TestRequest.get(`${url}&size=3&page=2`, accessToken)).json();
+    expect(second.data.map((row: { kind: string }) => row.kind)).toEqual(["PERSON"]);
+
+    const groups = await (await TestRequest.get(`${url}&kind=GROUP`, accessToken)).json();
+    expect(groups.paging.total_item).toBe(2);
+    const people = await (await TestRequest.get(`${url}&kind=PERSON&search=list_a`, accessToken)).json();
+    expect(people.data).toHaveLength(1);
+    expect((await TestRequest.get(`${ACCESS}?kind=NOPE`, accessToken)).status).toBe(400);
   });
 
   it("bulk grants and reports each person that failed", async () => {

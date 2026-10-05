@@ -18,7 +18,11 @@ import {
   type ApplicationAccessRuleResponse,
   type ApplicationEntitlementListItem,
   type BulkGrantApplicationEntitlementRequest,
-  type SetApplicationAccessRuleRequest,
+  type ApplicationAccessRow,
+  type CreateApplicationAccessRuleRequest,
+  type DeleteApplicationAccessRuleRequest,
+  type ListApplicationAccessRequest,
+  type UpdateApplicationAccessRuleRequest,
   toApplicationAccessRuleResponse,
   type ApplicationEntitlementResponse,
   type ApplicationRoleResponse,
@@ -89,43 +93,71 @@ async function resolveRolePermissions(
   return entry.permissions;
 }
 
-async function personMatchesRule(
-  personId: string,
-  rule: { audience: ApplicationAudience; unit_ids: string[] },
-): Promise<boolean> {
+type RuleFilter = {
+  audience: ApplicationAudience;
+  unit_ids: string[];
+  job_position_ids: string[];
+  job_level_ids: string[];
+};
+
+type RuleSubject =
+  | { kind: "EMPLOYEE"; unitId: string; positionId: string; levelId: string }
+  | { kind: "STUDENT"; unitId: string | null };
+
+// How narrow a rule is. The weights are distinct powers of two, so two rules
+// with different filters never tie.
+function ruleSpecificity(rule: RuleFilter): number {
+  return (
+    (rule.job_position_ids.length > 0 ? 4 : 0) +
+    (rule.job_level_ids.length > 0 ? 2 : 0) +
+    (rule.unit_ids.length > 0 ? 1 : 0)
+  );
+}
+
+// Only active employees and active students can receive group access.
+async function loadRuleSubject(personId: string): Promise<RuleSubject | null> {
   const person = await prismaClient.person.findFirst({
     where: { id: personId, deleted_at: null },
     select: {
       person_type: true,
-      employee: { select: { status: true, deleted_at: true, unit_id: true } },
+      employee: {
+        select: { status: true, deleted_at: true, unit_id: true, job_position_id: true, job_level_id: true },
+      },
       student: {
         select: { status: true, deleted_at: true, current_grade: { select: { unit_id: true } } },
       },
     },
   });
-  if (!person) return false;
-  const inUnits = (unitId: string | null | undefined) =>
-    rule.unit_ids.length === 0 || (unitId != null && rule.unit_ids.includes(unitId));
-
+  if (!person) return null;
   if (person.person_type === PersonType.EMPLOYEE) {
     const employee = person.employee;
-    return (
-      rule.audience !== ApplicationAudience.STUDENTS &&
-      employee?.status === EmployeeStatus.ACTIVE &&
-      employee.deleted_at === null &&
-      inUnits(employee.unit_id)
-    );
+    if (!employee || employee.status !== EmployeeStatus.ACTIVE || employee.deleted_at !== null) return null;
+    return {
+      kind: "EMPLOYEE",
+      unitId: employee.unit_id,
+      positionId: employee.job_position_id,
+      levelId: employee.job_level_id,
+    };
   }
   if (person.person_type === PersonType.STUDENT) {
     const student = person.student;
+    if (!student || student.status !== StudentStatus.ACTIVE || student.deleted_at !== null) return null;
+    return { kind: "STUDENT", unitId: student.current_grade?.unit_id ?? null };
+  }
+  return null;
+}
+
+function ruleMatches(rule: RuleFilter, subject: RuleSubject): boolean {
+  const has = (ids: string[], id: string | null) => ids.length === 0 || (id !== null && ids.includes(id));
+  if (subject.kind === "EMPLOYEE") {
     return (
-      rule.audience !== ApplicationAudience.EMPLOYEES &&
-      student?.status === StudentStatus.ACTIVE &&
-      student.deleted_at === null &&
-      inUnits(student.current_grade?.unit_id)
+      rule.audience !== ApplicationAudience.STUDENTS &&
+      has(rule.unit_ids, subject.unitId) &&
+      has(rule.job_position_ids, subject.positionId) &&
+      has(rule.job_level_ids, subject.levelId)
     );
   }
-  return false;
+  return rule.audience !== ApplicationAudience.EMPLOYEES && has(rule.unit_ids, subject.unitId);
 }
 
 async function resolveBaselineEntitlement(
@@ -133,10 +165,10 @@ async function resolveBaselineEntitlement(
   applicationId: string | undefined,
 ): Promise<ApplicationEntitlementResponse | null> {
   if (!personId || !applicationId) return null;
-  const rule = await prismaClient.applicationAccessRule.findUnique({
-    where: { application_id: applicationId },
+  const rules = await prismaClient.applicationAccessRule.findMany({
+    where: { application_id: applicationId, is_active: true },
   });
-  if (!rule || !rule.is_active) return null;
+  if (rules.length === 0) return null;
 
   const explicit = await prismaClient.applicationEntitlement.findUnique({
     where: { person_id_application_id: { person_id: personId, application_id: applicationId } },
@@ -144,15 +176,23 @@ async function resolveBaselineEntitlement(
   });
   if (explicit) return null;
 
+  const subject = await loadRuleSubject(personId);
+  if (!subject) return null;
+  // The most specific matching rule wins. Saving a rule rejects overlaps, so
+  // there is never a tie.
+  const rule = rules
+    .filter((candidate) => ruleMatches(candidate, subject))
+    .sort((left, right) => ruleSpecificity(right) - ruleSpecificity(left))[0];
+  if (!rule) return null;
+
   const role = await prismaClient.applicationRole.findUnique({
     where: { application_id_key: { application_id: applicationId, key: rule.default_role_key } },
   });
   if (!role || !role.is_active) return null;
-  if (!(await personMatchesRule(personId, rule))) return null;
 
   const stamp = (role.updated_at > rule.updated_at ? role.updated_at : rule.updated_at).toISOString();
   return {
-    id: `baseline:${applicationId}`,
+    id: `group:${rule.id}`,
     person_id: personId,
     application_id: applicationId,
     organization_id: rule.organization_id,
@@ -617,86 +657,140 @@ export class ApplicationRoleService {
   }
 }
 
-export class ApplicationAccessRuleService {
-  static async list(admin: AdminUser): Promise<ApplicationAccessRuleResponse[]> {
-    assertSuperAdmin(admin);
-    const rules = await prismaClient.applicationAccessRule.findMany({
-      orderBy: { application_id: "asc" },
-    });
-    return rules.map(toApplicationAccessRuleResponse);
-  }
+const AUDIENCE_APPLIES_TO_EMPLOYEES = new Set<ApplicationAudience>([
+  ApplicationAudience.EMPLOYEES,
+  ApplicationAudience.EMPLOYEES_AND_STUDENTS,
+]);
+const AUDIENCE_APPLIES_TO_STUDENTS = new Set<ApplicationAudience>([
+  ApplicationAudience.STUDENTS,
+  ApplicationAudience.EMPLOYEES_AND_STUDENTS,
+]);
 
-  // One rule per application: this creates it or replaces it.
-  static async set(
+function intersects(left: string[], right: string[]) {
+  return left.some((id) => right.includes(id));
+}
+
+// Two active rules of one application may not both match the same person with
+// the same specificity, otherwise the winner would be arbitrary.
+async function assertNoOverlap(
+  applicationId: string,
+  candidate: RuleFilter,
+  excludeId?: string,
+) {
+  const others = await prismaClient.applicationAccessRule.findMany({
+    where: { application_id: applicationId, is_active: true, ...(excludeId ? { id: { not: excludeId } } : {}) },
+  });
+  for (const other of others) {
+    if (ruleSpecificity(other) !== ruleSpecificity(candidate)) continue;
+    const sharesEmployees =
+      AUDIENCE_APPLIES_TO_EMPLOYEES.has(other.audience) && AUDIENCE_APPLIES_TO_EMPLOYEES.has(candidate.audience);
+    const sharesStudents =
+      AUDIENCE_APPLIES_TO_STUDENTS.has(other.audience) && AUDIENCE_APPLIES_TO_STUDENTS.has(candidate.audience);
+    // Positions and levels only exist for employees, so students only share units.
+    const overlapsFor = (dimensions: { a: string[]; b: string[] }[]) =>
+      dimensions.every(({ a, b }) => (a.length === 0 && b.length === 0) || intersects(a, b));
+    const employeeOverlap =
+      sharesEmployees &&
+      overlapsFor([
+        { a: other.unit_ids, b: candidate.unit_ids },
+        { a: other.job_position_ids, b: candidate.job_position_ids },
+        { a: other.job_level_ids, b: candidate.job_level_ids },
+      ]);
+    const studentOverlap =
+      sharesStudents && overlapsFor([{ a: other.unit_ids, b: candidate.unit_ids }]);
+    if (employeeOverlap || studentOverlap) {
+      throw new ResponseError(
+        400,
+        "Another active group access already covers the same people. Narrow one of them so they do not overlap.",
+      );
+    }
+  }
+}
+
+async function assertRuleReferences(rule: {
+  application_id: string;
+  default_role_key: string;
+  audience: ApplicationAudience;
+  unit_ids: string[];
+  job_position_ids: string[];
+  job_level_ids: string[];
+}) {
+  const role = await prismaClient.applicationRole.findUnique({
+    where: { application_id_key: { application_id: rule.application_id, key: rule.default_role_key } },
+  });
+  if (!role || !role.is_active) {
+    throw new ResponseError(400, `Role "${rule.default_role_key}" is not an active role of ${rule.application_id}`);
+  }
+  if (
+    rule.audience === ApplicationAudience.STUDENTS &&
+    (rule.job_position_ids.length > 0 || rule.job_level_ids.length > 0)
+  ) {
+    throw new ResponseError(400, "Job positions and job levels only apply to employees");
+  }
+  const [units, positions, levels] = await Promise.all([
+    rule.unit_ids.length ? prismaClient.masterUnit.count({ where: { id: { in: rule.unit_ids } } }) : 0,
+    rule.job_position_ids.length
+      ? prismaClient.masterJobPosition.count({ where: { id: { in: rule.job_position_ids } } })
+      : 0,
+    rule.job_level_ids.length
+      ? prismaClient.masterJobLevel.count({ where: { id: { in: rule.job_level_ids } } })
+      : 0,
+  ]);
+  if (units !== rule.unit_ids.length) throw new ResponseError(400, "One or more units do not exist");
+  if (positions !== rule.job_position_ids.length) throw new ResponseError(400, "One or more job positions do not exist");
+  if (levels !== rule.job_level_ids.length) throw new ResponseError(400, "One or more job levels do not exist");
+}
+
+function ruleAuditSnapshot(rule: {
+  application_id: string;
+  audience: string;
+  unit_ids: string[];
+  job_position_ids: string[];
+  job_level_ids: string[];
+  default_role_key: string;
+  organization_id: string;
+  is_active: boolean;
+}) {
+  return {
+    application_id: rule.application_id,
+    audience: rule.audience,
+    unit_ids: rule.unit_ids,
+    job_position_ids: rule.job_position_ids,
+    job_level_ids: rule.job_level_ids,
+    default_role_key: rule.default_role_key,
+    organization_id: rule.organization_id,
+    is_active: rule.is_active,
+  };
+}
+
+export class ApplicationAccessRuleService {
+  static async create(
     admin: AdminUser,
-    request: SetApplicationAccessRuleRequest,
+    request: CreateApplicationAccessRuleRequest,
     context: AuditRequestContext = {},
   ): Promise<ApplicationAccessRuleResponse> {
     assertSuperAdmin(admin);
-    const validated = Validation.validate(ApplicationAccessRuleValidation.SET, request);
+    const validated = Validation.validate(ApplicationAccessRuleValidation.CREATE, request);
     const input = {
       ...validated,
       unit_ids: validated.unit_ids ?? [],
+      job_position_ids: validated.job_position_ids ?? [],
+      job_level_ids: validated.job_level_ids ?? [],
       is_active: validated.is_active ?? true,
     };
-
-    const role = await prismaClient.applicationRole.findUnique({
-      where: {
-        application_id_key: { application_id: input.application_id, key: input.default_role_key },
-      },
-    });
-    if (!role || !role.is_active) {
-      throw new ResponseError(
-        400,
-        `Role "${input.default_role_key}" is not an active role of ${input.application_id}`,
-      );
-    }
-    if (input.unit_ids.length > 0) {
-      const found = await prismaClient.masterUnit.count({ where: { id: { in: input.unit_ids } } });
-      if (found !== input.unit_ids.length) {
-        throw new ResponseError(400, "One or more units do not exist");
-      }
-    }
-
-    const existing = await prismaClient.applicationAccessRule.findUnique({
-      where: { application_id: input.application_id },
-    });
-    const snapshot = (rule: {
-      audience: string;
-      unit_ids: string[];
-      default_role_key: string;
-      organization_id: string;
-      is_active: boolean;
-    }) => ({
-      audience: rule.audience,
-      unit_ids: rule.unit_ids,
-      default_role_key: rule.default_role_key,
-      organization_id: rule.organization_id,
-      is_active: rule.is_active,
-    });
+    await assertRuleReferences(input);
+    if (input.is_active) await assertNoOverlap(input.application_id, input);
 
     const saved = await prismaClient.$transaction(async (tx) => {
-      const data = {
-        audience: input.audience,
-        unit_ids: input.unit_ids,
-        default_role_key: input.default_role_key,
-        organization_id: input.organization_id,
-        is_active: input.is_active,
-      };
-      const rule = existing
-        ? await tx.applicationAccessRule.update({ where: { id: existing.id }, data })
-        : await tx.applicationAccessRule.create({
-            data: { application_id: input.application_id, ...data },
-          });
+      const rule = await tx.applicationAccessRule.create({ data: input });
       await AuditService.record(
         {
-          action: AuditAction.APPLICATION_ACCESS_RULE_SET,
+          action: AuditAction.APPLICATION_ACCESS_RULE_CREATE,
           source: AuditSource.UI,
           entity_type: "ApplicationAccessRule",
           entity_id: rule.id,
           admin_id: admin.id,
-          old_values: existing ? snapshot(existing) : undefined,
-          new_values: { application_id: rule.application_id, ...snapshot(rule) },
+          new_values: ruleAuditSnapshot(rule),
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -705,5 +799,227 @@ export class ApplicationAccessRuleService {
       return rule;
     });
     return toApplicationAccessRuleResponse(saved);
+  }
+
+  static async update(
+    admin: AdminUser,
+    request: UpdateApplicationAccessRuleRequest,
+    context: AuditRequestContext = {},
+  ): Promise<ApplicationAccessRuleResponse> {
+    assertSuperAdmin(admin);
+    const input = Validation.validate(ApplicationAccessRuleValidation.UPDATE, request);
+    const existing = await prismaClient.applicationAccessRule.findUnique({ where: { id: input.id } });
+    if (!existing) throw new ResponseError(404, "Group access not found");
+
+    const next = {
+      application_id: existing.application_id,
+      audience: existing.audience,
+      unit_ids: input.unit_ids ?? existing.unit_ids,
+      job_position_ids: input.job_position_ids ?? existing.job_position_ids,
+      job_level_ids: input.job_level_ids ?? existing.job_level_ids,
+      default_role_key: input.default_role_key ?? existing.default_role_key,
+      organization_id: input.organization_id ?? existing.organization_id,
+      is_active: input.is_active ?? existing.is_active,
+    };
+    await assertRuleReferences(next);
+    if (next.is_active) await assertNoOverlap(existing.application_id, next, existing.id);
+
+    const saved = await prismaClient.$transaction(async (tx) => {
+      const rule = await tx.applicationAccessRule.update({
+        where: { id: existing.id },
+        data: {
+          unit_ids: next.unit_ids,
+          job_position_ids: next.job_position_ids,
+          job_level_ids: next.job_level_ids,
+          default_role_key: next.default_role_key,
+          organization_id: next.organization_id,
+          is_active: next.is_active,
+        },
+      });
+      await AuditService.record(
+        {
+          action: AuditAction.APPLICATION_ACCESS_RULE_UPDATE,
+          source: AuditSource.UI,
+          entity_type: "ApplicationAccessRule",
+          entity_id: rule.id,
+          admin_id: admin.id,
+          old_values: ruleAuditSnapshot(existing),
+          new_values: ruleAuditSnapshot(rule),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+      return rule;
+    });
+    return toApplicationAccessRuleResponse(saved);
+  }
+
+  static async remove(
+    admin: AdminUser,
+    request: DeleteApplicationAccessRuleRequest,
+    context: AuditRequestContext = {},
+  ): Promise<boolean> {
+    assertSuperAdmin(admin);
+    const input = Validation.validate(ApplicationAccessRuleValidation.DELETE, request);
+    const existing = await prismaClient.applicationAccessRule.findUnique({ where: { id: input.id } });
+    if (!existing) throw new ResponseError(404, "Group access not found");
+    await prismaClient.$transaction(async (tx) => {
+      await tx.applicationAccessRule.delete({ where: { id: existing.id } });
+      await AuditService.record(
+        {
+          action: AuditAction.APPLICATION_ACCESS_RULE_DELETE,
+          source: AuditSource.UI,
+          entity_type: "ApplicationAccessRule",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: ruleAuditSnapshot(existing),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+    return true;
+  }
+}
+
+// One list for the Access page: group rules first, then people.
+export class ApplicationAccessService {
+  static async list(
+    admin: AdminUser,
+    request: ListApplicationAccessRequest,
+  ): Promise<Pageable<ApplicationAccessRow>> {
+    assertSuperAdmin(admin);
+    const filters = Validation.validate(ApplicationAccessRuleValidation.LIST, request);
+    const page = filters.page ?? 1;
+    const size = filters.size ?? 10;
+    const skip = (page - 1) * size;
+    const search = filters.search;
+
+    const ruleWhere = filters.kind === "PERSON" ? null : {
+      ...(filters.application_id ? { application_id: filters.application_id } : {}),
+      ...(filters.role ? { default_role_key: filters.role } : {}),
+      ...(filters.is_active !== undefined ? { is_active: filters.is_active } : {}),
+      ...(search ? { application_id: { contains: search, mode: "insensitive" as const } } : {}),
+    };
+    const personWhere = filters.kind === "GROUP" ? null : {
+      ...(filters.application_id ? { application_id: filters.application_id } : {}),
+      ...(filters.role ? { role: filters.role } : {}),
+      ...(filters.is_active !== undefined ? { is_active: filters.is_active } : {}),
+      ...(search
+        ? {
+            person: {
+              OR: [
+                { full_name: { contains: search, mode: "insensitive" as const } },
+                { email: { contains: search, mode: "insensitive" as const } },
+              ],
+            },
+          }
+        : {}),
+    };
+
+    const rules = ruleWhere
+      ? await prismaClient.applicationAccessRule.findMany({
+          where: ruleWhere,
+          orderBy: [{ application_id: "asc" }, { created_at: "asc" }],
+        })
+      : [];
+    const peopleCount = personWhere
+      ? await prismaClient.applicationEntitlement.count({ where: personWhere })
+      : 0;
+
+    const ruleSlice = rules.slice(skip, skip + size);
+    const remaining = size - ruleSlice.length;
+    const peopleSkip = Math.max(skip - rules.length, 0);
+    const people =
+      personWhere && remaining > 0
+        ? await prismaClient.applicationEntitlement.findMany({
+            where: personWhere,
+            include: {
+              person: {
+                select: {
+                  full_name: true,
+                  email: true,
+                  employee: { select: { unit: { select: { name: true } } } },
+                },
+              },
+            },
+            orderBy: [{ updated_at: "desc" }, { id: "desc" }],
+            skip: peopleSkip,
+            take: remaining,
+          })
+        : [];
+
+    const [units, positions, levels, roles] = await Promise.all([
+      prismaClient.masterUnit.findMany({
+        where: { id: { in: ruleSlice.flatMap((rule) => rule.unit_ids) } },
+        select: { id: true, name: true },
+      }),
+      prismaClient.masterJobPosition.findMany({
+        where: { id: { in: ruleSlice.flatMap((rule) => rule.job_position_ids) } },
+        select: { id: true, name: true },
+      }),
+      prismaClient.masterJobLevel.findMany({
+        where: { id: { in: ruleSlice.flatMap((rule) => rule.job_level_ids) } },
+        select: { id: true, name: true },
+      }),
+      prismaClient.applicationRole.findMany({
+        where: { OR: ruleSlice.map((rule) => ({ application_id: rule.application_id, key: rule.default_role_key })) },
+        select: { application_id: true, key: true, permissions: true },
+      }),
+    ]);
+    const named = (list: { id: string; name: string }[], ids: string[]) =>
+      ids.map((id) => ({ id, name: list.find((item) => item.id === id)?.name ?? id }));
+
+    const groupRows: ApplicationAccessRow[] = ruleSlice.map((rule) => ({
+      kind: "GROUP",
+      id: rule.id,
+      application_id: rule.application_id,
+      role: rule.default_role_key,
+      permissions:
+        roles.find((role) => role.application_id === rule.application_id && role.key === rule.default_role_key)
+          ?.permissions ?? [],
+      organization_id: rule.organization_id,
+      is_active: rule.is_active,
+      granted_at: rule.created_at.toISOString(),
+      updated_at: rule.updated_at.toISOString(),
+      group: {
+        audience: rule.audience,
+        units: named(units, rule.unit_ids),
+        job_positions: named(positions, rule.job_position_ids),
+        job_levels: named(levels, rule.job_level_ids),
+      },
+      person: null,
+    }));
+    const personRows: ApplicationAccessRow[] = people.map((row) => ({
+      kind: "PERSON",
+      id: row.id,
+      application_id: row.application_id,
+      role: row.role,
+      permissions: row.permissions,
+      organization_id: row.organization_id,
+      is_active: row.is_active,
+      granted_at: row.granted_at.toISOString(),
+      updated_at: row.updated_at.toISOString(),
+      group: null,
+      person: {
+        person_id: row.person_id,
+        full_name: row.person.full_name,
+        email: row.person.email,
+        unit: row.person.employee?.unit.name ?? null,
+      },
+    }));
+
+    const total = rules.length + peopleCount;
+    return {
+      data: [...groupRows, ...personRows],
+      paging: {
+        size,
+        current_page: page,
+        total_page: Math.ceil(total / size),
+        total_item: total,
+      },
+    };
   }
 }

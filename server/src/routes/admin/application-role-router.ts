@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import {
+  ApplicationAccessController,
   ApplicationAccessRuleController,
   ApplicationRoleController,
 } from "../../controller/admin/application-entitlement-controller";
@@ -13,5 +14,10 @@ applicationRoleRouter.patch("/:id", (c) => ApplicationRoleController.update(c));
 
 export const applicationAccessRuleRouter = new Hono<{ Variables: AdminVariables }>();
 
-applicationAccessRuleRouter.get("/", (c) => ApplicationAccessRuleController.list(c));
-applicationAccessRuleRouter.put("/:applicationId", (c) => ApplicationAccessRuleController.set(c));
+applicationAccessRuleRouter.post("/", (c) => ApplicationAccessRuleController.create(c));
+applicationAccessRuleRouter.patch("/:id", (c) => ApplicationAccessRuleController.update(c));
+applicationAccessRuleRouter.delete("/:id", (c) => ApplicationAccessRuleController.remove(c));
+
+export const applicationAccessRouter = new Hono<{ Variables: AdminVariables }>();
+
+applicationAccessRouter.get("/", (c) => ApplicationAccessController.list(c));

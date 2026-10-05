@@ -87,20 +87,52 @@ const AUDIENCES = Object.values(ApplicationAudience) as [
   ...ApplicationAudience[],
 ];
 
+const idList = (label: string) =>
+  z
+    .array(nonemptyId(label))
+    .max(100, `Too many ${label.toLowerCase()}s`)
+    .refine((values) => new Set(values).size === values.length, `${label}s must be unique`)
+    .default([]);
+
+const accessRuleFields = {
+  audience: z.enum(AUDIENCES, {
+    message: "Audience must be EMPLOYEES, STUDENTS or EMPLOYEES_AND_STUDENTS",
+  }),
+  unit_ids: idList("Unit"),
+  job_position_ids: idList("Job position"),
+  job_level_ids: idList("Job level"),
+  default_role_key: roleKey,
+  organization_id: nonemptyId("Organization ID"),
+  is_active: z.boolean().default(true),
+};
+
 export class ApplicationAccessRuleValidation {
-  static readonly SET = z.object({
+  static readonly CREATE = z.object({
     application_id: applicationId,
-    audience: z.enum(AUDIENCES, {
-      message: "Audience must be EMPLOYEES, STUDENTS or EMPLOYEES_AND_STUDENTS",
-    }),
-    unit_ids: z
-      .array(nonemptyId("Unit ID"))
-      .max(50, "Too many units")
-      .refine((values) => new Set(values).size === values.length, "Units must be unique")
-      .default([]),
-    default_role_key: roleKey,
-    organization_id: nonemptyId("Organization ID"),
-    is_active: z.boolean().default(true),
+    ...accessRuleFields,
+  });
+
+  // The application and audience can't change, only who within it and the role.
+  static readonly UPDATE = z.object({
+    id: nonemptyId("Rule ID"),
+    unit_ids: idList("Unit").optional(),
+    job_position_ids: idList("Job position").optional(),
+    job_level_ids: idList("Job level").optional(),
+    default_role_key: roleKey.optional(),
+    organization_id: nonemptyId("Organization ID").optional(),
+    is_active: z.boolean().optional(),
+  });
+
+  static readonly DELETE = z.object({ id: nonemptyId("Rule ID") });
+
+  static readonly LIST = z.object({
+    kind: z.enum(["GROUP", "PERSON"]).optional(),
+    application_id: applicationId.optional(),
+    role: roleKey.optional(),
+    is_active: z.boolean().optional(),
+    search: z.string().trim().max(100).optional(),
+    page: z.number().int().min(1).default(1),
+    size: z.number().int().min(1).max(100).default(10),
   });
 }
 

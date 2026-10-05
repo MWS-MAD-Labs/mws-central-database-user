@@ -60,13 +60,37 @@ export type BulkGrantApplicationEntitlementRequest = {
   role: string;
 };
 
-export type SetApplicationAccessRuleRequest = {
+export type CreateApplicationAccessRuleRequest = {
   application_id: string;
   audience: ApplicationAudience;
   unit_ids?: string[];
+  job_position_ids?: string[];
+  job_level_ids?: string[];
   default_role_key: string;
   organization_id: string;
   is_active?: boolean;
+};
+
+export type UpdateApplicationAccessRuleRequest = {
+  id: string;
+  unit_ids?: string[];
+  job_position_ids?: string[];
+  job_level_ids?: string[];
+  default_role_key?: string;
+  organization_id?: string;
+  is_active?: boolean;
+};
+
+export type DeleteApplicationAccessRuleRequest = { id: string };
+
+export type ListApplicationAccessRequest = {
+  kind?: "GROUP" | "PERSON";
+  application_id?: string;
+  role?: string;
+  is_active?: boolean;
+  search?: string;
+  page?: number;
+  size?: number;
 };
 
 export type ApplicationAccessRuleResponse = {
@@ -74,9 +98,12 @@ export type ApplicationAccessRuleResponse = {
   application_id: string;
   audience: ApplicationAudience;
   unit_ids: string[];
+  job_position_ids: string[];
+  job_level_ids: string[];
   default_role_key: string;
   organization_id: string;
   is_active: boolean;
+  created_at: string;
   updated_at: string;
 };
 
@@ -88,12 +115,35 @@ export function toApplicationAccessRuleResponse(
     application_id: rule.application_id,
     audience: rule.audience,
     unit_ids: rule.unit_ids,
+    job_position_ids: rule.job_position_ids,
+    job_level_ids: rule.job_level_ids,
     default_role_key: rule.default_role_key,
     organization_id: rule.organization_id,
     is_active: rule.is_active,
+    created_at: rule.created_at.toISOString(),
     updated_at: rule.updated_at.toISOString(),
   };
 }
+
+// One row of the combined Access list: a group rule or a person's entitlement.
+export type ApplicationAccessRow = {
+  kind: "GROUP" | "PERSON";
+  id: string;
+  application_id: string;
+  role: string;
+  permissions: string[];
+  organization_id: string;
+  is_active: boolean;
+  granted_at: string;
+  updated_at: string;
+  group: {
+    audience: ApplicationAudience;
+    units: { id: string; name: string }[];
+    job_positions: { id: string; name: string }[];
+    job_levels: { id: string; name: string }[];
+  } | null;
+  person: { person_id: string; full_name: string; email: string; unit: string | null } | null;
+};
 
 export type ApplicationEntitlementListItem = ApplicationEntitlementResponse & {
   person: { full_name: string; email: string; unit: string | null };
