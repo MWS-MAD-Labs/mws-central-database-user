@@ -4,11 +4,13 @@ import { compactSearchParams } from '../../../lib/url.js'
 const ENTITLEMENTS = '/api/admin/application-entitlements'
 const ROLES = '/api/admin/application-roles'
 const RULES = '/api/admin/application-access-rules'
+const ACCESS = '/api/admin/application-access'
 
 export const applicationAccessApi = {
-  async listEntitlements(params = {}) {
+  // Group rules and people in one paged list.
+  async listAccess(params = {}) {
     const query = compactSearchParams(params).toString()
-    return apiRequest(`${ENTITLEMENTS}${query ? `?${query}` : ''}`)
+    return apiRequest(`${ACCESS}${query ? `?${query}` : ''}`)
   },
 
   async grant(payload) {
@@ -47,13 +49,18 @@ export const applicationAccessApi = {
     return response.data
   },
 
-  async listRules() {
-    const response = await apiRequest(RULES)
+  async createRule(payload) {
+    const response = await apiRequest(RULES, { method: 'POST', body: payload })
     return response.data
   },
 
-  async setRule(applicationId, payload) {
-    const response = await apiRequest(`${RULES}/${applicationId}`, { method: 'PUT', body: payload })
+  async updateRule(id, payload) {
+    const response = await apiRequest(`${RULES}/${id}`, { method: 'PATCH', body: payload })
+    return response.data
+  },
+
+  async deleteRule(id) {
+    const response = await apiRequest(`${RULES}/${id}`, { method: 'DELETE' })
     return response.data
   },
 }
