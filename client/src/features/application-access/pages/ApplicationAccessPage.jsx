@@ -39,9 +39,9 @@ const statusOptions = [
 ];
 
 const typeOptions = [
-  { value: "", label: "Everyone and People" },
-  { value: "GROUP", label: "Groups" },
-  { value: "PERSON", label: "People" },
+  { value: "", label: "Group Access and Exceptions" },
+  { value: "GROUP", label: "Group Access" },
+  { value: "PERSON", label: "Exceptions" },
 ];
 
 export function ApplicationAccessPage() {
@@ -225,7 +225,7 @@ function AccessPanel() {
         />
         <Button type="button" onClick={() => navigate("/application-access/grant")}>
           <Plus size={16} />
-          Grant Access
+          Add Access
         </Button>
       </div>
 
@@ -270,7 +270,10 @@ function AccessPanel() {
             return (
               <tr key={`${row.kind}:${row.id}`} className={denseRowClass}>
                 <td className={`${denseCellClass} max-w-72`}>
-                  <span className="block truncate font-semibold text-(--mws-charcoal)">{label}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-semibold text-(--mws-charcoal)">{label}</span>
+                    <StatusBadge tone={isGroup ? "neutral" : "amber"}>{isGroup ? "Group" : "Exception"}</StatusBadge>
+                  </span>
                   <span
                     className="block truncate text-xs text-(--mws-muted)"
                     title={isGroup ? whoSummary(row.group) : undefined}

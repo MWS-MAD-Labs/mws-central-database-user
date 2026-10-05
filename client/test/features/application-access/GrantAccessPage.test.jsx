@@ -68,6 +68,9 @@ async function chooseApplicationAndRole(user, roleName) {
   await user.click(screen.getByRole('option', { name: roleName }))
 }
 
+const lastCandidateUrl = (fetchMock) =>
+  fetchMock.mock.calls.map(([url]) => url).filter((url) => url.includes('/candidates')).at(-1)
+
 describe('GrantAccessPage', () => {
   it('refuses anyone who is not a Super Admin', async () => {
     globalThis.fetch = createFetchRouter(routes())
@@ -75,7 +78,25 @@ describe('GrantAccessPage', () => {
     expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
   })
 
-  it('bulk grants the checked employees and shows the generated organization id', async () => {
+  it('has no separate Who step and keeps exceptions off until the application has a group', async () => {
+    globalThis.fetch = createFetchRouter(routes([], []))
+    const { user } = renderPage()
+    await screen.findByRole('button', { name: 'Select an application' })
+    expect(screen.queryByText('Who')).not.toBeInTheDocument()
+    expect(screen.getByText('Scope')).toBeVisible()
+
+    await chooseApplicationAndRole(user, /STAFF/)
+    expect(await screen.findByText(/Add a group for exima first/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Everyone in this scope' })).toBeVisible()
+
+    // Even when asked for, people are not listed without a group.
+    await user.click(screen.getByRole('button', { name: 'Everyone in this scope' }))
+    await user.click(screen.getByRole('option', { name: 'Only the people I check' }))
+    expect(screen.getByRole('button', { name: 'Everyone in this scope' })).toBeVisible()
+    expect(screen.queryByText('People', { selector: 'h2' })).not.toBeInTheDocument()
+  })
+
+  it('lists only people the groups cover, inside the scope, and adds them as exceptions', async () => {
     const fetchMock = createFetchRouter(routes([
       {
         path: '/api/admin/application-entitlements/bulk',
@@ -85,25 +106,33 @@ describe('GrantAccessPage', () => {
     ]))
     globalThis.fetch = fetchMock
     const { user } = renderPage()
-
-    expect(await screen.findByText('Pick an application first to see who can be added.')).toBeVisible()
+    await screen.findByRole('button', { name: 'Select an application' })
     await chooseApplicationAndRole(user, /ADMIN/)
+
+    await user.click(screen.getByRole('button', { name: 'Everyone in this scope' }))
+    await user.click(screen.getByRole('option', { name: 'Only the people I check' }))
 
     await user.click(await screen.findByLabelText('Alpha Person'))
     await user.click(screen.getByLabelText('Beta Person'))
     expect(screen.getByText(/2 employees selected/)).toBeVisible()
     expect(screen.getByText(/Gets STAFF from a group/)).toBeVisible()
     expect(screen.queryByText(/Own access/)).not.toBeInTheDocument()
-    expect(
-      fetchMock.mock.calls.some(([url]) => url.includes('/candidates') && url.includes('exclude_own_access=true')),
-    ).toBe(true)
     expect(await screen.findByText('org_exima_a1b2c3')).toBeVisible()
-    expect(screen.queryByText('Organization ID', { selector: 'label' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Grant' }))
+    const url = lastCandidateUrl(fetchMock)
+    expect(url).toContain('application_id=exima')
+    expect(url).toContain('coverage=COVERED')
+    expect(url).toContain('exclude_own_access=true')
+    expect(url).not.toContain('unit_ids')
+
+    // Narrowing the scope narrows the list.
+    await user.click(screen.getByLabelText('Elementary'))
+    await waitFor(() => expect(lastCandidateUrl(fetchMock)).toContain('unit_ids=unit-1'))
+
+    await user.click(screen.getByRole('button', { name: 'Add' }))
     await waitFor(() => {
-      const call = fetchMock.mock.calls.find(([url, options]) =>
-        url === '/api/admin/application-entitlements/bulk' && options.method === 'POST')
+      const call = fetchMock.mock.calls.find(([callUrl, options]) =>
+        callUrl === '/api/admin/application-entitlements/bulk' && options.method === 'POST')
       expect(JSON.parse(call[1].body)).toEqual({
         person_ids: ['person-2', 'person-3'],
         application_id: 'exima',
@@ -118,6 +147,8 @@ describe('GrantAccessPage', () => {
     const { user } = renderPage()
     await screen.findByRole('button', { name: 'Select an application' })
     await chooseApplicationAndRole(user, /ADMIN/)
+    await user.click(screen.getByRole('button', { name: 'Everyone in this scope' }))
+    await user.click(screen.getByRole('option', { name: 'Only the people I check' }))
 
     await user.click(await screen.findByLabelText('Alpha Person'))
     expect(screen.getByLabelText('Alpha Person')).toBeChecked()
@@ -127,54 +158,22 @@ describe('GrantAccessPage', () => {
     await user.click(screen.getByRole('option', { name: /STAFF/ }))
     expect(screen.getByLabelText('Alpha Person')).toBeDisabled()
     expect(screen.getByLabelText('Alpha Person')).not.toBeChecked()
-    expect(screen.getByText(/pick a different role/)).toBeVisible()
     expect(screen.getByLabelText('Beta Person')).not.toBeDisabled()
   })
 
-  it('filters the people by how the groups of the application cover them', async () => {
-    const fetchMock = createFetchRouter(routes())
-    globalThis.fetch = fetchMock
-    const { user } = renderPage()
-    await screen.findByRole('button', { name: 'Select an application' })
-    await chooseApplicationAndRole(user, /ADMIN/)
-    await screen.findByLabelText('Alpha Person')
-
-    const lastCandidateUrl = () =>
-      fetchMock.mock.calls.map(([url]) => url).filter((url) => url.includes('/candidates')).at(-1)
-
-    expect(lastCandidateUrl()).toContain('application_id=exima')
-    expect(lastCandidateUrl()).not.toContain('coverage')
-
-    await user.click(screen.getByRole('button', { name: 'Anyone' }))
-    await user.click(screen.getByRole('option', { name: 'Not covered by any group' }))
-    await waitFor(() => expect(lastCandidateUrl()).toContain('coverage=UNCOVERED'))
-
-    await user.click(screen.getByRole('button', { name: 'Not covered by any group' }))
-    await user.click(screen.getByRole('option', { name: /^Group: All Active Employees/ }))
-    await waitFor(() => {
-      expect(lastCandidateUrl()).toContain('coverage=GROUP')
-      expect(lastCandidateUrl()).toContain('group_id=rule-base')
-    })
-  })
-
-  it('lists the groups of the application and never blocks Grant for lack of a baseline', async () => {
-    globalThis.fetch = createFetchRouter(routes([], []))
-    const { user } = renderPage()
-    await screen.findByRole('button', { name: 'Select an application' })
-    await chooseApplicationAndRole(user, /STAFF/)
-
-    expect(screen.queryByText(/Set up the baseline/)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Grant' })).not.toBeDisabled()
-  })
-
-  it('shows the groups of the application and what they give', async () => {
+  it('keeps students out of exceptions', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
     await screen.findByRole('button', { name: 'Select an application' })
     await chooseApplicationAndRole(user, /ADMIN/)
+    await user.click(screen.getByRole('button', { name: 'Everyone in this scope' }))
+    await user.click(screen.getByRole('option', { name: 'Only the people I check' }))
+    expect(await screen.findByLabelText('Alpha Person')).toBeVisible()
 
-    expect(await screen.findByText(/Groups on exima \(employees\):/)).toBeVisible()
-    expect(screen.getByText(/All Active Employees get STAFF/)).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
+    await user.click(screen.getByRole('option', { name: 'All Active Students' }))
+    expect(screen.queryByLabelText('Alpha Person')).not.toBeInTheDocument()
+    expect(screen.getByText(/Exceptions are for employees/)).toBeVisible()
   })
 
   it('keeps All and the checked items in step, and sends an empty list for All', async () => {
@@ -184,12 +183,10 @@ describe('GrantAccessPage', () => {
         method: 'POST',
         response: () => jsonResponse({ data: { id: 'rule-2' } }),
       },
-    ]))
+    ], []))
     globalThis.fetch = fetchMock
     const { user } = renderPage()
-    await screen.findByRole('button', { name: 'Specific People' })
-    await user.click(screen.getByRole('button', { name: 'Specific People' }))
-    await user.click(screen.getByRole('option', { name: 'A Group' }))
+    await screen.findByRole('button', { name: 'Select an application' })
     await chooseApplicationAndRole(user, /STAFF/)
 
     // Starts as All, so every unit is checked.
@@ -201,7 +198,6 @@ describe('GrantAccessPage', () => {
     await user.click(screen.getByLabelText('Elementary'))
     expect(screen.getByLabelText('All Units')).not.toBeChecked()
     expect(screen.getByLabelText('MAD Lab')).toBeChecked()
-    expect(screen.getByLabelText('Elementary')).not.toBeChecked()
 
     // Checking it again makes it All.
     await user.click(screen.getByLabelText('Elementary'))
@@ -210,14 +206,14 @@ describe('GrantAccessPage', () => {
     // Unchecking All clears everything and asks for at least one.
     await user.click(screen.getByLabelText('All Units'))
     expect(screen.getByLabelText('MAD Lab')).not.toBeChecked()
-    await user.click(screen.getByRole('button', { name: 'Grant' }))
+    await user.click(screen.getByRole('button', { name: 'Add' }))
     expect(await screen.findByText('Pick at least one unit, or choose All Units.')).toBeVisible()
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
 
     // Checking All again selects every unit and sends no unit filter.
     await user.click(screen.getByLabelText('All Units'))
     expect(screen.getByLabelText('MAD Lab')).toBeChecked()
-    await user.click(screen.getByRole('button', { name: 'Grant' }))
+    await user.click(screen.getByRole('button', { name: 'Add' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url, options]) =>
         url === '/api/admin/application-access-rules' && options.method === 'POST')
@@ -242,16 +238,14 @@ describe('GrantAccessPage', () => {
     ]))
     globalThis.fetch = fetchMock
     const { user } = renderPage()
-    await screen.findByRole('button', { name: 'Specific People' })
-    await user.click(screen.getByRole('button', { name: 'Specific People' }))
-    await user.click(screen.getByRole('option', { name: 'A Group' }))
+    await screen.findByRole('button', { name: 'Select an application' })
     await chooseApplicationAndRole(user, /ADMIN/)
 
     await user.click(screen.getByLabelText('All Units'))
     await user.click(screen.getByLabelText('Elementary'))
     await user.click(screen.getByLabelText('All Positions'))
     await user.click(screen.getByLabelText('Developer'))
-    await user.click(screen.getByRole('button', { name: 'Grant' }))
+    await user.click(screen.getByRole('button', { name: 'Add' }))
 
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url, options]) =>
@@ -265,5 +259,15 @@ describe('GrantAccessPage', () => {
         default_role_key: 'ADMIN',
       })
     })
+  })
+
+  it('shows the groups of the application and what they give', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    await screen.findByRole('button', { name: 'Select an application' })
+    await chooseApplicationAndRole(user, /ADMIN/)
+
+    expect(await screen.findByText(/Group access on exima \(employees\):/)).toBeVisible()
+    expect(screen.getByText(/All Active Employees get STAFF/)).toBeVisible()
   })
 })

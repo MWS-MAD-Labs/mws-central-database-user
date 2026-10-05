@@ -14,35 +14,40 @@ import { employmentTypes } from "../../employees/api/employeesApi.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { GroupFilters } from "../components/GroupFilters.jsx";
+import { OrganizationNote } from "../components/OrganizationNote.jsx";
+import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import {
   audienceLabels,
   groupFilterPayload,
   hasGroupFilterError,
   useGroupFilterState,
 } from "../utils/groupFilterState.js";
-import { OrganizationNote } from "../components/OrganizationNote.jsx";
-import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 
 const BACK = "/application-access?tab=access";
+
+const applyOptions = [
+  { value: "SCOPE", label: "Everyone in this scope" },
+  { value: "PEOPLE", label: "Only the people I check" },
+];
+
+// Comma list for the candidates endpoint. "All" sends nothing.
+const idList = (selection) => (selection.selected && selection.selected.length ? selection.selected.join(",") : undefined);
 
 export function GrantAccessPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState("PEOPLE");
-  const [params, setParams] = useState({ page: 1, size: 10, search: "" });
-  const [filter, setFilter] = useState({ coverage: "", unit_id: "", job_position_id: "", job_level_id: "", employment_type: "" });
-  const [selected, setSelected] = useState(() => new Map());
-  const [audience, setAudience] = useState("EMPLOYEES");
-  const groupFilters = useGroupFilterState();
   const [application, setApplication] = useState("");
+  const [audience, setAudience] = useState("EMPLOYEES");
+  const [applyTo, setApplyTo] = useState("SCOPE");
   const [roleKey, setRoleKey] = useState("");
+  const [params, setParams] = useState({ page: 1, size: 10, search: "", employment_type: "" });
+  const [selected, setSelected] = useState(() => new Map());
   const [attempted, setAttempted] = useState(false);
+  const scope = useGroupFilterState();
 
-  const rolesQuery = useApplicationRoles();
-  const roles = rolesQuery.data || [];
-  const optionsQuery = useQuery({ queryKey: ["employee-form-options"], queryFn: loadEmployeeFormOptions });
-  const options = optionsQuery.data || {};
+  const roles = useApplicationRoles().data || [];
+  const options = useQuery({ queryKey: ["employee-form-options"], queryFn: loadEmployeeFormOptions }).data || {};
   const groupsQuery = useQuery({
     queryKey: ["application-access", "groups", application],
     queryFn: () =>
@@ -54,29 +59,42 @@ export function GrantAccessPage() {
       }),
     enabled: Boolean(application),
   });
-  const [coverage, groupId] = filter.coverage.split(":");
-  const employeesQuery = useQuery({
-    queryKey: ["application-access", "candidates", application, params, filter],
+
+  // Group access of this application for employees. Exceptions live inside it.
+  const groups = (groupsQuery.data?.data || []).filter((row) => row.group.audience !== "STUDENTS");
+  const canExceptions = Boolean(application) && groups.length > 0 && audience !== "STUDENTS";
+  const applying = canExceptions ? applyTo : "SCOPE";
+  const scopeInvalid = hasGroupFilterError(scope, audience);
+
+  const candidatesQuery = useQuery({
+    queryKey: [
+      "application-access",
+      "candidates",
+      application,
+      params,
+      scope.units.selected,
+      scope.positions.selected,
+      scope.levels.selected,
+    ],
     queryFn: () =>
       applicationAccessApi.listCandidates({
         application_id: application,
-        coverage: coverage || undefined,
-        group_id: groupId || undefined,
+        coverage: "COVERED",
         exclude_own_access: true,
+        unit_ids: idList(scope.units),
+        job_position_ids: idList(scope.positions),
+        job_level_ids: idList(scope.levels),
+        employment_type: params.employment_type || undefined,
         search: params.search || undefined,
-        unit_id: filter.unit_id || undefined,
-        job_position_id: filter.job_position_id || undefined,
-        job_level_id: filter.job_level_id || undefined,
-        employment_type: filter.employment_type || undefined,
         page: params.page,
         size: params.size,
       }),
-    enabled: mode === "PEOPLE" && Boolean(application),
+    enabled: applying === "PEOPLE" && !scopeInvalid,
     placeholderData: (previous) => previous,
   });
 
-  const rows = employeesQuery.data?.data || [];
-  const paging = employeesQuery.data?.paging || {
+  const rows = candidatesQuery.data?.data || [];
+  const paging = candidatesQuery.data?.paging || {
     current_page: params.page,
     total_page: 1,
     total_item: rows.length,
@@ -98,10 +116,6 @@ export function GrantAccessPage() {
   const applications = [...new Set(roles.map((role) => role.application_id))].sort();
   const roleOptions = roles.filter((role) => role.application_id === application && role.is_active);
   const selectedRole = roleOptions.find((role) => role.key === roleKey);
-  const hasActiveFilter = Object.values(filter).some(Boolean);
-
-  // Groups of this application, to filter the people list and to explain what they already get.
-  const groups = (groupsQuery.data?.data || []).filter((row) => row.group.audience !== "STUDENTS");
   const groupSummary = (row) =>
     [
       audienceLabels[row.group.audience],
@@ -111,22 +125,11 @@ export function GrantAccessPage() {
     ]
       .filter(Boolean)
       .join(" · ");
-  const coverageOptions = [
-    { value: "", label: "Anyone" },
-    { value: "COVERED", label: "Covered by a group" },
-    { value: "UNCOVERED", label: "Not covered by any group" },
-    ...groups.map((row) => ({ value: `GROUP:${row.id}`, label: `Group: ${groupSummary(row)}` })),
-  ];
 
   // Someone who already gets this role from a group cannot be picked for it.
   function chooseRole(value) {
     setRoleKey(value);
     setSelected((current) => new Map([...current].filter(([, item]) => item.inheritedRole !== value)));
-  }
-
-  function setFilterValue(patch) {
-    setFilter((current) => ({ ...current, ...patch }));
-    setParams((current) => ({ ...current, page: 1 }));
   }
 
   function toggle(item, checked) {
@@ -154,27 +157,12 @@ export function GrantAccessPage() {
     navigate(BACK);
   }
 
-  const peopleMutation = useMutation({
-    mutationFn: () =>
-      applicationAccessApi.bulkGrant({
-        person_ids: Array.from(selected.keys()),
-        application_id: application,
-        role: roleKey,
-      }),
-    onSuccess: (result) => {
-      if (result.success_count > 0) showSuccessToast(`Access granted to ${result.success_count} person(s).`);
-      if (result.failed_count > 0) showBulkFailureToast("person(s) could not be granted", result);
-      finish();
-    },
-    onError: (error) => showErrorToast(error, "Could not grant this access."),
-  });
-
   const groupMutation = useMutation({
     mutationFn: () =>
       applicationAccessApi.createRule({
         application_id: application,
         audience,
-        ...groupFilterPayload(groupFilters, audience),
+        ...groupFilterPayload(scope, audience),
         default_role_key: roleKey,
       }),
     onSuccess: () => {
@@ -184,10 +172,25 @@ export function GrantAccessPage() {
     onError: (error) => showErrorToast(error, "Could not add this group access."),
   });
 
+  const peopleMutation = useMutation({
+    mutationFn: () =>
+      applicationAccessApi.bulkGrant({
+        person_ids: Array.from(selected.keys()),
+        application_id: application,
+        role: roleKey,
+      }),
+    onSuccess: (result) => {
+      if (result.success_count > 0) showSuccessToast(`Exception added for ${result.success_count} person(s).`);
+      if (result.failed_count > 0) showBulkFailureToast("person(s) could not be added", result);
+      finish();
+    },
+    onError: (error) => showErrorToast(error, "Could not add these exceptions."),
+  });
+
   if (user?.role !== "SUPER_ADMIN") {
     return (
       <div className="min-w-0">
-        <PageHeader title="Grant Access" />
+        <PageHeader title="Add Access" />
         <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
       </div>
     );
@@ -196,21 +199,28 @@ export function GrantAccessPage() {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!application || !roleKey) return;
-    if (mode === "PEOPLE") {
+    if (!application || !roleKey || scopeInvalid) return;
+    if (applying === "PEOPLE") {
       if (selected.size === 0) return;
       peopleMutation.mutate();
     } else {
-      if (hasGroupFilterError(groupFilters, audience)) return;
       groupMutation.mutate();
     }
   }
 
+  const applyHint = !application
+    ? "Pick an application first."
+    : audience === "STUDENTS"
+      ? "Exceptions are for employees. Choose an employee audience to pick people."
+      : groups.length === 0
+        ? `Add a group for ${application} first. It decides who can use the app, then exceptions go inside it.`
+        : "Check people to give them a different role than their group. Only people the groups cover are listed.";
+
   return (
     <div className="min-w-0">
       <PageHeader
-        title="Grant Access"
-        description="Give access to specific people, or to a whole group such as every active employee."
+        title="Add Access"
+        description="Define a scope, then give a role to everyone in it or only to the people you check."
         actions={
           <Button asChild variant="secondary">
             <Link to={BACK}>
@@ -222,78 +232,45 @@ export function GrantAccessPage() {
       />
       <form id="grant-access-form" onSubmit={submit} noValidate>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <section className="min-w-0 space-y-5 rounded-2xl border border-(--mws-line) bg-white p-5">
-            {mode === "GROUP" ? (
-              <GroupFilters audience={audience} options={options} state={groupFilters} showErrors={attempted} />
-            ) : (
-              <Field
-                label="People"
-                error={attempted && selected.size === 0 ? "Pick at least one employee." : undefined}
-              >
+          <div className="min-w-0 space-y-5">
+            <section className="min-w-0 space-y-5 rounded-2xl border border-(--mws-line) bg-white p-5">
+              <div>
+                <h2 className="font-display text-base font-bold text-(--mws-charcoal)">Scope</h2>
+                <p className="text-sm text-(--mws-muted)">
+                  Who this covers. Leave a list on All to include every unit, position or level.
+                </p>
+              </div>
+              <GroupFilters audience={audience} options={options} state={scope} showErrors={attempted} />
+            </section>
+
+            {applying === "PEOPLE" ? (
+              <section className="min-w-0 space-y-3 rounded-2xl border border-(--mws-line) bg-white p-5">
+                <div>
+                  <h2 className="font-display text-base font-bold text-(--mws-charcoal)">People</h2>
+                  <p className="text-sm text-(--mws-muted)">
+                    Active employees in this scope that a group of {application} covers.
+                  </p>
+                </div>
+                {attempted && selected.size === 0 ? (
+                  <p className="text-sm font-semibold text-[#a43c41]">Pick at least one employee.</p>
+                ) : null}
                 <PaginatedCandidatePicker
                   items={items}
                   selected={selected}
                   paging={paging}
                   search={params.search}
-                  isLoading={employeesQuery.isLoading}
-                  emptyMessage={application ? "No active employees match." : "Pick an application first to see who can be added."}
+                  isLoading={candidatesQuery.isLoading}
+                  emptyMessage="No one in this scope is waiting for an exception."
                   itemLabel="employee"
                   dense
                   filters={
                     <div className="flex flex-wrap gap-3">
                       <FilterSelect
-                        label="Group Scope"
-                        value={filter.coverage}
-                        onChange={(value) => setFilterValue({ coverage: value })}
-                        options={coverageOptions}
-                      />
-                      <FilterSelect
-                        label="Unit"
-                        value={filter.unit_id}
-                        onChange={(value) => setFilterValue({ unit_id: value })}
-                        options={[
-                          { value: "", label: "All Units" },
-                          ...(options.units || []).map((unit) => ({ value: unit.id, label: unit.name })),
-                        ]}
-                      />
-                      <FilterSelect
-                        label="Job Position"
-                        value={filter.job_position_id}
-                        onChange={(value) => setFilterValue({ job_position_id: value })}
-                        options={[
-                          { value: "", label: "All Positions" },
-                          ...(options.jobPositions || []).map((item) => ({ value: item.id, label: item.name })),
-                        ]}
-                      />
-                      <FilterSelect
-                        label="Job Level"
-                        value={filter.job_level_id}
-                        onChange={(value) => setFilterValue({ job_level_id: value })}
-                        options={[
-                          { value: "", label: "All Levels" },
-                          ...(options.jobLevels || []).map((item) => ({ value: item.id, label: item.name })),
-                        ]}
-                      />
-                      <FilterSelect
                         label="Employment Type"
-                        value={filter.employment_type}
-                        onChange={(value) => setFilterValue({ employment_type: value })}
+                        value={params.employment_type}
+                        onChange={(value) => setParams((current) => ({ ...current, page: 1, employment_type: value }))}
                         options={[{ value: "", label: "All Employment Types" }, ...enumOptions(employmentTypes)]}
                       />
-                      {hasActiveFilter ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="self-end"
-                          onClick={() => {
-                            setFilter({ coverage: "", unit_id: "", job_position_id: "", job_level_id: "", employment_type: "" });
-                            setParams((current) => ({ ...current, page: 1 }));
-                          }}
-                        >
-                          Reset Filters
-                        </Button>
-                      ) : null}
                     </div>
                   }
                   onSearchChange={(search) => setParams((current) => ({ ...current, page: 1, search }))}
@@ -302,44 +279,35 @@ export function GrantAccessPage() {
                   onPageChange={(page) => setParams((current) => ({ ...current, page }))}
                   onPageSizeChange={(size) => setParams((current) => ({ ...current, page: 1, size }))}
                 />
-              </Field>
-            )}
-          </section>
+              </section>
+            ) : null}
+          </div>
 
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
             <div className="space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
-              <Field label="Who" hint="A group follows people automatically, new employees included.">
-                <SearchableSelect
-                  value={mode}
-                  onChange={setMode}
-                  options={[
-                    { value: "PEOPLE", label: "Specific People" },
-                    { value: "GROUP", label: "A Group" },
-                  ]}
-                  placeholder="Select who"
-                />
-              </Field>
-              {mode === "GROUP" ? (
-                <Field label="Audience">
-                  <SearchableSelect
-                    value={audience}
-                    onChange={setAudience}
-                    options={Object.entries(audienceLabels).map(([value, label]) => ({ value, label }))}
-                    placeholder="Select an audience"
-                  />
-                </Field>
-              ) : null}
               <Field label="Application" error={attempted && !application ? "Application is required." : undefined}>
                 <SearchableSelect
                   value={application}
                   onChange={(value) => {
                     setApplication(value);
                     setRoleKey("");
+                    setSelected(new Map());
                   }}
                   options={applications.map((item) => ({ value: item, label: item }))}
                   placeholder="Select an application"
                   searchPlaceholder="Search application"
                 />
+              </Field>
+              <Field label="Audience">
+                <SearchableSelect
+                  value={audience}
+                  onChange={setAudience}
+                  options={Object.entries(audienceLabels).map(([value, label]) => ({ value, label }))}
+                  placeholder="Select an audience"
+                />
+              </Field>
+              <Field label="Apply to" hint={applyHint}>
+                <SearchableSelect value={applying} onChange={setApplyTo} options={applyOptions} placeholder="Apply to" />
               </Field>
               <Field label="Role" error={attempted && !roleKey ? "Role is required." : undefined}>
                 <SearchableSelect
@@ -360,7 +328,7 @@ export function GrantAccessPage() {
               ) : null}
               {groups.length > 0 ? (
                 <div className="space-y-1 text-xs text-(--mws-muted)">
-                  <p>Groups on {application} (employees):</p>
+                  <p>Group access on {application} (employees):</p>
                   <ul className="list-disc space-y-0.5 pl-4">
                     {groups.map((row) => (
                       <li key={row.id}>
@@ -368,7 +336,6 @@ export function GrantAccessPage() {
                       </li>
                     ))}
                   </ul>
-                  <p>Someone a group covers already gets its role. Pick a different role to give them more or less.</p>
                 </div>
               ) : null}
               <OrganizationNote applicationId={application} />
@@ -382,7 +349,7 @@ export function GrantAccessPage() {
                 className="flex-1"
                 loading={peopleMutation.isPending || groupMutation.isPending}
               >
-                Grant
+                Add
               </Button>
             </div>
           </aside>

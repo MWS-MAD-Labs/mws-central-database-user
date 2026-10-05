@@ -106,7 +106,7 @@ describe('ApplicationAccessPage', () => {
     const { user } = renderPage()
     await screen.findByText('Dummy Staff')
 
-    await user.click(screen.getByRole('button', { name: 'Grant Access' }))
+    await user.click(screen.getByRole('button', { name: 'Add Access' }))
     expect(await screen.findByText('Grant page')).toBeVisible()
   })
 
