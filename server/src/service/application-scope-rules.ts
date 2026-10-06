@@ -47,16 +47,21 @@ export async function loadScopeCatalog(): Promise<ScopeCatalog> {
   };
 }
 
+// Whether a position and a level may go together.
+export function scopePairFits(
+  position: { name: string; teaching: boolean },
+  level: { name: string; teaching: boolean },
+): boolean {
+  return jobPositionAndJobLevelAreCompatible(position.name, position.teaching, level.name, level.teaching);
+}
+
 // Which (unit, position, level) triples can hold an employee, by the master data
 // rules: a position or level limited to units, and position with level matching.
 export function buildFeasibility(catalog: ScopeCatalog) {
   const pairOk = new Map<string, boolean>();
   for (const position of catalog.positions) {
     for (const level of catalog.levels) {
-      pairOk.set(
-        `${position.id}|${level.id}`,
-        jobPositionAndJobLevelAreCompatible(position.name, position.teaching, level.name, level.teaching),
-      );
+      pairOk.set(`${position.id}|${level.id}`, scopePairFits(position, level));
     }
   }
   const allowed = (unitIds: string[], unit: string) => unitIds.length === 0 || unitIds.includes(unit);

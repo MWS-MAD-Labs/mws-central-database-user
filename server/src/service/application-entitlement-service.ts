@@ -30,8 +30,7 @@ import {
   type ApplicationDetail,
   type ApplicationRoleOptions,
   type ListRoleOptionsRequest,
-  type ListScopeOptionsRequest,
-  type ApplicationScopeOptions,
+  type ApplicationScopeCatalog,
   type ApplicationExceptionRow,
   type ApplicationGroupCard,
   type ApplicationSummary,
@@ -67,6 +66,7 @@ import {
   buildFeasibility,
   comboKey,
   loadScopeCatalog,
+  scopePairFits,
   projection,
   type Feasibility,
   type ScopeCatalog,
@@ -1439,33 +1439,22 @@ export class ApplicationAccessService {
     };
   }
 
-  // Which values of each dimension can still hold someone, given the other two.
-  static async scopeOptions(
-    admin: AdminUser,
-    request: ListScopeOptionsRequest,
-  ): Promise<ApplicationScopeOptions> {
+  // The master data a scope picker needs to work out what fits together:
+  // positions and levels with the units they exist in, and which pairs match.
+  static async scopeCatalog(admin: AdminUser): Promise<ApplicationScopeCatalog> {
     assertSuperAdmin(admin);
-    const input = Validation.validate(ApplicationAccessRuleValidation.SCOPE_OPTIONS, request);
     const catalog = await loadScopeCatalog();
-    const feasibility = buildFeasibility(catalog);
-    let lists = {
-      unit_ids: input.unit_ids ?? [],
-      job_position_ids: input.job_position_ids ?? [],
-      job_level_ids: input.job_level_ids ?? [],
-    };
-    // Choices that no longer fit the others do not restrict them. If nothing fits at all, nothing restricts.
-    const used = projection(feasibility.combos(lists));
-    const none = used.units.size === 0;
-    lists = {
-      unit_ids: none ? [] : lists.unit_ids.filter((id) => used.units.has(id)),
-      job_position_ids: none ? [] : lists.job_position_ids.filter((id) => used.positions.has(id)),
-      job_level_ids: none ? [] : lists.job_level_ids.filter((id) => used.levels.has(id)),
-    };
-    const ids = (set: Set<string>) => [...set];
+    const pairs: Record<string, string[]> = {};
+    for (const position of catalog.positions) {
+      pairs[position.id] = catalog.levels
+        .filter((level) => scopePairFits(position, level))
+        .map((level) => level.id);
+    }
     return {
-      units: ids(projection(feasibility.combos({ ...lists, unit_ids: [] })).units),
-      job_positions: ids(projection(feasibility.combos({ ...lists, job_position_ids: [] })).positions),
-      job_levels: ids(projection(feasibility.combos({ ...lists, job_level_ids: [] })).levels),
+      units: catalog.units,
+      job_positions: catalog.positions.map((item) => ({ id: item.id, name: item.name, unit_ids: item.unit_ids })),
+      job_levels: catalog.levels.map((item) => ({ id: item.id, name: item.name, unit_ids: item.unit_ids })),
+      pairs,
     };
   }
 

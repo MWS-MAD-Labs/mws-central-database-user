@@ -216,17 +216,12 @@ export type ApplicationDetail = {
   other_count: number;
 };
 
-export type ListScopeOptionsRequest = {
-  audience: ApplicationAudience;
-  unit_ids?: string[];
-  job_position_ids?: string[];
-  job_level_ids?: string[];
-};
-
-export type ApplicationScopeOptions = {
-  units: string[];
-  job_positions: string[];
-  job_levels: string[];
+export type ApplicationScopeCatalog = {
+  units: { id: string; name: string }[];
+  job_positions: { id: string; name: string; unit_ids: string[] }[];
+  job_levels: { id: string; name: string; unit_ids: string[] }[];
+  // Per position, the levels it can be paired with.
+  pairs: Record<string, string[]>;
 };
 
 export type ListRoleOptionsRequest = {

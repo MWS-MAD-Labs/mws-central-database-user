@@ -253,17 +253,17 @@ describe("application access per application", () => {
     const mismatch = await post({ job_position_ids: [teacher.id], job_level_ids: [masterData.level.id] });
     expect(mismatch.status).toBe(400);
 
-    // Scope options only offer what still fits the other choices.
-    const OPTIONS = `${ACCESS}/scope-options?audience=EMPLOYEES`;
-    const away = (await (await TestRequest.get(`${OPTIONS}&unit_ids=${awayUnit.id}`, accessToken)).json()).data;
-    expect(away.job_positions).not.toContain(homeOnly.id);
-    const home = (await (await TestRequest.get(`${OPTIONS}&unit_ids=${homeUnit.id}`, accessToken)).json()).data;
-    expect(home.job_positions).toContain(homeOnly.id);
-    const nonTeaching = (await (await TestRequest.get(`${OPTIONS}&job_level_ids=${masterData.level.id}`, accessToken)).json()).data;
-    expect(nonTeaching.job_positions).not.toContain(teacher.id);
-    expect((await TestRequest.get(`${ACCESS}/scope-options?audience=NOPE`, accessToken)).status).toBe(400);
+    // The catalog tells a picker what exists where and which pairs match.
+    const CATALOG = `${ACCESS}/scope-catalog`;
+    const catalog = (await (await TestRequest.get(CATALOG, accessToken)).json()).data;
+    const homeOnlyRow = catalog.job_positions.find((item: { id: string }) => item.id === homeOnly.id);
+    expect(homeOnlyRow.unit_ids).toEqual([homeUnit.id]);
+    expect(catalog.job_positions.find((item: { id: string }) => item.id === teacher.id).unit_ids).toEqual([]);
+    expect(catalog.pairs[teacher.id]).not.toContain(masterData.level.id);
+    expect(catalog.pairs[masterData.position.id]).toContain(masterData.level.id);
+    expect(catalog.units.map((unit: { name: string }) => unit.name)).not.toContain("Unknown / Legacy");
     const dbAdmin = await AdminUserTest.createDatabaseAdmin();
-    expect((await TestRequest.get(OPTIONS, dbAdmin.accessToken)).status).toBe(403);
+    expect((await TestRequest.get(CATALOG, dbAdmin.accessToken)).status).toBe(403);
 
     // A broad group loses what only exists inside the unit a narrower group takes,
     // and shows a taken position as dropped.
