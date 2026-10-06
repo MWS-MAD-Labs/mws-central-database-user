@@ -114,17 +114,29 @@ export function buildScopeRules(catalog) {
     return { selection: current, removed };
   }
 
-  // Picked units that nothing in the chosen levels and positions can exist in. Units never
-  // change by themselves when a level or position is picked, so they are pointed out instead.
-  function unsupportedUnits(selection) {
-    if (!selection.units || selection.units.length === 0) return [];
-    const used = project(combos(selection)).units;
-    return selection.units
-      .filter((id) => !used.has(id))
-      .map((id) => ({ id, name: unitNames.get(id) || id }));
+  // Picked units and levels that nothing in the rest of the scope can exist in. They never
+  // change by themselves when something below them is picked, so they are pointed out
+  // instead. Positions cannot end up here: they are always trimmed to what fits above them.
+  const levelNames = new Map(catalog.job_levels.map((level) => [level.id, level.name]));
+  function unsupported(selection) {
+    const used = project(combos(selection));
+    const dead = (ids, set, names) =>
+      !ids || ids.length === 0
+        ? []
+        : ids.filter((id) => !set.has(id)).map((id) => ({ id, name: names.get(id) || id }));
+    const units = dead(selection.units, used.units, unitNames);
+    const levels = dead(selection.levels, used.levels, levelNames);
+    return {
+      units,
+      levels,
+      all: [
+        ...units.map((item) => ({ ...item, kind: "units" })),
+        ...levels.map((item) => ({ ...item, kind: "levels" })),
+      ],
+    };
   }
 
-  return { combos, allowedValues, availability, settle, unsupportedUnits };
+  return { combos, allowedValues, availability, settle, unsupported };
 }
 
 export const hasRemoved = (removed) => DIMENSIONS.some((dimension) => removed[dimension].length > 0);

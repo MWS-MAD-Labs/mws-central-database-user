@@ -23,11 +23,27 @@ export function useGroupFilterState(initial = {}, rules = null) {
   const settled = useMemo(() => (rules ? rules.settle(picked).selection : picked), [rules, picked]);
   const allowed = useMemo(() => (rules ? rules.allowedValues(settled) : null), [rules, settled]);
   const availability = useMemo(() => (rules ? rules.availability(settled) : null), [rules, settled]);
-  const unsupported = useMemo(() => (rules ? rules.unsupportedUnits(settled) : []), [rules, settled]);
+  const unsupported = useMemo(
+    () => (rules ? rules.unsupported(settled) : { units: [], levels: [], all: [] }),
+    [rules, settled],
+  );
 
   function change(dimension, next, options) {
     const base = { ...settled, [dimension]: next };
     const result = rules ? rules.settle(base, dimension, options) : { selection: base, removed: null };
+    setPicked(result.selection);
+    setRemoved(result.removed && hasRemoved(result.removed) ? result.removed : null);
+  }
+
+  // Drops several picks at once (units and levels), so one does not overwrite the other.
+  function dropPicks(picks) {
+    const without = (ids, drop) => (ids ? ids.filter((id) => !drop.includes(id)) : ids);
+    const base = {
+      ...settled,
+      units: without(settled.units, picks.units || []),
+      levels: without(settled.levels, picks.levels || []),
+    };
+    const result = rules ? rules.settle(base, "units", { wipe: false }) : { selection: base, removed: null };
     setPicked(result.selection);
     setRemoved(result.removed && hasRemoved(result.removed) ? result.removed : null);
   }
@@ -39,6 +55,7 @@ export function useGroupFilterState(initial = {}, rules = null) {
     allowed,
     availability,
     unsupported,
+    dropPicks,
     removed,
   };
 }
@@ -54,6 +71,8 @@ const noneUsable = (selection, knownIds) =>
 
 const isNone = (selection) => selection.selected !== null && selection.selected.length === 0;
 
+const names = (list) => list.map((item) => item.name).join(", ");
+
 // Nothing may end up unchecked: "none" is not a valid filter.
 export function groupFilterErrors(state, audience, knownUnitIds) {
   const employeesOnly = audience !== "STUDENTS";
@@ -62,8 +81,8 @@ export function groupFilterErrors(state, audience, knownUnitIds) {
       ? "Pick at least one unit, or choose All Units."
       : noneUsable(state.units, knownUnitIds)
         ? "None of the picked units can be used. Pick other units, or choose All Units."
-        : employeesOnly && state.unsupported?.length > 0
-          ? `${state.unsupported.map((unit) => unit.name).join(", ")} ${state.unsupported.length === 1 ? "has" : "have"} no matching job level or position in this scope. Remove ${state.unsupported.length === 1 ? "it" : "them"} or change the levels.`
+        : employeesOnly && state.unsupported?.units?.length > 0
+          ? `${names(state.unsupported.units)} ${state.unsupported.units.length === 1 ? "has" : "have"} no matching job level or position in this scope. Remove ${state.unsupported.units.length === 1 ? "it" : "them"} or change the levels.`
           : undefined,
     positions:
       employeesOnly && isNone(state.positions)
@@ -72,7 +91,9 @@ export function groupFilterErrors(state, audience, knownUnitIds) {
     levels:
       employeesOnly && isNone(state.levels)
         ? "Pick at least one job level, or choose All Levels."
-        : undefined,
+        : employeesOnly && state.unsupported?.levels?.length > 0
+          ? `${names(state.unsupported.levels)} ${state.unsupported.levels.length === 1 ? "has" : "have"} no matching unit or position in this scope. Remove ${state.unsupported.levels.length === 1 ? "it" : "them"} or change the units.`
+          : undefined,
   };
 }
 

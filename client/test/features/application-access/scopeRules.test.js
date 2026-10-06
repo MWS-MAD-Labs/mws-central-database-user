@@ -127,10 +127,25 @@ describe('scope rules', () => {
       pairs: { aide: ['lead', 'staff'] },
     })
     // Lead only exists in MAD Lab, so Elementary has nothing to hold.
-    expect(lvlRules.unsupportedUnits({ units: ['mad', 'ele'], levels: ['lead'], positions: null }))
+    expect(lvlRules.unsupported({ units: ['mad', 'ele'], levels: ['lead'], positions: null }).units)
       .toEqual([{ id: 'ele', name: 'Elementary' }])
     // All, or levels that fit both, point out nothing.
-    expect(lvlRules.unsupportedUnits({ units: null, levels: ['lead'], positions: null })).toEqual([])
-    expect(lvlRules.unsupportedUnits({ units: ['mad', 'ele'], levels: ['staff'], positions: null })).toEqual([])
+    expect(lvlRules.unsupported({ units: null, levels: ['lead'], positions: null }).all).toEqual([])
+    expect(lvlRules.unsupported({ units: ['mad', 'ele'], levels: ['staff'], positions: null }).all).toEqual([])
+  })
+
+  it('points out a level that no picked position can pair with', () => {
+    const r = buildScopeRules({
+      units: [{ id: 'mad', name: 'MAD Lab' }],
+      job_positions: [{ id: 'coder', name: 'Coder', unit_ids: [] }],
+      job_levels: [
+        { id: 'l1', name: 'Level One', unit_ids: [] },
+        { id: 'l2', name: 'Level Two', unit_ids: [] },
+      ],
+      pairs: { coder: ['l1'] },
+    })
+    const found = r.unsupported({ units: ['mad'], levels: ['l1', 'l2'], positions: ['coder'] })
+    expect(found.levels).toEqual([{ id: 'l2', name: 'Level Two' }])
+    expect(found.all).toEqual([{ id: 'l2', name: 'Level Two', kind: 'levels' }])
   })
 })

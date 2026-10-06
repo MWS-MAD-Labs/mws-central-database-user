@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { groupFilterErrors } from "../utils/groupFilterState.js";
@@ -80,25 +80,50 @@ function StepTabs({ steps, current }) {
   );
 }
 
-// A picked unit that nothing in the chosen levels and positions can exist in.
-function UnsupportedUnits({ units, onRemove }) {
-  if (units.length === 0) return null;
+const reasonOf = { units: "job level or position", levels: "unit or position" };
+
+// Picked units or levels that nothing in the rest of the scope can exist in. One notice
+// lists them all, each with its own remove icon, and a single action clears the lot.
+function UnsupportedPicks({ picks, onRemove, onRemoveAll }) {
+  if (picks.length === 0) return null;
+  const kinds = [...new Set(picks.map((pick) => pick.kind))];
   return (
-    <div className="space-y-2">
-      {units.map((unit) => (
-        <div
-          key={unit.id}
-          role="alert"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]"
-        >
-          <span>
-            <strong>{unit.name}</strong> has no matching job level or position in this scope.
+    <div
+      role="alert"
+      className="space-y-2 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]"
+    >
+      <p>
+        {picks.length === 1 ? "This pick has" : "These picks have"} no matching{" "}
+        {kinds.map((kind) => reasonOf[kind]).join(" or ")} in this scope.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        {picks.map((pick) => (
+          <span
+            key={`${pick.kind}-${pick.id}`}
+            className="inline-flex items-center gap-1 rounded-full border border-[#e6c98a] bg-white py-0.5 pl-3 pr-1 text-xs font-semibold text-(--mws-charcoal)"
+          >
+            {pick.name}
+            <button
+              type="button"
+              aria-label={`Remove ${pick.name}`}
+              title={`Remove ${pick.name}`}
+              onClick={() => onRemove(pick)}
+              className="inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) transition-colors hover:text-(--mws-burgundy)"
+            >
+              <X size={12} />
+            </button>
           </span>
-          <Button type="button" size="sm" variant="secondary" onClick={() => onRemove(unit.id)}>
-            Remove {unit.name}
-          </Button>
-        </div>
-      ))}
+        ))}
+        {picks.length > 1 ? (
+          <button
+            type="button"
+            onClick={onRemoveAll}
+            className="cursor-pointer text-xs font-semibold text-(--mws-burgundy) hover:underline"
+          >
+            Remove all
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -124,8 +149,13 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
   const selected = step === "units" ? state.units.selected : step === "levels" ? state.levels.selected : state.positions.selected;
   const canContinue = step === "review" || selected === null || selected.length > 0;
 
-  const unsupported = employeesOnly ? state.unsupported || [] : [];
-  const removeUnit = (id) => state.units.setSelected((state.units.selected || []).filter((unitId) => unitId !== id));
+  const unsupported = employeesOnly ? state.unsupported?.all || [] : [];
+  const dropOne = (pick) => state.dropPicks({ [pick.kind]: [pick.id] });
+  const dropAll = () =>
+    state.dropPicks({
+      units: unsupported.filter((pick) => pick.kind === "units").map((pick) => pick.id),
+      levels: unsupported.filter((pick) => pick.kind === "levels").map((pick) => pick.id),
+    });
 
   const itemWithReason = (item, reasons) => ({
     id: item.id,
@@ -177,12 +207,12 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
       ) : null}
 
       {step === "levels" || step === "positions" ? (
-        <UnsupportedUnits units={unsupported} onRemove={removeUnit} />
+        <UnsupportedPicks picks={unsupported} onRemove={dropOne} onRemoveAll={dropAll} />
       ) : null}
 
       {step === "review" ? (
         <div className="space-y-3" aria-label="Scope review">
-          <UnsupportedUnits units={unsupported} onRemove={removeUnit} />
+          <UnsupportedPicks picks={unsupported} onRemove={dropOne} onRemoveAll={dropAll} />
           {[
             ["Units", state.units.selected, realUnits, "All Units"],
             ...(employeesOnly
@@ -230,7 +260,7 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
           unsupported.length === 0 ? (
             <p className="text-xs font-medium text-[#476b43]">Scope is ready to save.</p>
           ) : (
-            <p className="text-xs font-medium text-[#805b18]">Remove the units above before saving.</p>
+            <p className="text-xs font-medium text-[#805b18]">Remove the picks above before saving.</p>
           )
         )}
       </div>
