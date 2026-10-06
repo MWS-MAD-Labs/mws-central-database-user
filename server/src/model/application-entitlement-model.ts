@@ -192,6 +192,14 @@ export type ApplicationGroupCard = ApplicationAccessRuleResponse & {
   blocked_count: number;
   // Active people the scope reaches, before exceptions and narrower groups.
   covered_count: number;
+  // Active people this group is the nearest group of (covered, minus narrower groups).
+  own_count: number;
+  // What is left of each dimension after narrower groups take theirs. null: nothing taken.
+  remaining: {
+    units: { id: string; name: string }[] | null;
+    job_positions: { id: string; name: string }[] | null;
+    job_levels: { id: string; name: string }[] | null;
+  };
 };
 
 export type ApplicationDetail = {

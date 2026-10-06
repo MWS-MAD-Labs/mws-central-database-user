@@ -67,6 +67,7 @@ import {
   assertHasGroup,
   assertPersonException,
   assertRuleGate,
+  dimensionCovers,
   checkRuleGate,
   loadGateState,
   loadRuleSubject,
@@ -1071,6 +1072,70 @@ export class ApplicationAccessRuleService {
 }
 
 // One list for the Access page: group rules first, then people.
+type ScopeIds = Pick<GateRule, "unit_ids" | "job_position_ids" | "job_level_ids">;
+
+const employeeScope = (rule: ScopeIds): Prisma.EmployeeWhereInput => ({
+  ...(rule.unit_ids.length ? { unit_id: { in: rule.unit_ids } } : {}),
+  ...(rule.job_position_ids.length ? { job_position_id: { in: rule.job_position_ids } } : {}),
+  ...(rule.job_level_ids.length ? { job_level_id: { in: rule.job_level_ids } } : {}),
+});
+
+const studentScope = (rule: ScopeIds): Prisma.StudentWhereInput =>
+  rule.unit_ids.length ? { current_grade: { unit_id: { in: rule.unit_ids } } } : {};
+
+// What is left of each dimension of a group once its narrower groups took theirs.
+function remainingScope(
+  group: GateRule,
+  children: GateRule[],
+  all: { units: { id: string; name: string }[]; positions: { id: string; name: string }[]; levels: { id: string; name: string }[] },
+): ApplicationGroupCard["remaining"] {
+  const employeeGroup = group.audience !== ApplicationAudience.STUDENTS;
+  const takers = children.filter((child) =>
+    employeeGroup ? child.audience !== ApplicationAudience.STUDENTS : child.audience !== ApplicationAudience.EMPLOYEES,
+  );
+  const dimension = (
+    domain: { id: string; name: string }[],
+    own: string[],
+    taken: (child: GateRule, id: string) => boolean,
+  ) => {
+    const pool = own.length ? domain.filter((item) => own.includes(item.id)) : domain;
+    const left = pool.filter((item) => !takers.some((child) => taken(child, item.id)));
+    return left.length === pool.length ? null : left;
+  };
+  const has = (ids: string[], id: string) => ids.length === 0 || ids.includes(id);
+  return {
+    units: dimension(
+      all.units,
+      group.unit_ids,
+      (child, id) =>
+        has(child.unit_ids, id) &&
+        (!employeeGroup ||
+          (dimensionCovers(child.job_position_ids, group.job_position_ids) &&
+            dimensionCovers(child.job_level_ids, group.job_level_ids))),
+    ),
+    job_positions: employeeGroup
+      ? dimension(
+          all.positions,
+          group.job_position_ids,
+          (child, id) =>
+            has(child.job_position_ids, id) &&
+            dimensionCovers(child.unit_ids, group.unit_ids) &&
+            dimensionCovers(child.job_level_ids, group.job_level_ids),
+        )
+      : null,
+    job_levels: employeeGroup
+      ? dimension(
+          all.levels,
+          group.job_level_ids,
+          (child, id) =>
+            has(child.job_level_ids, id) &&
+            dimensionCovers(child.unit_ids, group.unit_ids) &&
+            dimensionCovers(child.job_position_ids, group.job_position_ids),
+        )
+      : null,
+  };
+}
+
 export class ApplicationAccessService {
   // One row per application with how much access it has, paged.
   static async applications(
@@ -1259,48 +1324,49 @@ export class ApplicationAccessService {
       throw new ResponseError(404, "Application not found");
     }
 
-    const [units, positions, levels] = await Promise.all([
-      prismaClient.masterUnit.findMany({
-        where: { id: { in: rules.flatMap((rule) => rule.unit_ids) } },
-        select: { id: true, name: true },
-      }),
-      prismaClient.masterJobPosition.findMany({
-        where: { id: { in: rules.flatMap((rule) => rule.job_position_ids) } },
-        select: { id: true, name: true },
-      }),
-      prismaClient.masterJobLevel.findMany({
-        where: { id: { in: rules.flatMap((rule) => rule.job_level_ids) } },
-        select: { id: true, name: true },
-      }),
+    const [allUnits, positions, levels] = await Promise.all([
+      prismaClient.masterUnit.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      prismaClient.masterJobPosition.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      prismaClient.masterJobLevel.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
     ]);
+    const units = allUnits;
+    const realUnits = allUnits.filter((unit) => unit.name !== UNKNOWN_LEGACY_UNIT_NAME);
     const named = (list: { id: string; name: string }[], ids: string[]) =>
       ids.map((id) => ({ id, name: list.find((item) => item.id === id)?.name ?? id }));
 
-    const covered = await Promise.all(
+    // Active groups sitting directly under each group.
+    const childrenOf = (rule: (typeof rules)[number]) =>
+      rule.is_active
+        ? gateRules.filter((candidate) => candidate.id !== rule.id && parentRule(candidate, active)?.id === rule.id)
+        : [];
+    const counts = await Promise.all(
       rules.map(async (rule) => {
-        const employees =
-          rule.audience === ApplicationAudience.STUDENTS
-            ? 0
-            : await prismaClient.employee.count({
-                where: {
-                  status: EmployeeStatus.ACTIVE,
-                  deleted_at: null,
-                  ...(rule.unit_ids.length ? { unit_id: { in: rule.unit_ids } } : {}),
-                  ...(rule.job_position_ids.length ? { job_position_id: { in: rule.job_position_ids } } : {}),
-                  ...(rule.job_level_ids.length ? { job_level_id: { in: rule.job_level_ids } } : {}),
-                },
-              });
-        const students =
-          rule.audience === ApplicationAudience.EMPLOYEES
-            ? 0
-            : await prismaClient.student.count({
-                where: {
-                  status: StudentStatus.ACTIVE,
-                  deleted_at: null,
-                  ...(rule.unit_ids.length ? { current_grade: { unit_id: { in: rule.unit_ids } } } : {}),
-                },
-              });
-        return employees + students;
+        const children = childrenOf(rule);
+        const employeeChildren = children.filter((child) => child.audience !== ApplicationAudience.STUDENTS);
+        const studentChildren = children.filter((child) => child.audience !== ApplicationAudience.EMPLOYEES);
+        const employeeWhere = { status: EmployeeStatus.ACTIVE, deleted_at: null, ...employeeScope(rule) };
+        const studentWhere = { status: StudentStatus.ACTIVE, deleted_at: null, ...studentScope(rule) };
+        const withEmployees = rule.audience !== ApplicationAudience.STUDENTS;
+        const withStudents = rule.audience !== ApplicationAudience.EMPLOYEES;
+        const [employees, ownEmployees, students, ownStudents] = await Promise.all([
+          withEmployees ? prismaClient.employee.count({ where: employeeWhere }) : 0,
+          withEmployees
+            ? prismaClient.employee.count({
+                where: employeeChildren.length
+                  ? { ...employeeWhere, NOT: { OR: employeeChildren.map(employeeScope) } }
+                  : employeeWhere,
+              })
+            : 0,
+          withStudents ? prismaClient.student.count({ where: studentWhere }) : 0,
+          withStudents
+            ? prismaClient.student.count({
+                where: studentChildren.length
+                  ? { ...studentWhere, NOT: { OR: studentChildren.map(studentScope) } }
+                  : studentWhere,
+              })
+            : 0,
+        ]);
+        return { covered: employees + students, own: ownEmployees + ownStudents };
       }),
     );
 
@@ -1316,7 +1382,13 @@ export class ApplicationAccessService {
           permissions: roles.find((role) => role.key === rule.default_role_key)?.permissions ?? [],
           exception_count: inside.filter((item) => item.row.is_active).length,
           blocked_count: inside.filter((item) => !item.row.is_active).length,
-          covered_count: covered[index],
+          covered_count: counts[index].covered,
+          own_count: counts[index].own,
+          remaining: remainingScope(gateRules[index], childrenOf(rule), {
+            units: realUnits,
+            positions,
+            levels,
+          }),
         };
       })
       // Broad groups first, then narrower ones.
@@ -1453,7 +1525,13 @@ export class ApplicationAccessService {
     if (coverage === "GROUP") {
       const group = employeeRules.find((rule) => rule.id === filters.group_id);
       if (!group) throw new ResponseError(404, "Group access not found");
-      coverageWhere = fragment(group);
+      // People of a narrower group belong to that group, so they are left out here.
+      const narrower = employeeRules.filter(
+        (rule) => rule.id !== group.id && parentRule(rule, rules)?.id === group.id,
+      );
+      coverageWhere = narrower.length
+        ? { AND: [fragment(group), { NOT: { OR: narrower.map(fragment) } }] }
+        : fragment(group);
     } else if (coverage === "COVERED") {
       coverageWhere = employeeRules.length ? { OR: employeeRules.map(fragment) } : { id: "none" };
     } else if (coverage === "UNCOVERED" && employeeRules.length) {

@@ -107,7 +107,7 @@ function audienceIncludes(audience: ApplicationAudience, target: ApplicationAudi
   return audience === ApplicationAudience.EMPLOYEES_AND_STUDENTS || audience === target;
 }
 
-function dimensionCovers(outer: string[], inner: string[]): boolean {
+export function dimensionCovers(outer: string[], inner: string[]): boolean {
   return outer.length === 0 || (inner.length > 0 && inner.every((id) => outer.includes(id)));
 }
 

@@ -191,6 +191,45 @@ describe("application access per application", () => {
     expect((await TestRequest.get(`${ACCESS}/apps/${appId}/exceptions?group_id=other`, dbAdmin.accessToken)).status).toBe(403);
   });
 
+  it("tells what a broad group keeps after a narrower group takes a unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const takenUnit = await prismaClient.masterUnit.create({ data: { name: `TEST_APPS_TAKEN_${randomBytes(3).toString("hex")}` } });
+    const stays = await createEmployee("test_apps_keep@millennia21.id");
+    const moves = await createEmployee("test_apps_take@millennia21.id", masterData.position.id, takenUnit.id);
+
+    const broad = await (await TestRequest.post(RULES, { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF" }, accessToken)).json();
+    const narrow = await (await TestRequest.post(
+      RULES,
+      { application_id: appId, audience: "EMPLOYEES", default_role_key: "ADMIN", unit_ids: [takenUnit.id] },
+      accessToken,
+    )).json();
+
+    const detail = (await (await TestRequest.get(`${ACCESS}/apps/${appId}`, accessToken)).json()).data;
+    const [first, second] = detail.groups;
+    expect(first.id).toBe(broad.data.id);
+    // The broad group no longer reaches the taken unit, and nothing else changed.
+    const left = first.remaining.units.map((unit: { id: string }) => unit.id);
+    expect(left).toContain(masterData.unit.id);
+    expect(left).not.toContain(takenUnit.id);
+    expect(first.remaining.job_positions).toBeNull();
+    expect(first.remaining.job_levels).toBeNull();
+    expect(first.own_count).toBe(first.covered_count - 1);
+    expect(second.id).toBe(narrow.data.id);
+    expect(second.remaining).toEqual({ units: null, job_positions: null, job_levels: null });
+    expect(second.own_count).toBe(second.covered_count);
+
+    // Exceptions of the broad group are only for people it still holds.
+    const candidates = async (groupId: string) =>
+      ((await (await TestRequest.get(
+        `${ACCESS}/candidates?application_id=${appId}&coverage=GROUP&group_id=${groupId}&size=100`,
+        accessToken,
+      )).json()).data as { person_id: string }[]).map((row) => row.person_id);
+    const ofBroad = await candidates(broad.data.id);
+    expect(ofBroad).toContain(stays.id);
+    expect(ofBroad).not.toContain(moves.id);
+    expect(await candidates(narrow.data.id)).toContain(moves.id);
+  });
+
   it("answers 404 for an unknown application and 403 for others than Super Admin", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     expect((await TestRequest.get(`${ACCESS}/apps/test-apps-missing`, accessToken)).status).toBe(404);
