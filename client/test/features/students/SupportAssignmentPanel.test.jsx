@@ -100,6 +100,42 @@ describe('StudentSupportAssignmentPanel', () => {
     })
   })
 
+  it('reads candidates in the flat shape the server sends', async () => {
+    const flat = [
+      { id: 'employee-9', type: 'EMPLOYEE', employee_id: 'EMP-9', full_name: 'Flat SE Teacher', email: 'flat@millennia21.id', unit_id: 'u1', job_position: 'Special Education Teacher', active_student_count: 3 },
+      { id: 'intern-9', type: 'INTERN', employee_id: null, full_name: 'Flat SE Intern', email: 'flatintern@millennia21.id', unit_id: 'u1', job_position: 'Special Education Teacher', active_student_count: 0 },
+    ]
+    const fetchMock = createFetchRouter([
+      { path: '/api/admin/students/student-1/support-assignments', response: ({ method }) => method === 'POST' ? jsonResponse({ data: { id: 'assignment-new' } }) : jsonResponse({ data: [] }) },
+      {
+        path: /^\/api\/admin\/support-assignments\/candidates(?:\?.*)?$/,
+        response: () => jsonResponse({ data: flat, paging: { current_page: 1, total_page: 1, total_item: 2, size: 10 } }),
+      },
+      { path: '/api/admin/support-assignments/caseload', response: jsonResponse({ data: [] }) },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderWithProviders(
+      <ConfirmProvider>
+        <StudentSupportAssignmentPanel studentId="student-1" studentUnitName="Elementary" canWrite />
+      </ConfirmProvider>,
+    )
+    await screen.findByText('No Special Education teacher assigned yet.')
+    await user.click(screen.getByRole('button', { name: 'Assign' }))
+    expect(await screen.findByRole('radio', { name: /Flat SE Teacher/ })).toBeVisible()
+    expect(screen.getByRole('radio', { name: /Flat SE Intern \(Intern\)/ })).toBeVisible()
+
+    await user.click(screen.getByRole('radio', { name: /Flat SE Intern/ }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    const confirmDialog = screen.getByRole('dialog', { name: 'Confirm teacher assignment' })
+    expect(within(confirmDialog).getByText(/Assign Flat SE Intern as Special Education Teacher/)).toBeVisible()
+    await user.click(within(confirmDialog).getByRole('button', { name: 'Assign teacher' }))
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url, options]) =>
+        url === '/api/admin/students/student-1/support-assignments' && options.method === 'POST')
+      expect(JSON.parse(call[1].body)).toMatchObject({ intern_id: 'intern-9' })
+    })
+  })
+
   it('confirms ending, dropping, and reactivating assignments', async () => {
     const active = {
       id: 'assignment-1',

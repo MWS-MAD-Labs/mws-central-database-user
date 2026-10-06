@@ -36,7 +36,11 @@ import { useDebouncedValue } from "../../../hooks/useDebouncedValue.js";
 import { dateInputFromIso, isoFromDateInput } from "../../../lib/form.js";
 import { formatDate, formatStatus } from "../../../lib/format.js";
 import { classTeacherRoles, classesApi } from "../api/academicApi.js";
-import { classSelectOptions } from "../utils/selectOptions.js";
+import {
+  candidateName as nameOf,
+  candidateType,
+  classSelectOptions,
+} from "../utils/selectOptions.js";
 import { AssignmentDurationCell } from "./AssignmentDurationCell.jsx";
 
 function formatSubjectDetail(assignment) {
@@ -302,12 +306,13 @@ export function TeacherAssignmentsSection({
         {canWrite ? (
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
+            variant="secondary"
+            size="icon"
+            aria-label="Assign teacher"
+            title="Assign teacher"
             onClick={() => setAssignOpen(true)}
           >
-            <Plus size={14} />
-            Assign teacher
+            <Plus size={16} />
           </Button>
         ) : null}
       </div>
@@ -1060,12 +1065,8 @@ function enumOptions(values) {
   return values.map((value) => ({ value, label: formatStatus(value) }));
 }
 
-function candidateType(candidate) {
-  return candidate?.workforce_type || candidate?.type || "EMPLOYEE";
-}
-
 function candidateName(candidate) {
-  return candidate?.identity?.full_name || candidate?.full_name || "Selected teacher";
+  return nameOf(candidate) || "Selected teacher";
 }
 
 function candidateValue(candidate) {

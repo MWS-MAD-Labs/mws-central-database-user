@@ -31,6 +31,20 @@ export function employeeSelectOptions(employees) {
   }));
 }
 
+// A special education candidate from the server is flat ({ type, full_name, email }).
+// The older nested shape ({ workforce_type, identity }) is still read.
+export function candidateType(member) {
+  return member?.type || member?.workforce_type || "EMPLOYEE";
+}
+
+export function candidateName(member) {
+  return member?.full_name ?? member?.identity?.full_name ?? "";
+}
+
+export function candidateEmail(member) {
+  return member?.email ?? member?.identity?.email ?? "";
+}
+
 export function workforceTargetValue(type, id) {
   return `${type}:${id}`;
 }
@@ -45,14 +59,14 @@ export function workforceTargetPayload(value) {
 export function specialEducationTeacherOptions(members) {
   return members.map((member) => {
     const count = member.active_student_count || 0;
-    const type = member.workforce_type || "EMPLOYEE";
+    const type = candidateType(member);
     return {
       value: workforceTargetValue(type, member.id),
-      label: `${member.identity.full_name}${type === "INTERN" ? " (Intern)" : ""}`,
-      description: member.identity.email,
+      label: `${candidateName(member)}${type === "INTERN" ? " (Intern)" : ""}`,
+      description: candidateEmail(member),
       badge: `${count} student${count === 1 ? "" : "s"}`,
       tone: count > 0 ? "amber" : "green",
-      searchText: `${member.identity.full_name} ${type}`,
+      searchText: `${candidateName(member)} ${type}`,
     };
   });
 }
