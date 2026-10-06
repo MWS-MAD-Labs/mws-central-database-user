@@ -224,6 +224,10 @@ describe("AppAccessPage", () => {
     expect(within(rows[0]).getByText("120 Employees")).toBeVisible();
     expect(within(rows[1]).getByText("ADMIN")).toBeVisible();
     expect(within(rows[1]).getByText("8 Employees")).toBeVisible();
+    // The row counts the scope instead of naming it, and capitalises Exceptions.
+    expect(within(rows[0]).getByText("All Units · All Positions · All Levels")).toBeVisible();
+    expect(within(rows[0]).getByText("1 Exception")).toBeVisible();
+    expect(within(rows[1]).getByText("0 Exceptions")).toBeVisible();
 
     // Every group has its own Exceptions card, whether the group is open or not.
     const staffCard = screen.getByRole("region", {
@@ -244,7 +248,8 @@ describe("AppAccessPage", () => {
     // The narrow group explains where it sits.
     await openGroup(user, 1);
     const facts = screen.getByLabelText("Group details");
-    expect(within(facts).getByText("STAFF group")).toBeVisible();
+    expect(within(facts).getByText("STAFF")).toBeVisible();
+    expect(within(facts).getByText(/Group$/)).toBeVisible();
     expect(
       within(screen.getByLabelText("Who this group covers")).getByText(
         "MAD Lab",
@@ -267,6 +272,10 @@ describe("AppAccessPage", () => {
     expect(
       within(screen.getByLabelText("Scope of ADMIN group")).getByText("MAD Lab"),
     ).toBeVisible();
+    // Its card also says how many people it holds and what it may do.
+    const takenCard = screen.getByLabelText("Scope of ADMIN group").closest("li");
+    expect(within(takenCard).getByText(/8 Employees/)).toBeVisible();
+    expect(within(takenCard).getByRole("button", { name: "1 permission" })).toBeVisible();
     expect(
       within(screen.getByLabelText("Group details")).getByText("112 Employees"),
     ).toBeVisible();

@@ -9,6 +9,7 @@ import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { ChangeRoleDialog } from "./ChangeRoleDialog.jsx";
+import { RoleName } from "./RoleName.jsx";
 
 // Paged exceptions of one group, or of "other" (access no group covers).
 export function ExceptionsPanel({ applicationId, groupId, roles, canChange, total, emptyText }) {
@@ -138,7 +139,9 @@ export function ExceptionsPanel({ applicationId, groupId, roles, canChange, tota
             <td className={denseCellClass}>{row.unit || "-"}</td>
             <td className={denseCellClass}>{row.job_position || "-"}</td>
             <td className={denseCellClass}>
-              <span title={row.permissions.join(", ")}>{row.role}</span>
+              <span title={row.permissions.join(", ")}>
+                <RoleName>{row.role}</RoleName>
+              </span>
             </td>
             <td className={denseCellClass}>
               <StatusBadge tone={row.is_active ? "green" : "neutral"}>

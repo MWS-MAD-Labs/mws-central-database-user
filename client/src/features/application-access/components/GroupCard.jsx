@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
-import { countOf, groupScopeSummary, groupShortTitle, groupTitle } from "../utils/groupSummary.js";
+import { countOf, groupScopeBrief, groupScopeSummary, groupShortTitle, groupTitle } from "../utils/groupSummary.js";
+import { RoleName } from "./RoleName.jsx";
 import { ExceptionsCard } from "./ExceptionsCard.jsx";
 import { AudienceIcon, GroupFacts, RemainingScope, RolePill, ScopeGrid } from "./GroupSummary.jsx";
 
@@ -54,12 +55,17 @@ export function GroupCard({
                 <span className="text-xs font-semibold text-(--mws-muted)">Inactive</span>
               )}
             </span>
-            <span className="min-w-0 truncate text-sm font-normal text-(--mws-muted)">{groupScopeSummary(group)}</span>
+            <span
+              className="min-w-0 truncate text-sm font-normal text-(--mws-muted)"
+              title={groupScopeSummary(group)}
+            >
+              {groupScopeBrief(group)}
+            </span>
             <span className="ml-auto flex items-center gap-4 text-sm font-normal">
-              <span className="font-display font-bold text-(--mws-burgundy)">{group.default_role_key}</span>
+              <RoleName>{group.default_role_key}</RoleName>
               <span className="text-(--mws-muted)">{countOf(group.covered_count ?? 0, group.audience)}</span>
               <span className="text-(--mws-muted)">
-                {group.exception_count} exception{group.exception_count === 1 ? "" : "s"}
+                {group.exception_count} Exception{group.exception_count === 1 ? "" : "s"}
               </span>
             </span>
           </button>

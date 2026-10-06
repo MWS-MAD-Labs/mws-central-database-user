@@ -8,6 +8,7 @@ import {
 import { UNKNOWN_LEGACY_UNIT_NAME } from "../utils/legacyUnit.js";
 import { ListPopover } from "./ListPopover.jsx";
 import { PermissionPopover } from "./PermissionPopover.jsx";
+import { RoleName } from "./RoleName.jsx";
 
 export function AudienceIcon({ audience, size = 18 }) {
   const Icon = audience === "STUDENTS" ? GraduationCap : Users;
@@ -72,9 +73,7 @@ export function RolePill({ roleKey, permissions }) {
   return (
     <div className="flex flex-col items-start gap-0.5">
       <span className={labelClass}>Role</span>
-      <span className="font-display text-sm font-bold text-(--mws-burgundy)">
-        {roleKey}
-      </span>
+      <RoleName className="text-sm">{roleKey}</RoleName>
       <PermissionPopover permissions={permissions} />
     </div>
   );
@@ -93,7 +92,7 @@ export function GroupFacts({ group, parentRole }) {
           value: countOf(group.own_count, group.audience),
         }
       : null,
-    parentRole ? { label: "Part of", value: `${parentRole} group` } : null,
+    parentRole ? { label: "Part of", value: parentRole, role: true } : null,
     group.updated_at
       ? { label: "Updated", value: formatDateTime(group.updated_at) }
       : null,
@@ -108,9 +107,15 @@ export function GroupFacts({ group, parentRole }) {
           <dt className={labelClass}>{fact.label}</dt>
           <dd
             className="truncate text-sm text-(--mws-charcoal)"
-            title={fact.value}
+            title={fact.role ? `${fact.value} Group` : fact.value}
           >
-            {fact.value}
+            {fact.role ? (
+              <>
+                <RoleName>{fact.value}</RoleName> Group
+              </>
+            ) : (
+              fact.value
+            )}
           </dd>
         </div>
       ))}
@@ -141,36 +146,55 @@ function LeftValue({ left, scopeNames, noun, title }) {
   return <NameList names={kept} noun={noun} title={`${title} left`} />;
 }
 
-// What a broad group still holds once narrower groups took their share.
+// What a broad group still holds once narrower groups took their share,
+// next to the groups that took it.
 export function RemainingScope({ group, narrower }) {
   if (narrower.length === 0) return null;
   const chips = groupScopeChips(group);
   const lefts = [group.remaining?.units, group.remaining?.job_positions, group.remaining?.job_levels];
   return (
-    <div className="space-y-3 rounded-xl bg-(--mws-soft) px-4 py-3">
-      <p className="font-display text-sm font-bold text-(--mws-charcoal)">After Narrower Groups</p>
-      <dl aria-label="What is left" className="flex flex-wrap gap-x-6 gap-y-1">
-        {chips.map((chip, index) => (
-          <div key={chip.label} className="min-w-0 max-w-56">
-            <dt className={labelClass}>{chip.label}</dt>
-            <dd>
-              <LeftValue left={lefts[index]} scopeNames={chip.names} noun={chip.noun} title={chip.label} />
-            </dd>
-          </div>
-        ))}
-      </dl>
-      <div className="space-y-2">
-        <p className={labelClass}>Taken by narrower groups</p>
-        <ul className="space-y-2">
-          {narrower.map((child) => (
-            <li key={child.id} className="flex flex-wrap items-start gap-x-6 gap-y-1">
-              <span className="w-28 shrink-0 font-display text-sm font-bold text-(--mws-burgundy)">
-                {child.default_role_key}
-              </span>
-              <ScopeGrid group={child} label={`Scope of ${child.default_role_key} group`} />
-            </li>
-          ))}
-        </ul>
+    <div className="rounded-xl bg-(--mws-soft) px-4 py-3">
+      <p className="mb-3 font-display text-sm font-bold text-(--mws-charcoal)">After Narrower Groups</p>
+      <div className="grid gap-x-8 gap-y-4 lg:grid-cols-2">
+        <div className="space-y-2">
+          <p className={labelClass}>Still held by this group</p>
+          <dl aria-label="What is left" className="grid grid-cols-[6rem_1fr] items-center gap-x-4 gap-y-1.5">
+            {chips.map((chip, index) => (
+              <div key={chip.label} className="contents">
+                <dt className="text-sm text-(--mws-muted)">{chip.label}</dt>
+                <dd className="min-w-0">
+                  <LeftValue left={lefts[index]} scopeNames={chip.names} noun={chip.noun} title={chip.label} />
+                </dd>
+              </div>
+            ))}
+            {group.own_count !== undefined ? (
+              <div className="contents">
+                <dt className="text-sm text-(--mws-muted)">Holds this role</dt>
+                <dd className="text-sm font-semibold text-(--mws-charcoal)">
+                  {countOf(group.own_count, group.audience)}
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
+        <div className="space-y-2">
+          <p className={labelClass}>Taken by narrower groups</p>
+          <ul className="space-y-2">
+            {narrower.map((child) => (
+              <li key={child.id} className="space-y-1 rounded-lg border border-(--mws-line) bg-white px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <RoleName className="text-sm">{child.default_role_key}</RoleName>
+                  <span className="text-xs text-(--mws-muted)">
+                    {countOf(child.covered_count ?? 0, child.audience)}
+                    <span aria-hidden="true"> · </span>
+                    <PermissionPopover permissions={child.permissions ?? []} />
+                  </span>
+                </div>
+                <ScopeGrid group={child} label={`Scope of ${child.default_role_key} group`} />
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
   );

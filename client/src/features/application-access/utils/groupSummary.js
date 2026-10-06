@@ -33,6 +33,18 @@ export function groupScopeChips(group) {
   return chips;
 }
 
+// A few words for a row: counts instead of names, All when nothing is picked.
+export function groupScopeBrief(group) {
+  const part = (names, noun, all) => {
+    if (names.length === 0) return all;
+    if (names.length === 1) return names[0];
+    return `${names.length} ${noun}`;
+  };
+  const chips = groupScopeChips(group);
+  const labels = { Units: "All Units", Positions: "All Positions", Levels: "All Levels" };
+  return chips.map((chip) => part(chip.names, chip.noun === "units" ? "Units" : chip.noun === "positions" ? "Positions" : "Levels", labels[chip.label])).join(" · ");
+}
+
 export function groupTitle(group) {
   return audienceLabels[group.audience];
 }
