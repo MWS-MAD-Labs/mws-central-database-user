@@ -653,7 +653,7 @@ function TokenDialog({ title, client, onClose }) {
       onClose={onClose}
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={copyToken} disabled={!newToken}>
+          <Button type="button" variant="ghost" className="cursor-pointer" onClick={copyToken} disabled={!newToken}>
             <Copy size={16} />
             {copied ? "Copied" : "Copy"}
           </Button>

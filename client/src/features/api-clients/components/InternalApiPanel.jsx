@@ -122,7 +122,7 @@ export function InternalApiPanel({ endpoints, isLoading }) {
                           aria-label={`Copy path of ${endpoint.title || endpoint.path}`}
                           title="Copy path"
                           onClick={() => copyPath(endpoint)}
-                          className="shrink-0 rounded-lg p-1 text-(--mws-muted) hover:bg-white hover:text-(--mws-burgundy)"
+                          className="shrink-0 cursor-pointer rounded-lg p-1 text-(--mws-muted) transition-colors hover:text-(--mws-burgundy)"
                         >
                           <Copy size={14} />
                         </button>
