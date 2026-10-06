@@ -80,4 +80,24 @@ describe('GroupFilters review', () => {
     const lead = { units: [], levels: [{ id: 'lead', name: 'Lead' }], all: [{ id: 'lead', name: 'Lead', kind: 'levels' }] }
     expect(groupFilterErrors(makeState(() => {}, lead), 'EMPLOYEES').levels).toMatch(/Lead has no matching unit or position/)
   })
+
+  it('points out units without students on a student group and removes them', async () => {
+    let picked = null
+    const students = {
+      units: { selected: ['ele', 'mad'], setSelected: () => {} },
+      levels: { selected: null, setSelected: () => {} },
+      positions: { selected: null, setSelected: () => {} },
+      availability: null,
+      unsupported: { units: [], levels: [], all: [] },
+      dropPicks: (next) => { picked = next },
+      removed: null,
+    }
+    const { user } = renderWithProviders(
+      <GroupFilters audience="STUDENTS" options={options} state={students} studentUnits={[{ id: 'ele', name: 'Elementary' }]} showErrors />,
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('This unit has no students.')
+    await user.click(screen.getByRole('button', { name: 'Remove MAD Lab' }))
+    expect(picked).toEqual({ units: ['mad'] })
+    expect(groupFilterErrors(students, 'STUDENTS', undefined, new Set(['ele'])).units).toMatch(/have no students/)
+  })
 })

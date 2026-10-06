@@ -69,19 +69,28 @@ const noneUsable = (selection, knownIds) =>
   selection.selected.length > 0 &&
   selection.selected.every((id) => !knownIds.has(id));
 
+// Picked units that have no students, for a group of students. Nothing is judged before
+// the units with students are known.
+export const withoutStudents = (selection, studentUnitIds) =>
+  studentUnitIds && studentUnitIds.size > 0 && selection.selected
+    ? selection.selected.filter((id) => !studentUnitIds.has(id))
+    : [];
+
 const isNone = (selection) => selection.selected !== null && selection.selected.length === 0;
 
 const names = (list) => list.map((item) => item.name).join(", ");
 
 // Nothing may end up unchecked: "none" is not a valid filter.
-export function groupFilterErrors(state, audience, knownUnitIds) {
+export function groupFilterErrors(state, audience, knownUnitIds, studentUnitIds) {
   const employeesOnly = audience !== "STUDENTS";
   return {
     units: isNone(state.units)
       ? "Pick at least one unit, or choose All Units."
       : noneUsable(state.units, knownUnitIds)
         ? "None of the picked units can be used. Pick other units, or choose All Units."
-        : employeesOnly && state.unsupported?.units?.length > 0
+        : !employeesOnly && withoutStudents(state.units, studentUnitIds).length > 0
+          ? "Some picked units have no students. Remove them, or choose All Units."
+          : employeesOnly && state.unsupported?.units?.length > 0
           ? `${names(state.unsupported.units)} ${state.unsupported.units.length === 1 ? "has" : "have"} no matching job level or position in this scope. Remove ${state.unsupported.units.length === 1 ? "it" : "them"} or change the levels.`
           : undefined,
     positions:
@@ -97,8 +106,8 @@ export function groupFilterErrors(state, audience, knownUnitIds) {
   };
 }
 
-export function hasGroupFilterError(state, audience, knownUnitIds) {
-  return Object.values(groupFilterErrors(state, audience, knownUnitIds)).some(Boolean);
+export function hasGroupFilterError(state, audience, knownUnitIds, studentUnitIds) {
+  return Object.values(groupFilterErrors(state, audience, knownUnitIds, studentUnitIds)).some(Boolean);
 }
 
 // What is sent to the server. Units the picker does not offer (Unknown / Legacy) are left out.

@@ -94,7 +94,7 @@ function GroupAccessForm({ rule }) {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!scopeReviewed || !chosenRole || hasGroupFilterError(state, rule.audience, knownUnitIds)) return;
+    if (!scopeReviewed || !chosenRole || hasGroupFilterError(state, rule.audience, knownUnitIds, rules?.studentUnitIds)) return;
     mutation.mutate();
   }
 
@@ -120,6 +120,7 @@ function GroupAccessForm({ rule }) {
               options={options}
               state={state}
               showErrors={attempted}
+              studentUnits={rules?.studentUnits}
               onReviewChange={setScopeReviewed}
             />
           </section>

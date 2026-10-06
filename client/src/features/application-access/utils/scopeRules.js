@@ -136,7 +136,11 @@ export function buildScopeRules(catalog) {
     };
   }
 
-  return { combos, allowedValues, availability, settle, unsupported };
+  // Students only exist in units that have grades.
+  const studentUnitIds = new Set(catalog.student_unit_ids || []);
+  const studentUnits = catalog.units.filter((unit) => studentUnitIds.has(unit.id));
+
+  return { combos, allowedValues, availability, settle, unsupported, studentUnits, studentUnitIds };
 }
 
 export const hasRemoved = (removed) => DIMENSIONS.some((dimension) => removed[dimension].length > 0);

@@ -1,7 +1,7 @@
 import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
-import { groupFilterErrors } from "../utils/groupFilterState.js";
+import { groupFilterErrors, withoutStudents } from "../utils/groupFilterState.js";
 import { isRealUnit } from "../utils/legacyUnit.js";
 import { MultiCheckList } from "./MultiCheckList.jsx";
 import { ListPopover } from "../../../components/ui/ListPopover.jsx";
@@ -87,14 +87,18 @@ const reasonOf = { units: "job level or position", levels: "unit or position" };
 function UnsupportedPicks({ picks, onRemove, onRemoveAll }) {
   if (picks.length === 0) return null;
   const kinds = [...new Set(picks.map((pick) => pick.kind))];
+  const onlyStudents = kinds.length === 1 && kinds[0] === "students";
   return (
     <div
       role="alert"
       className="space-y-2 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]"
     >
       <p>
-        {picks.length === 1 ? "This pick has" : "These picks have"} no matching{" "}
-        {kinds.map((kind) => reasonOf[kind]).join(" or ")} in this scope.
+        {onlyStudents
+          ? `${picks.length === 1 ? "This unit has" : "These units have"} no students.`
+          : `${picks.length === 1 ? "This pick has" : "These picks have"} no matching ${kinds
+              .map((kind) => reasonOf[kind])
+              .join(" or ")} in this scope.`}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         {picks.map((pick) => (
@@ -128,7 +132,7 @@ function UnsupportedPicks({ picks, onRemove, onRemoveAll }) {
   );
 }
 
-export function GroupFilters({ audience, options, state, showErrors, knownUnitIds, onReviewChange }) {
+export function GroupFilters({ audience, options, state, showErrors, knownUnitIds, studentUnits, onReviewChange }) {
   const employeesOnly = audience !== "STUDENTS";
   const steps = employeesOnly
     ? [
@@ -143,17 +147,24 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
       ];
   const [stepIndex, setStepIndex] = useState(0);
   const step = steps[stepIndex].key;
-  const errors = showErrors ? groupFilterErrors(state, audience, knownUnitIds) : {};
+  const studentUnitIds = studentUnits ? new Set(studentUnits.map((unit) => unit.id)) : undefined;
+  const errors = showErrors ? groupFilterErrors(state, audience, knownUnitIds, studentUnitIds) : {};
   const dropped = state.removed ? removedText(state.removed, options) : "";
   const realUnits = (options.units || []).filter(isRealUnit);
+  // Students only live in units that have grades, so a student group is offered those only.
+  const unitChoices = employeesOnly ? realUnits : (studentUnits || []).filter(isRealUnit);
   const selected = step === "units" ? state.units.selected : step === "levels" ? state.levels.selected : state.positions.selected;
   const canContinue = step === "review" || selected === null || selected.length > 0;
 
-  const unsupported = employeesOnly ? state.unsupported?.all || [] : [];
-  const dropOne = (pick) => state.dropPicks({ [pick.kind]: [pick.id] });
+  const unitNames = new Map((options.units || []).map((unit) => [unit.id, unit.name]));
+  const noStudents = employeesOnly
+    ? []
+    : withoutStudents(state.units, studentUnitIds).map((id) => ({ id, name: unitNames.get(id) || id, kind: "students" }));
+  const unsupported = employeesOnly ? state.unsupported?.all || [] : noStudents;
+  const dropOne = (pick) => state.dropPicks({ [pick.kind === "students" ? "units" : pick.kind]: [pick.id] });
   const dropAll = () =>
     state.dropPicks({
-      units: unsupported.filter((pick) => pick.kind === "units").map((pick) => pick.id),
+      units: unsupported.filter((pick) => pick.kind === "units" || pick.kind === "students").map((pick) => pick.id),
       levels: unsupported.filter((pick) => pick.kind === "levels").map((pick) => pick.id),
     });
 
@@ -177,9 +188,15 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
         <MultiCheckList
           label="Units"
           allLabel="All Units"
-          items={realUnits.map((item) => ({ id: item.id, name: item.name }))}
+          items={unitChoices.map((item) => ({ id: item.id, name: item.name }))}
           selection={state.units}
-          hint="Choose the units this group covers."
+          hint={
+            employeesOnly
+              ? audience === "EMPLOYEES_AND_STUDENTS"
+                ? "Choose the units this group covers. Units without students add employees only."
+                : "Choose the units this group covers."
+              : "Pick the school units whose students this group covers."
+          }
           error={errors.units}
         />
       ) : null}
@@ -206,7 +223,7 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
         />
       ) : null}
 
-      {step === "levels" || step === "positions" ? (
+      {(step === "units" && !employeesOnly) || step === "levels" || step === "positions" ? (
         <UnsupportedPicks picks={unsupported} onRemove={dropOne} onRemoveAll={dropAll} />
       ) : null}
 
@@ -214,7 +231,7 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
         <div className="space-y-3" aria-label="Scope review">
           <UnsupportedPicks picks={unsupported} onRemove={dropOne} onRemoveAll={dropAll} />
           {[
-            ["Units", state.units.selected, realUnits, "All Units"],
+            [employeesOnly ? "Units" : "Students in", state.units.selected, unitChoices, employeesOnly ? "All Units" : "All school units"],
             ...(employeesOnly
               ? [
                   ["Job Levels", state.levels.selected, options.jobLevels || [], "All Levels"],

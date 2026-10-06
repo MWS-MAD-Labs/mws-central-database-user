@@ -84,7 +84,7 @@ export function GroupFormPage() {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!scopeReviewed || !chosenRole || hasGroupFilterError(scope, audience, knownUnitIds)) return;
+    if (!scopeReviewed || !chosenRole || hasGroupFilterError(scope, audience, knownUnitIds, rules?.studentUnitIds)) return;
     mutation.mutate();
   }
 
@@ -122,6 +122,7 @@ export function GroupFormPage() {
               options={options}
               state={scope}
               showErrors={attempted}
+              studentUnits={rules?.studentUnits}
               onReviewChange={setScopeReviewed}
             />
           </section>

@@ -21,6 +21,7 @@ const scopeCatalog = {
   ],
   job_levels: [{ id: 'lvl-1', name: 'Staff', unit_ids: [] }],
   pairs: { 'pos-1': ['lvl-1'], 'pos-2': ['lvl-1'], 'pos-3': ['lvl-1'], 'pos-4': ['lvl-1'], 'pos-5': ['lvl-1'] },
+  student_unit_ids: ['unit-2'],
 }
 
 const roles = [
@@ -305,5 +306,29 @@ describe('GroupFormPage', () => {
     await user.click(screen.getByRole('option', { name: 'All Active Students' }))
     expect(screen.getByRole('switch', { name: 'All Units' })).toBeVisible()
     expect(within(screen.getByLabelText('Scope steps')).queryByText('Job Positions')).not.toBeInTheDocument()
+  })
+
+  it('offers only the units that have students when the audience is students', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    await screen.findByText('Add group to exima')
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'MAD Lab' })).toBeVisible())
+
+    await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
+    await user.click(screen.getByRole('option', { name: 'All Active Students' }))
+    // MAD Lab has employees only; Elementary has grades.
+    expect(await screen.findByRole('switch', { name: 'Elementary' })).toBeVisible()
+    expect(screen.queryByRole('switch', { name: 'MAD Lab' })).not.toBeInTheDocument()
+    expect(screen.getByText('Pick the school units whose students this group covers.')).toBeVisible()
+  })
+
+  it('still offers every unit for employees and students together, with a note', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    await screen.findByText('Add group to exima')
+    await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
+    await user.click(screen.getByRole('option', { name: 'All Active Employees and Students' }))
+    expect(await screen.findByRole('switch', { name: 'MAD Lab' })).toBeVisible()
+    expect(screen.getByText(/Units without students add employees only/)).toBeVisible()
   })
 })

@@ -12,6 +12,15 @@ Semua dari UI Central (Super Admin), tanpa deploy:
 4. Catat Organization ID aplikasi (klik untuk menyalin). Aplikasi menyimpannya sebagai penanda bahwa data berasal dari Central yang benar.
 5. Beri aplikasi token API client dengan scope `application_entitlements:read`.
 
+## Contoh scope untuk murid
+
+- Hanya murid Junior High: group dengan audience Students, unit Junior High, lalu pilih role. Murid dicocokkan lewat unit gradenya, jadi murid Elementary dan semua karyawan tidak tercakup.
+- Hanya murid Elementary: sama, unit Elementary.
+- Semua murid aktif: audience Students, unit dibiarkan All.
+- Karyawan dan murid bersama: audience Employees and Students. Unit berlaku untuk keduanya, sedangkan posisi dan level hanya untuk karyawan.
+
+Group murid hanya menerima unit yang punya grade (Kindergarten, Elementary, Junior High). Unit seperti MAD Lab tidak punya murid, jadi tidak ditawarkan dan ditolak server dengan pesan `Unit "MAD Lab" has no students`.
+
 ## Lookup
 
 `GET /api/internal/application-entitlements/lookup?person_id=<id>&application_id=<id>` dengan `Authorization: Bearer <token>`.
