@@ -1,9 +1,7 @@
-import { Copy } from "lucide-react";
-import { Button } from "../../../components/ui/Button.jsx";
 import { useOrganizations } from "../hooks/useOrganizations.js";
-import { copyText } from "../utils/copyText.js";
+import { CopyableId } from "./CopyableId.jsx";
 
-// The organization of an application is generated, never typed.
+// The organization of an application is generated, never typed. Click it to copy.
 export function OrganizationNote({ applicationId }) {
   const query = useOrganizations();
   const organization = (query.data || []).find((item) => item.application_id === applicationId);
@@ -17,23 +15,11 @@ export function OrganizationNote({ applicationId }) {
         </p>
       ) : organization ? (
         <>
-          <div className="mt-1 flex items-center justify-between gap-2">
-            <code className="min-w-0 truncate text-sm font-semibold text-(--mws-charcoal)">
-              {organization.organization_id}
-            </code>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              aria-label="Copy Organization ID"
-              onClick={() => copyText(organization.organization_id)}
-            >
-              <Copy size={14} />
-              Copy
-            </Button>
+          <div className="mt-1">
+            <CopyableId value={organization.organization_id} />
           </div>
           <p className="mt-1 text-xs text-(--mws-muted)">
-            Map this value in {applicationId} so it recognises the organization.
+            Click to copy. Map this value in {applicationId} so it recognises the organization.
           </p>
         </>
       ) : (

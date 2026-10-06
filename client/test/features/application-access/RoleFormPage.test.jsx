@@ -23,9 +23,9 @@ function renderPage(path, user = { role: 'SUPER_ADMIN' }) {
   return renderWithProviders(
     <AuthContext.Provider value={{ user }}>
       <Routes>
-        <Route path="/application-access/roles/new" element={<RoleFormPage />} />
-        <Route path="/application-access/roles/:roleId" element={<RoleFormPage />} />
-        <Route path="/application-access" element={<div>Access list</div>} />
+        <Route path="/application-access/apps/:applicationId/roles/new" element={<RoleFormPage />} />
+        <Route path="/application-access/apps/:applicationId/roles/:roleId" element={<RoleFormPage />} />
+        <Route path="/application-access/apps/:applicationId" element={<div>App page</div>} />
       </Routes>
     </AuthContext.Provider>,
     { route: path },
@@ -38,7 +38,7 @@ describe('RoleFormPage', () => {
       { path: '/api/admin/application-roles/role-staff', method: 'PATCH', response: () => jsonResponse({ data: roles[1] }) },
     ]))
     globalThis.fetch = fetchMock
-    const { user } = renderPage('/application-access/roles/role-staff')
+    const { user } = renderPage('/application-access/apps/exima/roles/role-staff')
 
     expect(await screen.findByText('Edit STAFF')).toBeVisible()
     expect(screen.getByLabelText('store.use')).toBeChecked()
@@ -54,7 +54,7 @@ describe('RoleFormPage', () => {
         url.endsWith('/application-roles/role-staff') && options.method === 'PATCH')
       expect(JSON.parse(call[1].body).permissions.sort()).toEqual(['app.admin', 'store.use'])
     })
-    expect(await screen.findByText('Access list')).toBeVisible()
+    expect(await screen.findByText('App page')).toBeVisible()
   })
 
   it('adds a role to an application with a new permission', async () => {
@@ -62,11 +62,10 @@ describe('RoleFormPage', () => {
       { path: '/api/admin/application-roles', method: 'POST', response: () => jsonResponse({ data: { id: 'new' } }) },
     ]))
     globalThis.fetch = fetchMock
-    const { user } = renderPage('/application-access/roles/new')
+    const { user } = renderPage('/application-access/apps/exima/roles/new')
 
-    expect(await screen.findByText('Add Role')).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'Select or type an application' }))
-    await user.click(screen.getByRole('option', { name: 'exima' }))
+    expect(await screen.findByText('Add role to exima')).toBeVisible()
+    expect(screen.queryByText('Application ID')).not.toBeInTheDocument()
     const textboxes = screen.getAllByRole('textbox')
     await user.type(textboxes.find((input) => !input.placeholder), 'CASHIER')
     await user.type(screen.getAllByRole('textbox').filter((input) => !input.placeholder)[1], 'Cashier')
@@ -87,9 +86,15 @@ describe('RoleFormPage', () => {
     })
   })
 
+  it('says when the role belongs to another application', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage('/application-access/apps/hub/roles/role-staff')
+    expect(await screen.findByText('This role could not be found.')).toBeVisible()
+  })
+
   it('refuses a non Super Admin', async () => {
     globalThis.fetch = createFetchRouter(routes())
-    renderPage('/application-access/roles/new', { role: 'DATABASE_ADMIN' })
+    renderPage('/application-access/apps/exima/roles/new', { role: 'DATABASE_ADMIN' })
     expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
   })
 })

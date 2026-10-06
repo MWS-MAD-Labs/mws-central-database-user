@@ -1,0 +1,173 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowDown, ArrowUp, Plus } from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router";
+import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
+import { Button } from "../../../components/ui/Button.jsx";
+import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
+import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
+import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
+import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
+import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import { applicationAccessApi } from "../api/applicationAccessApi.js";
+
+// Roles of one application, highest first. The order drives every role picker.
+export function AppRolesTab({ applicationId, roles }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(10);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["application-access"] });
+  const toggleMutation = useMutation({
+    mutationFn: (role) => applicationAccessApi.updateRole(role.id, { is_active: !role.is_active }),
+    onSuccess: () => {
+      invalidate();
+      showSuccessToast("Role updated.");
+    },
+    onError: (error) => showErrorToast(error, "Could not update this role."),
+  });
+  const orderMutation = useMutation({
+    mutationFn: (ids) => applicationAccessApi.reorderRoles(applicationId, ids),
+    onSuccess: invalidate,
+    onError: (error) => showErrorToast(error, "Could not change the order."),
+  });
+
+  const totalPage = Math.max(Math.ceil(roles.length / size), 1);
+  const currentPage = Math.min(page, totalPage);
+  const visible = roles.slice((currentPage - 1) * size, currentPage * size);
+
+  function move(role, delta) {
+    const ids = roles.map((item) => item.id);
+    const from = ids.indexOf(role.id);
+    const to = from + delta;
+    if (to < 0 || to >= ids.length) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    orderMutation.mutate(ids);
+  }
+
+  return (
+    <section className="min-w-0 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-(--mws-muted)">
+          Highest role first. Role pickers in groups and exceptions follow this order.
+        </p>
+        <Button type="button" onClick={() => navigate(`/application-access/apps/${applicationId}/roles/new`)}>
+          <Plus size={16} />
+          Add role
+        </Button>
+      </div>
+      {roles.length === 0 ? (
+        <PanelMessage>No roles yet. Add the first role of {applicationId}.</PanelMessage>
+      ) : (
+        <DenseTable
+          minWidth={800}
+          head={
+            <>
+              <th className="px-4 py-2.5">Order</th>
+              <th className="px-4 py-2.5">Role</th>
+              <th className="px-4 py-2.5">Label</th>
+              <th className="px-4 py-2.5 text-right">Permissions</th>
+              <th className="px-4 py-2.5 text-right">In use</th>
+              <th className="px-4 py-2.5">Status</th>
+              <th className="px-4 py-2.5 text-right">Actions</th>
+            </>
+          }
+          footer={
+            <PaginationBar
+              paging={{ current_page: currentPage, total_page: totalPage, total_item: roles.length, size }}
+              itemLabel="roles"
+              isLoading={orderMutation.isPending}
+              onPrevious={() => setPage(Math.max(currentPage - 1, 1))}
+              onNext={() => setPage(currentPage + 1)}
+              onPageChange={setPage}
+              onPageSizeChange={(next) => {
+                setSize(next);
+                setPage(1);
+              }}
+            />
+          }
+        >
+          {visible.map((role) => {
+            const index = roles.indexOf(role);
+            return (
+              <tr key={role.id} className={denseRowClass}>
+                <td className={denseCellClass}>
+                  <div className="flex items-center gap-1">
+                    <span className="w-6 text-(--mws-muted)">{index + 1}</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      aria-label={`Move ${role.key} up`}
+                      disabled={index === 0 || orderMutation.isPending}
+                      onClick={() => move(role, -1)}
+                    >
+                      <ArrowUp size={14} />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      aria-label={`Move ${role.key} down`}
+                      disabled={index === roles.length - 1 || orderMutation.isPending}
+                      onClick={() => move(role, 1)}
+                    >
+                      <ArrowDown size={14} />
+                    </Button>
+                  </div>
+                </td>
+                <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>{role.key}</td>
+                <td className={denseCellClass}>{role.label}</td>
+                <td className={`${denseCellClass} text-right`} title={role.permissions.join(", ")}>
+                  {role.permissions.length}
+                </td>
+                <td className={`${denseCellClass} text-right`}>{role.active_entitlement_count}</td>
+                <td className={denseCellClass}>
+                  <StatusBadge tone={role.is_active ? "green" : "neutral"}>
+                    {role.is_active ? "Active" : "Inactive"}
+                  </StatusBadge>
+                </td>
+                <td className={`${denseCellClass} text-right`}>
+                  <ActionsMenu label={`Actions for ${applicationId} ${role.key}`}>
+                    {(closeMenu) => (
+                      <>
+                        <ActionsMenuItem
+                          onClick={() => {
+                            closeMenu();
+                            navigate(`/application-access/apps/${applicationId}/roles/${role.id}`);
+                          }}
+                        >
+                          Edit
+                        </ActionsMenuItem>
+                        <ActionsMenuItem
+                          tone={role.is_active ? "danger" : undefined}
+                          onClick={async () => {
+                            closeMenu();
+                            if (role.is_active) {
+                              const confirmed = await confirm({
+                                title: "Deactivate role",
+                                description: `${role.key} can no longer be granted for ${applicationId}.`,
+                                confirmLabel: "Deactivate",
+                              });
+                              if (!confirmed) return;
+                            }
+                            toggleMutation.mutate(role);
+                          }}
+                        >
+                          {role.is_active ? "Deactivate" : "Activate"}
+                        </ActionsMenuItem>
+                      </>
+                    )}
+                  </ActionsMenu>
+                </td>
+              </tr>
+            );
+          })}
+        </DenseTable>
+      )}
+    </section>
+  );
+}

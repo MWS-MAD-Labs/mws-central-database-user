@@ -10,6 +10,7 @@ import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { roleOptions } from "../utils/roleOptions.js";
 import { GroupFilters } from "../components/GroupFilters.jsx";
 import {
   audienceLabels,
@@ -105,7 +106,7 @@ function GroupAccessForm({ rule }) {
                 <SearchableSelect
                   value={roleKey}
                   onChange={setRoleKey}
-                  options={roles.map((role) => ({ value: role.key, label: role.key, description: role.label }))}
+                  options={roleOptions(roles)}
                   placeholder="Select a role"
                   searchPlaceholder="Search role"
                 />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { Route, Routes } from 'react-router'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { ExceptionAddPage } from '../../../src/features/application-access/pages/ExceptionAddPage.jsx'
 import { renderWithProviders } from '../../helpers/render.jsx'
@@ -26,17 +26,18 @@ const group = {
   job_positions: [],
   job_levels: [],
   permissions: ['store.use'],
-  exceptions: [],
+  exception_count: 0,
+  blocked_count: 0,
 }
 
 const candidates = [
-  { person_id: 'person-2', employee_id: '001', full_name: 'Alpha Person', email: 'alpha@millennia21.id', unit: 'MAD Lab', job_position: 'Developer', job_level: 'Senior', inherited_role: 'STAFF', inherited_group_id: 'rule-1', own_access: null },
-  { person_id: 'person-3', employee_id: '002', full_name: 'Beta Person', email: 'beta@millennia21.id', unit: 'MAD Lab', job_position: 'Designer', job_level: 'Junior', inherited_role: 'ADMIN', inherited_group_id: 'rule-2', own_access: null },
+  { person_id: 'person-2', employee_id: '001', full_name: 'Alpha Person', email: 'alpha@millennia21.id', unit: 'MAD Lab', job_position: 'Developer', job_level: 'Senior', employment_type: 'FULL_TIME', inherited_role: 'STAFF', inherited_group_id: 'rule-1', own_access: null },
+  { person_id: 'person-3', employee_id: '002', full_name: 'Beta Person', email: 'beta@millennia21.id', unit: 'MAD Lab', job_position: 'Designer', job_level: 'Junior', employment_type: 'CONTRACT', inherited_role: 'ADMIN', inherited_group_id: 'rule-2', own_access: null },
 ]
 
 const routes = (extra = []) => [
   ...extra,
-  { path: '/api/admin/application-access/apps/exima', method: 'GET', response: () => jsonResponse({ data: { application_id: 'exima', organization_id: 'org_exima_a1b2c3', groups: [group], other: [] } }) },
+  { path: '/api/admin/application-access/apps/exima', method: 'GET', response: () => jsonResponse({ data: { application_id: 'exima', organization_id: 'org_exima_a1b2c3', groups: [group], other_count: 0 } }) },
   { path: '/api/admin/application-roles', response: () => jsonResponse({ data: roles }) },
   {
     path: /^\/api\/admin\/application-access\/candidates\?/,
@@ -91,7 +92,7 @@ describe('ExceptionAddPage', () => {
     await user.click(screen.getByRole('button', { name: 'Select a role' }))
     await user.click(screen.getByRole('option', { name: /ADMIN/ }))
     expect(screen.getByText('Permissions: app.admin')).toBeVisible()
-    await user.click(await screen.findByLabelText('Alpha Person'))
+    await user.click(await screen.findByLabelText('Select Alpha Person'))
     await user.click(screen.getByRole('button', { name: 'Add exception' }))
 
     await waitFor(() => {
@@ -102,22 +103,45 @@ describe('ExceptionAddPage', () => {
     expect(await screen.findByText('App page')).toBeVisible()
   })
 
+  it('shows the people as a table with their details and the roles highest first', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    const row = (await screen.findByText('Alpha Person')).closest('tr')
+    expect(screen.getByText('alpha@millennia21.id')).toBeVisible()
+    for (const header of ['Name', 'Unit', 'Job Position', 'Job Level', 'Employment Type', 'Current role']) {
+      expect(screen.getByRole('columnheader', { name: header })).toBeVisible()
+    }
+    expect(within(row).getByText('MAD Lab')).toBeVisible()
+    expect(within(row).getByText('Developer')).toBeVisible()
+    expect(within(row).getByText('Senior')).toBeVisible()
+    expect(within(row).getByText('Full Time')).toBeVisible()
+    expect(within(row).getByText('STAFF')).toBeVisible()
+    expect(row.textContent).not.toContain(' / ')
+
+    await user.click(screen.getByRole('button', { name: 'Select a role' }))
+    const options = screen.getAllByRole('option')
+    expect(options[0]).toHaveTextContent('ADMIN')
+    expect(options[0]).toHaveTextContent('Highest')
+    expect(options[1]).toHaveTextContent('STAFF')
+    expect(options[1]).not.toHaveTextContent('Highest')
+  })
+
   it('cannot pick someone for the role they already get', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
     await user.click(await screen.findByRole('button', { name: 'Select a role' }))
     await user.click(screen.getByRole('option', { name: /ADMIN/ }))
 
-    await user.click(await screen.findByLabelText('Alpha Person'))
-    expect(screen.getByLabelText('Alpha Person')).toBeChecked()
+    await user.click(await screen.findByLabelText('Select Alpha Person'))
+    expect(screen.getByLabelText('Select Alpha Person')).toBeChecked()
     // Beta already gets ADMIN, so is disabled for it.
-    expect(screen.getByLabelText('Beta Person')).toBeDisabled()
+    expect(screen.getByLabelText('Select Beta Person')).toBeDisabled()
 
     // Moving to STAFF drops Alpha, who already gets STAFF.
-    await user.click(screen.getByRole('button', { name: 'ADMIN' }))
+    await user.click(screen.getByRole('button', { name: /^ADMIN/ }))
     await user.click(screen.getByRole('option', { name: /STAFF/ }))
-    expect(screen.getByLabelText('Alpha Person')).toBeDisabled()
-    expect(screen.getByLabelText('Alpha Person')).not.toBeChecked()
-    expect(screen.getByLabelText('Beta Person')).not.toBeDisabled()
+    expect(screen.getByLabelText('Select Alpha Person')).toBeDisabled()
+    expect(screen.getByLabelText('Select Alpha Person')).not.toBeChecked()
+    expect(screen.getByLabelText('Select Beta Person')).not.toBeDisabled()
   })
 })

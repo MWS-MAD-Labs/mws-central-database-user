@@ -4,16 +4,18 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
-import { Field, FilterSelect, SearchableSelect } from "../../../components/ui/FormControls.jsx";
+import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
+import { DebouncedSearchInput, Field, FilterSelect, SearchableSelect } from "../../../components/ui/FormControls.jsx";
+import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
-import { enumOptions } from "../../../lib/format.js";
+import { enumOptions, formatStatus } from "../../../lib/format.js";
 import { showBulkFailureToast, showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
-import { PaginatedCandidatePicker } from "../../academic/components/pc-activity-room/PaginatedCandidatePicker.jsx";
 import { employmentTypes } from "../../employees/api/employeesApi.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { groupScopeSummary, groupTitle } from "../utils/groupSummary.js";
+import { roleOptions } from "../utils/roleOptions.js";
 
 // Another role for people inside one group. Only people that group covers are listed.
 export function ExceptionAddPage() {
@@ -88,18 +90,14 @@ export function ExceptionAddPage() {
     total_item: rows.length,
     size: params.size,
   };
-  const items = rows.map((employee) => {
-    const inherited = employee.inherited_role;
-    const same = Boolean(roleKey) && inherited === roleKey;
-    return {
-      id: employee.person_id,
-      label: employee.full_name,
-      sublabel: [employee.email, employee.unit, employee.job_position].filter(Boolean).join(" / "),
-      extra: inherited ? `Gets ${inherited}${same ? ", pick a different role" : ""}` : null,
-      disabled: same,
-      inheritedRole: inherited,
-    };
-  });
+  const items = rows.map((employee) => ({
+    ...employee,
+    id: employee.person_id,
+    inheritedRole: employee.inherited_role,
+    disabled: Boolean(roleKey) && employee.inherited_role === roleKey,
+  }));
+  const selectable = items.filter((item) => !item.disabled);
+  const allPageSelected = selectable.length > 0 && selectable.every((item) => selected.has(item.id));
 
   // Someone who already gets this role cannot be picked for it.
   function chooseRole(value) {
@@ -154,31 +152,92 @@ export function ExceptionAddPage() {
             {attempted && selected.size === 0 ? (
               <p className="text-sm font-semibold text-[#a43c41]">Pick at least one employee.</p>
             ) : null}
-            <PaginatedCandidatePicker
-              items={items}
-              selected={selected}
-              paging={paging}
-              search={params.search}
-              isLoading={candidatesQuery.isLoading}
-              emptyMessage="No one in this group is waiting for an exception."
-              itemLabel="employee"
-              dense
-              filters={
-                <div className="flex flex-wrap gap-3">
-                  <FilterSelect
-                    label="Employment Type"
-                    value={params.employment_type}
-                    onChange={(value) => setParams((current) => ({ ...current, page: 1, employment_type: value }))}
-                    options={[{ value: "", label: "All Employment Types" }, ...enumOptions(employmentTypes)]}
-                  />
-                </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="w-full sm:w-72">
+                <DebouncedSearchInput
+                  value={params.search}
+                  onChange={(search) => setParams((current) => ({ ...current, page: 1, search }))}
+                  placeholder="Search employees"
+                />
+              </div>
+              <FilterSelect
+                label="Employment Type"
+                value={params.employment_type}
+                onChange={(value) => setParams((current) => ({ ...current, page: 1, employment_type: value }))}
+                options={[{ value: "", label: "All Employment Types" }, ...enumOptions(employmentTypes)]}
+              />
+            </div>
+            <DenseTable
+              dimmed={candidatesQuery.isPlaceholderData}
+              minWidth={900}
+              head={
+                <>
+                  <th className="w-10 px-4 py-2.5">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all on this page"
+                      checked={allPageSelected}
+                      disabled={candidatesQuery.isLoading || selectable.length === 0}
+                      onChange={(event) => togglePage(event.target.checked, selectable)}
+                      className="h-4 w-4 accent-(--mws-burgundy)"
+                    />
+                  </th>
+                  <th className="px-4 py-2.5">Name</th>
+                  <th className="px-4 py-2.5">Unit</th>
+                  <th className="px-4 py-2.5">Job Position</th>
+                  <th className="px-4 py-2.5">Job Level</th>
+                  <th className="px-4 py-2.5">Employment Type</th>
+                  <th className="px-4 py-2.5">Current role</th>
+                </>
               }
-              onSearchChange={(search) => setParams((current) => ({ ...current, page: 1, search }))}
-              onToggle={toggle}
-              onTogglePage={togglePage}
-              onPageChange={(page) => setParams((current) => ({ ...current, page }))}
-              onPageSizeChange={(size) => setParams((current) => ({ ...current, page: 1, size }))}
-            />
+              footer={
+                <PaginationBar
+                  paging={paging}
+                  itemLabel="employees"
+                  isLoading={candidatesQuery.isFetching}
+                  onPrevious={() => setParams((current) => ({ ...current, page: Math.max(current.page - 1, 1) }))}
+                  onNext={() => setParams((current) => ({ ...current, page: current.page + 1 }))}
+                  onPageChange={(page) => setParams((current) => ({ ...current, page }))}
+                  onPageSizeChange={(size) => setParams((current) => ({ ...current, page: 1, size }))}
+                />
+              }
+            >
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-(--mws-muted)">
+                    {candidatesQuery.isLoading ? "Loading employees..." : "No one in this group is waiting for an exception."}
+                  </td>
+                </tr>
+              ) : null}
+              {items.map((item) => (
+                <tr key={item.id} className={`${denseRowClass} ${item.disabled ? "opacity-60" : ""}`}>
+                  <td className={denseCellClass}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${item.full_name}`}
+                      checked={selected.has(item.id)}
+                      disabled={item.disabled}
+                      onChange={(event) => toggle(item, event.target.checked)}
+                      className="h-4 w-4 accent-(--mws-burgundy)"
+                    />
+                  </td>
+                  <td className={`${denseCellClass} max-w-64`}>
+                    <span className="block truncate font-semibold text-(--mws-charcoal)">{item.full_name}</span>
+                    <span className="block truncate text-xs text-(--mws-muted)">{item.email}</span>
+                  </td>
+                  <td className={denseCellClass}>{item.unit || "-"}</td>
+                  <td className={denseCellClass}>{item.job_position || "-"}</td>
+                  <td className={denseCellClass}>{item.job_level || "-"}</td>
+                  <td className={denseCellClass}>{item.employment_type ? formatStatus(item.employment_type) : "-"}</td>
+                  <td className={denseCellClass}>
+                    {item.inherited_role ?? "-"}
+                    {item.disabled ? (
+                      <span className="block text-xs text-(--mws-muted)">Pick a different role</span>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </DenseTable>
           </section>
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
             <div className="space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
@@ -186,7 +245,7 @@ export function ExceptionAddPage() {
                 <SearchableSelect
                   value={roleKey}
                   onChange={chooseRole}
-                  options={roles.map((role) => ({ value: role.key, label: role.key, description: role.label }))}
+                  options={roleOptions(roles)}
                   placeholder="Select a role"
                   searchPlaceholder="Search role"
                 />

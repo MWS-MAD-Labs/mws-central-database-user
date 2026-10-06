@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
 import { Route, Routes } from 'react-router'
@@ -7,104 +7,116 @@ import { ApplicationAccessPage } from '../../../src/features/application-access/
 import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 
-const roles = [
-  { id: 'role-admin', application_id: 'exima', key: 'ADMIN', label: 'Admin', permissions: ['app.admin', 'store.use'], is_active: true, active_entitlement_count: 1 },
-  { id: 'role-staff', application_id: 'exima', key: 'STAFF', label: 'Staff', permissions: ['store.use'], is_active: true, active_entitlement_count: 0 },
-  { id: 'role-old', application_id: 'exima', key: 'LEGACY', label: 'Legacy', permissions: [], is_active: false, active_entitlement_count: 0 },
-]
-
-const organizations = [
-  { application_id: 'exima', organization_id: 'org_exima_a1b2c3' },
-]
-
 const applications = [
-  { application_id: 'exima', organization_id: 'org_exima_a1b2c3', active_group_count: 2, exception_count: 3 },
-  { application_id: 'hub', organization_id: null, active_group_count: 0, exception_count: 0 },
+  {
+    application_id: 'exima',
+    organization_id: 'org_exima_a1b2c3',
+    role_count: 3,
+    active_group_count: 2,
+    exception_count: 4,
+    blocked_count: 1,
+    updated_at: '2026-10-02T03:00:00.000Z',
+  },
+  {
+    application_id: 'hub',
+    organization_id: null,
+    role_count: 0,
+    active_group_count: 0,
+    exception_count: 0,
+    blocked_count: 0,
+    updated_at: null,
+  },
 ]
 
-function baseRoutes(extra = []) {
+const paging = { current_page: 1, total_page: 2, total_item: 12, size: 10 }
+
+function routes(extra = []) {
   return [
     ...extra,
-    { path: '/api/admin/application-organizations', response: () => jsonResponse({ data: organizations }) },
-    { path: '/api/admin/application-roles', response: () => jsonResponse({ data: roles }) },
-    { path: '/api/admin/application-access/applications', response: () => jsonResponse({ data: applications }) },
+    {
+      path: /\/api\/admin\/application-access\/applications/,
+      method: 'GET',
+      response: () => jsonResponse({ data: applications, paging }),
+    },
   ]
 }
 
-function renderPage(user = { role: 'SUPER_ADMIN' }, route = '/application-access') {
+function renderPage(user = { role: 'SUPER_ADMIN' }) {
   return renderWithProviders(
     <AuthContext.Provider value={{ user }}>
       <ConfirmProvider>
         <Routes>
           <Route path="/application-access" element={<ApplicationAccessPage />} />
+          <Route path="/application-access/apps/new" element={<div>New application page</div>} />
           <Route path="/application-access/apps/:applicationId" element={<div>App page</div>} />
-          <Route path="/application-access/roles/new" element={<div>New role page</div>} />
-          <Route path="/application-access/roles/:roleId" element={<div>Edit role page</div>} />
         </Routes>
       </ConfirmProvider>
     </AuthContext.Provider>,
-    { route },
+    { route: '/application-access' },
   )
 }
 
 describe('ApplicationAccessPage', () => {
   it('refuses anyone who is not a Super Admin', async () => {
-    globalThis.fetch = createFetchRouter(baseRoutes())
+    globalThis.fetch = createFetchRouter(routes())
     renderPage({ role: 'DATABASE_ADMIN' })
     expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
   })
 
-  it('lists applications with group and exception counts and flags the ones without a group', async () => {
-    globalThis.fetch = createFetchRouter(baseRoutes())
+  it('lists applications with roles, groups, exceptions and blocked counts', async () => {
+    globalThis.fetch = createFetchRouter(routes())
     renderPage()
     const exima = (await screen.findByText('exima')).closest('tr')
     expect(within(exima).getByText('org_exima_a1b2c3')).toBeVisible()
-    expect(within(exima).getByText('2')).toBeVisible()
     expect(within(exima).getByText('3')).toBeVisible()
+    expect(within(exima).getByText('2')).toBeVisible()
+    expect(within(exima).getByText('4')).toBeVisible()
+    expect(within(exima).getByText('1 blocked')).toBeVisible()
     const hub = screen.getByText('hub').closest('tr')
-    expect(within(hub).getByText('No group yet')).toBeVisible()
+    expect(within(hub).getAllByText('None')).toHaveLength(2)
+  })
+
+  it('copies the organization id when it is clicked and has no Copy button', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Copy org_exima_a1b2c3' }))
+    await waitFor(async () => {
+      expect(await navigator.clipboard.readText()).toBe('org_exima_a1b2c3')
+    })
+    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument()
+  })
+
+  it('pages and searches on the server', async () => {
+    const fetchMock = createFetchRouter(routes())
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await screen.findByText('exima')
+    expect(screen.getByText(/Page 1 of 2/)).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url]) => url.includes('page=2'))).toBe(true)
+    })
+
+    await user.type(screen.getByPlaceholderText('Search applications'), 'exi')
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url]) => url.includes('search=exi'))).toBe(true)
+    })
   })
 
   it('opens the page of an application from Manage', async () => {
-    globalThis.fetch = createFetchRouter(baseRoutes())
+    globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
     await screen.findByText('exima')
     await user.click(screen.getByRole('button', { name: 'Manage exima' }))
     expect(await screen.findByText('App page')).toBeVisible()
   })
 
-  it('shows the registry and the generated organization ids on the Roles tab', async () => {
-    globalThis.fetch = createFetchRouter(baseRoutes())
-    const { user } = renderPage({ role: 'SUPER_ADMIN' }, '/application-access?tab=roles')
-    const row = (await screen.findByText('LEGACY')).closest('tr')
-    expect(within(row).getByText('Inactive')).toBeVisible()
-    const adminRow = screen.getByText('ADMIN').closest('tr')
-    expect(within(adminRow).getByText('1')).toBeVisible()
-    expect(screen.getByText('org_exima_a1b2c3')).toBeVisible()
-
-    await user.click(screen.getByRole('button', { name: 'Add Role' }))
-    expect(await screen.findByText('New role page')).toBeVisible()
-  })
-
-  it('opens the role edit page from the row menu', async () => {
-    globalThis.fetch = createFetchRouter(baseRoutes())
-    const { user } = renderPage({ role: 'SUPER_ADMIN' }, '/application-access?tab=roles')
-    await screen.findByText('LEGACY')
-    await user.click(screen.getByRole('button', { name: 'Actions for exima STAFF' }))
-    await user.click(screen.getByRole('button', { name: 'Edit' }))
-    expect(await screen.findByText('Edit role page')).toBeVisible()
-  })
-
-  it('switches between the Applications and Roles tabs', async () => {
-    globalThis.fetch = createFetchRouter(baseRoutes())
+  it('opens the add application page', async () => {
+    globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
     await screen.findByText('exima')
-
-    await user.click(screen.getByRole('button', { name: 'Roles' }))
-    expect(await screen.findByText('LEGACY')).toBeVisible()
-    expect(screen.queryByText('No group yet')).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Applications' }))
-    expect(await screen.findByText('No group yet')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Add application' }))
+    expect(await screen.findByText('New application page')).toBeVisible()
   })
 })

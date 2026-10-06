@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
-import { Field, SearchableSelect, TextInput } from "../../../components/ui/FormControls.jsx";
+import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
@@ -13,11 +13,10 @@ import { OrganizationNote } from "../components/OrganizationNote.jsx";
 import { PermissionChecklist } from "../components/PermissionChecklist.jsx";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 
-const BACK = "/application-access?tab=roles";
 
 export function RoleFormPage() {
   const { user } = useAuth();
-  const { roleId } = useParams();
+  const { applicationId, roleId } = useParams();
   const rolesQuery = useApplicationRoles();
 
   if (user?.role !== "SUPER_ADMIN") {
@@ -30,22 +29,22 @@ export function RoleFormPage() {
   }
   if (rolesQuery.isLoading) return <PanelMessage>Loading roles…</PanelMessage>;
   const roles = rolesQuery.data || [];
-  const role = roleId ? roles.find((item) => item.id === roleId) : null;
+  const role = roleId ? roles.find((item) => item.id === roleId && item.application_id === applicationId) : null;
   if (roleId && !role) return <PanelMessage tone="error">This role could not be found.</PanelMessage>;
-  return <RoleForm role={role} roles={roles} />;
+  return <RoleForm applicationId={applicationId} role={role} roles={roles} />;
 }
 
-function RoleForm({ role, roles }) {
+function RoleForm({ applicationId, role, roles }) {
+  const back = `/application-access/apps/${applicationId}?tab=roles`;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isEdit = Boolean(role);
-  const [application, setApplication] = useState(role?.application_id || "");
+  const application = applicationId;
   const [key, setKey] = useState(role?.key || "");
   const [label, setLabel] = useState(role?.label || "");
   const [permissions, setPermissions] = useState(role?.permissions || []);
   const [attempted, setAttempted] = useState(false);
 
-  const applications = [...new Set(roles.map((item) => item.application_id))].sort();
   // Every permission already used by a role of this application, plus the ones
   // added here, so a role can reuse them as a checklist.
   const catalog = [
@@ -62,7 +61,7 @@ function RoleForm({ role, roles }) {
       isEdit
         ? applicationAccessApi.updateRole(role.id, { label: label.trim(), permissions })
         : applicationAccessApi.createRole({
-            application_id: application.trim(),
+            application_id: application,
             key: key.trim(),
             label: label.trim(),
             permissions,
@@ -70,7 +69,7 @@ function RoleForm({ role, roles }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["application-access"] });
       showSuccessToast(isEdit ? "Role updated." : "Role added.");
-      navigate(BACK);
+      navigate(back);
     },
     onError: (error) => showErrorToast(error, "Could not save this role."),
   });
@@ -78,14 +77,14 @@ function RoleForm({ role, roles }) {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!label.trim() || (!isEdit && (!application.trim() || !key.trim()))) return;
+    if (!label.trim() || (!isEdit && !key.trim())) return;
     mutation.mutate();
   }
 
   return (
     <div className="min-w-0">
       <PageHeader
-        title={isEdit ? `Edit ${role.key}` : "Add Role"}
+        title={isEdit ? `Edit ${role.key}` : `Add role to ${applicationId}`}
         description={
           isEdit
             ? `Role of ${role.application_id}. The key stays as created.`
@@ -93,7 +92,7 @@ function RoleForm({ role, roles }) {
         }
         actions={
           <Button asChild variant="secondary">
-            <Link to={BACK}>
+            <Link to={back}>
               <ArrowLeft size={16} />
               Back
             </Link>
@@ -111,20 +110,6 @@ function RoleForm({ role, roles }) {
             <div className="space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
               {isEdit ? null : (
                 <>
-                  <Field
-                    label="Application ID"
-                    hint="Lowercase, for example exima. Pick an existing one or type a new one."
-                    error={attempted && !application.trim() ? "Application is required." : undefined}
-                  >
-                    <SearchableSelect
-                      creatable
-                      value={application}
-                      onChange={setApplication}
-                      options={applications.map((item) => ({ value: item, label: item }))}
-                      placeholder="Select or type an application"
-                      searchPlaceholder="Search or type an application"
-                    />
-                  </Field>
                   <Field label="Role key" error={attempted && !key.trim() ? "Role key is required." : undefined}>
                     <TextInput value={key} onChange={(event) => setKey(event.target.value)} />
                   </Field>
@@ -143,7 +128,7 @@ function RoleForm({ role, roles }) {
             </div>
             <div className="flex gap-2">
               <Button asChild variant="secondary" className="flex-1">
-                <Link to={BACK}>Cancel</Link>
+                <Link to={back}>Cancel</Link>
               </Button>
               <Button type="submit" className="flex-1" loading={mutation.isPending}>
                 Save

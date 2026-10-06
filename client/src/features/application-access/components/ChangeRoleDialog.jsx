@@ -5,6 +5,7 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { roleOptions } from "../utils/roleOptions.js";
 
 // Another role for one exception. The server refuses the role its group already gives.
 export function ChangeRoleDialog({ applicationId, exception, roles, onClose, onDone }) {
@@ -47,7 +48,7 @@ export function ChangeRoleDialog({ applicationId, exception, roles, onClose, onD
         <SearchableSelect
           value={roleKey}
           onChange={setRoleKey}
-          options={options.map((role) => ({ value: role.key, label: role.key, description: role.label }))}
+          options={roleOptions(options)}
           placeholder="Select a role"
           searchPlaceholder="Search role"
         />

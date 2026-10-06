@@ -7,8 +7,30 @@ const RULES = '/api/admin/application-access-rules'
 const ACCESS = '/api/admin/application-access'
 
 export const applicationAccessApi = {
-  async listApplications() {
-    const response = await apiRequest(`${ACCESS}/applications`)
+  async listApplications(params = {}) {
+    const query = compactSearchParams(params).toString()
+    return apiRequest(`${ACCESS}/applications${query ? `?${query}` : ''}`)
+  },
+
+  async createApplication(applicationId) {
+    const response = await apiRequest(`${ACCESS}/applications`, {
+      method: 'POST',
+      body: { application_id: applicationId },
+    })
+    return response.data
+  },
+
+  // Exceptions of one group, or of "other" (access no group covers), paged.
+  async listExceptions(applicationId, params = {}) {
+    const query = compactSearchParams(params).toString()
+    return apiRequest(`${ACCESS}/apps/${applicationId}/exceptions${query ? `?${query}` : ''}`)
+  },
+
+  async reorderRoles(applicationId, roleIds) {
+    const response = await apiRequest(`${ROLES}/order`, {
+      method: 'PATCH',
+      body: { application_id: applicationId, role_ids: roleIds },
+    })
     return response.data
   },
 

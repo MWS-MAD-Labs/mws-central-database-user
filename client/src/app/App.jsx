@@ -20,6 +20,7 @@ const AppAccessPage = lazy(() => import('../features/application-access/pages/Ap
 const GroupFormPage = lazy(() => import('../features/application-access/pages/GroupFormPage.jsx').then((module) => ({ default: module.GroupFormPage })))
 const ExceptionAddPage = lazy(() => import('../features/application-access/pages/ExceptionAddPage.jsx').then((module) => ({ default: module.ExceptionAddPage })))
 const GroupAccessEditPage = lazy(() => import('../features/application-access/pages/GroupAccessEditPage.jsx').then((module) => ({ default: module.GroupAccessEditPage })))
+const AppCreatePage = lazy(() => import('../features/application-access/pages/AppCreatePage.jsx').then((module) => ({ default: module.AppCreatePage })))
 const RoleFormPage = lazy(() => import('../features/application-access/pages/RoleFormPage.jsx').then((module) => ({ default: module.RoleFormPage })))
 const ApplicationAccessPage = lazy(() => import('../features/application-access/pages/ApplicationAccessPage.jsx').then((module) => ({ default: module.ApplicationAccessPage })))
 const AuditLogsPage = lazy(() => import('../features/audit/pages/AuditLogsPage.jsx').then((module) => ({ default: module.AuditLogsPage })))
@@ -88,12 +89,13 @@ export default function App() {
           <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="api-clients" element={<ApiClientsPage />} />
           <Route path="application-access" element={<ApplicationAccessPage />} />
+          <Route path="application-access/apps/new" element={<AppCreatePage />} />
           <Route path="application-access/apps/:applicationId" element={<AppAccessPage />} />
           <Route path="application-access/apps/:applicationId/groups/new" element={<GroupFormPage />} />
           <Route path="application-access/apps/:applicationId/groups/:ruleId" element={<GroupAccessEditPage />} />
           <Route path="application-access/apps/:applicationId/groups/:ruleId/exceptions/new" element={<ExceptionAddPage />} />
-          <Route path="application-access/roles/new" element={<RoleFormPage />} />
-          <Route path="application-access/roles/:roleId" element={<RoleFormPage />} />
+          <Route path="application-access/apps/:applicationId/roles/new" element={<RoleFormPage />} />
+          <Route path="application-access/apps/:applicationId/roles/:roleId" element={<RoleFormPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route element={<CapabilityRoute allowed={(user) => Boolean(user?.is_employee_identifier_change_approver)} title="Approver Access Required" description="Only change request approvers can review requests." />}>
             <Route path="change-requests" element={<ChangeRequestsPage />} />
