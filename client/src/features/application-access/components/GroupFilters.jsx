@@ -80,7 +80,7 @@ function StepTabs({ steps, current }) {
   );
 }
 
-export function GroupFilters({ audience, options, state, showErrors, onReviewChange }) {
+export function GroupFilters({ audience, options, state, showErrors, knownUnitIds, onReviewChange }) {
   const employeesOnly = audience !== "STUDENTS";
   const steps = employeesOnly
     ? [
@@ -95,7 +95,7 @@ export function GroupFilters({ audience, options, state, showErrors, onReviewCha
       ];
   const [stepIndex, setStepIndex] = useState(0);
   const step = steps[stepIndex].key;
-  const errors = showErrors ? groupFilterErrors(state, audience) : {};
+  const errors = showErrors ? groupFilterErrors(state, audience, knownUnitIds) : {};
   const dropped = state.removed ? removedText(state.removed, options) : "";
   const realUnits = (options.units || []).filter(isRealUnit);
   const selected = step === "units" ? state.units.selected : step === "levels" ? state.levels.selected : state.positions.selected;

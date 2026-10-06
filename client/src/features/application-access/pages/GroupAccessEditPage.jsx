@@ -94,7 +94,7 @@ function GroupAccessForm({ rule }) {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!scopeReviewed || !chosenRole || hasGroupFilterError(state, rule.audience)) return;
+    if (!scopeReviewed || !chosenRole || hasGroupFilterError(state, rule.audience, knownUnitIds)) return;
     mutation.mutate();
   }
 

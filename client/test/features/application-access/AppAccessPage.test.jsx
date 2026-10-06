@@ -727,6 +727,17 @@ describe("AppAccessPage", () => {
       ).not.toBeInTheDocument();
     });
 
+    it("shows the groups that still give a role next to the people count", async () => {
+      const withGroups = roles.map((role) => (role.key === "ADMIN" ? { ...role, active_group_count: 2 } : role));
+      globalThis.fetch = createFetchRouter([
+        ...routes(detail(), orderRoutes).filter((item) => item.path !== "/api/admin/application-roles"),
+        { path: "/api/admin/application-roles", response: () => jsonResponse({ data: withGroups }) },
+      ]);
+      renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      const admin = (await screen.findByText("ADMIN")).closest("tr");
+      expect(within(admin).getByText("+ 2 groups")).toBeVisible();
+    });
+
     it("opens the add role page", async () => {
       globalThis.fetch = createFetchRouter(routes(detail(), orderRoutes));
       const { user } = renderPage(

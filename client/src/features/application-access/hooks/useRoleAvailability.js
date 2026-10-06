@@ -1,8 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 
 // Roles a group with this scope cannot take, by the same rules the server saves with.
-export function useRoleAvailability({ applicationId, audience, scope, groupId }) {
+export function useRoleAvailability(request) {
+  // Picking chips quickly asks once, not once per click.
+  const wanted = JSON.stringify(request);
+  const [settled, setSettled] = useState(wanted);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(wanted), 300);
+    return () => window.clearTimeout(timer);
+  }, [wanted]);
+  const { applicationId, audience, scope, groupId } = JSON.parse(settled);
   const key = [
     audience,
     scope.unit_ids.join(","),

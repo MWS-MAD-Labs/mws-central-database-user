@@ -133,7 +133,14 @@ export function AppRolesTab({ applicationId, roles }) {
                 <td className={`${denseCellClass} text-center`}>
                   <PermissionPopover permissions={role.permissions} compact />
                 </td>
-                <td className={`${denseCellClass} text-center`}>{role.active_entitlement_count}</td>
+                <td className={`${denseCellClass} text-center`}>
+                  {role.active_entitlement_count}
+                  {role.active_group_count > 0 ? (
+                    <span className="ml-1.5 text-xs text-(--mws-muted)">
+                      + {role.active_group_count} {role.active_group_count === 1 ? "group" : "groups"}
+                    </span>
+                  ) : null}
+                </td>
                 <td className={denseCellClass}>
                   <StatusBadge tone={role.is_active ? "green" : "neutral"}>
                     {role.is_active ? "Active" : "Inactive"}
@@ -158,7 +165,10 @@ export function AppRolesTab({ applicationId, roles }) {
                             if (role.is_active) {
                               const confirmed = await confirm({
                                 title: "Deactivate role",
-                                description: `${role.key} can no longer be granted for ${applicationId}.`,
+                                description:
+                                  role.active_group_count > 0
+                                    ? `${role.key} is still given by ${role.active_group_count} active group(s) of ${applicationId}. Change or turn off those groups first, or this will be refused.`
+                                    : `${role.key} can no longer be granted for ${applicationId}.`,
                                 confirmLabel: "Deactivate",
                               });
                               if (!confirmed) return;

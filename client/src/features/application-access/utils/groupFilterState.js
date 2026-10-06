@@ -42,13 +42,25 @@ export function useGroupFilterState(initial = {}, rules = null) {
 }
 
 const selectionIds = (selection) => selection.selected ?? [];
+// Picked ids the picker no longer offers (Unknown / Legacy): leaving them out of a list that
+// had only those would turn it into All, so it is an error instead.
+const noneUsable = (selection, knownIds) =>
+  Boolean(knownIds) &&
+  selection.selected !== null &&
+  selection.selected.length > 0 &&
+  selection.selected.every((id) => !knownIds.has(id));
+
 const isNone = (selection) => selection.selected !== null && selection.selected.length === 0;
 
 // Nothing may end up unchecked: "none" is not a valid filter.
-export function groupFilterErrors(state, audience) {
+export function groupFilterErrors(state, audience, knownUnitIds) {
   const employeesOnly = audience !== "STUDENTS";
   return {
-    units: isNone(state.units) ? "Pick at least one unit, or choose All Units." : undefined,
+    units: isNone(state.units)
+      ? "Pick at least one unit, or choose All Units."
+      : noneUsable(state.units, knownUnitIds)
+        ? "None of the picked units can be used. Pick other units, or choose All Units."
+        : undefined,
     positions:
       employeesOnly && isNone(state.positions)
         ? "Pick at least one job position, or choose All Positions."
@@ -60,8 +72,8 @@ export function groupFilterErrors(state, audience) {
   };
 }
 
-export function hasGroupFilterError(state, audience) {
-  return Object.values(groupFilterErrors(state, audience)).some(Boolean);
+export function hasGroupFilterError(state, audience, knownUnitIds) {
+  return Object.values(groupFilterErrors(state, audience, knownUnitIds)).some(Boolean);
 }
 
 // What is sent to the server. Units the picker does not offer (Unknown / Legacy) are left out.

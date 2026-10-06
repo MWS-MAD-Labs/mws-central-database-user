@@ -84,7 +84,7 @@ export function GroupFormPage() {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!scopeReviewed || !chosenRole || hasGroupFilterError(scope, audience)) return;
+    if (!scopeReviewed || !chosenRole || hasGroupFilterError(scope, audience, knownUnitIds)) return;
     mutation.mutate();
   }
 
