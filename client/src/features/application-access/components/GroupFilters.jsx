@@ -1,18 +1,27 @@
+import { deadCount, groupFilterErrors } from "../utils/groupFilterState.js";
 import { isRealUnit } from "../utils/legacyUnit.js";
-import { groupFilterErrors } from "../utils/groupFilterState.js";
 import { MultiCheckList } from "./MultiCheckList.jsx";
 
-// Unit, job position and job level filters of a group access.
-export function GroupFilters({ audience, options, state, showErrors }) {
+const fits = (allowedIds) => (item) => !allowedIds || allowedIds.has(item.id);
+const leftOut = (selection, allowedIds) => {
+  const count = deadCount(selection, allowedIds);
+  return count > 0 ? `${count} picked left out. They do not fit the other choices.` : undefined;
+};
+
+// Unit, job position and job level filters of a group access. `allowed` limits each list
+// to what can still hold someone given the other two (the master data rules).
+export function GroupFilters({ audience, options, state, showErrors, allowed }) {
   const employeesOnly = audience !== "STUDENTS";
-  const errors = showErrors ? groupFilterErrors(state, audience) : {};
+  const errors = showErrors ? groupFilterErrors(state, audience, allowed) : {};
+  const asItem = (item) => ({ id: item.id, name: item.name });
   return (
     <>
       <MultiCheckList
         label="Units"
         allLabel="All Units"
-        items={(options.units || []).filter(isRealUnit).map((unit) => ({ id: unit.id, name: unit.name }))}
+        items={(options.units || []).filter(isRealUnit).filter(fits(employeesOnly ? allowed?.units : null)).map(asItem)}
         selection={state.units}
+        hint={employeesOnly ? leftOut(state.units, allowed?.units) : undefined}
         error={errors.units}
       />
       {employeesOnly ? (
@@ -20,17 +29,17 @@ export function GroupFilters({ audience, options, state, showErrors }) {
           <MultiCheckList
             label="Job Positions"
             allLabel="All Positions"
-            items={(options.jobPositions || []).map((item) => ({ id: item.id, name: item.name }))}
+            items={(options.jobPositions || []).filter(fits(allowed?.job_positions)).map(asItem)}
             selection={state.positions}
-            hint="Only applies to employees."
+            hint={leftOut(state.positions, allowed?.job_positions) ?? "Only applies to employees."}
             error={errors.positions}
           />
           <MultiCheckList
             label="Job Levels"
             allLabel="All Levels"
-            items={(options.jobLevels || []).map((item) => ({ id: item.id, name: item.name }))}
+            items={(options.jobLevels || []).filter(fits(allowed?.job_levels)).map(asItem)}
             selection={state.levels}
-            hint="Only applies to employees."
+            hint={leftOut(state.levels, allowed?.job_levels) ?? "Only applies to employees."}
             error={errors.levels}
           />
         </>

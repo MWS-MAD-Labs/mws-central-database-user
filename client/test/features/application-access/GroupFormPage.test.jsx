@@ -7,6 +7,7 @@ import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 
 let unavailable = []
+let scopeAllowed = { units: ['unit-1', 'unit-2'], job_positions: ['pos-1', 'pos-2'], job_levels: [] }
 
 const roles = [
   { id: 'role-admin', application_id: 'exima', key: 'ADMIN', label: 'Admin', permissions: ['app.admin'], is_active: true, active_entitlement_count: 0 },
@@ -18,6 +19,7 @@ const roles = [
 const routes = (extra = []) => [
   ...extra,
   { path: '/api/admin/application-roles', response: () => jsonResponse({ data: roles }) },
+  { path: /\/api\/admin\/application-access\/scope-options/, response: () => jsonResponse({ data: scopeAllowed }) },
   { path: /\/api\/admin\/application-access\/apps\/exima\/role-options/, response: () => jsonResponse({ data: { unavailable } }) },
   { path: '/api/admin/application-organizations', response: () => jsonResponse({ data: [{ application_id: 'exima', organization_id: 'org_exima_a1b2c3' }] }) },
   { path: /^\/api\/admin\/units/, response: () => jsonResponse({ data: [{ id: 'unit-1', name: 'MAD Lab' }, { id: 'unit-2', name: 'Elementary' }, { id: 'unit-9', name: 'Unknown / Legacy' }] }) },
@@ -41,6 +43,7 @@ function renderPage(user = { role: 'SUPER_ADMIN' }) {
 describe('GroupFormPage', () => {
   beforeEach(() => {
     unavailable = []
+    scopeAllowed = { units: ['unit-1', 'unit-2'], job_positions: ['pos-1', 'pos-2'], job_levels: [] }
   })
 
 
@@ -53,6 +56,14 @@ describe('GroupFormPage', () => {
     await waitFor(() => {
       expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([expect.stringContaining('ADMIN')])
     })
+  })
+
+  it('offers only the positions the master data lets exist for the chosen units', async () => {
+    scopeAllowed = { units: ['unit-1', 'unit-2'], job_positions: ['pos-1'], job_levels: [] }
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage()
+    expect(await screen.findByRole('switch', { name: 'Developer' })).toBeVisible()
+    await waitFor(() => expect(screen.queryByRole('switch', { name: 'Designer' })).not.toBeInTheDocument())
   })
 
   it('does not offer the Unknown / Legacy unit', async () => {

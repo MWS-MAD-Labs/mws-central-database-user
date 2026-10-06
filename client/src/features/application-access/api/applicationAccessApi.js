@@ -26,6 +26,13 @@ export const applicationAccessApi = {
     return apiRequest(`${ACCESS}/apps/${applicationId}/exceptions${query ? `?${query}` : ''}`)
   },
 
+  // Values of each dimension that can still hold someone given the others.
+  async scopeOptions(params = {}) {
+    const query = compactSearchParams(params).toString()
+    const response = await apiRequest(`${ACCESS}/scope-options?${query}`)
+    return response.data
+  },
+
   // Roles a group with this scope cannot take.
   async roleOptions(applicationId, params = {}) {
     const query = compactSearchParams(params).toString()

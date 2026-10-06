@@ -1,4 +1,5 @@
 import { audienceLabels } from "./groupFilterState.js";
+import { UNKNOWN_LEGACY_UNIT_NAME } from "./legacyUnit.js";
 
 // Plain text for where a group reaches, from the card the server returns.
 export function groupScopeSummary(group) {
@@ -22,7 +23,7 @@ export function groupScopeSummary(group) {
 
 // The scope as label, plural noun and names. No names means "All".
 export function groupScopeChips(group) {
-  const chips = [{ label: "Units", noun: "units", names: group.units.map((item) => item.name) }];
+  const chips = [{ label: "Units", noun: "units", names: group.units.map((item) => item.name).filter((name) => name !== UNKNOWN_LEGACY_UNIT_NAME) }];
   if (group.audience !== "STUDENTS") {
     chips.push(
       { label: "Positions", noun: "positions", names: group.job_positions.map((item) => item.name) },
