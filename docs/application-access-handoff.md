@@ -58,6 +58,7 @@ Logika ada di `client/src/features/application-access/utils/scopeRules.js` (`set
 Uji regresi yang harus ada setelah perbaikan: `client/test/features/application-access/scopeRules.test.js` (murni) dan `GroupFormPage.test.jsx` ("drops what only existed because of an unchecked unit and says so").
 
 ## Hal lain yang belum dikerjakan
+- Panduan integrasi aplikasi: `docs/application-access-integration.md`. Hub sudah generik (kolom Central entitlement app id per aplikasi), tapi Daily Check-in perlu penyesuaian aturan `version` sebelum gerbang Central dinyalakan untuknya.
 - Hub, Exima, Daily Check-in belum membaca role dari Central dengan kunci `UPPER_SNAKE` baru (perlu branch tindak lanjut di repo masing-masing dan koordinasi deploy; sesi UserSession dipotong saat deploy migrasi SSO, lihat memori proyek).
 - Merge: feature branch ke `staging` dulu, baru `staging` ke `main`. Jangan push tanpa diminta.
 - Review pasca-fitur (RBAC, soft-delete, audit, race condition) sesuai `CLAUDE.md` belum dilakukan untuk fitur ini.

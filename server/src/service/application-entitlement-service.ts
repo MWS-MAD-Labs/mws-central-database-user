@@ -191,7 +191,8 @@ async function resolveBaselineEntitlement(
   });
   if (!role || !role.is_active) return null;
 
-  const stamp = (role.updated_at > rule.updated_at ? role.updated_at : rule.updated_at).toISOString();
+  const changedAt = role.updated_at > rule.updated_at ? role.updated_at : rule.updated_at;
+  const stamp = changedAt.toISOString();
   return {
     id: `group:${rule.id}`,
     person_id: personId,
@@ -199,7 +200,9 @@ async function resolveBaselineEntitlement(
     organization_id: rule.organization_id,
     role: role.key,
     permissions: role.permissions,
-    version: 0,
+    // No counter exists for group access, so the version is the second the role or
+    // group last changed: it only goes up, and stays put while nothing changes.
+    version: Math.floor(changedAt.getTime() / 1000),
     is_active: true,
     granted_at: rule.created_at.toISOString(),
     updated_at: stamp,

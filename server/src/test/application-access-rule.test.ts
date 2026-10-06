@@ -100,8 +100,30 @@ describe("application baseline access rules", () => {
     expect(body.data.role).toBe("STAFF");
     expect(body.data.permissions).toEqual(["store.use"]);
     expect(body.data.is_default).toBe(true);
-    expect(body.data.version).toBe(0);
+    expect(body.data.version).toBeGreaterThan(1_700_000_000);
+    // Nothing changed, so the version stays put.
+    expect((await (await lookup(person.id)).json()).data.version).toBe(body.data.version);
     expect(body.data.organization_id).toMatch(/^org_/);
+  });
+
+  it("raises the version of group access when the role or the group changes", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const person = await createEmployee("test_rule_version@millennia21.id");
+    const rule = await ruleId(await addRule(accessToken));
+    const first = (await (await lookup(person.id)).json()).data.version as number;
+
+    // The version counts seconds, so give the clock a full one between changes.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const role = await prismaClient.applicationRole.findFirstOrThrow({ where: { application_id: appId, key: "STAFF" } });
+    await TestRequest.patch(`/api/admin/application-roles/${role.id}`, { permissions: ["store.use", "store.refund"] }, accessToken);
+    const afterRole = (await (await lookup(person.id)).json()).data.version as number;
+    expect(afterRole).toBeGreaterThan(first);
+
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await TestRequest.patch(`${RULES}/${rule}`, { is_active: false }, accessToken);
+    await TestRequest.patch(`${RULES}/${rule}`, { is_active: true }, accessToken);
+    const afterGroup = (await (await lookup(person.id)).json()).data.version as number;
+    expect(afterGroup).toBeGreaterThan(afterRole);
   });
 
   it("lets an explicit entitlement win and a revoked one block group access", async () => {
