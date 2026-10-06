@@ -157,6 +157,11 @@ describe("application access per application", () => {
     expect(second.exception_count).toBe(1);
     expect(second.blocked_count).toBe(0);
     expect(detail.other_count).toBe(1);
+    // Active people the scope reaches (the test db may hold others): the four
+    // active employees here for the baseline, only the position holder below it.
+    expect(first.covered_count).toBeGreaterThanOrEqual(4);
+    expect(second.covered_count).toBe(1);
+    expect(second.covered_count).toBeLessThan(first.covered_count);
     expect(detail.groups[0].exceptions).toBeUndefined();
 
     const rows = async (groupId: string, query = "") =>

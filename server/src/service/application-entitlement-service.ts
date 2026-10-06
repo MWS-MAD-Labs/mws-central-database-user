@@ -1265,6 +1265,34 @@ export class ApplicationAccessService {
     const named = (list: { id: string; name: string }[], ids: string[]) =>
       ids.map((id) => ({ id, name: list.find((item) => item.id === id)?.name ?? id }));
 
+    const covered = await Promise.all(
+      rules.map(async (rule) => {
+        const employees =
+          rule.audience === ApplicationAudience.STUDENTS
+            ? 0
+            : await prismaClient.employee.count({
+                where: {
+                  status: EmployeeStatus.ACTIVE,
+                  deleted_at: null,
+                  ...(rule.unit_ids.length ? { unit_id: { in: rule.unit_ids } } : {}),
+                  ...(rule.job_position_ids.length ? { job_position_id: { in: rule.job_position_ids } } : {}),
+                  ...(rule.job_level_ids.length ? { job_level_id: { in: rule.job_level_ids } } : {}),
+                },
+              });
+        const students =
+          rule.audience === ApplicationAudience.EMPLOYEES
+            ? 0
+            : await prismaClient.student.count({
+                where: {
+                  status: StudentStatus.ACTIVE,
+                  deleted_at: null,
+                  ...(rule.unit_ids.length ? { current_grade: { unit_id: { in: rule.unit_ids } } } : {}),
+                },
+              });
+        return employees + students;
+      }),
+    );
+
     const groups: ApplicationGroupCard[] = rules
       .map((rule, index) => {
         const inside = parents.filter((item) => item.parentId === rule.id);
@@ -1277,6 +1305,7 @@ export class ApplicationAccessService {
           permissions: roles.find((role) => role.key === rule.default_role_key)?.permissions ?? [],
           exception_count: inside.filter((item) => item.row.is_active).length,
           blocked_count: inside.filter((item) => !item.row.is_active).length,
+          covered_count: covered[index],
         };
       })
       // Broad groups first, then narrower ones.

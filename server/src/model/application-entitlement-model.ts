@@ -190,6 +190,8 @@ export type ApplicationGroupCard = ApplicationAccessRuleResponse & {
   permissions: string[];
   exception_count: number;
   blocked_count: number;
+  // Active people the scope reaches, before exceptions and narrower groups.
+  covered_count: number;
 };
 
 export type ApplicationDetail = {
