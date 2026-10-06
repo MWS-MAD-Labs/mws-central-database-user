@@ -1448,10 +1448,18 @@ export class ApplicationAccessService {
     const input = Validation.validate(ApplicationAccessRuleValidation.SCOPE_OPTIONS, request);
     const catalog = await loadScopeCatalog();
     const feasibility = buildFeasibility(catalog);
-    const lists = {
+    let lists = {
       unit_ids: input.unit_ids ?? [],
       job_position_ids: input.job_position_ids ?? [],
       job_level_ids: input.job_level_ids ?? [],
+    };
+    // Choices that no longer fit the others do not restrict them. If nothing fits at all, nothing restricts.
+    const used = projection(feasibility.combos(lists));
+    const none = used.units.size === 0;
+    lists = {
+      unit_ids: none ? [] : lists.unit_ids.filter((id) => used.units.has(id)),
+      job_position_ids: none ? [] : lists.job_position_ids.filter((id) => used.positions.has(id)),
+      job_level_ids: none ? [] : lists.job_level_ids.filter((id) => used.levels.has(id)),
     };
     const ids = (set: Set<string>) => [...set];
     return {
