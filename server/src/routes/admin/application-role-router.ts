@@ -26,6 +26,7 @@ export const applicationAccessRouter = new Hono<{ Variables: AdminVariables }>()
 applicationAccessRouter.get("/applications", (c) => ApplicationAccessController.applications(c));
 applicationAccessRouter.post("/applications", (c) => ApplicationAccessController.createApplication(c));
 applicationAccessRouter.get("/apps/:applicationId/exceptions", (c) => ApplicationAccessController.exceptions(c));
+applicationAccessRouter.get("/apps/:applicationId/role-options", (c) => ApplicationAccessController.roleOptions(c));
 applicationAccessRouter.get("/apps/:applicationId", (c) => ApplicationAccessController.application(c));
 applicationAccessRouter.get("/candidates", (c) => ApplicationAccessController.candidates(c));
 applicationAccessRouter.get("/", (c) => ApplicationAccessController.list(c));

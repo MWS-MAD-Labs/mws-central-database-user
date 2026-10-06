@@ -19,6 +19,7 @@ import {
   type UpdateGradeRequest,
 } from "../model/grade-model";
 import { paginate, type Pageable } from "../model/page-model";
+import { UNKNOWN_LEGACY_UNIT_NAME } from "../utils/legacy-unit";
 import { AuditService } from "./audit-service";
 import { GradeValidation } from "../validation/grade-validation";
 import { Validation } from "../validation/validation";
@@ -33,7 +34,7 @@ import {
 } from "../utils/admin-permissions";
 
 // Grades belong only to academic units used by NIS generation.
-const UNKNOWN_LEGACY_UNIT_NAME = "Unknown / Legacy";
+
 const ACADEMIC_UNIT_NAMES = [
   "Kindergarten",
   "Elementary",

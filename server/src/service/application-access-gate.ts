@@ -185,14 +185,15 @@ export async function assertPersonException(
   }
 }
 
-type EntitlementSubject = { role: string; isActive: boolean; subject: RuleSubject | null };
+type EntitlementSubject = { name: string; role: string; isActive: boolean; subject: RuleSubject | null };
 
 async function loadEntitlementSubjects(applicationId: string): Promise<EntitlementSubject[]> {
   const rows = await prismaClient.applicationEntitlement.findMany({
     where: { application_id: applicationId },
-    select: { role: true, is_active: true, person: { select: SUBJECT_SELECT } },
+    select: { role: true, is_active: true, person: { select: { full_name: true, ...SUBJECT_SELECT } } },
   });
   return rows.map((row) => ({
+    name: row.person.full_name,
     role: row.role,
     isActive: row.is_active,
     subject: toRuleSubject(row.person),
@@ -202,12 +203,31 @@ async function loadEntitlementSubjects(applicationId: string): Promise<Entitleme
 // Checks one change of a group access (create, update or delete) against the
 // "no redundant access, parent removed last" rules. `previous` is the stored
 // rule (null when creating), `next` the rule afterwards (null when deleting).
+export type GateState = { before: GateRule[]; people: EntitlementSubject[] };
+
+// Everything the checks read, loaded once so several changes can be tried.
+export async function loadGateState(applicationId: string): Promise<GateState> {
+  const [before, people] = await Promise.all([loadActiveRules(applicationId), loadEntitlementSubjects(applicationId)]);
+  return { before, people };
+}
+
 export async function assertRuleGate(
   applicationId: string,
   previous: GateRule | null,
   next: GateRule | null,
 ): Promise<void> {
-  const before = await loadActiveRules(applicationId);
+  checkRuleGate(await loadGateState(applicationId), previous, next);
+}
+
+// `roleOnly` leaves out the "still depends on this group" check, which does not
+// depend on the role, so a role picker can ask only about roles.
+export function checkRuleGate(
+  state: GateState,
+  previous: GateRule | null,
+  next: GateRule | null,
+  options: { roleOnly?: boolean } = {},
+): void {
+  const { before, people } = state;
   const withoutThis = before.filter((rule) => rule.id !== previous?.id);
   const after = next && next.is_active ? [...withoutThis, next] : withoutThis;
 
@@ -221,8 +241,6 @@ export async function assertRuleGate(
       );
     }
   }
-
-  const people = await loadEntitlementSubjects(applicationId);
 
   // Widening a group must not make narrower access redundant.
   if (next && next.is_active) {
@@ -251,24 +269,26 @@ export async function assertRuleGate(
   }
 
   // A group cannot go while specific access still has it as its parent.
-  if (previous) {
-    let dependents = 0;
+  if (previous && !options.roleOnly) {
+    const dependents: string[] = [];
     for (const rule of before) {
       if (rule.id === previous.id) continue;
       if (parentRule(rule, before)?.id === previous.id && parentRule(rule, after)?.id !== previous.id) {
-        dependents += 1;
+        dependents.push(`a ${rule.default_role_key} group`);
       }
     }
     for (const person of people) {
       if (!person.subject) continue;
       if (inheritedRole(person.subject, before)?.id === previous.id && inheritedRole(person.subject, after)?.id !== previous.id) {
-        dependents += 1;
+        dependents.push(person.name);
       }
     }
-    if (dependents > 0) {
+    if (dependents.length > 0) {
+      const shown = dependents.slice(0, 3).join(", ");
+      const more = dependents.length > 3 ? ` and ${dependents.length - 3} more` : "";
       throw new ResponseError(
         400,
-        `${dependents} specific access entries still depend on this group. Remove them first.`,
+        `${shown}${more} still depend${dependents.length === 1 ? "s" : ""} on this group. Remove them first.`,
       );
     }
   }

@@ -202,6 +202,19 @@ export type ApplicationDetail = {
   other_count: number;
 };
 
+export type ListRoleOptionsRequest = {
+  audience: ApplicationAudience;
+  unit_ids?: string[];
+  job_position_ids?: string[];
+  job_level_ids?: string[];
+  group_id?: string;
+};
+
+export type ApplicationRoleOptions = {
+  // Roles a group with this scope cannot take, with the reason.
+  unavailable: { role: string; reason: string }[];
+};
+
 export type ListApplicationExceptionsRequest = {
   group_id: string;
   search?: string;

@@ -144,6 +144,15 @@ export class ApplicationAccessRuleValidation {
     size: z.number().int().min(1).max(100).default(10),
   });
 
+  // A scope someone is about to save, to ask which roles it can still take.
+  static readonly ROLE_OPTIONS = z.object({
+    audience: z.enum(["EMPLOYEES", "STUDENTS", "EMPLOYEES_AND_STUDENTS"]),
+    unit_ids: idList("Unit").optional(),
+    job_position_ids: idList("Job position").optional(),
+    job_level_ids: idList("Job level").optional(),
+    group_id: nonemptyId("Group ID").optional(),
+  });
+
   static readonly CREATE = z.object({
     application_id: applicationId,
     ...accessRuleFields,

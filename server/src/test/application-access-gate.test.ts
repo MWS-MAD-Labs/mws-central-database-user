@@ -214,7 +214,11 @@ describe("application access gate: no redundant access, parent removed last", ()
 
     const remove = await TestRequest.delete(`${RULES}/${groupId}`, accessToken);
     expect(remove.status).toBe(400);
-    expect(await message(remove)).toContain("1 specific access entries still depend on this group");
+    const reason = await message(remove);
+    expect(reason).toContain("still depends on this group. Remove them first.");
+    // It names who, not just how many.
+    expect(reason).not.toMatch(/^\d/);
+    expect(reason).toContain(inside.full_name);
     expect((await TestRequest.patch(`${RULES}/${groupId}`, { is_active: false }, accessToken)).status).toBe(400);
     // Narrowing it so that it no longer covers the person is gated too.
     const otherUnit = await prismaClient.masterUnit.create({ data: { name: `TEST_GATE_OTHER_${randomBytes(3).toString("hex")}` } });
@@ -348,5 +352,36 @@ describe("application access gate: no redundant access, parent removed last", ()
     expect(covered).toHaveLength(0);
     const uncovered = (await (await TestRequest.get(`${url}&coverage=UNCOVERED`, accessToken)).json()).data;
     expect(uncovered.map((item: { person_id: string }) => item.person_id)).toContain(person.id);
+  });
+
+  it("tells which roles a scope can still take and never offers the Unknown / Legacy unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const OPTIONS = `/api/admin/application-access/apps/${appId}/role-options`;
+    const position = await prismaClient.masterJobPosition.create({ data: { name: `TEST_GATE_OPT_${randomBytes(3).toString("hex")}` } });
+    const unavailable = async (query: string, token = accessToken) =>
+      ((await (await TestRequest.get(`${OPTIONS}?${query}`, token)).json()).data.unavailable as { role: string }[]).map((item) => item.role);
+
+    // Nothing exists yet, so every role is open.
+    expect(await unavailable("audience=EMPLOYEES")).toEqual([]);
+
+    const baseline = await (await addRule(accessToken, { default_role_key: "STAFF" })).json();
+    // A group inside the baseline cannot repeat its role.
+    expect(await unavailable(`audience=EMPLOYEES&job_position_ids=${position.id}`)).toEqual(["STAFF"]);
+    // Editing the baseline itself keeps its own role open.
+    expect(await unavailable(`audience=EMPLOYEES&group_id=${baseline.data.id}`)).toEqual([]);
+
+    // A wider group may not take the role of a group that would then sit inside it.
+    await addRule(accessToken, { job_position_ids: [position.id], default_role_key: "ADMIN" });
+    const wide = await unavailable("audience=EMPLOYEES&unit_ids=" + masterData.unit.id);
+    expect(wide).toContain("STAFF");
+
+    expect((await TestRequest.get(`${OPTIONS}?audience=NOPE`, accessToken)).status).toBe(400);
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin();
+    expect((await TestRequest.get(`${OPTIONS}?audience=EMPLOYEES`, dbAdmin.accessToken)).status).toBe(403);
+
+    const legacy = await prismaClient.masterUnit.findUniqueOrThrow({ where: { name: "Unknown / Legacy" } });
+    const refused = await addRule(accessToken, { unit_ids: [legacy.id], default_role_key: "MEMBER" });
+    expect(refused.status).toBe(400);
+    expect(await message(refused)).toContain("Unknown / Legacy is not a real unit");
   });
 });

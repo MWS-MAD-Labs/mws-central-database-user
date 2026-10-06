@@ -234,6 +234,23 @@ export class ApplicationAccessController {
     return c.json(response);
   }
 
+  static async roleOptions(c: Context<{ Variables: AdminVariables }>) {
+    const applicationId = c.req.param("applicationId");
+    if (!applicationId) throw new ResponseError(400, "Application ID is required");
+    const audience = c.req.query("audience");
+    if (!audience || !["EMPLOYEES", "STUDENTS", "EMPLOYEES_AND_STUDENTS"].includes(audience)) {
+      throw new ResponseError(400, "audience must be EMPLOYEES, STUDENTS or EMPLOYEES_AND_STUDENTS");
+    }
+    const response = await ApplicationAccessService.roleOptions(c.var.admin, applicationId, {
+      audience: audience as "EMPLOYEES" | "STUDENTS" | "EMPLOYEES_AND_STUDENTS",
+      unit_ids: listQuery(c.req.query("unit_ids")),
+      job_position_ids: listQuery(c.req.query("job_position_ids")),
+      job_level_ids: listQuery(c.req.query("job_level_ids")),
+      group_id: c.req.query("group_id"),
+    });
+    return c.json({ data: response });
+  }
+
   static async application(c: Context<{ Variables: AdminVariables }>) {
     const applicationId = c.req.param("applicationId");
     if (!applicationId) throw new ResponseError(400, "Application ID is required");

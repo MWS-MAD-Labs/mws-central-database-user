@@ -28,6 +28,8 @@ import {
   type ListApplicationCandidatesRequest,
   type ApplicationCandidate,
   type ApplicationDetail,
+  type ApplicationRoleOptions,
+  type ListRoleOptionsRequest,
   type ApplicationExceptionRow,
   type ApplicationGroupCard,
   type ApplicationSummary,
@@ -58,12 +60,15 @@ import {
   ApplicationValidation,
 } from "../validation/application-entitlement-validation";
 import { Validation } from "../validation/validation";
+import { UNKNOWN_LEGACY_UNIT_NAME } from "../utils/legacy-unit";
 import { AuditService } from "./audit-service";
 import {
   loadActiveRules,
   assertHasGroup,
   assertPersonException,
   assertRuleGate,
+  checkRuleGate,
+  loadGateState,
   loadRuleSubject,
   ruleMatches,
   inheritedRole,
@@ -852,6 +857,12 @@ async function assertRuleReferences(rule: {
       : 0,
   ]);
   if (units !== rule.unit_ids.length) throw new ResponseError(400, "One or more units do not exist");
+  if (rule.unit_ids.length) {
+    const legacy = await prismaClient.masterUnit.count({
+      where: { id: { in: rule.unit_ids }, name: UNKNOWN_LEGACY_UNIT_NAME },
+    });
+    if (legacy > 0) throw new ResponseError(400, `${UNKNOWN_LEGACY_UNIT_NAME} is not a real unit`);
+  }
   if (positions !== rule.job_position_ids.length) throw new ResponseError(400, "One or more job positions do not exist");
   if (levels !== rule.job_level_ids.length) throw new ResponseError(400, "One or more job levels do not exist");
 }
@@ -1321,6 +1332,47 @@ export class ApplicationAccessService {
       groups,
       other_count: parents.filter((item) => item.parentId === null).length,
     };
+  }
+
+  // Which roles a group with this scope cannot take, by the same rules as saving it.
+  static async roleOptions(
+    admin: AdminUser,
+    applicationId: string,
+    request: ListRoleOptionsRequest,
+  ): Promise<ApplicationRoleOptions> {
+    assertSuperAdmin(admin);
+    const input = Validation.validate(ApplicationAccessRuleValidation.ROLE_OPTIONS, request);
+    const [state, roles] = await Promise.all([
+      loadGateState(applicationId),
+      prismaClient.applicationRole.findMany({
+        where: { application_id: applicationId, is_active: true },
+        select: { key: true },
+      }),
+    ]);
+    const previous = input.group_id ? (state.before.find((rule) => rule.id === input.group_id) ?? null) : null;
+    const unavailable: ApplicationRoleOptions["unavailable"] = [];
+    for (const role of roles) {
+      try {
+        checkRuleGate(
+          state,
+          previous,
+          {
+            id: previous?.id ?? "new",
+            audience: input.audience,
+            unit_ids: input.unit_ids ?? [],
+            job_position_ids: input.job_position_ids ?? [],
+            job_level_ids: input.job_level_ids ?? [],
+            default_role_key: role.key,
+            is_active: true,
+          },
+          { roleOnly: true },
+        );
+      } catch (error) {
+        if (!(error instanceof ResponseError)) throw error;
+        unavailable.push({ role: role.key, reason: error.message });
+      }
+    }
+    return { unavailable };
   }
 
   // The exceptions of one group (or the older access no group covers), paged.
