@@ -314,6 +314,7 @@ enum AuditAction {
   APPLICATION_ENTITLEMENT_UPDATE
   APPLICATION_ENTITLEMENT_REVOKE
   APPLICATION_ENTITLEMENT_DELETE
+  APPLICATION_CREATE
   APPLICATION_ROLE_CREATE
   APPLICATION_ROLE_UPDATE
   APPLICATION_ACCESS_RULE_SET
@@ -1635,6 +1636,8 @@ model ApplicationRole {
   key            String
   label          String
   permissions    String[] @default([])
+  // 0 is the highest role of the application, then 1, 2 and so on.
+  rank           Int      @default(0)
   is_active      Boolean  @default(true)
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt

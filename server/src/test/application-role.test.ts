@@ -35,7 +35,8 @@ describe("application role registry", () => {
     const keys = (app: string) =>
       body.data.filter((r: { application_id: string }) => r.application_id === app).map((r: { key: string }) => r.key);
     expect(keys("exima")).toEqual(["ADMIN", "CASHIER", "RESOURCE", "STAFF"]);
-    expect(keys("daily-checkin")).toEqual(["ADMIN", "EDUCATOR", "PARTICIPANT", "SUPERADMIN", "SUPPORT"]);
+    // Most permissions first.
+    expect(keys("daily-checkin")).toEqual(["SUPERADMIN", "ADMIN", "SUPPORT", "EDUCATOR", "PARTICIPANT"]);
     expect(keys("hub")).toEqual(["ADMIN", "MEMBER"]);
   });
 
@@ -107,5 +108,41 @@ describe("application role registry", () => {
     await TestRequest.post(BASE, { application_id: appId, key: "LEAD", label: "Lead", permissions: [] }, accessToken);
     const organization = await prismaClient.applicationOrganization.findUnique({ where: { application_id: appId } });
     expect(organization?.organization_id).toMatch(/^org_/);
+  });
+
+  it("puts a new role at the bottom and reorders the roles of an application", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const post = (key: string) =>
+      TestRequest.post(BASE, { application_id: appId, key, label: key, permissions: [] }, accessToken);
+    const first = (await (await post("TOP")).json()).data;
+    const second = (await (await post("MIDDLE")).json()).data;
+    const third = (await (await post("BOTTOM")).json()).data;
+    expect([first.rank, second.rank, third.rank]).toEqual([0, 1, 2]);
+
+    const order = (ids: string[]) =>
+      TestRequest.patch(`${BASE}/order`, { application_id: appId, role_ids: ids }, accessToken);
+    const reordered = await order([third.id, first.id, second.id]);
+    expect(reordered.status).toBe(200);
+    const body = await reordered.json();
+    expect(body.data.map((role: { key: string }) => role.key)).toEqual(["BOTTOM", "TOP", "MIDDLE"]);
+    expect(body.data.map((role: { rank: number }) => role.rank)).toEqual([0, 1, 2]);
+    expect(
+      await prismaClient.auditLog.findFirst({
+        where: { action: AuditAction.APPLICATION_ROLE_UPDATE, entity_id: third.id },
+      }),
+    ).not.toBeNull();
+
+    // Every role of the application, once each, and nothing foreign.
+    expect((await order([first.id, second.id])).status).toBe(400);
+    expect((await order([first.id, second.id, "someone-elses"])).status).toBe(400);
+    expect((await order([first.id, first.id, second.id])).status).toBe(400);
+
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin();
+    const forbidden = await TestRequest.patch(
+      `${BASE}/order`,
+      { application_id: appId, role_ids: [first.id, second.id, third.id] },
+      dbAdmin.accessToken,
+    );
+    expect(forbidden.status).toBe(403);
   });
 });

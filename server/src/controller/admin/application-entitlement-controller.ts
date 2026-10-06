@@ -1,11 +1,13 @@
 import type { Context } from "hono";
 import type {
   BulkGrantApplicationEntitlementRequest,
+  CreateApplicationRequest,
   CreateApplicationRoleRequest,
   CreateApplicationAccessRuleRequest,
   UpdateApplicationAccessRuleRequest,
   GrantApplicationEntitlementRequest,
   UpdateApplicationEntitlementRequest,
+  ReorderApplicationRolesRequest,
   UpdateApplicationRoleRequest,
 } from "../../model/application-entitlement-model";
 import { ResponseError } from "../../error/response-error";
@@ -102,6 +104,16 @@ export class ApplicationEntitlementController {
 }
 
 export class ApplicationRoleController {
+  static async reorder(c: Context<{ Variables: AdminVariables }>) {
+    const request = (await c.req.json()) as ReorderApplicationRolesRequest;
+    const response = await ApplicationRoleService.reorder(
+      c.var.admin,
+      request,
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
   static async list(c: Context<{ Variables: AdminVariables }>) {
     const active = c.req.query("is_active");
     if (active !== undefined && active !== "true" && active !== "false") {
@@ -186,7 +198,40 @@ export class ApplicationAccessRuleController {
 
 export class ApplicationAccessController {
   static async applications(c: Context<{ Variables: AdminVariables }>) {
-    return c.json({ data: await ApplicationAccessService.applications(c.var.admin) });
+    const page = c.req.query("page");
+    const size = c.req.query("size");
+    const response = await ApplicationAccessService.applications(c.var.admin, {
+      search: c.req.query("search"),
+      page: page ? Number(page) : undefined,
+      size: size ? Number(size) : undefined,
+    });
+    return c.json(response);
+  }
+
+  static async createApplication(c: Context<{ Variables: AdminVariables }>) {
+    const request = (await c.req.json()) as CreateApplicationRequest;
+    const response = await ApplicationAccessService.createApplication(
+      c.var.admin,
+      request,
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
+  static async exceptions(c: Context<{ Variables: AdminVariables }>) {
+    const applicationId = c.req.param("applicationId");
+    const groupId = c.req.query("group_id");
+    if (!applicationId) throw new ResponseError(400, "Application ID is required");
+    if (!groupId) throw new ResponseError(400, "group_id is required");
+    const page = c.req.query("page");
+    const size = c.req.query("size");
+    const response = await ApplicationAccessService.exceptions(c.var.admin, applicationId, {
+      group_id: groupId,
+      search: c.req.query("search"),
+      page: page ? Number(page) : undefined,
+      size: size ? Number(size) : undefined,
+    });
+    return c.json(response);
   }
 
   static async application(c: Context<{ Variables: AdminVariables }>) {

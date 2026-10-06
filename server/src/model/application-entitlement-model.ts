@@ -115,6 +115,7 @@ export type ApplicationCandidate = {
   unit: string;
   job_position: string;
   job_level: string;
+  employment_type: string;
   inherited_role: string | null;
   inherited_group_id: string | null;
   own_access: { role: string; is_active: boolean } | null;
@@ -155,9 +156,16 @@ export function toApplicationAccessRuleResponse(
 export type ApplicationSummary = {
   application_id: string;
   organization_id: string | null;
+  role_count: number;
   active_group_count: number;
   exception_count: number;
+  blocked_count: number;
+  updated_at: string | null;
 };
+
+export type ListApplicationsRequest = { search?: string; page?: number; size?: number };
+
+export type CreateApplicationRequest = { application_id: string };
 
 export type ApplicationExceptionRow = {
   id: string;
@@ -165,6 +173,9 @@ export type ApplicationExceptionRow = {
   full_name: string;
   email: string;
   unit: string | null;
+  job_position: string | null;
+  job_level: string | null;
+  employment_type: string | null;
   role: string;
   permissions: string[];
   is_active: boolean;
@@ -177,15 +188,23 @@ export type ApplicationGroupCard = ApplicationAccessRuleResponse & {
   job_positions: { id: string; name: string }[];
   job_levels: { id: string; name: string }[];
   permissions: string[];
-  exceptions: ApplicationExceptionRow[];
+  exception_count: number;
+  blocked_count: number;
 };
 
 export type ApplicationDetail = {
   application_id: string;
   organization_id: string | null;
   groups: ApplicationGroupCard[];
-  // Older rows of people no group covers.
-  other: ApplicationExceptionRow[];
+  // Older access of people no group covers.
+  other_count: number;
+};
+
+export type ListApplicationExceptionsRequest = {
+  group_id: string;
+  search?: string;
+  page?: number;
+  size?: number;
 };
 
 // One row of the combined Access list: a group rule or a person's entitlement.
@@ -218,6 +237,7 @@ export type ApplicationRoleResponse = {
   key: string;
   label: string;
   permissions: string[];
+  rank: number;
   is_active: boolean;
   active_entitlement_count: number;
   created_at: string;
@@ -238,6 +258,11 @@ export type UpdateApplicationRoleRequest = {
   is_active?: boolean;
 };
 
+export type ReorderApplicationRolesRequest = {
+  application_id: string;
+  role_ids: string[];
+};
+
 export type ListApplicationRolesRequest = {
   application_id?: string;
   is_active?: boolean;
@@ -253,6 +278,7 @@ export function toApplicationRoleResponse(
     key: role.key,
     label: role.label,
     permissions: role.permissions,
+    rank: role.rank,
     is_active: role.is_active,
     active_entitlement_count: activeEntitlementCount,
     created_at: role.created_at.toISOString(),

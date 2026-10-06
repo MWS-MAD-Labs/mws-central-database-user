@@ -105,6 +105,24 @@ const accessRuleFields = {
 
 const EMPLOYMENT_TYPES = Object.values(EmploymentType) as [EmploymentType, ...EmploymentType[]];
 
+export class ApplicationValidation {
+  static readonly LIST = z.object({
+    search: z.string().trim().max(100).optional(),
+    page: z.number().int().min(1).default(1),
+    size: z.number().int().min(1).max(100).default(10),
+  });
+
+  static readonly CREATE = z.object({ application_id: applicationId });
+
+  static readonly EXCEPTIONS = z.object({
+    // A group id, or "other" for access no group covers.
+    group_id: nonemptyId("Group ID"),
+    search: z.string().trim().max(100).optional(),
+    page: z.number().int().min(1).default(1),
+    size: z.number().int().min(1).max(100).default(10),
+  });
+}
+
 export class ApplicationAccessRuleValidation {
   // Who a person could be given access: filters plus how a group covers them.
   static readonly CANDIDATES = z.object({
@@ -180,5 +198,15 @@ export class ApplicationRoleValidation {
   static readonly LIST = z.object({
     application_id: applicationId.optional(),
     is_active: z.boolean().optional(),
+  });
+
+  // Every role of the application, highest first.
+  static readonly ORDER = z.object({
+    application_id: applicationId,
+    role_ids: z
+      .array(nonemptyId("Role ID"))
+      .min(1, "Provide the roles in order")
+      .max(100, "Too many roles")
+      .refine((values) => new Set(values).size === values.length, "Roles must be unique"),
   });
 }
