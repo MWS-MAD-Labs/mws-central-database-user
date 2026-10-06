@@ -11,6 +11,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { Tip } from "./Tip.jsx";
 
 // Roles of one application, highest first. The order drives every role picker.
 export function AppRolesTab({ applicationId, roles }) {
@@ -51,11 +52,13 @@ export function AppRolesTab({ applicationId, roles }) {
   return (
     <section className="min-w-0 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-(--mws-muted)">
-          Highest role first. Role pickers in groups and exceptions follow this order.
-        </p>
-        <Button type="button" onClick={() => navigate(`/application-access/apps/${applicationId}/roles/new`)}>
-          <Plus size={16} />
+        <h2 className="flex items-center gap-2 font-display text-base font-bold text-(--mws-charcoal)">
+          Roles
+          <span className="text-sm font-normal text-(--mws-muted)">{roles.length}</span>
+          <Tip text="Highest role first. Role pickers in groups and exceptions follow this order." label="About order" />
+        </h2>
+        <Button type="button" size="sm" onClick={() => navigate(`/application-access/apps/${applicationId}/roles/new`)}>
+          <Plus size={14} />
           Add role
         </Button>
       </div>

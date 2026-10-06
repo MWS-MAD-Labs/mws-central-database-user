@@ -32,11 +32,18 @@ describe('AppCreatePage', () => {
     expect(screen.getByRole('textbox')).toHaveValue('exima')
   })
 
+  it('turns spaces into underscores and drops other symbols', async () => {
+    globalThis.fetch = createFetchRouter([])
+    const { user } = renderPage()
+    await user.type(screen.getByRole('textbox'), 'My App!')
+    expect(screen.getByRole('textbox')).toHaveValue('my_app')
+  })
+
   it('rejects a badly formatted id without calling the server', async () => {
     const fetchMock = createFetchRouter([])
     globalThis.fetch = fetchMock
     const { user } = renderPage()
-    await user.type(screen.getByRole('textbox'), 'Bad Id')
+    await user.type(screen.getByRole('textbox'), '9 lives')
     await user.click(screen.getByRole('button', { name: 'Add application' }))
     expect(await screen.findByText(/^Use lowercase letters/)).toBeVisible()
     expect(fetchMock).not.toHaveBeenCalled()

@@ -117,9 +117,9 @@ describe('AppAccessPage', () => {
     const cards = screen.getAllByRole('heading', { level: 2 })
     expect(cards).toHaveLength(2)
     expect(screen.getByText(/Inside All Active Employees/)).toBeVisible()
-    const chips = within(screen.getAllByRole('list', { name: 'Who this group covers' })[1])
+    const chips = within(screen.getAllByLabelText('Who this group covers')[1])
     expect(chips.getByText('MAD Lab')).toBeVisible()
-    expect(screen.getAllByText('Active').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Inactive')).not.toBeInTheDocument()
     // The exception sits in the card of the group that covers it.
     const exceptionRow = (await screen.findByText('Dummy Staff')).closest('tr')
     expect(within(exceptionRow).getByText('ADMIN')).toBeVisible()

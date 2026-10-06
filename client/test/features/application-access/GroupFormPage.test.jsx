@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { Route, Routes } from 'react-router'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { GroupFormPage } from '../../../src/features/application-access/pages/GroupFormPage.jsx'
 import { renderWithProviders } from '../../helpers/render.jsx'
@@ -52,7 +52,8 @@ describe('GroupFormPage', () => {
       expect.stringContaining('STAFF'),
     ])
     await user.click(screen.getByRole('option', { name: /STAFF/ }))
-    expect(screen.getByText('Permissions: store.use')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '1 permission' }))
+    expect(within(screen.getByRole('dialog', { name: 'Permissions' })).getByText('store.use')).toBeVisible()
     expect(await screen.findByText('org_exima_a1b2c3')).toBeVisible()
   })
 

@@ -1,0 +1,26 @@
+import { describe, expect, it } from 'bun:test'
+import { screen, within } from '@testing-library/react'
+import { PermissionPopover } from '../../../src/features/application-access/components/PermissionPopover.jsx'
+import { renderWithProviders } from '../../helpers/render.jsx'
+
+describe('PermissionPopover', () => {
+  it('lists permissions grouped by area and closes on Escape', async () => {
+    const { user } = renderWithProviders(
+      <PermissionPopover permissions={['users.read', 'checkin.self.read', 'users.manage']} />,
+    )
+    await user.click(screen.getByRole('button', { name: '3 permissions' }))
+    const dialog = screen.getByRole('dialog', { name: 'Permissions' })
+    expect(within(dialog).getByText('users')).toBeVisible()
+    expect(within(dialog).getByText('checkin')).toBeVisible()
+    expect(within(dialog).getByText('users.manage')).toBeVisible()
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Permissions' })).not.toBeInTheDocument()
+  })
+
+  it('shows plain text when there is nothing to list', () => {
+    renderWithProviders(<PermissionPopover permissions={[]} />)
+    expect(screen.getByText('0 permissions')).toBeVisible()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+})

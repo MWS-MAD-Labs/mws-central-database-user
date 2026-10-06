@@ -11,6 +11,8 @@ import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 
 const BACK = "/application-access";
+// Lowercase, spaces become underscores, anything else odd is dropped.
+const cleanId = (value) => value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_-]/g, "");
 const ID_PATTERN = /^[a-z][a-z0-9_-]*$/;
 
 export function AppCreatePage() {
@@ -64,10 +66,10 @@ export function AppCreatePage() {
       <form onSubmit={submit} noValidate className="max-w-xl space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
         <Field
           label="Application ID"
-          hint="Lowercase letters, numbers, hyphens and underscores, starting with a letter. For example exima."
+          hint="Lowercase, starting with a letter. Spaces become underscores. For example exima."
           error={attempted && !valid ? "Use lowercase letters, numbers, hyphens or underscores, starting with a letter." : undefined}
         >
-          <TextInput value={applicationId} onChange={(event) => setApplicationId(event.target.value.toLowerCase())} />
+          <TextInput value={applicationId} onChange={(event) => setApplicationId(cleanId(event.target.value))} />
         </Field>
         <div className="flex gap-2">
           <Button asChild variant="secondary">

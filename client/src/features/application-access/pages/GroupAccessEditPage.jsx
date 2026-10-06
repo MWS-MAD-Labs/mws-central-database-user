@@ -10,6 +10,7 @@ import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { PermissionPopover } from "../components/PermissionPopover.jsx";
 import { roleOptions } from "../utils/roleOptions.js";
 import { GroupFilters } from "../components/GroupFilters.jsx";
 import {
@@ -111,13 +112,7 @@ function GroupAccessForm({ rule }) {
                   searchPlaceholder="Search role"
                 />
               </Field>
-              {selectedRole ? (
-                <p className="text-xs text-(--mws-muted)">
-                  {selectedRole.permissions.length === 0
-                    ? "This role has no permissions."
-                    : `Permissions: ${selectedRole.permissions.join(", ")}`}
-                </p>
-              ) : null}
+              {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} /> : null}
               <label className="flex items-center gap-3 text-sm text-(--mws-charcoal)">
                 <input
                   type="checkbox"

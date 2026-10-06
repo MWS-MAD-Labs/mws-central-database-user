@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -121,15 +121,15 @@ export function ApplicationAccessPage() {
                 {row.updated_at ? formatDateTime(row.updated_at) : "-"}
               </td>
               <td className={`${denseCellClass} text-right`}>
-                <Button
+                <button
                   type="button"
-                  size="sm"
-                  variant="secondary"
                   aria-label={`Manage ${row.application_id}`}
+                  title="Manage"
                   onClick={() => navigate(`/application-access/apps/${row.application_id}`)}
+                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) transition-colors hover:bg-(--mws-soft) hover:text-(--mws-burgundy) focus-visible:outline-2 focus-visible:outline-(--mws-burgundy)"
                 >
-                  Manage
-                </Button>
+                  <ArrowRight size={16} />
+                </button>
               </td>
             </tr>
           ))}

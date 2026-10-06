@@ -6,6 +6,7 @@ import { Field, SearchableSelect } from "../../../components/ui/FormControls.jsx
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { roleOptions } from "../utils/roleOptions.js";
+import { PermissionPopover } from "./PermissionPopover.jsx";
 
 // Another role for one exception. The server refuses the role its group already gives.
 export function ChangeRoleDialog({ applicationId, exception, roles, onClose, onDone }) {
@@ -52,13 +53,7 @@ export function ChangeRoleDialog({ applicationId, exception, roles, onClose, onD
           placeholder="Select a role"
           searchPlaceholder="Search role"
         />
-        {selectedRole ? (
-          <p className="text-xs text-(--mws-muted)">
-            {selectedRole.permissions.length === 0
-              ? "This role has no permissions."
-              : `Permissions: ${selectedRole.permissions.join(", ")}`}
-          </p>
-        ) : null}
+        {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} /> : null}
       </Field>
     </CrudDialog>
   );

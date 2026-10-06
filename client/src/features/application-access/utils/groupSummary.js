@@ -37,3 +37,18 @@ export function groupScopeChips(group) {
 export function groupTitle(group) {
   return audienceLabels[group.audience];
 }
+
+// Permissions grouped by the part before the first dot, for reading.
+export function groupPermissions(permissions) {
+  const areas = new Map();
+  for (const permission of [...permissions].sort()) {
+    const area = permission.includes(".") ? permission.split(".")[0] : "other";
+    areas.set(area, [...(areas.get(area) || []), permission]);
+  }
+  return [...areas].map(([area, items]) => ({ area, items }));
+}
+
+// Same name without the leading "All", for headings next to the scope.
+export function groupShortTitle(group) {
+  return groupTitle(group).replace(/^All /, "");
+}

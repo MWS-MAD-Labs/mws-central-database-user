@@ -16,7 +16,9 @@ import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions
 import { employmentTypes } from "../../employees/api/employeesApi.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
-import { groupScopeSummary, groupTitle } from "../utils/groupSummary.js";
+import { GroupSummary } from "../components/GroupSummary.jsx";
+import { Tip } from "../components/Tip.jsx";
+import { PermissionPopover } from "../components/PermissionPopover.jsx";
 import { roleOptions } from "../utils/roleOptions.js";
 
 // Another role for people inside one group. Only people that group covers are listed.
@@ -147,7 +149,7 @@ export function ExceptionAddPage() {
     <div className="min-w-0">
       <PageHeader
         title={`Add exception to ${applicationId}`}
-        description={`Inside ${groupTitle(group)}: ${groupScopeSummary(group)}. Everyone there gets ${group.default_role_key}. Check the people who should get another role.`}
+        description="Check the people who should get another role than their group."
         actions={
           <Button asChild variant="secondary">
             <Link to={back}>
@@ -157,6 +159,7 @@ export function ExceptionAddPage() {
           </Button>
         }
       />
+      <GroupSummary group={group} />
       <form onSubmit={submit} noValidate>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <section className="min-w-0 space-y-3 rounded-2xl border border-(--mws-line) bg-white p-5">
@@ -281,16 +284,10 @@ export function ExceptionAddPage() {
                   searchPlaceholder="Search role"
                 />
               </Field>
-              {selectedRole ? (
-                <p className="text-xs text-(--mws-muted)">
-                  {selectedRole.permissions.length === 0
-                    ? "This role has no permissions."
-                    : `Permissions: ${selectedRole.permissions.join(", ")}`}
-                </p>
-              ) : null}
-              <p className="text-xs text-(--mws-muted)">
-                The group gives {group.default_role_key}. Someone already getting the role you pick is not listed as an
-                option.
+              {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} /> : null}
+              <p className="flex items-center gap-1.5 text-xs text-(--mws-muted)">
+                Group role {group.default_role_key}
+                <Tip text={`People who already get the role you pick cannot be selected for it.`} label="About roles" />
               </p>
             </div>
             <div className="flex gap-2">

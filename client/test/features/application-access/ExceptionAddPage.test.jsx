@@ -83,7 +83,8 @@ describe('ExceptionAddPage', () => {
     const { user } = renderPage()
 
     expect(await screen.findByText('Add exception to exima')).toBeVisible()
-    expect(screen.getByText(/Inside All Active Employees: Units: MAD Lab/)).toBeVisible()
+    expect(screen.getByText('Active Employees')).toBeVisible()
+    expect(within(screen.getByLabelText('Who this group covers')).getByText('MAD Lab')).toBeVisible()
     const url = fetchMock.mock.calls.map(([callUrl]) => callUrl).find((callUrl) => callUrl.includes('/candidates'))
     expect(url).toContain('coverage=GROUP')
     expect(url).toContain('group_id=rule-1')
@@ -91,7 +92,9 @@ describe('ExceptionAddPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Select a role' }))
     await user.click(screen.getByRole('option', { name: /ADMIN/ }))
-    expect(screen.getByText('Permissions: app.admin')).toBeVisible()
+    // First is the group's own role, second the one picked here.
+    await user.click(screen.getAllByRole('button', { name: '1 permission' })[1])
+    expect(within(screen.getByRole('dialog', { name: 'Permissions' })).getByText('app.admin')).toBeVisible()
     await user.click(await screen.findByLabelText('Select Alpha Person'))
     await user.click(screen.getByRole('button', { name: 'Add exception' }))
 
