@@ -20,15 +20,13 @@ export function groupScopeSummary(group) {
   return parts.join(" · ");
 }
 
-// The same scope as separate label and value pairs, for chips.
+// The scope as label, plural noun and names. No names means "All".
 export function groupScopeChips(group) {
-  const chips = [
-    { label: "Units", value: group.units.length ? group.units.map((item) => item.name).join(", ") : "All" },
-  ];
+  const chips = [{ label: "Units", noun: "units", names: group.units.map((item) => item.name) }];
   if (group.audience !== "STUDENTS") {
     chips.push(
-      { label: "Positions", value: group.job_positions.length ? group.job_positions.map((item) => item.name).join(", ") : "All" },
-      { label: "Levels", value: group.job_levels.length ? group.job_levels.map((item) => item.name).join(", ") : "All" },
+      { label: "Positions", noun: "positions", names: group.job_positions.map((item) => item.name) },
+      { label: "Levels", noun: "levels", names: group.job_levels.map((item) => item.name) },
     );
   }
   return chips;
@@ -52,3 +50,17 @@ export function groupPermissions(permissions) {
 export function groupShortTitle(group) {
   return groupTitle(group).replace(/^All /, "");
 }
+
+const audienceNoun = {
+  EMPLOYEES: ["Employee", "Employees"],
+  STUDENTS: ["Student", "Students"],
+  EMPLOYEES_AND_STUDENTS: ["Person", "People"],
+};
+
+// "3 Employees", "1 Student".
+export function countOf(count, audience) {
+  const [one, many] = audienceNoun[audience];
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+

@@ -1,8 +1,8 @@
-import { ChevronDown, UserPlus } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
-import { groupScopeSummary, groupShortTitle, groupTitle } from "../utils/groupSummary.js";
-import { ExceptionsPanel } from "./ExceptionsPanel.jsx";
-import { AudienceIcon, GroupFacts, RolePill, ScopeGrid } from "./GroupSummary.jsx";
+import { countOf, groupScopeSummary, groupShortTitle, groupTitle } from "../utils/groupSummary.js";
+import { ExceptionsCard } from "./ExceptionsCard.jsx";
+import { AudienceIcon, GroupFacts, RemainingScope, RolePill, ScopeGrid } from "./GroupSummary.jsx";
 
 // One group as a single line. Open it for the scope, the facts and its exceptions.
 export function GroupCard({
@@ -11,8 +11,8 @@ export function GroupCard({
   onToggle,
   applicationId,
   roles,
-  parentTitle,
-  childCount,
+  parentRole,
+  narrower,
   onEdit,
   onSwitch,
   onDelete,
@@ -21,11 +21,12 @@ export function GroupCard({
   const blockedBy =
     group.exception_count + group.blocked_count > 0
       ? `Remove its ${group.exception_count + group.blocked_count} exception(s) first`
-      : childCount > 0
+      : narrower.length > 0
         ? "Remove the groups inside it first"
         : null;
 
   return (
+    <div className="min-w-0 space-y-2">
     <section
       className={`min-w-0 rounded-2xl border border-(--mws-line) border-l-4 bg-white ${
         group.is_active ? "border-l-(--mws-burgundy)" : "border-l-(--mws-line)"
@@ -56,7 +57,7 @@ export function GroupCard({
             <span className="min-w-0 truncate text-sm font-normal text-(--mws-muted)">{groupScopeSummary(group)}</span>
             <span className="ml-auto flex items-center gap-4 text-sm font-normal">
               <span className="font-display font-bold text-(--mws-burgundy)">{group.default_role_key}</span>
-              <span className="text-(--mws-muted)">{group.covered_count ?? 0} covered</span>
+              <span className="text-(--mws-muted)">{countOf(group.covered_count ?? 0, group.audience)}</span>
               <span className="text-(--mws-muted)">
                 {group.exception_count} exception{group.exception_count === 1 ? "" : "s"}
               </span>
@@ -104,38 +105,12 @@ export function GroupCard({
             <ScopeGrid group={group} />
             <RolePill roleKey={group.default_role_key} permissions={group.permissions} />
           </div>
-          <GroupFacts group={group} parentTitle={parentTitle} />
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="font-display text-sm font-bold text-(--mws-charcoal)">Exceptions</h3>
-              <button
-                type="button"
-                aria-label="Add exception"
-                disabled={!group.is_active || group.audience === "STUDENTS"}
-                title={
-                  group.audience === "STUDENTS"
-                    ? "Exceptions are for employees"
-                    : !group.is_active
-                      ? "Turn the group on first"
-                      : "Add exception"
-                }
-                onClick={onAddException}
-                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) transition-colors hover:bg-(--mws-soft) hover:text-(--mws-burgundy) focus-visible:outline-2 focus-visible:outline-(--mws-burgundy) disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-(--mws-muted)"
-              >
-                <UserPlus size={16} />
-              </button>
-            </div>
-            <ExceptionsPanel
-              applicationId={applicationId}
-              groupId={group.id}
-              roles={roles}
-              canChange
-              total={group.exception_count}
-              emptyText={`No exceptions. Everyone this group covers gets ${group.default_role_key}.`}
-            />
-          </div>
+          <RemainingScope group={group} narrower={narrower} />
+          <GroupFacts group={group} parentRole={parentRole} />
         </div>
       ) : null}
     </section>
+    <ExceptionsCard group={group} applicationId={applicationId} roles={roles} onAdd={onAddException} />
+    </div>
   );
 }

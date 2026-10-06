@@ -93,11 +93,6 @@ export function AppAccessPage() {
   const totalGroupPage = Math.max(Math.ceil(filteredGroups.length / GROUP_PAGE_SIZE), 1);
   const currentGroupPage = Math.min(groupPage, totalGroupPage);
   const visibleGroups = filteredGroups.slice((currentGroupPage - 1) * GROUP_PAGE_SIZE, currentGroupPage * GROUP_PAGE_SIZE);
-  const titleOf = (id) => {
-    const group = detail.groups.find((item) => item.id === id);
-    return group ? `${groupTitle(group)} (${groupScopeSummary(group)})` : null;
-  };
-
   return (
     <div className="min-w-0 space-y-5">
       <PageHeader
@@ -197,8 +192,8 @@ export function AppAccessPage() {
                     onToggle={() => setOpenId(openGroupId === group.id ? null : group.id)}
                     applicationId={applicationId}
                     roles={roles}
-                    parentTitle={group.parent_group_id ? titleOf(group.parent_group_id) : null}
-                    childCount={detail.groups.filter((item) => item.parent_group_id === group.id).length}
+                    parentRole={detail.groups.find((item) => item.id === group.parent_group_id)?.default_role_key ?? null}
+                    narrower={detail.groups.filter((item) => item.parent_group_id === group.id)}
                     onEdit={() => navigate(`/application-access/apps/${applicationId}/groups/${group.id}`)}
                     onSwitch={() => groupMutation.mutate({ id: group.id, patch: { is_active: !group.is_active } })}
                     onDelete={async () => {

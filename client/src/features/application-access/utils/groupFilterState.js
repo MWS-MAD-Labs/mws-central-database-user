@@ -36,10 +36,12 @@ export function hasGroupFilterError(state, audience) {
   return Object.values(groupFilterErrors(state, audience)).some(Boolean);
 }
 
-export function groupFilterPayload(state, audience) {
+export function groupFilterPayload(state, audience, knownUnitIds) {
   const employeesOnly = audience !== "STUDENTS";
+  // Units the picker does not offer (Unknown / Legacy from older groups) are dropped.
+  const units = selectionIds(state.units);
   return {
-    unit_ids: selectionIds(state.units),
+    unit_ids: knownUnitIds ? units.filter((id) => knownUnitIds.has(id)) : units,
     job_position_ids: employeesOnly ? selectionIds(state.positions) : [],
     job_level_ids: employeesOnly ? selectionIds(state.levels) : [],
   };

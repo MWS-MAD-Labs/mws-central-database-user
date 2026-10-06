@@ -150,6 +150,16 @@ describe('ExceptionAddPage', () => {
     expect(screen.getByRole('button', { name: 'Clear filters' })).toBeVisible()
   })
 
+  it('says that people of narrower groups are not listed', async () => {
+    const narrow = { ...group, id: 'rule-2', default_role_key: 'ADMIN', parent_group_id: 'rule-1', units: [], unit_ids: [] }
+    globalThis.fetch = createFetchRouter([
+      { path: '/api/admin/application-access/apps/exima', method: 'GET', response: () => jsonResponse({ data: { application_id: 'exima', organization_id: 'org_exima_a1b2c3', groups: [group, narrow], other_count: 0 } }) },
+      ...routes().slice(1),
+    ])
+    renderPage()
+    expect(await screen.findByText(/People in narrower groups are not listed here/)).toBeVisible()
+  })
+
   it('cannot pick someone for the role they already get', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()

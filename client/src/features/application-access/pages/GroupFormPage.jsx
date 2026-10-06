@@ -14,6 +14,7 @@ import { PermissionPopover } from "../components/PermissionPopover.jsx";
 import { roleOptions } from "../utils/roleOptions.js";
 import { GroupFilters } from "../components/GroupFilters.jsx";
 import { OrganizationNote } from "../components/OrganizationNote.jsx";
+import { isRealUnit } from "../utils/legacyUnit.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { useRoleAvailability } from "../hooks/useRoleAvailability.js";
 import {
@@ -39,10 +40,12 @@ export function GroupFormPage() {
     (role) => role.application_id === applicationId && role.is_active,
   );
   const options = useQuery({ queryKey: ["employee-form-options"], queryFn: loadEmployeeFormOptions }).data || {};
+  // Only once the units are loaded, so an empty list is never read as All.
+  const knownUnitIds = options.units?.length ? new Set(options.units.filter(isRealUnit).map((unit) => unit.id)) : undefined;
   const unavailable = useRoleAvailability({
     applicationId,
     audience,
-    scope: groupFilterPayload(scope, audience),
+    scope: groupFilterPayload(scope, audience, knownUnitIds),
   });
   // A role the scope can no longer take is dropped from the form.
   const lostRole = roleKey && unavailable.has(roleKey) ? roleKey : "";
@@ -55,7 +58,7 @@ export function GroupFormPage() {
       applicationAccessApi.createRule({
         application_id: applicationId,
         audience,
-        ...groupFilterPayload(scope, audience),
+        ...groupFilterPayload(scope, audience, knownUnitIds),
         default_role_key: chosenRole,
       }),
     onSuccess: () => {

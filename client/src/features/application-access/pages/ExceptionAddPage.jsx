@@ -160,7 +160,10 @@ export function ExceptionAddPage() {
           </Button>
         }
       />
-      <GroupSummary group={group} />
+      <GroupSummary
+        group={group}
+        hasNarrower={detail.groups.some((item) => item.parent_group_id === group.id)}
+      />
       <form onSubmit={submit} noValidate>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <section className="min-w-0 space-y-3 rounded-2xl border border-(--mws-line) bg-white p-5">

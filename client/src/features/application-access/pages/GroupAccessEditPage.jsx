@@ -20,6 +20,7 @@ import {
   useGroupFilterState,
 } from "../utils/groupFilterState.js";
 import { OrganizationNote } from "../components/OrganizationNote.jsx";
+import { isRealUnit } from "../utils/legacyUnit.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { useRoleAvailability } from "../hooks/useRoleAvailability.js";
 
@@ -59,10 +60,12 @@ function GroupAccessForm({ rule }) {
     (role) => role.application_id === rule.application_id && role.is_active,
   );
   const options = useQuery({ queryKey: ["employee-form-options"], queryFn: loadEmployeeFormOptions }).data || {};
+  // Only once the units are loaded, so an empty list is never read as All.
+  const knownUnitIds = options.units?.length ? new Set(options.units.filter(isRealUnit).map((unit) => unit.id)) : undefined;
   const unavailable = useRoleAvailability({
     applicationId: rule.application_id,
     audience: rule.audience,
-    scope: groupFilterPayload(state, rule.audience),
+    scope: groupFilterPayload(state, rule.audience, knownUnitIds),
     groupId: rule.id,
   });
   const lostRole = roleKey && unavailable.has(roleKey) ? roleKey : "";
@@ -73,7 +76,7 @@ function GroupAccessForm({ rule }) {
   const mutation = useMutation({
     mutationFn: () =>
       applicationAccessApi.updateRule(rule.id, {
-        ...groupFilterPayload(state, rule.audience),
+        ...groupFilterPayload(state, rule.audience, knownUnitIds),
         default_role_key: chosenRole,
         is_active: isActive,
       }),
