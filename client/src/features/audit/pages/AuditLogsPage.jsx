@@ -145,7 +145,7 @@ export function AuditLogsPage() {
               value={params.action}
               onChange={(value) => resetPageAndUpdate({ action: value })}
               options={[
-                { value: '', label: 'All actions' },
+                { value: '', label: 'All Actions' },
                 ...enumOptions(auditActions),
               ]}
             />
@@ -154,7 +154,7 @@ export function AuditLogsPage() {
               value={params.source}
               onChange={(value) => resetPageAndUpdate({ source: value })}
               options={[
-                { value: '', label: 'All sources' },
+                { value: '', label: 'All Sources' },
                 ...enumOptions(auditSources),
               ]}
             />
@@ -163,7 +163,7 @@ export function AuditLogsPage() {
               value={params.entity_type}
               onChange={(value) => resetPageAndUpdate({ entity_type: value })}
               options={[
-                { value: '', label: 'All entities' },
+                { value: '', label: 'All Entities' },
                 { value: 'Student', label: 'Student' },
                 { value: 'Employee', label: 'Employee' },
                 { value: 'ConsentRecord', label: 'Consent' },
@@ -177,7 +177,7 @@ export function AuditLogsPage() {
 
         <div className="flex min-w-0 flex-wrap items-end gap-3 border-b border-(--mws-line) p-4">
           <FilterSelect
-            label="Date range"
+            label="Date Range"
             value={dateRangePreset}
             onChange={(value) => {
               setDateRangePreset(value)
@@ -214,7 +214,7 @@ export function AuditLogsPage() {
                 />
               </div>
               <p className="w-full text-xs text-(--mws-muted)">
-                Custom range is limited to {MAX_DATE_RANGE_DAYS} days.
+                Custom Range is limited to {MAX_DATE_RANGE_DAYS} days.
               </p>
             </>
           ) : null}
@@ -398,10 +398,10 @@ function startOfWeek(date) {
 
 const DATE_RANGE_OPTIONS = [
   { value: 'today', label: 'Today' },
-  { value: 'this_week', label: 'This week' },
-  { value: 'this_month', label: 'This month' },
-  { value: 'last_month', label: 'Last month' },
-  { value: 'custom', label: 'Custom range' },
+  { value: 'this_week', label: 'This Week' },
+  { value: 'this_month', label: 'This Month' },
+  { value: 'last_month', label: 'Last Month' },
+  { value: 'custom', label: 'Custom Range' },
 ]
 
 function defaultDateRange() {
@@ -550,10 +550,10 @@ function ExportAuditSummary({ values }) {
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <DetailItem label="Data" value={exportEntityLabel(values.entity)} />
-        <DetailItem label="File format" value={String(values.format || '-').toUpperCase()} />
-        <DetailItem label="Records exported" value={values.row_count ?? '-'} />
+        <DetailItem label="File Format" value={String(values.format || '-').toUpperCase()} />
+        <DetailItem label="Records Exported" value={values.row_count ?? '-'} />
         <DetailItem
-          label="Data sensitivity"
+          label="Data Sensitivity"
           value={values.included_sensitive_data ? 'Sensitive data included' : 'Standard data only'}
         />
       </div>
