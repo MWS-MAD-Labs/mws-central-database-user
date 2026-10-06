@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'bun:test'
+import { beforeEach, describe, expect, it } from 'bun:test'
 import { Route, Routes } from 'react-router'
 import { screen, waitFor, within } from '@testing-library/react'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { GroupFormPage } from '../../../src/features/application-access/pages/GroupFormPage.jsx'
 import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
+
+let unavailable = []
 
 const roles = [
   { id: 'role-admin', application_id: 'exima', key: 'ADMIN', label: 'Admin', permissions: ['app.admin'], is_active: true, active_entitlement_count: 0 },
@@ -16,8 +18,9 @@ const roles = [
 const routes = (extra = []) => [
   ...extra,
   { path: '/api/admin/application-roles', response: () => jsonResponse({ data: roles }) },
+  { path: /\/api\/admin\/application-access\/apps\/exima\/role-options/, response: () => jsonResponse({ data: { unavailable } }) },
   { path: '/api/admin/application-organizations', response: () => jsonResponse({ data: [{ application_id: 'exima', organization_id: 'org_exima_a1b2c3' }] }) },
-  { path: /^\/api\/admin\/units/, response: () => jsonResponse({ data: [{ id: 'unit-1', name: 'MAD Lab' }, { id: 'unit-2', name: 'Elementary' }] }) },
+  { path: /^\/api\/admin\/units/, response: () => jsonResponse({ data: [{ id: 'unit-1', name: 'MAD Lab' }, { id: 'unit-2', name: 'Elementary' }, { id: 'unit-9', name: 'Unknown / Legacy' }] }) },
   { path: /^\/api\/admin\/job-positions/, response: () => jsonResponse({ data: [{ id: 'pos-1', name: 'Developer' }, { id: 'pos-2', name: 'Designer' }] }) },
   { path: /^\/api\/admin\/job-levels/, response: () => jsonResponse({ data: [] }) },
   { path: /^\/api\/admin\/buildings/, response: () => jsonResponse({ data: [] }) },
@@ -36,6 +39,29 @@ function renderPage(user = { role: 'SUPER_ADMIN' }) {
 }
 
 describe('GroupFormPage', () => {
+  beforeEach(() => {
+    unavailable = []
+  })
+
+
+  it('drops the roles the scope cannot take and says when none are left', async () => {
+    unavailable = [{ role: 'STAFF', reason: 'Same as the broader group' }]
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    await screen.findByText('Add group to exima')
+    await user.click(screen.getByRole('button', { name: 'Select a role' }))
+    await waitFor(() => {
+      expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([expect.stringContaining('ADMIN')])
+    })
+  })
+
+  it('does not offer the Unknown / Legacy unit', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage()
+    await screen.findByRole('switch', { name: 'MAD Lab' })
+    expect(screen.queryByRole('switch', { name: 'Unknown / Legacy' })).not.toBeInTheDocument()
+  })
+
   it('refuses anyone who is not a Super Admin', async () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage({ role: 'DATABASE_ADMIN' })
@@ -66,19 +92,19 @@ describe('GroupFormPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Select a role' }))
     await user.click(screen.getByRole('option', { name: /STAFF/ }))
 
-    expect(screen.getByLabelText('All Units')).toBeChecked()
-    expect(screen.getByLabelText('MAD Lab')).toBeChecked()
-    await user.click(screen.getByLabelText('Elementary'))
-    expect(screen.getByLabelText('All Units')).not.toBeChecked()
-    await user.click(screen.getByLabelText('Elementary'))
-    expect(screen.getByLabelText('All Units')).toBeChecked()
+    expect(screen.getByRole('switch', { name: 'All Units' })).toBeChecked()
+    expect(screen.getByRole('switch', { name: 'MAD Lab' })).toBeChecked()
+    await user.click(screen.getByRole('switch', { name: 'Elementary' }))
+    expect(screen.getByRole('switch', { name: 'All Units' })).not.toBeChecked()
+    await user.click(screen.getByRole('switch', { name: 'Elementary' }))
+    expect(screen.getByRole('switch', { name: 'All Units' })).toBeChecked()
 
-    await user.click(screen.getByLabelText('All Units'))
+    await user.click(screen.getByRole('switch', { name: 'All Units' }))
     await user.click(screen.getByRole('button', { name: 'Add group' }))
     expect(await screen.findByText('Pick at least one unit, or choose All Units.')).toBeVisible()
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
 
-    await user.click(screen.getByLabelText('All Units'))
+    await user.click(screen.getByRole('switch', { name: 'All Units' }))
     await user.click(screen.getByRole('button', { name: 'Add group' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url, options]) =>
@@ -104,10 +130,10 @@ describe('GroupFormPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Select a role' }))
     await user.click(screen.getByRole('option', { name: /ADMIN/ }))
 
-    await user.click(screen.getByLabelText('All Units'))
-    await user.click(screen.getByLabelText('Elementary'))
-    await user.click(screen.getByLabelText('All Positions'))
-    await user.click(screen.getByLabelText('Developer'))
+    await user.click(screen.getByRole('switch', { name: 'All Units' }))
+    await user.click(screen.getByRole('switch', { name: 'Elementary' }))
+    await user.click(screen.getByRole('switch', { name: 'All Positions' }))
+    await user.click(screen.getByRole('switch', { name: 'Developer' }))
     await user.click(screen.getByRole('button', { name: 'Add group' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url, options]) =>
@@ -127,11 +153,11 @@ describe('GroupFormPage', () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
     await screen.findByText('Add group to exima')
-    expect(screen.getByLabelText('All Positions')).toBeVisible()
+    expect(screen.getByRole('switch', { name: 'All Positions' })).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
     await user.click(screen.getByRole('option', { name: 'All Active Students' }))
-    expect(screen.queryByLabelText('All Positions')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('All Units')).toBeVisible()
+    expect(screen.queryByRole('switch', { name: 'All Positions' })).not.toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'All Units' })).toBeVisible()
   })
 })

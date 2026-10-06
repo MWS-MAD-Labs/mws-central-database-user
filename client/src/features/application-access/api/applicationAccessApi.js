@@ -26,6 +26,13 @@ export const applicationAccessApi = {
     return apiRequest(`${ACCESS}/apps/${applicationId}/exceptions${query ? `?${query}` : ''}`)
   },
 
+  // Roles a group with this scope cannot take.
+  async roleOptions(applicationId, params = {}) {
+    const query = compactSearchParams(params).toString()
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/role-options?${query}`)
+    return response.data
+  },
+
   async reorderRoles(applicationId, roleIds) {
     const response = await apiRequest(`${ROLES}/order`, {
       method: 'PATCH',

@@ -6,6 +6,8 @@ import { GroupAccessEditPage } from '../../../src/features/application-access/pa
 import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 
+let unavailable = []
+
 const roles = [
   { id: 'role-admin', application_id: 'exima', key: 'ADMIN', label: 'Admin', permissions: ['app.admin'], is_active: true, active_entitlement_count: 0 },
   { id: 'role-staff', application_id: 'exima', key: 'STAFF', label: 'Staff', permissions: ['store.use'], is_active: true, active_entitlement_count: 0 },
@@ -28,6 +30,7 @@ function routes(extra = []) {
     ...extra,
     { path: '/api/admin/application-access-rules/rule-1', method: 'GET', response: () => jsonResponse({ data: rule }) },
     { path: '/api/admin/application-roles', response: () => jsonResponse({ data: roles }) },
+  { path: /\/api\/admin\/application-access\/apps\/exima\/role-options/, response: () => jsonResponse({ data: { unavailable } }) },
     { path: '/api/admin/application-organizations', response: () => jsonResponse({ data: [{ application_id: 'exima', organization_id: 'org_exima_a1b2c3' }] }) },
     { path: /^\/api\/admin\/units/, response: () => jsonResponse({ data: [{ id: 'unit-1', name: 'MAD Lab' }, { id: 'unit-2', name: 'Elementary' }] }) },
     { path: /^\/api\/admin\/job-positions/, response: () => jsonResponse({ data: [{ id: 'pos-1', name: 'Developer' }] }) },
@@ -53,10 +56,10 @@ describe('GroupAccessEditPage', () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage()
     expect(await screen.findByText('Edit All Active Employees')).toBeVisible()
-    expect(await screen.findByLabelText('MAD Lab')).toBeChecked()
-    expect(screen.getByLabelText('Elementary')).not.toBeChecked()
-    expect(screen.getByLabelText('All Units')).not.toBeChecked()
-    expect(screen.getByLabelText('All Positions')).toBeChecked()
+    expect(await screen.findByRole('switch', { name: 'MAD Lab' })).toBeChecked()
+    expect(screen.getByRole('switch', { name: 'Elementary' })).not.toBeChecked()
+    expect(screen.getByRole('switch', { name: 'All Units' })).not.toBeChecked()
+    expect(screen.getByRole('switch', { name: 'All Positions' })).toBeChecked()
     expect(await screen.findByText('org_exima_a1b2c3')).toBeVisible()
   })
 
@@ -66,7 +69,7 @@ describe('GroupAccessEditPage', () => {
     ]))
     globalThis.fetch = fetchMock
     const { user } = renderPage()
-    await screen.findByLabelText('MAD Lab')
+    await screen.findByRole('switch', { name: 'MAD Lab' })
 
     await user.click(screen.getByRole('button', { name: /STAFF/ }))
     await user.click(screen.getByRole('option', { name: /ADMIN/ }))

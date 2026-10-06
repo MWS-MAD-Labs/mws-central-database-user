@@ -1,3 +1,4 @@
+import { isRealUnit } from "../utils/legacyUnit.js";
 import { groupFilterErrors } from "../utils/groupFilterState.js";
 import { MultiCheckList } from "./MultiCheckList.jsx";
 
@@ -10,7 +11,7 @@ export function GroupFilters({ audience, options, state, showErrors }) {
       <MultiCheckList
         label="Units"
         allLabel="All Units"
-        items={(options.units || []).map((unit) => ({ id: unit.id, name: unit.name }))}
+        items={(options.units || []).filter(isRealUnit).map((unit) => ({ id: unit.id, name: unit.name }))}
         selection={state.units}
         error={errors.units}
       />

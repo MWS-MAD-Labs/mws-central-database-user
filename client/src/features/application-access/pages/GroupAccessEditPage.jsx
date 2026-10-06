@@ -21,6 +21,7 @@ import {
 } from "../utils/groupFilterState.js";
 import { OrganizationNote } from "../components/OrganizationNote.jsx";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
+import { useRoleAvailability } from "../hooks/useRoleAvailability.js";
 
 export function GroupAccessEditPage() {
   const { user } = useAuth();
@@ -58,13 +59,22 @@ function GroupAccessForm({ rule }) {
     (role) => role.application_id === rule.application_id && role.is_active,
   );
   const options = useQuery({ queryKey: ["employee-form-options"], queryFn: loadEmployeeFormOptions }).data || {};
-  const selectedRole = roles.find((role) => role.key === roleKey);
+  const unavailable = useRoleAvailability({
+    applicationId: rule.application_id,
+    audience: rule.audience,
+    scope: groupFilterPayload(state, rule.audience),
+    groupId: rule.id,
+  });
+  const lostRole = roleKey && unavailable.has(roleKey) ? roleKey : "";
+  const chosenRole = lostRole ? "" : roleKey;
+  const openRoles = roles.filter((role) => !unavailable.has(role.key));
+  const selectedRole = roles.find((role) => role.key === chosenRole);
 
   const mutation = useMutation({
     mutationFn: () =>
       applicationAccessApi.updateRule(rule.id, {
         ...groupFilterPayload(state, rule.audience),
-        default_role_key: roleKey,
+        default_role_key: chosenRole,
         is_active: isActive,
       }),
     onSuccess: () => {
@@ -78,7 +88,7 @@ function GroupAccessForm({ rule }) {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!roleKey || hasGroupFilterError(state, rule.audience)) return;
+    if (!chosenRole || hasGroupFilterError(state, rule.audience)) return;
     mutation.mutate();
   }
 
@@ -103,15 +113,23 @@ function GroupAccessForm({ rule }) {
           </section>
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
             <div className="space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
-              <Field label="Role" error={attempted && !roleKey ? "Role is required." : undefined}>
+              <Field label="Role" error={attempted && !chosenRole ? "Role is required." : undefined}>
                 <SearchableSelect
-                  value={roleKey}
+                  value={chosenRole}
                   onChange={setRoleKey}
-                  options={roleOptions(roles)}
+                  options={roleOptions(roles, unavailable)}
                   placeholder="Select a role"
                   searchPlaceholder="Search role"
                 />
               </Field>
+              {lostRole ? (
+                <p className="text-xs text-(--mws-muted)">{lostRole} no longer fits this scope. Pick another role.</p>
+              ) : null}
+              {roles.length > 0 && openRoles.length === 0 ? (
+                <p className="text-xs text-(--mws-muted)">
+                  Every role is already used by a broader or narrower group for this scope.
+                </p>
+              ) : null}
               {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} /> : null}
               <label className="flex items-center gap-3 text-sm text-(--mws-charcoal)">
                 <input

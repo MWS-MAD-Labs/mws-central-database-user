@@ -19,6 +19,7 @@ import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { GroupSummary } from "../components/GroupSummary.jsx";
 import { Tip } from "../components/Tip.jsx";
 import { PermissionPopover } from "../components/PermissionPopover.jsx";
+import { isRealUnit } from "../utils/legacyUnit.js";
 import { roleOptions } from "../utils/roleOptions.js";
 
 // Another role for people inside one group. Only people that group covers are listed.
@@ -176,7 +177,7 @@ export function ExceptionAddPage() {
                 label="Unit"
                 value={params.unit_id}
                 onChange={(value) => setFilter({ unit_id: value })}
-                options={[{ value: "", label: "All Units" }, ...(formOptions.units || []).map((item) => ({ value: item.id, label: item.name }))]}
+                options={[{ value: "", label: "All Units" }, ...(formOptions.units || []).filter(isRealUnit).map((item) => ({ value: item.id, label: item.name }))]}
               />
               <FilterSelect
                 label="Job Position"

@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { CheckboxField, Field, TextInput } from "../../../components/ui/FormControls.jsx";
+import { Field, TextInput, ToggleChip } from "../../../components/ui/FormControls.jsx";
 
+// Pick any of many items as chips. "All" means no limit, and picking every item is the same.
 export function MultiCheckList({ label, allLabel, items, selection, hint, error }) {
   const [filter, setFilter] = useState("");
   const { selected, setSelected } = selection;
@@ -29,19 +30,14 @@ export function MultiCheckList({ label, allLabel, items, selection, hint, error 
             onChange={(event) => setFilter(event.target.value)}
           />
         ) : null}
-        <div className="grid max-h-56 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 xl:grid-cols-3">
-          <CheckboxField
-            checked={selected === null}
-            label={allLabel}
-            onChange={(event) => setSelected(event.target.checked ? null : [])}
-          />
+        <div className="mws-scrollbar flex max-h-40 flex-wrap gap-2 overflow-y-auto" role="group" aria-label={label}>
+          <ToggleChip checked={selected === null} onChange={(checked) => setSelected(checked ? null : [])}>
+            {allLabel}
+          </ToggleChip>
           {shown.map((item) => (
-            <CheckboxField
-              key={item.id}
-              checked={isChosen(item.id)}
-              label={item.name}
-              onChange={() => toggle(item.id)}
-            />
+            <ToggleChip key={item.id} checked={isChosen(item.id)} onChange={() => toggle(item.id)}>
+              {item.name}
+            </ToggleChip>
           ))}
         </div>
         <p className="text-xs text-(--mws-muted)">
