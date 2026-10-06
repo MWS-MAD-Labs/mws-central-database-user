@@ -34,7 +34,7 @@ import {
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { fetchAllPages } from "../../../lib/pagination.js";
-import { workforceTargetValue } from "../utils/selectOptions.js";
+import { candidateName, workforceTargetValue } from "../utils/selectOptions.js";
 import { SupportAssignmentDialog } from "../../students/components/StudentSensitivePanels.jsx";
 
 const PROMOTE_WINDOW_DAYS = 30;
@@ -1125,7 +1125,7 @@ export function EnrollmentDialog({
           >
             <div className="flex items-center gap-2">
               <Button type="button" variant="secondary" onClick={() => setSupportPickerOpen(true)}>
-                {selectedSupportCandidate?.identity?.full_name || "Choose SE Teacher"}
+                {candidateName(selectedSupportCandidate) || "Choose SE Teacher"}
               </Button>
               {selectedSupportCandidate ? (
                 <Button

@@ -11,7 +11,13 @@ import { PaginatedSingleSelect } from '../../../../components/ui/PaginatedSingle
 import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
 import { cleanPayload, trimmedOrUndefined } from '../../../../lib/form.js'
 import { formatDate, formatStatus } from '../../../../lib/format.js'
-import { workforceTargetPayload, workforceTargetValue } from '../../../academic/utils/selectOptions.js'
+import {
+  candidateEmail,
+  candidateName,
+  candidateType,
+  workforceTargetPayload,
+  workforceTargetValue,
+} from '../../../academic/utils/selectOptions.js'
 import { studentSensitiveApi } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame } from './panelPrimitives.jsx'
 import { invalidateStudentRelation } from './panelHelpers.js'
@@ -292,8 +298,8 @@ export function SupportAssignmentDialog({ title, studentName, mode = 'create', u
       title: mode === 'change' ? 'Confirm teacher change' : 'Confirm teacher assignment',
       description:
         mode === 'change'
-          ? `End the current assignment and assign ${employee?.identity.full_name} as the new Special Education Teacher?`
-          : `Assign ${employee?.identity.full_name} as Special Education Teacher${studentName ? ` for ${studentName}` : ''}?`,
+          ? `End the current assignment and assign ${candidateName(employee)} as the new Special Education Teacher?`
+          : `Assign ${candidateName(employee)} as Special Education Teacher${studentName ? ` for ${studentName}` : ''}?`,
       confirmLabel: mode === 'change' ? 'Change teacher' : 'Assign teacher',
     })
     if (!confirmed) return
@@ -323,7 +329,7 @@ export function SupportAssignmentDialog({ title, studentName, mode = 'create', u
             emptyMessage="No special education teachers match."
             onChange={(workforceTarget) => {
               setValues({ ...values, workforce_target: workforceTarget })
-              setSelectedCandidate(employees.find((candidate) => workforceTargetValue(candidate.workforce_type || 'EMPLOYEE', candidate.id) === workforceTarget) || null)
+              setSelectedCandidate(employees.find((candidate) => workforceTargetValue(candidateType(candidate), candidate.id) === workforceTarget) || null)
             }}
             onSearchChange={(value) => { setSearch(value); setPage(1) }}
             onPageChange={setPage}
@@ -348,9 +354,9 @@ export function SupportAssignmentDialog({ title, studentName, mode = 'create', u
 
 function employeeOption(member) {
   return {
-    value: workforceTargetValue(member.workforce_type || 'EMPLOYEE', member.id),
-    label: `${member.identity.full_name}${member.workforce_type === 'INTERN' ? ' (Intern)' : ''}`,
-    description: member.identity.email,
+    value: workforceTargetValue(candidateType(member), member.id),
+    label: `${candidateName(member)}${candidateType(member) === 'INTERN' ? ' (Intern)' : ''}`,
+    description: candidateEmail(member),
     badge: caseloadLabel(member.active_student_count),
     tone: member.active_student_count > 0 ? 'amber' : 'green',
   }
