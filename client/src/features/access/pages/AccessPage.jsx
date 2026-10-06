@@ -338,6 +338,28 @@ function AdminUsersPanel() {
     });
   }
 
+  // Only a protected Super Admin picks approvers, and only among Head of CARE admins
+  // (or one who already is an approver, so the flag can be taken off).
+  function approverItems(admin) {
+    if (
+      !user?.is_protected ||
+      !(admin.is_head_of_care || admin.is_identifier_change_approver)
+    ) {
+      return [];
+    }
+    return [
+      {
+        label: "Change Request Approver",
+        checked: Boolean(admin.is_identifier_change_approver),
+        disabled:
+          !admin.is_active ||
+          admin.role === "VIEWER" ||
+          approverMutation.isPending,
+        onToggle: (value) => toggleApprover(admin, value),
+      },
+    ];
+  }
+
   async function toggleApprover(admin, value) {
     const confirmed = await confirm({
       title: value ? "Make approver" : "Remove approver",
@@ -477,8 +499,8 @@ function AdminUsersPanel() {
             Requests to change a locked NIK, NPWP, bank or BPJS number can't be
             reviewed. Pick an admin who is linked to an employee with the Head
             of CARE position, then tick Change Request Approver in their
-            Employee permissions. Requests filed earlier appear for them
-            automatically.
+            row. Only a protected Super Admin can do this. Requests filed
+            earlier appear for them automatically.
           </p>
         </div>
       ) : null}
@@ -612,10 +634,18 @@ function AdminUsersPanel() {
                   </td>
                   <td className="px-4 py-3">
                     {admin.role === "SUPER_ADMIN" ? (
-                      <StatusBadge tone="green">
-                        <CheckCircle2 size={12} className="mr-1" />
-                        All Permissions
-                      </StatusBadge>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <StatusBadge tone="green">
+                          <CheckCircle2 size={12} className="mr-1" />
+                          All Permissions
+                        </StatusBadge>
+                        {approverItems(admin).length > 0 ? (
+                          <PermissionGroupMenu
+                            label="Approval"
+                            items={approverItems(admin)}
+                          />
+                        ) : null}
+                      </div>
                     ) : (
                       <div className="flex flex-wrap items-center gap-1.5">
                         <PermissionGroupMenu
@@ -727,24 +757,7 @@ function AdminUsersPanel() {
                                   "Employee PII",
                                 ),
                             },
-                            ...(user?.is_protected &&
-                            (admin.is_head_of_care ||
-                              admin.is_identifier_change_approver)
-                              ? [
-                                  {
-                                    label: "Change Request Approver",
-                                    checked: Boolean(
-                                      admin.is_identifier_change_approver,
-                                    ),
-                                    disabled:
-                                      !admin.is_active ||
-                                      admin.role === "VIEWER" ||
-                                      approverMutation.isPending,
-                                    onToggle: (value) =>
-                                      toggleApprover(admin, value),
-                                  },
-                                ]
-                              : []),
+                            ...approverItems(admin),
                             {
                               label: "Disciplinary Data",
                               checked: Boolean(

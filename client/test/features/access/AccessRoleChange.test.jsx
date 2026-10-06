@@ -498,6 +498,41 @@ describe('Access role change summary', () => {
     expect(screen.queryByRole('button', { name: /Change Request Approver/ })).not.toBeInTheDocument()
   })
 
+  it('lets a protected Super Admin make a Super Admin who is Head of CARE the approver', async () => {
+    const fetchMock = createFetchRouter([
+      ...accessRoutes([
+        { ...baseAdmin, id: 'admin-boss', email: 'boss@millennia21.id', role: 'SUPER_ADMIN', is_head_of_care: true },
+        { ...baseAdmin, id: 'admin-plain', email: 'plain@millennia21.id', role: 'SUPER_ADMIN', is_head_of_care: false },
+      ]),
+      { path: '/api/admin/admin-users/can-approve-identifier-changes/admin-boss', method: 'PATCH', response: jsonResponse({ data: {} }) },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderAccess({ role: 'SUPER_ADMIN', is_protected: true })
+    await screen.findByText('boss@millennia21.id')
+
+    // Only the Head of CARE Super Admin gets the menu.
+    const menus = screen.getAllByRole('button', { name: /^Approval/ })
+    expect(menus).toHaveLength(1)
+    await user.click(menus[0])
+    await user.click(screen.getByRole('button', { name: /Change Request Approver/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Make approver' })
+    await user.click(within(dialog).getByRole('button', { name: 'Make approver' }))
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url, options]) =>
+        String(url).endsWith('/admin-boss') && options?.method === 'PATCH')
+      expect(JSON.parse(call[1].body)).toEqual({ can_approve_identifier_changes: true })
+    })
+  })
+
+  it('hides the approval menu on Super Admin rows from anyone who is not a protected Super Admin', async () => {
+    globalThis.fetch = createFetchRouter(accessRoutes([
+      { ...baseAdmin, id: 'admin-boss', email: 'boss@millennia21.id', role: 'SUPER_ADMIN', is_head_of_care: true },
+    ]))
+    renderAccess({ role: 'SUPER_ADMIN', is_protected: false })
+    await screen.findByText('boss@millennia21.id')
+    expect(screen.queryByRole('button', { name: /^Approval/ })).not.toBeInTheDocument()
+  })
+
   it('warns Super Admins when no one can approve employee data changes', async () => {
     globalThis.fetch = createFetchRouter(accessRoutes([{ ...baseAdmin }], { employee: false, student: true }))
     renderAccess({ role: 'SUPER_ADMIN' })
