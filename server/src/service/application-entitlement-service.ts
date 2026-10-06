@@ -577,6 +577,26 @@ function roleAuditSnapshot(role: {
   };
 }
 
+// An application should not hold two active roles with the same permissions.
+async function assertDistinctPermissions(
+  applicationId: string,
+  permissions: string[],
+  excludeId?: string,
+) {
+  const wanted = [...new Set(permissions)].sort().join("\n");
+  const roles = await prismaClient.applicationRole.findMany({
+    where: { application_id: applicationId, is_active: true, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    select: { key: true, permissions: true },
+  });
+  const twin = roles.find((role) => [...new Set(role.permissions)].sort().join("\n") === wanted);
+  if (twin) {
+    throw new ResponseError(
+      400,
+      `Role ${twin.key} already has the same permissions. Reuse it instead of adding another.`,
+    );
+  }
+}
+
 export class ApplicationRoleService {
   static async list(
     admin: AdminUser,
@@ -612,6 +632,7 @@ export class ApplicationRoleService {
     if (existing) {
       throw new ResponseError(400, `Role ${input.key} already exists for ${input.application_id}`);
     }
+    await assertDistinctPermissions(input.application_id, input.permissions);
     // A new application gets its organization together with its first role.
     await resolveOrganizationId(input.application_id);
     const created = await prismaClient.$transaction(async (tx) => {
@@ -699,6 +720,20 @@ export class ApplicationRoleService {
       throw new ResponseError(
         400,
         `${activeCount} active entitlement(s) still use this role. Move or revoke them first.`,
+      );
+    }
+
+    const willBeActive = input.is_active ?? existing.is_active;
+    const permissionsChanged =
+      input.permissions !== undefined &&
+      [...new Set(input.permissions)].sort().join("\n") !==
+        [...new Set(existing.permissions)].sort().join("\n");
+    const activating = input.is_active === true && !existing.is_active;
+    if (willBeActive && (permissionsChanged || activating)) {
+      await assertDistinctPermissions(
+        existing.application_id,
+        input.permissions ?? existing.permissions,
+        existing.id,
       );
     }
 

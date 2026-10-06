@@ -113,7 +113,7 @@ describe("application role registry", () => {
   it("puts a new role at the bottom and reorders the roles of an application", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const post = (key: string) =>
-      TestRequest.post(BASE, { application_id: appId, key, label: key, permissions: [] }, accessToken);
+      TestRequest.post(BASE, { application_id: appId, key, label: key, permissions: [`${key.toLowerCase()}.use`] }, accessToken);
     const first = (await (await post("TOP")).json()).data;
     const second = (await (await post("MIDDLE")).json()).data;
     const third = (await (await post("BOTTOM")).json()).data;
@@ -144,5 +144,31 @@ describe("application role registry", () => {
       dbAdmin.accessToken,
     );
     expect(forbidden.status).toBe(403);
+  });
+
+  it("refuses a second active role with the same permissions", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const post = (key: string, permissions: string[]) =>
+      TestRequest.post(BASE, { application_id: appId, key, label: key, permissions }, accessToken);
+    const admin = (await (await post("ADMIN", ["a.read", "a.write"])).json()).data;
+
+    // Same set in another order, and the empty set, count as duplicates.
+    const twin = await post("BOSS", ["a.write", "a.read"]);
+    expect(twin.status).toBe(400);
+    expect((await twin.json()).errors).toContain("ADMIN");
+    const empty = (await (await post("NONE", [])).json()).data;
+    expect((await post("VOID", [])).status).toBe(400);
+
+    // Editing into a duplicate is refused, keeping or relabelling is fine.
+    const staff = (await (await post("STAFF", ["a.read"])).json()).data;
+    const patch = (id: string, body: object) => TestRequest.patch(`${BASE}/${id}`, body, accessToken);
+    expect((await patch(staff.id, { permissions: ["a.write", "a.read"] })).status).toBe(400);
+    expect((await patch(staff.id, { label: "Staff member", permissions: ["a.read"] })).status).toBe(200);
+
+    // An inactive role does not block, but bringing it back into a clash does.
+    expect((await patch(empty.id, { is_active: false })).status).toBe(200);
+    expect((await post("VOID", [])).status).toBe(200);
+    expect((await patch(empty.id, { is_active: true })).status).toBe(400);
+    expect(admin.key).toBe("ADMIN");
   });
 });
