@@ -17,7 +17,7 @@ Semua dari UI Central (Super Admin), tanpa deploy:
 - Hanya murid Junior High: group dengan audience Students, unit Junior High, lalu pilih role. Murid dicocokkan lewat unit gradenya, jadi murid Elementary dan semua karyawan tidak tercakup.
 - Hanya murid Elementary: sama, unit Elementary.
 - Semua murid aktif: audience Students, unit dibiarkan All.
-- Karyawan dan murid bersama: audience Employees and Students. Unit berlaku untuk keduanya, sedangkan posisi dan level hanya untuk karyawan.
+- Karyawan dan murid bersama: buat dua group dengan role yang sama, satu untuk Employees dan satu untuk Students. Group tunggal untuk keduanya tidak bisa dibuat lagi karena murid tidak punya posisi dan level, sehingga scope-nya tidak bisa dibuat jujur. Group gabungan lama tetap berjalan dan sebaiknya dipecah.
 
 Group murid hanya menerima unit yang punya grade (Kindergarten, Elementary, Junior High). Unit seperti MAD Lab tidak punya murid, jadi tidak ditawarkan dan ditolak server dengan pesan `Unit "MAD Lab" has no students`.
 

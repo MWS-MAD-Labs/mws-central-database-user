@@ -152,8 +152,29 @@ describe("application baseline access rules", () => {
     expect(refused.status).toBe(400);
     expect(String((await refused.json()).errors)).toContain(`Unit "${noGrades.name}" has no students`);
 
-    // Employees and Students may still name a unit that only has employees.
-    expect((await addRule(accessToken, { audience: "EMPLOYEES_AND_STUDENTS", unit_ids: [noGrades.id] })).status).toBe(200);
+    // A group is for employees or for students, not both.
+    const both = await addRule(accessToken, { audience: "EMPLOYEES_AND_STUDENTS" });
+    expect(both.status).toBe(400);
+    expect(String((await both.json()).errors)).toContain("one group for employees and another for students");
+  });
+
+  it("keeps serving a group of employees and students that was made before they were split", async () => {
+    const student = await StudentTest.create({ email: "test_rule_legacy_student@millennia21.id", status: StudentStatus.ACTIVE });
+    const employee = await createEmployee("test_rule_legacy_employee@millennia21.id");
+    const organization = await prismaClient.applicationOrganization.create({
+      data: { application_id: appId, organization_id: `org_legacy_${randomBytes(3).toString("hex")}` },
+    });
+    await prismaClient.applicationAccessRule.create({
+      data: {
+        application_id: appId,
+        audience: "EMPLOYEES_AND_STUDENTS",
+        organization_id: organization.organization_id,
+        default_role_key: "STAFF",
+      },
+    });
+
+    expect((await (await lookup(employee.id)).json()).data.role).toBe("STAFF");
+    expect((await (await lookup(student.id)).json()).data.role).toBe("STAFF");
   });
 
   it("follows the audience, unit, active status and employee status", async () => {

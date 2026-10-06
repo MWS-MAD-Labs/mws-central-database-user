@@ -132,7 +132,9 @@ export function GroupFormPage() {
                 <SearchableSelect
                   value={audience}
                   onChange={changeAudience}
-                  options={Object.entries(audienceLabels).map(([value, label]) => ({ value, label }))}
+                  options={Object.entries(audienceLabels)
+                    .filter(([value]) => value !== "EMPLOYEES_AND_STUDENTS")
+                    .map(([value, label]) => ({ value, label }))}
                   placeholder="Select an audience"
                 />
               </Field>

@@ -153,10 +153,17 @@ export class ApplicationAccessRuleValidation {
     group_id: nonemptyId("Group ID").optional(),
   });
 
-  static readonly CREATE = z.object({
-    application_id: applicationId,
-    ...accessRuleFields,
-  });
+  // A group is for employees or for students. One group for both used to exist, but
+  // students have no positions or levels, so it could not be scoped honestly.
+  static readonly CREATE = z
+    .object({
+      application_id: applicationId,
+      ...accessRuleFields,
+    })
+    .refine((value) => value.audience !== "EMPLOYEES_AND_STUDENTS", {
+      message: "Create one group for employees and another for students",
+      path: ["audience"],
+    });
 
   // The application and audience can't change, only who within it and the role.
   static readonly UPDATE = z.object({

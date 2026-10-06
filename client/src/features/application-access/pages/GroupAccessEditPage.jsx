@@ -112,6 +112,12 @@ function GroupAccessForm({ rule }) {
           </Button>
         }
       />
+      {rule.audience === "EMPLOYEES_AND_STUDENTS" ? (
+        <p role="status" className="mb-4 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
+          This group covers employees and students together, so positions and levels never limit the students.
+          Create one group for employees and one for students, then remove this one.
+        </p>
+      ) : null}
       <form onSubmit={submit} noValidate>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <section className="min-w-0 space-y-5 rounded-2xl border border-(--mws-line) bg-white p-5">

@@ -322,13 +322,12 @@ describe('GroupFormPage', () => {
     expect(screen.getByText('Pick the school units whose students this group covers.')).toBeVisible()
   })
 
-  it('still offers every unit for employees and students together, with a note', async () => {
+  it('no longer offers the audience for employees and students together', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
     await screen.findByText('Add group to exima')
     await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
-    await user.click(screen.getByRole('option', { name: 'All Active Employees and Students' }))
-    expect(await screen.findByRole('switch', { name: 'MAD Lab' })).toBeVisible()
-    expect(screen.getByText(/Units without students add employees only/)).toBeVisible()
+    expect(screen.getByRole('option', { name: 'All Active Students' })).toBeVisible()
+    expect(screen.queryByRole('option', { name: 'All Active Employees and Students' })).not.toBeInTheDocument()
   })
 })

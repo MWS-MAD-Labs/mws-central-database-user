@@ -13,7 +13,7 @@ const roles = [
   { id: 'role-staff', application_id: 'exima', key: 'STAFF', label: 'Staff', permissions: ['store.use'], is_active: true, active_entitlement_count: 0 },
 ]
 
-const rule = {
+let rule = {
   id: 'rule-1',
   application_id: 'exima',
   audience: 'EMPLOYEES',
@@ -99,5 +99,14 @@ describe('GroupAccessEditPage', () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage({ role: 'DATABASE_ADMIN' })
     expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
+  })
+
+  it('tells that a group of employees and students together should be split', async () => {
+    const original = rule
+    rule = { ...rule, audience: 'EMPLOYEES_AND_STUDENTS' }
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage()
+    expect(await screen.findByText(/covers employees and students together/)).toBeVisible()
+    rule = original
   })
 })

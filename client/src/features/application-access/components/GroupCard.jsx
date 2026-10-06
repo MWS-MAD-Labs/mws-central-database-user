@@ -111,6 +111,11 @@ export function GroupCard({
             <ScopeGrid group={group} />
             <RolePill roleKey={group.default_role_key} permissions={group.permissions} />
           </div>
+          {group.audience === "EMPLOYEES_AND_STUDENTS" ? (
+            <p className="rounded-xl bg-[#fff8e8] px-3 py-2 text-xs text-[#805b18]">
+              Covers employees and students together. Create one group for each and remove this one.
+            </p>
+          ) : null}
           <RemainingScope group={group} narrower={narrower} />
           <GroupFacts group={group} parentRole={parentRole} />
         </div>
