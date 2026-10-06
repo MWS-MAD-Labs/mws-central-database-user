@@ -234,6 +234,20 @@ export class ApplicationAccessController {
     return c.json(response);
   }
 
+  static async scopeOptions(c: Context<{ Variables: AdminVariables }>) {
+    const audience = c.req.query("audience");
+    if (!audience || !["EMPLOYEES", "STUDENTS", "EMPLOYEES_AND_STUDENTS"].includes(audience)) {
+      throw new ResponseError(400, "audience must be EMPLOYEES, STUDENTS or EMPLOYEES_AND_STUDENTS");
+    }
+    const response = await ApplicationAccessService.scopeOptions(c.var.admin, {
+      audience: audience as "EMPLOYEES" | "STUDENTS" | "EMPLOYEES_AND_STUDENTS",
+      unit_ids: listQuery(c.req.query("unit_ids")),
+      job_position_ids: listQuery(c.req.query("job_position_ids")),
+      job_level_ids: listQuery(c.req.query("job_level_ids")),
+    });
+    return c.json({ data: response });
+  }
+
   static async roleOptions(c: Context<{ Variables: AdminVariables }>) {
     const applicationId = c.req.param("applicationId");
     if (!applicationId) throw new ResponseError(400, "Application ID is required");

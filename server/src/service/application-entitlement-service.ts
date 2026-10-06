@@ -30,6 +30,8 @@ import {
   type ApplicationDetail,
   type ApplicationRoleOptions,
   type ListRoleOptionsRequest,
+  type ListScopeOptionsRequest,
+  type ApplicationScopeOptions,
   type ApplicationExceptionRow,
   type ApplicationGroupCard,
   type ApplicationSummary,
@@ -61,13 +63,20 @@ import {
 } from "../validation/application-entitlement-validation";
 import { Validation } from "../validation/validation";
 import { UNKNOWN_LEGACY_UNIT_NAME } from "../utils/legacy-unit";
+import {
+  buildFeasibility,
+  comboKey,
+  loadScopeCatalog,
+  projection,
+  type Feasibility,
+  type ScopeCatalog,
+} from "./application-scope-rules";
 import { AuditService } from "./audit-service";
 import {
   loadActiveRules,
   assertHasGroup,
   assertPersonException,
   assertRuleGate,
-  dimensionCovers,
   checkRuleGate,
   loadGateState,
   loadRuleSubject,
@@ -828,14 +837,18 @@ async function assertNoOverlap(
   }
 }
 
-async function assertRuleReferences(rule: {
-  application_id: string;
-  default_role_key: string;
-  audience: ApplicationAudience;
-  unit_ids: string[];
-  job_position_ids: string[];
-  job_level_ids: string[];
-}) {
+async function assertRuleReferences(
+  rule: {
+    application_id: string;
+    default_role_key: string;
+    audience: ApplicationAudience;
+    unit_ids: string[];
+    job_position_ids: string[];
+    job_level_ids: string[];
+  },
+  // A group saved before the scope rules may keep its old values while only its role or switch changes.
+  checkScope = true,
+) {
   const role = await prismaClient.applicationRole.findUnique({
     where: { application_id_key: { application_id: rule.application_id, key: rule.default_role_key } },
   });
@@ -866,6 +879,24 @@ async function assertRuleReferences(rule: {
   }
   if (positions !== rule.job_position_ids.length) throw new ResponseError(400, "One or more job positions do not exist");
   if (levels !== rule.job_level_ids.length) throw new ResponseError(400, "One or more job levels do not exist");
+  if (checkScope && rule.audience !== ApplicationAudience.STUDENTS) await assertScopeCanHoldPeople(rule);
+}
+
+// Every value of a scope must be able to hold someone, by the master data rules:
+// positions and levels limited to units, and positions that fit the level.
+async function assertScopeCanHoldPeople(rule: ScopeIds) {
+  const catalog = await loadScopeCatalog();
+  const used = projection(buildFeasibility(catalog).combos(rule));
+  const check = (ids: string[], seen: Set<string>, list: { id: string; name: string }[], label: string, against: string) => {
+    const dead = ids.find((id) => !seen.has(id));
+    if (dead) {
+      const name = list.find((item) => item.id === dead)?.name ?? dead;
+      throw new ResponseError(400, `${label} "${name}" does not apply to the selected ${against}`);
+    }
+  };
+  check(rule.job_position_ids, used.positions, catalog.positions, "Job position", "units and levels");
+  check(rule.job_level_ids, used.levels, catalog.levels, "Job level", "units and job positions");
+  check(rule.unit_ids, used.units, catalog.units, "Unit", "job positions and levels");
 }
 
 function ruleAuditSnapshot(rule: {
@@ -999,7 +1030,10 @@ export class ApplicationAccessRuleService {
       default_role_key: input.default_role_key ?? existing.default_role_key,
       is_active: input.is_active ?? existing.is_active,
     };
-    await assertRuleReferences(next);
+    await assertRuleReferences(
+      next,
+      input.unit_ids !== undefined || input.job_position_ids !== undefined || input.job_level_ids !== undefined,
+    );
     if (next.is_active) await assertNoOverlap(existing.application_id, next, existing.id);
     await assertRuleGate(existing.application_id, toGateRule(existing), {
       id: existing.id,
@@ -1083,56 +1117,58 @@ const employeeScope = (rule: ScopeIds): Prisma.EmployeeWhereInput => ({
 const studentScope = (rule: ScopeIds): Prisma.StudentWhereInput =>
   rule.unit_ids.length ? { current_grade: { unit_id: { in: rule.unit_ids } } } : {};
 
-// What is left of each dimension of a group once its narrower groups took theirs.
+// What is left of each dimension of a group once its narrower groups took theirs,
+// worked out on the triples the master data lets exist.
 function remainingScope(
   group: GateRule,
   children: GateRule[],
-  all: { units: { id: string; name: string }[]; positions: { id: string; name: string }[]; levels: { id: string; name: string }[] },
+  catalog: ScopeCatalog,
+  feasibility: Feasibility,
 ): ApplicationGroupCard["remaining"] {
-  const employeeGroup = group.audience !== ApplicationAudience.STUDENTS;
-  const takers = children.filter((child) =>
-    employeeGroup ? child.audience !== ApplicationAudience.STUDENTS : child.audience !== ApplicationAudience.EMPLOYEES,
+  const named = <T extends { id: string; name: string }>(list: T[], ids: Set<string>) =>
+    list.filter((item) => ids.has(item.id)).map((item) => ({ id: item.id, name: item.name }));
+  const unitsOf = (rule: GateRule) =>
+    rule.unit_ids.length ? catalog.units.filter((unit) => rule.unit_ids.includes(unit.id)) : catalog.units;
+  const withEmployees = (rule: GateRule) => rule.audience !== ApplicationAudience.STUDENTS;
+  const withStudents = (rule: GateRule) => rule.audience !== ApplicationAudience.EMPLOYEES;
+
+  // Employees: the feasible triples, minus those a narrower group holds.
+  const all = withEmployees(group) ? feasibility.combos(group) : [];
+  const taken = new Set(
+    children.filter(withEmployees).flatMap((child) => feasibility.combos(child).map(comboKey)),
   );
+  const left = all.filter((item) => !taken.has(comboKey(item)));
+  const before = projection(all);
+  const after = projection(left);
+
+  // Students only have a unit, so a narrower group takes the units it lists.
+  let studentBefore = new Set<string>();
+  let studentAfter = new Set<string>();
+  if (withStudents(group)) {
+    studentBefore = new Set(unitsOf(group).map((unit) => unit.id));
+    const takers = children.filter(withStudents);
+    studentAfter = new Set(
+      [...studentBefore].filter((id) => !takers.some((child) => !child.unit_ids.length || child.unit_ids.includes(id))),
+    );
+  }
+
   const dimension = (
-    domain: { id: string; name: string }[],
-    own: string[],
-    taken: (child: GateRule, id: string) => boolean,
+    list: { id: string; name: string }[],
+    beforeIds: Set<string>,
+    afterIds: Set<string>,
   ) => {
-    const pool = own.length ? domain.filter((item) => own.includes(item.id)) : domain;
-    const left = pool.filter((item) => !takers.some((child) => taken(child, item.id)));
-    return left.length === pool.length ? null : left;
+    const dropped = [...beforeIds].filter((id) => !afterIds.has(id));
+    if (dropped.length === 0) return null;
+    return { kept: named(list, afterIds), dropped: named(list, new Set(dropped)) };
   };
-  const has = (ids: string[], id: string) => ids.length === 0 || ids.includes(id);
   return {
     units: dimension(
-      all.units,
-      group.unit_ids,
-      (child, id) =>
-        has(child.unit_ids, id) &&
-        (!employeeGroup ||
-          (dimensionCovers(child.job_position_ids, group.job_position_ids) &&
-            dimensionCovers(child.job_level_ids, group.job_level_ids))),
+      catalog.units,
+      new Set([...before.units, ...studentBefore]),
+      new Set([...after.units, ...studentAfter]),
     ),
-    job_positions: employeeGroup
-      ? dimension(
-          all.positions,
-          group.job_position_ids,
-          (child, id) =>
-            has(child.job_position_ids, id) &&
-            dimensionCovers(child.unit_ids, group.unit_ids) &&
-            dimensionCovers(child.job_level_ids, group.job_level_ids),
-        )
-      : null,
-    job_levels: employeeGroup
-      ? dimension(
-          all.levels,
-          group.job_level_ids,
-          (child, id) =>
-            has(child.job_level_ids, id) &&
-            dimensionCovers(child.unit_ids, group.unit_ids) &&
-            dimensionCovers(child.job_position_ids, group.job_position_ids),
-        )
-      : null,
+    job_positions: withEmployees(group) ? dimension(catalog.positions, before.positions, after.positions) : null,
+    job_levels: withEmployees(group) ? dimension(catalog.levels, before.levels, after.levels) : null,
   };
 }
 
@@ -1324,13 +1360,14 @@ export class ApplicationAccessService {
       throw new ResponseError(404, "Application not found");
     }
 
+    const catalog = await loadScopeCatalog();
+    const feasibility = buildFeasibility(catalog);
     const [allUnits, positions, levels] = await Promise.all([
-      prismaClient.masterUnit.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
-      prismaClient.masterJobPosition.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
-      prismaClient.masterJobLevel.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      prismaClient.masterUnit.findMany({ select: { id: true, name: true } }),
+      prismaClient.masterJobPosition.findMany({ select: { id: true, name: true } }),
+      prismaClient.masterJobLevel.findMany({ select: { id: true, name: true } }),
     ]);
     const units = allUnits;
-    const realUnits = allUnits.filter((unit) => unit.name !== UNKNOWN_LEGACY_UNIT_NAME);
     const named = (list: { id: string; name: string }[], ids: string[]) =>
       ids.map((id) => ({ id, name: list.find((item) => item.id === id)?.name ?? id }));
 
@@ -1384,11 +1421,7 @@ export class ApplicationAccessService {
           blocked_count: inside.filter((item) => !item.row.is_active).length,
           covered_count: counts[index].covered,
           own_count: counts[index].own,
-          remaining: remainingScope(gateRules[index], childrenOf(rule), {
-            units: realUnits,
-            positions,
-            levels,
-          }),
+          remaining: remainingScope(gateRules[index], childrenOf(rule), catalog, feasibility),
         };
       })
       // Broad groups first, then narrower ones.
@@ -1403,6 +1436,28 @@ export class ApplicationAccessService {
       organization_id: organization?.organization_id ?? null,
       groups,
       other_count: parents.filter((item) => item.parentId === null).length,
+    };
+  }
+
+  // Which values of each dimension can still hold someone, given the other two.
+  static async scopeOptions(
+    admin: AdminUser,
+    request: ListScopeOptionsRequest,
+  ): Promise<ApplicationScopeOptions> {
+    assertSuperAdmin(admin);
+    const input = Validation.validate(ApplicationAccessRuleValidation.SCOPE_OPTIONS, request);
+    const catalog = await loadScopeCatalog();
+    const feasibility = buildFeasibility(catalog);
+    const lists = {
+      unit_ids: input.unit_ids ?? [],
+      job_position_ids: input.job_position_ids ?? [],
+      job_level_ids: input.job_level_ids ?? [],
+    };
+    const ids = (set: Set<string>) => [...set];
+    return {
+      units: ids(projection(feasibility.combos({ ...lists, unit_ids: [] })).units),
+      job_positions: ids(projection(feasibility.combos({ ...lists, job_position_ids: [] })).positions),
+      job_levels: ids(projection(feasibility.combos({ ...lists, job_level_ids: [] })).levels),
     };
   }
 

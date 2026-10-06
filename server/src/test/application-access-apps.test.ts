@@ -208,9 +208,10 @@ describe("application access per application", () => {
     const [first, second] = detail.groups;
     expect(first.id).toBe(broad.data.id);
     // The broad group no longer reaches the taken unit, and nothing else changed.
-    const left = first.remaining.units.map((unit: { id: string }) => unit.id);
-    expect(left).toContain(masterData.unit.id);
-    expect(left).not.toContain(takenUnit.id);
+    const kept = first.remaining.units.kept.map((unit: { id: string }) => unit.id);
+    expect(kept).toContain(masterData.unit.id);
+    expect(kept).not.toContain(takenUnit.id);
+    expect(first.remaining.units.dropped.map((unit: { id: string }) => unit.id)).toContain(takenUnit.id);
     expect(first.remaining.job_positions).toBeNull();
     expect(first.remaining.job_levels).toBeNull();
     expect(first.own_count).toBe(first.covered_count - 1);
@@ -228,6 +229,61 @@ describe("application access per application", () => {
     expect(ofBroad).toContain(stays.id);
     expect(ofBroad).not.toContain(moves.id);
     expect(await candidates(narrow.data.id)).toContain(moves.id);
+  });
+
+  it("keeps scopes to what the master data lets exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const suffix = randomBytes(3).toString("hex");
+    const homeUnit = await prismaClient.masterUnit.create({ data: { name: `TEST_APPS_HOME_${suffix}` } });
+    const awayUnit = await prismaClient.masterUnit.create({ data: { name: `TEST_APPS_AWAY_${suffix}` } });
+    // A position that only exists in the home unit, and a teaching one.
+    const homeOnly = await prismaClient.masterJobPosition.create({
+      data: { name: `TEST_APPS_HOMEONLY_${suffix}`, units: { create: [{ unit_id: homeUnit.id }] } },
+    });
+    const teacher = await prismaClient.masterJobPosition.create({
+      data: { name: `TEST_APPS_TEACHER_${suffix}`, is_teaching_position: true },
+    });
+    const post = (body: Record<string, unknown>) =>
+      TestRequest.post(RULES, { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF", ...body }, accessToken);
+
+    // Dead values are refused: a position not used in the unit, a teaching position with a non-teaching level.
+    const wrongUnit = await post({ unit_ids: [awayUnit.id], job_position_ids: [homeOnly.id] });
+    expect(wrongUnit.status).toBe(400);
+    expect(String((await wrongUnit.json()).errors)).toContain(`"${homeOnly.name}" does not apply`);
+    const mismatch = await post({ job_position_ids: [teacher.id], job_level_ids: [masterData.level.id] });
+    expect(mismatch.status).toBe(400);
+
+    // Scope options only offer what still fits the other choices.
+    const OPTIONS = `${ACCESS}/scope-options?audience=EMPLOYEES`;
+    const away = (await (await TestRequest.get(`${OPTIONS}&unit_ids=${awayUnit.id}`, accessToken)).json()).data;
+    expect(away.job_positions).not.toContain(homeOnly.id);
+    const home = (await (await TestRequest.get(`${OPTIONS}&unit_ids=${homeUnit.id}`, accessToken)).json()).data;
+    expect(home.job_positions).toContain(homeOnly.id);
+    const nonTeaching = (await (await TestRequest.get(`${OPTIONS}&job_level_ids=${masterData.level.id}`, accessToken)).json()).data;
+    expect(nonTeaching.job_positions).not.toContain(teacher.id);
+    expect((await TestRequest.get(`${ACCESS}/scope-options?audience=NOPE`, accessToken)).status).toBe(400);
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin();
+    expect((await TestRequest.get(OPTIONS, dbAdmin.accessToken)).status).toBe(403);
+
+    // A broad group loses what only exists inside the unit a narrower group takes,
+    // and shows a taken position as dropped.
+    const broad = await (await post({})).json();
+    const narrow = await (await post({ unit_ids: [homeUnit.id], default_role_key: "ADMIN" })).json();
+    const byPosition = await (await post({ job_position_ids: [masterData.position.id], unit_ids: [awayUnit.id], default_role_key: "ADMIN" })).json();
+    expect(narrow.data.id).toBeDefined();
+    expect(byPosition.data.id).toBeDefined();
+    const detail = (await (await TestRequest.get(`${ACCESS}/apps/${appId}`, accessToken)).json()).data;
+    const broadCard = detail.groups.find((group: { id: string }) => group.id === broad.data.id);
+    expect(broadCard.remaining.job_positions.dropped.map((item: { id: string }) => item.id)).toContain(homeOnly.id);
+    expect(broadCard.remaining.units.dropped.map((item: { id: string }) => item.id)).toContain(homeUnit.id);
+
+    // An older group may keep its values while only its switch changes.
+    await prismaClient.applicationAccessRule.update({
+      where: { id: byPosition.data.id },
+      data: { job_position_ids: [homeOnly.id] },
+    });
+    const off = await TestRequest.patch(`${RULES}/${byPosition.data.id}`, { is_active: false }, accessToken);
+    expect(off.status).toBe(200);
   });
 
   it("answers 404 for an unknown application and 403 for others than Super Admin", async () => {

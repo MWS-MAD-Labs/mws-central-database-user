@@ -182,6 +182,12 @@ export type ApplicationExceptionRow = {
   granted_at: string;
 };
 
+// Values of one dimension a group still holds, and the ones narrower groups took.
+export type ScopeLeft = {
+  kept: { id: string; name: string }[];
+  dropped: { id: string; name: string }[];
+};
+
 export type ApplicationGroupCard = ApplicationAccessRuleResponse & {
   parent_group_id: string | null;
   units: { id: string; name: string }[];
@@ -194,11 +200,11 @@ export type ApplicationGroupCard = ApplicationAccessRuleResponse & {
   covered_count: number;
   // Active people this group is the nearest group of (covered, minus narrower groups).
   own_count: number;
-  // What is left of each dimension after narrower groups take theirs. null: nothing taken.
+  // What is left of each dimension after narrower groups take theirs. null: nothing dropped.
   remaining: {
-    units: { id: string; name: string }[] | null;
-    job_positions: { id: string; name: string }[] | null;
-    job_levels: { id: string; name: string }[] | null;
+    units: ScopeLeft | null;
+    job_positions: ScopeLeft | null;
+    job_levels: ScopeLeft | null;
   };
 };
 
@@ -208,6 +214,19 @@ export type ApplicationDetail = {
   groups: ApplicationGroupCard[];
   // Older access of people no group covers.
   other_count: number;
+};
+
+export type ListScopeOptionsRequest = {
+  audience: ApplicationAudience;
+  unit_ids?: string[];
+  job_position_ids?: string[];
+  job_level_ids?: string[];
+};
+
+export type ApplicationScopeOptions = {
+  units: string[];
+  job_positions: string[];
+  job_levels: string[];
 };
 
 export type ListRoleOptionsRequest = {
