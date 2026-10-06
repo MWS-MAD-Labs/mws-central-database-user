@@ -95,6 +95,33 @@ describe('EnrollmentDialog', () => {
     })
   })
 
+  it('shows the picked SE Teacher in a field with their caseload and clears it', async () => {
+    globalThis.fetch = createFetchRouter([
+      { path: /^\/api\/admin\/classes\/[^/]+\/enrollment-candidates(?:\?.*)?$/, response: () => jsonResponse({ data: [studentCandidate], paging }) },
+      {
+        path: /^\/api\/admin\/support-assignments\/candidates(?:\?.*)?$/,
+        response: () => jsonResponse({
+          data: [{ id: 'employee-9', type: 'EMPLOYEE', employee_id: 'EMP-9', full_name: 'Flat SE Teacher', email: 'flat@millennia21.id', unit_id: 'u1', job_position: 'Special Education Teacher', active_student_count: 3 }],
+          paging,
+        }),
+      },
+    ])
+    const { user } = renderAcademic(
+      <EnrollmentDialog dialog={{ mode: 'create' }} options={options} isSubmitting={false} onClose={() => {}} onSubmit={() => {}} />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Choose SE Teacher' }))
+    await user.click(await screen.findByRole('radio', { name: /Flat SE Teacher/ }))
+    const picker = screen.getByRole('dialog', { name: 'Choose Special Education Teacher' })
+    await user.click(within(picker).getByRole('button', { name: 'Save' }))
+
+    const field = await screen.findByRole('button', { name: /Flat SE Teacher/ })
+    expect(field).toHaveTextContent('3 students')
+    await user.click(screen.getByRole('button', { name: 'Clear SE Teacher' }))
+    expect(screen.getByRole('button', { name: 'Choose SE Teacher' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Clear SE Teacher' })).not.toBeInTheDocument()
+  })
+
   it('stops selecting students once the class has no free seats left', async () => {
     const candidates = ['Ana', 'Bela', 'Cici'].map((name, index) => ({
       ...studentCandidate,

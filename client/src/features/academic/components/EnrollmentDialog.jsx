@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye } from "lucide-react";
+import { ChevronDown, Eye, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -34,6 +34,7 @@ import {
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { fetchAllPages } from "../../../lib/pagination.js";
+import { inputClasses } from "../../../components/ui/formControls/sharedStyles.js";
 import { candidateName, workforceTargetValue } from "../utils/selectOptions.js";
 import { SupportAssignmentDialog } from "../../students/components/StudentSensitivePanels.jsx";
 
@@ -1123,21 +1124,45 @@ export function EnrollmentDialog({
             className="md:col-span-2"
             hint="Student count shown is each teacher's current active caseload."
           >
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="secondary" onClick={() => setSupportPickerOpen(true)}>
-                {candidateName(selectedSupportCandidate) || "Choose SE Teacher"}
-              </Button>
+            <div className="relative">
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                onClick={() => setSupportPickerOpen(true)}
+                className={`${inputClasses} flex items-center justify-between gap-2 text-left ${
+                  selectedSupportCandidate ? "pr-16" : ""
+                }`}
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {selectedSupportCandidate ? (
+                    <>
+                      <span className="font-semibold text-(--mws-charcoal)">
+                        {candidateName(selectedSupportCandidate)}
+                      </span>
+                      <span className="ml-2 text-xs text-(--mws-muted)">
+                        {selectedSupportCandidate.active_student_count || 0}{" "}
+                        {selectedSupportCandidate.active_student_count === 1 ? "student" : "students"}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-(--mws-muted)">Choose SE Teacher</span>
+                  )}
+                </span>
+                <ChevronDown size={16} className="shrink-0 text-(--mws-muted)" aria-hidden="true" />
+              </button>
               {selectedSupportCandidate ? (
-                <Button
+                <button
                   type="button"
-                  variant="ghost"
+                  aria-label="Clear SE Teacher"
+                  title="Clear"
                   onClick={() => {
                     setSelectedSupportCandidate(null);
                     setValues({ ...values, special_education_employee_id: "" });
                   }}
+                  className="absolute right-9 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) transition-colors hover:text-(--mws-burgundy)"
                 >
-                  Clear
-                </Button>
+                  <X size={14} />
+                </button>
               ) : null}
             </div>
           </Field>
