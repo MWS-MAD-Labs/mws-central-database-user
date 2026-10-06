@@ -326,6 +326,18 @@ describe('AppAccessPage', () => {
       expect(await screen.findByText('Edit role page')).toBeVisible()
     })
 
+    it('opens the permissions of a role from its count', async () => {
+      globalThis.fetch = createFetchRouter(routes(detail(), orderRoutes))
+      const { user } = renderPage({ role: 'SUPER_ADMIN' }, '/application-access/apps/exima?tab=roles')
+      await screen.findByText('ADMIN')
+      await user.click(screen.getByRole('button', { name: '2 permissions' }))
+      const dialog = screen.getByRole('dialog', { name: 'Permissions' })
+      expect(within(dialog).getByText('app.admin')).toBeVisible()
+      expect(within(dialog).getByText('store.use')).toBeVisible()
+      await user.keyboard('{Escape}')
+      expect(screen.queryByRole('dialog', { name: 'Permissions' })).not.toBeInTheDocument()
+    })
+
     it('opens the add role page', async () => {
       globalThis.fetch = createFetchRouter(routes(detail(), orderRoutes))
       const { user } = renderPage({ role: 'SUPER_ADMIN' }, '/application-access/apps/exima?tab=roles')

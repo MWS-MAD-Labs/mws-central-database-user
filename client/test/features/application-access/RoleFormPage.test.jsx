@@ -45,7 +45,7 @@ describe('RoleFormPage', () => {
     expect(screen.getByLabelText('app.admin')).not.toBeChecked()
 
     await user.type(screen.getByPlaceholderText(/Add a new permission/), 'store.refund')
-    await user.click(screen.getByRole('button', { name: 'Add' }))
+    await user.click(screen.getByRole('button', { name: 'Add permission' }))
     expect(screen.getByLabelText('store.refund')).toBeChecked()
     expect(screen.getByText(/3 active entitlement\(s\) hold this role/)).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Save' }))
@@ -82,7 +82,7 @@ describe('RoleFormPage', () => {
     await user.type(textboxes.find((input) => !input.placeholder), 'CASHIER')
     await user.type(screen.getAllByRole('textbox').filter((input) => !input.placeholder)[1], 'Cashier')
     await user.type(screen.getByPlaceholderText(/Add a new permission/), 'pos.checkout')
-    await user.click(screen.getByRole('button', { name: 'Add' }))
+    await user.click(screen.getByRole('button', { name: 'Add permission' }))
     expect(screen.getByLabelText('pos.checkout')).toBeChecked()
     await user.click(screen.getByRole('button', { name: 'Save' }))
 

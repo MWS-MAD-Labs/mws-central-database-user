@@ -11,6 +11,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { PermissionPopover } from "./PermissionPopover.jsx";
 import { Tip } from "./Tip.jsx";
 
 // Roles of one application, highest first. The order drives every role picker.
@@ -57,10 +58,15 @@ export function AppRolesTab({ applicationId, roles }) {
           <span className="text-sm font-normal text-(--mws-muted)">{roles.length}</span>
           <Tip text="Highest role first. Role pickers in groups and exceptions follow this order." label="About order" />
         </h2>
-        <Button type="button" size="sm" onClick={() => navigate(`/application-access/apps/${applicationId}/roles/new`)}>
-          <Plus size={14} />
-          Add role
-        </Button>
+        <button
+          type="button"
+          aria-label="Add role"
+          title="Add role"
+          onClick={() => navigate(`/application-access/apps/${applicationId}/roles/new`)}
+          className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) transition-colors hover:bg-(--mws-soft) hover:text-(--mws-burgundy) focus-visible:outline-2 focus-visible:outline-(--mws-burgundy)"
+        >
+          <Plus size={18} />
+        </button>
       </div>
       {roles.length === 0 ? (
         <PanelMessage>No roles yet. Add the first role of {applicationId}.</PanelMessage>
@@ -124,8 +130,8 @@ export function AppRolesTab({ applicationId, roles }) {
                 </td>
                 <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>{role.key}</td>
                 <td className={denseCellClass}>{role.label}</td>
-                <td className={`${denseCellClass} text-center`} title={role.permissions.join(", ")}>
-                  {role.permissions.length}
+                <td className={`${denseCellClass} text-center`}>
+                  <PermissionPopover permissions={role.permissions} compact />
                 </td>
                 <td className={`${denseCellClass} text-center`}>{role.active_entitlement_count}</td>
                 <td className={denseCellClass}>

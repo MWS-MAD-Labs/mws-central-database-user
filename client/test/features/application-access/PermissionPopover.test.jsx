@@ -18,6 +18,21 @@ describe('PermissionPopover', () => {
     expect(screen.queryByRole('dialog', { name: 'Permissions' })).not.toBeInTheDocument()
   })
 
+  it('shows only the count when compact and closes on an outside click', async () => {
+    const { user } = renderWithProviders(
+      <div>
+        <PermissionPopover permissions={['a.read', 'a.write']} compact />
+        <p>Elsewhere</p>
+      </div>,
+    )
+    const trigger = screen.getByRole('button', { name: '2 permissions' })
+    expect(trigger).toHaveTextContent('2')
+    await user.click(trigger)
+    expect(screen.getByRole('dialog', { name: 'Permissions' })).toBeVisible()
+    await user.click(screen.getByText('Elsewhere'))
+    expect(screen.queryByRole('dialog', { name: 'Permissions' })).not.toBeInTheDocument()
+  })
+
   it('shows plain text when there is nothing to list', () => {
     renderWithProviders(<PermissionPopover permissions={[]} />)
     expect(screen.getByText('0 permissions')).toBeVisible()

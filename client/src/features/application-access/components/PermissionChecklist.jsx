@@ -1,3 +1,4 @@
+import { Plus } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CheckboxField, TextInput } from "../../../components/ui/FormControls.jsx";
@@ -51,8 +52,15 @@ export function PermissionChecklist({ catalog, value, onChange }) {
             }
           }}
         />
-        <Button type="button" variant="secondary" onClick={addDraft}>
-          Add
+        <Button
+          type="button"
+          variant="secondary"
+          aria-label="Add permission"
+          title="Add permission"
+          className="h-11 w-11 shrink-0 px-0"
+          onClick={addDraft}
+        >
+          <Plus size={18} />
         </Button>
       </div>
     </div>
