@@ -262,6 +262,12 @@ describe("application access per application", () => {
     expect(catalog.pairs[teacher.id]).not.toContain(masterData.level.id);
     expect(catalog.pairs[masterData.position.id]).toContain(masterData.level.id);
     expect(catalog.units.map((unit: { name: string }) => unit.name)).not.toContain("Unknown / Legacy");
+    // Students only exist in units that have grades.
+    const gradeUnits = (await prismaClient.grade.findMany({ distinct: ["unit_id"], select: { unit_id: true } })).map((grade) => grade.unit_id);
+    expect(catalog.student_unit_ids.length).toBeGreaterThan(0);
+    for (const id of catalog.student_unit_ids) expect(gradeUnits).toContain(id);
+    expect(catalog.student_unit_ids).not.toContain(homeUnit.id);
+    expect(catalog.student_unit_ids).not.toContain(awayUnit.id);
     const dbAdmin = await AdminUserTest.createDatabaseAdmin();
     expect((await TestRequest.get(CATALOG, dbAdmin.accessToken)).status).toBe(403);
 

@@ -904,6 +904,20 @@ async function assertRuleReferences(
   if (positions !== rule.job_position_ids.length) throw new ResponseError(400, "One or more job positions do not exist");
   if (levels !== rule.job_level_ids.length) throw new ResponseError(400, "One or more job levels do not exist");
   if (checkScope && rule.audience !== ApplicationAudience.STUDENTS) await assertScopeCanHoldPeople(rule);
+  // Students only exist in units that have grades.
+  if (checkScope && rule.audience === ApplicationAudience.STUDENTS && rule.unit_ids.length > 0) {
+    const withGrades = await prismaClient.grade.findMany({
+      where: { unit_id: { in: rule.unit_ids } },
+      distinct: ["unit_id"],
+      select: { unit_id: true },
+    });
+    const has = new Set(withGrades.map((grade) => grade.unit_id));
+    const missing = rule.unit_ids.find((id) => !has.has(id));
+    if (missing) {
+      const unit = await prismaClient.masterUnit.findUnique({ where: { id: missing }, select: { name: true } });
+      throw new ResponseError(400, `Unit "${unit?.name ?? missing}" has no students`);
+    }
+  }
 }
 
 // Every value of a scope must be able to hold someone, by the master data rules:
@@ -1475,11 +1489,14 @@ export class ApplicationAccessService {
         .filter((level) => scopePairFits(position, level))
         .map((level) => level.id);
     }
+    const grades = await prismaClient.grade.findMany({ distinct: ["unit_id"], select: { unit_id: true } });
+    const shown = new Set(catalog.units.map((unit) => unit.id));
     return {
       units: catalog.units,
       job_positions: catalog.positions.map((item) => ({ id: item.id, name: item.name, unit_ids: item.unit_ids })),
       job_levels: catalog.levels.map((item) => ({ id: item.id, name: item.name, unit_ids: item.unit_ids })),
       pairs,
+      student_unit_ids: grades.map((grade) => grade.unit_id).filter((id) => shown.has(id)),
     };
   }
 

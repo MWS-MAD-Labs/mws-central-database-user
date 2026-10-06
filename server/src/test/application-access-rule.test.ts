@@ -144,6 +144,18 @@ describe("application baseline access rules", () => {
     expect((await lookup(person.id)).status).toBe(404);
   });
 
+  it("keeps a student group to units that have grades", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const noGrades = await prismaClient.masterUnit.create({ data: { name: `TEST_RULE_NOSTUDENTS_${randomBytes(3).toString("hex")}` } });
+
+    const refused = await addRule(accessToken, { audience: "STUDENTS", unit_ids: [noGrades.id] });
+    expect(refused.status).toBe(400);
+    expect(String((await refused.json()).errors)).toContain(`Unit "${noGrades.name}" has no students`);
+
+    // Employees and Students may still name a unit that only has employees.
+    expect((await addRule(accessToken, { audience: "EMPLOYEES_AND_STUDENTS", unit_ids: [noGrades.id] })).status).toBe(200);
+  });
+
   it("follows the audience, unit, active status and employee status", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({ email: "test_rule_student@millennia21.id", status: StudentStatus.ACTIVE });

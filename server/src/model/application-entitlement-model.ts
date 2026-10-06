@@ -222,6 +222,8 @@ export type ApplicationScopeCatalog = {
   job_levels: { id: string; name: string; unit_ids: string[] }[];
   // Per position, the levels it can be paired with.
   pairs: Record<string, string[]>;
+  // Units that have grades, so the only ones students can be in.
+  student_unit_ids: string[];
 };
 
 export type ListRoleOptionsRequest = {
