@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { ListChecks } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { groupPermissions } from "../utils/groupSummary.js";
 
@@ -31,21 +31,21 @@ export function PermissionPopover({ permissions, className = "" }) {
         onClick={() => setOpen((value) => !value)}
         className="inline-flex cursor-pointer items-center gap-1 text-xs font-semibold text-(--mws-muted) transition-colors hover:text-(--mws-burgundy)"
       >
+        <ListChecks size={13} aria-hidden="true" />
         {label}
-        <ChevronDown size={13} className={open ? "rotate-180" : undefined} />
       </button>
       {open ? (
         <div
           role="dialog"
           aria-label="Permissions"
-          className="absolute left-0 top-full z-30 mt-2 w-72 max-w-[85vw] space-y-3 rounded-2xl border border-(--mws-line) bg-white p-4 shadow-lg"
+          className="absolute left-0 top-full z-30 mt-2 w-80 max-w-[85vw] max-h-72 space-y-3 overflow-y-auto rounded-2xl border border-(--mws-line) bg-white p-4 shadow-lg"
         >
           {groupPermissions(permissions).map((group) => (
             <div key={group.area}>
-              <p className="mb-1 text-xs font-bold uppercase tracking-wide text-(--mws-muted)">{group.area}</p>
+              <p className="mb-1 text-xs font-bold uppercase tracking-wide text-(--mws-muted)">{group.area} <span className="font-normal">{group.items.length}</span></p>
               <ul className="flex flex-wrap gap-1.5">
                 {group.items.map((item) => (
-                  <li key={item} className="rounded-md bg-(--mws-soft) px-2 py-0.5 font-mono text-xs text-(--mws-charcoal)">
+                  <li key={item} className="rounded bg-(--mws-soft) px-1.5 py-0.5 font-mono text-[11px] text-(--mws-charcoal)">
                     {item}
                   </li>
                 ))}

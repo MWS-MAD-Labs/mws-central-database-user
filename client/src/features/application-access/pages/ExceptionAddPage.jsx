@@ -285,7 +285,7 @@ export function ExceptionAddPage() {
                 />
               </Field>
               {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} /> : null}
-              <p className="flex items-center gap-1.5 text-xs text-(--mws-muted)">
+              <p className="flex items-center gap-1.5 text-xs leading-none text-(--mws-muted)">
                 Group role {group.default_role_key}
                 <Tip text={`People who already get the role you pick cannot be selected for it.`} label="About roles" />
               </p>

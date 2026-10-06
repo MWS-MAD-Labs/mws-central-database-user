@@ -8,9 +8,9 @@ export function Tip({ text, label = "More info" }) {
       role="img"
       aria-label={`${label}: ${text}`}
       title={text}
-      className="inline-flex cursor-help text-(--mws-muted) transition-colors hover:text-(--mws-burgundy) focus-visible:text-(--mws-burgundy) focus-visible:outline-none"
+      className="inline-flex h-4 w-4 cursor-help items-center justify-center leading-none text-(--mws-muted) transition-colors hover:text-(--mws-burgundy) focus-visible:text-(--mws-burgundy) focus-visible:outline-none"
     >
-      <Info size={15} aria-hidden="true" />
+      <Info size={15} aria-hidden="true" className="-translate-y-px" />
     </span>
   );
 }

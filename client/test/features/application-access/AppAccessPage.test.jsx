@@ -42,6 +42,8 @@ const baselineGroup = (extra = {}) => ({
   permissions: ['store.use'],
   exception_count: 1,
   blocked_count: 0,
+  covered_count: 120,
+  updated_at: '2026-10-02T03:00:00.000Z',
   ...extra,
 })
 
@@ -55,6 +57,7 @@ const narrowGroup = {
   permissions: ['app.admin'],
   exception_count: 0,
   blocked_count: 0,
+  covered_count: 8,
 }
 
 const detail = (extra = {}) => ({
@@ -116,7 +119,12 @@ describe('AppAccessPage', () => {
     await screen.findByText('Dummy Staff')
     const cards = screen.getAllByRole('heading', { level: 2 })
     expect(cards).toHaveLength(2)
-    expect(screen.getByText(/Inside All Active Employees/)).toBeVisible()
+    const facts = screen.getAllByLabelText('Group details')
+    expect(within(facts[0]).getByText('120 employees')).toBeVisible()
+    expect(within(facts[1]).getByText('8 employees')).toBeVisible()
+    expect(within(facts[1]).getByText(/All Active Employees/)).toBeVisible()
+    expect(within(facts[0]).getByText('1')).toBeVisible()
+    expect(screen.getAllByRole('button', { name: 'Add exception' })).toHaveLength(2)
     const chips = within(screen.getAllByLabelText('Who this group covers')[1])
     expect(chips.getByText('MAD Lab')).toBeVisible()
     expect(screen.queryByText('Inactive')).not.toBeInTheDocument()

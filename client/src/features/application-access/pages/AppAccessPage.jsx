@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -14,7 +14,7 @@ import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { AppRolesTab } from "../components/AppRolesTab.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
 import { ExceptionsPanel } from "../components/ExceptionsPanel.jsx";
-import { AudienceIcon, RolePill, ScopeGrid } from "../components/GroupSummary.jsx";
+import { AudienceIcon, GroupFacts, RolePill, ScopeGrid } from "../components/GroupSummary.jsx";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { groupScopeSummary, groupShortTitle, groupTitle } from "../utils/groupSummary.js";
 
@@ -147,7 +147,7 @@ export function AppAccessPage() {
               <section
                 key={group.id}
                 className={`min-w-0 space-y-4 rounded-2xl border border-(--mws-line) border-l-4 bg-white p-5 ${
-                  group.is_active ? "border-l-[#2f9e6b]" : "border-l-(--mws-line)"
+                  group.is_active ? "border-l-(--mws-burgundy)" : "border-l-(--mws-line)"
                 }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-4">
@@ -164,9 +164,6 @@ export function AppAccessPage() {
                       )}
                     </div>
                     <ScopeGrid group={group} />
-                    {group.parent_group_id ? (
-                      <p className="text-xs text-(--mws-muted)">Inside {titleOf(group.parent_group_id)}</p>
-                    ) : null}
                   </div>
                   <div className="flex items-start gap-3">
                     <RolePill roleKey={group.default_role_key} permissions={group.permissions} />
@@ -208,37 +205,34 @@ export function AppAccessPage() {
                     </ActionsMenu>
                   </div>
                 </div>
+                <GroupFacts
+                  group={group}
+                  parentTitle={group.parent_group_id ? titleOf(group.parent_group_id) : null}
+                />
 
-                <div className="space-y-2 border-t border-(--mws-line) pt-4">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="font-display text-sm font-bold text-(--mws-charcoal)">
                       Exceptions
-                      {group.exception_count > 0 ? (
-                        <span className="ml-2 text-xs font-normal text-(--mws-muted)">
-                          {group.exception_count}
-                          {group.blocked_count > 0 ? `, ${group.blocked_count} blocked` : ""}
-                        </span>
-                      ) : null}
                     </h3>
-                    <Button
+                    <button
                       type="button"
-                      size="sm"
-                      variant="secondary"
+                      aria-label="Add exception"
                       disabled={!group.is_active || group.audience === "STUDENTS"}
                       title={
                         group.audience === "STUDENTS"
                           ? "Exceptions are for employees"
                           : !group.is_active
                             ? "Turn the group on first"
-                            : undefined
+                            : "Add exception"
                       }
                       onClick={() =>
                         navigate(`/application-access/apps/${applicationId}/groups/${group.id}/exceptions/new`)
                       }
+                      className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) transition-colors hover:bg-(--mws-soft) hover:text-(--mws-burgundy) focus-visible:outline-2 focus-visible:outline-(--mws-burgundy) disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-(--mws-muted)"
                     >
-                      <Plus size={14} />
-                      Add exception
-                    </Button>
+                      <UserPlus size={16} />
+                    </button>
                   </div>
                   <ExceptionsPanel
                     applicationId={applicationId}
