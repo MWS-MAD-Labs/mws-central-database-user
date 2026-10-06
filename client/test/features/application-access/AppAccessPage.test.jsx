@@ -104,6 +104,12 @@ function renderPage(user = { role: 'SUPER_ADMIN' }, route = '/application-access
   )
 }
 
+// The group rows start closed. Opens the n-th one (0 is the broadest).
+async function openGroup(user, index = 0) {
+  const headings = await screen.findAllByRole('heading', { level: 2 })
+  await user.click(within(headings[index]).getByRole('button'))
+}
+
 describe('AppAccessPage', () => {
   it('refuses anyone who is not a Super Admin', async () => {
     globalThis.fetch = createFetchRouter(routes())
@@ -111,28 +117,34 @@ describe('AppAccessPage', () => {
     expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
   })
 
-  it('shows the groups broad to narrow with their exceptions and the organization id', async () => {
+  it('shows the groups broad to narrow as rows and opens one at a time', async () => {
     globalThis.fetch = createFetchRouter(routes())
-    renderPage()
+    const { user } = renderPage()
     expect(await screen.findByRole('button', { name: 'Copy org_exima_a1b2c3' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument()
-    await screen.findByText('Dummy Staff')
-    const cards = screen.getAllByRole('heading', { level: 2 })
-    expect(cards).toHaveLength(2)
-    const facts = screen.getAllByLabelText('Group details')
-    expect(within(facts[0]).getByText('120 employees')).toBeVisible()
-    expect(within(facts[1]).getByText('8 employees')).toBeVisible()
-    expect(within(facts[1]).getByText(/All Active Employees/)).toBeVisible()
-    expect(within(facts[0]).getByText('1')).toBeVisible()
-    expect(screen.getAllByRole('button', { name: 'Add exception' })).toHaveLength(2)
-    const chips = within(screen.getAllByLabelText('Who this group covers')[1])
-    expect(chips.getByText('MAD Lab')).toBeVisible()
-    expect(screen.queryByText('Inactive')).not.toBeInTheDocument()
-    // The exception sits in the card of the group that covers it.
+    const rows = await screen.findAllByRole('heading', { level: 2 })
+    expect(rows).toHaveLength(2)
+    // The row already says the role, who it covers and how many exceptions.
+    expect(within(rows[0]).getByText('STAFF')).toBeVisible()
+    expect(within(rows[0]).getByText('120 covered')).toBeVisible()
+    expect(within(rows[0]).getByText('1 exception')).toBeVisible()
+    expect(within(rows[1]).getByText('ADMIN')).toBeVisible()
+    expect(screen.queryByText('Dummy Staff')).not.toBeInTheDocument()
+
+    await openGroup(user, 1)
+    const facts = screen.getByLabelText('Group details')
+    expect(within(facts).getByText('8 employees')).toBeVisible()
+    expect(within(facts).getByText(/All Active Employees/)).toBeVisible()
+    expect(within(screen.getByLabelText('Who this group covers')).getByText('MAD Lab')).toBeVisible()
+    expect(screen.getByText(/No exceptions\. Everyone this group covers gets ADMIN\./)).toBeVisible()
+
+    // Opening the other closes this one. The exception sits in the group that covers it.
+    await openGroup(user, 0)
     const exceptionRow = (await screen.findByText('Dummy Staff')).closest('tr')
     expect(within(exceptionRow).getByText('ADMIN')).toBeVisible()
     expect(within(exceptionRow).getByText('Active')).toBeVisible()
-    expect(screen.getByText(/No exceptions\. Everyone this group covers gets ADMIN\./)).toBeVisible()
+    expect(screen.queryByText(/No exceptions\. Everyone this group covers gets ADMIN\./)).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Add exception' })).toHaveLength(1)
   })
 
   it('disables Add group until the application has an active role', async () => {
@@ -158,16 +170,16 @@ describe('AppAccessPage', () => {
   it('opens the pages for adding an exception and editing a group', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
-    await screen.findByText('Dummy Staff')
+    await openGroup(user)
 
-    await user.click(screen.getAllByRole('button', { name: 'Add exception' })[0])
+    await user.click(await screen.findByRole('button', { name: 'Add exception' }))
     expect(await screen.findByText('New exception page')).toBeVisible()
   })
 
   it('opens the group edit page from the group menu', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
-    await screen.findByText('Dummy Staff')
+    await screen.findAllByRole('heading', { level: 2 })
     await user.click(screen.getByRole('button', { name: /Actions for group All Active Employees, All Units/ }))
     await user.click(screen.getByRole('button', { name: 'Edit' }))
     expect(await screen.findByText('Edit group page')).toBeVisible()
@@ -178,10 +190,11 @@ describe('AppAccessPage', () => {
       { path: '/api/admin/application-entitlements/revoke/ent-1', method: 'PATCH', response: () => jsonResponse({ data: {} }) },
       { path: '/api/admin/application-entitlements/ent-1', method: 'DELETE', response: () => jsonResponse({ data: true }) },
       { path: '/api/admin/application-access-rules/rule-1', method: 'PATCH', response: () => jsonResponse({ data: {} }) },
-      { path: '/api/admin/application-access-rules/rule-1', method: 'DELETE', response: () => jsonResponse({ data: true }) },
+      { path: '/api/admin/application-access-rules/rule-2', method: 'DELETE', response: () => jsonResponse({ data: true }) },
     ]))
     globalThis.fetch = fetchMock
     const { user } = renderPage()
+    await openGroup(user)
     await screen.findByText('Dummy Staff')
 
     await user.click(screen.getByRole('button', { name: /Actions for Dummy Staff on exima/ }))
@@ -210,13 +223,20 @@ describe('AppAccessPage', () => {
       expect(JSON.parse(call[1].body)).toEqual({ is_active: false })
     })
 
+    // The broad group still has an exception and a group inside it, so it cannot be deleted yet.
     await user.click(screen.getByRole('button', { name: /Actions for group All Active Employees, All Units/ }))
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Delete' })).toHaveAttribute('title', 'Remove its 1 exception(s) first')
+    await user.keyboard('{Escape}')
+
+    // The narrow group is free to go.
+    await user.click(screen.getByRole('button', { name: /Actions for group All Active Employees, Units: MAD Lab/ }))
     await user.click(screen.getByRole('button', { name: 'Delete' }))
     const deleteDialog = await screen.findByRole('dialog', { name: 'Delete group access' })
     await user.click(within(deleteDialog).getByRole('button', { name: 'Delete' }))
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([url, options]) =>
-        url.endsWith('/application-access-rules/rule-1') && options.method === 'DELETE')).toBe(true)
+        url.endsWith('/application-access-rules/rule-2') && options.method === 'DELETE')).toBe(true)
     })
   })
 
@@ -295,14 +315,23 @@ describe('AppAccessPage', () => {
     })
   })
 
-  it('pages the group cards five at a time', async () => {
-    const groups = Array.from({ length: 7 }, (_, index) => baselineGroup({ id: `rule-${index + 1}`, exception_count: 0, job_level_ids: [`level-${index}`], job_levels: [{ id: `level-${index}`, name: `Level ${index + 1}` }] }))
+  it('pages the group rows ten at a time and filters them once there are many', async () => {
+    const groups = Array.from({ length: 12 }, (_, index) => baselineGroup({ id: `rule-${index + 1}`, exception_count: 0, default_role_key: index === 11 ? 'ADMIN' : 'STAFF', is_active: index !== 0, job_level_ids: [`level-${index}`], job_levels: [{ id: `level-${index}`, name: `Level ${index + 1}` }] }))
     globalThis.fetch = createFetchRouter(routes(detail({ groups }), [], {}))
     const { user } = renderPage()
     await screen.findByText(/Page 1 of 2/)
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(5)
+    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(10)
     await user.click(screen.getByRole('button', { name: 'Next' }))
     await waitFor(() => expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(2))
+
+    await user.type(screen.getByPlaceholderText('Search groups'), 'admin')
+    await waitFor(() => expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(1))
+  })
+
+  it('opens a lone group by itself', async () => {
+    globalThis.fetch = createFetchRouter(routes(detail({ groups: [baselineGroup()] })))
+    renderPage()
+    expect(await screen.findByText('Dummy Staff')).toBeVisible()
   })
 
   describe('Roles tab', () => {
@@ -363,11 +392,12 @@ describe('AppAccessPage', () => {
     it('switches between the Access and Roles tabs', async () => {
       globalThis.fetch = createFetchRouter(routes(detail(), orderRoutes))
       const { user } = renderPage()
+      await openGroup(user)
       await screen.findByText('Dummy Staff')
       await user.click(screen.getByRole('button', { name: 'Roles' }))
       expect(await screen.findByRole('button', { name: 'Add role' })).toBeVisible()
       await user.click(screen.getByRole('button', { name: 'Access' }))
-      expect(await screen.findByText('Dummy Staff')).toBeVisible()
+      expect(await screen.findAllByRole('heading', { level: 2 })).toHaveLength(2)
     })
   })
 })
