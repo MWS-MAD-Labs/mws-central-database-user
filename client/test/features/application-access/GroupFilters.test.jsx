@@ -39,6 +39,17 @@ describe('GroupFilters review', () => {
     expect(picked).toEqual(['mad'])
   })
 
+  it('offers Remove right away on the Levels step', async () => {
+    let picked = null
+    const state = makeState((next) => { picked = next })
+    const { user } = renderWithProviders(<GroupFilters audience="EMPLOYEES" options={options} state={state} showErrors />)
+
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Elementary has no matching job level or position')
+    await user.click(screen.getByRole('button', { name: 'Remove Elementary' }))
+    expect(picked).toEqual(['mad'])
+  })
+
   it('counts the unit as an error for the save check', () => {
     expect(groupFilterErrors(makeState(() => {}), 'EMPLOYEES').units).toMatch(/Elementary has no matching job level or position/)
     expect(groupFilterErrors({ ...makeState(() => {}), unsupported: [] }, 'EMPLOYEES').units).toBeUndefined()

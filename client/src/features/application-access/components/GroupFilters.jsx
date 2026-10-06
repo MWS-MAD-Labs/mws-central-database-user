@@ -80,6 +80,29 @@ function StepTabs({ steps, current }) {
   );
 }
 
+// A picked unit that nothing in the chosen levels and positions can exist in.
+function UnsupportedUnits({ units, onRemove }) {
+  if (units.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      {units.map((unit) => (
+        <div
+          key={unit.id}
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]"
+        >
+          <span>
+            <strong>{unit.name}</strong> has no matching job level or position in this scope.
+          </span>
+          <Button type="button" size="sm" variant="secondary" onClick={() => onRemove(unit.id)}>
+            Remove {unit.name}
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function GroupFilters({ audience, options, state, showErrors, knownUnitIds, onReviewChange }) {
   const employeesOnly = audience !== "STUDENTS";
   const steps = employeesOnly
@@ -154,30 +177,12 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
       ) : null}
 
       {step === "levels" || step === "positions" ? (
-        unsupported.length > 0 ? (
-          <p role="status" className="rounded-xl bg-(--mws-soft) px-3 py-2 text-xs text-(--mws-charcoal)">
-            {unsupported.map((unit) => unit.name).join(", ")} has nothing to hold with these choices. You can
-            remove it on the Review step.
-          </p>
-        ) : null
+        <UnsupportedUnits units={unsupported} onRemove={removeUnit} />
       ) : null}
 
       {step === "review" ? (
         <div className="space-y-3" aria-label="Scope review">
-          {unsupported.map((unit) => (
-            <div
-              key={unit.id}
-              role="alert"
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]"
-            >
-              <span>
-                <strong>{unit.name}</strong> has no matching job level or position in this scope.
-              </span>
-              <Button type="button" size="sm" variant="secondary" onClick={() => removeUnit(unit.id)}>
-                Remove {unit.name}
-              </Button>
-            </div>
-          ))}
+          <UnsupportedUnits units={unsupported} onRemove={removeUnit} />
           {[
             ["Units", state.units.selected, realUnits, "All Units"],
             ...(employeesOnly
