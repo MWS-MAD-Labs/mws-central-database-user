@@ -171,4 +171,41 @@ describe("application role registry", () => {
     expect((await patch(empty.id, { is_active: true })).status).toBe(400);
     expect(admin.key).toBe("ADMIN");
   });
+
+  it("keeps a role on while an active group still hands it out", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const role = (await (await TestRequest.post(BASE, { application_id: appId, key: "MEMBER", label: "Member", permissions: ["a.read"] }, accessToken)).json()).data;
+    const group = await (await TestRequest.post(
+      "/api/admin/application-access-rules",
+      { application_id: appId, audience: "EMPLOYEES", default_role_key: "MEMBER" },
+      accessToken,
+    )).json();
+
+    const listed = (await (await TestRequest.get(`${BASE}?application_id=${appId}`, accessToken)).json()).data;
+    expect(listed[0].active_group_count).toBe(1);
+
+    const refused = await TestRequest.patch(`${BASE}/${role.id}`, { is_active: false }, accessToken);
+    expect(refused.status).toBe(400);
+    expect(String((await refused.json()).errors)).toContain("1 active group(s) still give this role");
+
+    // Once the group is off, the role can go.
+    expect((await TestRequest.patch(`/api/admin/application-access-rules/${group.data.id}`, { is_active: false }, accessToken)).status).toBe(200);
+    expect((await TestRequest.patch(`${BASE}/${role.id}`, { is_active: false }, accessToken)).status).toBe(200);
+  });
+
+  it("lets a group be turned off even when its role was already inactive", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await TestRequest.post(BASE, { application_id: appId, key: "MEMBER", label: "Member", permissions: ["a.read"] }, accessToken);
+    const group = await (await TestRequest.post(
+      "/api/admin/application-access-rules",
+      { application_id: appId, audience: "EMPLOYEES", default_role_key: "MEMBER" },
+      accessToken,
+    )).json();
+    // Older data: the role was switched off before groups were counted.
+    await prismaClient.applicationRole.updateMany({ where: { application_id: appId, key: "MEMBER" }, data: { is_active: false } });
+
+    expect((await TestRequest.patch(`/api/admin/application-access-rules/${group.data.id}`, { is_active: false }, accessToken)).status).toBe(200);
+    // Turning it back on needs an active role.
+    expect((await TestRequest.patch(`/api/admin/application-access-rules/${group.data.id}`, { is_active: true }, accessToken)).status).toBe(400);
+  });
 });

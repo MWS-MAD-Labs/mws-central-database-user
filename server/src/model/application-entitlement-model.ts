@@ -277,6 +277,8 @@ export type ApplicationRoleResponse = {
   rank: number;
   is_active: boolean;
   active_entitlement_count: number;
+  // Active groups that hand this role out.
+  active_group_count: number;
   created_at: string;
   updated_at: string;
 };
@@ -308,6 +310,7 @@ export type ListApplicationRolesRequest = {
 export function toApplicationRoleResponse(
   role: ApplicationRole,
   activeEntitlementCount: number,
+  activeGroupCount = 0,
 ): ApplicationRoleResponse {
   return {
     id: role.id,
@@ -318,6 +321,7 @@ export function toApplicationRoleResponse(
     rank: role.rank,
     is_active: role.is_active,
     active_entitlement_count: activeEntitlementCount,
+    active_group_count: activeGroupCount,
     created_at: role.created_at.toISOString(),
     updated_at: role.updated_at.toISOString(),
   };

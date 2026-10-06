@@ -628,10 +628,18 @@ export class ApplicationRoleService {
       where: { is_active: true },
       _count: { _all: true },
     });
+    const groupCounts = await prismaClient.applicationAccessRule.groupBy({
+      by: ["application_id", "default_role_key"],
+      where: { is_active: true },
+      _count: { _all: true },
+    });
     const countOf = (role: { application_id: string; key: string }) =>
       counts.find((c) => c.application_id === role.application_id && c.role === role.key)
         ?._count._all ?? 0;
-    return roles.map((role) => toApplicationRoleResponse(role, countOf(role)));
+    const groupsOf = (role: { application_id: string; key: string }) =>
+      groupCounts.find((c) => c.application_id === role.application_id && c.default_role_key === role.key)
+        ?._count._all ?? 0;
+    return roles.map((role) => toApplicationRoleResponse(role, countOf(role), groupsOf(role)));
   }
 
   static async create(
@@ -738,6 +746,17 @@ export class ApplicationRoleService {
       );
     }
 
+    // A group that hands the role out would lose everyone it covers.
+    const activeGroups = await prismaClient.applicationAccessRule.count({
+      where: { application_id: existing.application_id, default_role_key: existing.key, is_active: true },
+    });
+    if (input.is_active === false && existing.is_active && activeGroups > 0) {
+      throw new ResponseError(
+        400,
+        `${activeGroups} active group(s) still give this role. Change or turn off those groups first.`,
+      );
+    }
+
     const willBeActive = input.is_active ?? existing.is_active;
     const permissionsChanged =
       input.permissions !== undefined &&
@@ -783,7 +802,7 @@ export class ApplicationRoleService {
       );
       return saved;
     });
-    return toApplicationRoleResponse(updated, activeCount);
+    return toApplicationRoleResponse(updated, activeCount, activeGroups);
   }
 }
 
@@ -848,11 +867,13 @@ async function assertRuleReferences(
   },
   // A group saved before the scope rules may keep its old values while only its role or switch changes.
   checkScope = true,
+  // Turning a group off does not need its role to be active.
+  checkRole = true,
 ) {
   const role = await prismaClient.applicationRole.findUnique({
     where: { application_id_key: { application_id: rule.application_id, key: rule.default_role_key } },
   });
-  if (!role || !role.is_active) {
+  if (checkRole && (!role || !role.is_active)) {
     throw new ResponseError(400, `Role "${rule.default_role_key}" is not an active role of ${rule.application_id}`);
   }
   if (
@@ -1033,6 +1054,7 @@ export class ApplicationAccessRuleService {
     await assertRuleReferences(
       next,
       input.unit_ids !== undefined || input.job_position_ids !== undefined || input.job_level_ids !== undefined,
+      next.is_active,
     );
     if (next.is_active) await assertNoOverlap(existing.application_id, next, existing.id);
     await assertRuleGate(existing.application_id, toGateRule(existing), {
