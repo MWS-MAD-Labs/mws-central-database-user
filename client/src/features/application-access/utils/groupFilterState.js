@@ -23,6 +23,7 @@ export function useGroupFilterState(initial = {}, rules = null) {
   const settled = useMemo(() => (rules ? rules.settle(picked).selection : picked), [rules, picked]);
   const allowed = useMemo(() => (rules ? rules.allowedValues(settled) : null), [rules, settled]);
   const availability = useMemo(() => (rules ? rules.availability(settled) : null), [rules, settled]);
+  const unsupported = useMemo(() => (rules ? rules.unsupportedUnits(settled) : []), [rules, settled]);
 
   function change(dimension, next, options) {
     const base = { ...settled, [dimension]: next };
@@ -37,6 +38,7 @@ export function useGroupFilterState(initial = {}, rules = null) {
     levels: { selected: settled.levels, setSelected: (next, options) => change("levels", next, options) },
     allowed,
     availability,
+    unsupported,
     removed,
   };
 }
@@ -60,7 +62,9 @@ export function groupFilterErrors(state, audience, knownUnitIds) {
       ? "Pick at least one unit, or choose All Units."
       : noneUsable(state.units, knownUnitIds)
         ? "None of the picked units can be used. Pick other units, or choose All Units."
-        : undefined,
+        : employeesOnly && state.unsupported?.length > 0
+          ? `${state.unsupported.map((unit) => unit.name).join(", ")} ${state.unsupported.length === 1 ? "has" : "have"} no matching job level or position in this scope. Remove ${state.unsupported.length === 1 ? "it" : "them"} or change the levels.`
+          : undefined,
     positions:
       employeesOnly && isNone(state.positions)
         ? "Pick at least one job position, or choose All Positions."

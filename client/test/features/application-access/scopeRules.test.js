@@ -115,4 +115,22 @@ describe('scope rules', () => {
     expect(result.selection.positions).toEqual(['support'])
     expect(result.removed.units).toEqual([])
   })
+
+  it('points out a unit that nothing in the chosen levels and positions can exist in', () => {
+    const lvlRules = buildScopeRules({
+      units: [{ id: 'mad', name: 'MAD Lab' }, { id: 'ele', name: 'Elementary' }],
+      job_positions: [{ id: 'aide', name: 'Aide', unit_ids: [] }],
+      job_levels: [
+        { id: 'lead', name: 'Lead', unit_ids: ['mad'] },
+        { id: 'staff', name: 'Staff', unit_ids: [] },
+      ],
+      pairs: { aide: ['lead', 'staff'] },
+    })
+    // Lead only exists in MAD Lab, so Elementary has nothing to hold.
+    expect(lvlRules.unsupportedUnits({ units: ['mad', 'ele'], levels: ['lead'], positions: null }))
+      .toEqual([{ id: 'ele', name: 'Elementary' }])
+    // All, or levels that fit both, point out nothing.
+    expect(lvlRules.unsupportedUnits({ units: null, levels: ['lead'], positions: null })).toEqual([])
+    expect(lvlRules.unsupportedUnits({ units: ['mad', 'ele'], levels: ['staff'], positions: null })).toEqual([])
+  })
 })

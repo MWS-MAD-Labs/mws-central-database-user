@@ -101,6 +101,9 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
   const selected = step === "units" ? state.units.selected : step === "levels" ? state.levels.selected : state.positions.selected;
   const canContinue = step === "review" || selected === null || selected.length > 0;
 
+  const unsupported = employeesOnly ? state.unsupported || [] : [];
+  const removeUnit = (id) => state.units.setSelected((state.units.selected || []).filter((unitId) => unitId !== id));
+
   const itemWithReason = (item, reasons) => ({
     id: item.id,
     name: item.name,
@@ -150,8 +153,31 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
         />
       ) : null}
 
+      {step === "levels" || step === "positions" ? (
+        unsupported.length > 0 ? (
+          <p role="status" className="rounded-xl bg-(--mws-soft) px-3 py-2 text-xs text-(--mws-charcoal)">
+            {unsupported.map((unit) => unit.name).join(", ")} has nothing to hold with these choices. You can
+            remove it on the Review step.
+          </p>
+        ) : null
+      ) : null}
+
       {step === "review" ? (
         <div className="space-y-3" aria-label="Scope review">
+          {unsupported.map((unit) => (
+            <div
+              key={unit.id}
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]"
+            >
+              <span>
+                <strong>{unit.name}</strong> has no matching job level or position in this scope.
+              </span>
+              <Button type="button" size="sm" variant="secondary" onClick={() => removeUnit(unit.id)}>
+                Remove {unit.name}
+              </Button>
+            </div>
+          ))}
           {[
             ["Units", state.units.selected, realUnits, "All Units"],
             ...(employeesOnly
@@ -196,7 +222,11 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
             <ChevronRight size={15} />
           </Button>
         ) : (
-          <p className="text-xs font-medium text-[#476b43]">Scope is ready to save.</p>
+          unsupported.length === 0 ? (
+            <p className="text-xs font-medium text-[#476b43]">Scope is ready to save.</p>
+          ) : (
+            <p className="text-xs font-medium text-[#805b18]">Remove the units above before saving.</p>
+          )
         )}
       </div>
     </div>

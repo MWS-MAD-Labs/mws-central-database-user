@@ -114,7 +114,17 @@ export function buildScopeRules(catalog) {
     return { selection: current, removed };
   }
 
-  return { combos, allowedValues, availability, settle };
+  // Picked units that nothing in the chosen levels and positions can exist in. Units never
+  // change by themselves when a level or position is picked, so they are pointed out instead.
+  function unsupportedUnits(selection) {
+    if (!selection.units || selection.units.length === 0) return [];
+    const used = project(combos(selection)).units;
+    return selection.units
+      .filter((id) => !used.has(id))
+      .map((id) => ({ id, name: unitNames.get(id) || id }));
+  }
+
+  return { combos, allowedValues, availability, settle, unsupportedUnits };
 }
 
 export const hasRemoved = (removed) => DIMENSIONS.some((dimension) => removed[dimension].length > 0);
