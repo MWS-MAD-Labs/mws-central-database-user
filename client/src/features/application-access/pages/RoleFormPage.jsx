@@ -53,6 +53,14 @@ function RoleForm({ applicationId, role, roles }) {
       ...permissions,
     ]),
   ].sort();
+  // Another active role of this application with exactly these permissions.
+  const twin = roles.find(
+    (item) =>
+      item.application_id === application &&
+      item.is_active &&
+      item.id !== role?.id &&
+      [...item.permissions].sort().join("\n") === [...permissions].sort().join("\n"),
+  );
   const changesPermissions =
     isEdit && [...permissions].sort().join("\n") !== [...role.permissions].sort().join("\n");
 
@@ -77,7 +85,7 @@ function RoleForm({ applicationId, role, roles }) {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!label.trim() || (!isEdit && !key.trim())) return;
+    if (twin || !label.trim() || (!isEdit && !key.trim())) return;
     mutation.mutate();
   }
 
@@ -104,6 +112,11 @@ function RoleForm({ applicationId, role, roles }) {
           <section className="min-w-0 space-y-5 rounded-2xl border border-(--mws-line) bg-white p-5">
             <Field label="Permissions" hint="Check what this role may do. The application decides what each permission means.">
               <PermissionChecklist catalog={catalog} value={permissions} onChange={setPermissions} />
+              {twin ? (
+                <p className="text-sm font-semibold text-[#a43c41]">
+                  {twin.key} already has exactly these permissions. Reuse it, or change the permissions.
+                </p>
+              ) : null}
             </Field>
           </section>
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
@@ -130,7 +143,7 @@ function RoleForm({ applicationId, role, roles }) {
               <Button asChild variant="secondary" className="flex-1">
                 <Link to={back}>Cancel</Link>
               </Button>
-              <Button type="submit" className="flex-1" loading={mutation.isPending}>
+              <Button type="submit" className="flex-1" loading={mutation.isPending} disabled={Boolean(twin)}>
                 Save
               </Button>
             </div>

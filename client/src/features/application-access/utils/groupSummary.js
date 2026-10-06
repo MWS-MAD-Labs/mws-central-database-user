@@ -20,6 +20,20 @@ export function groupScopeSummary(group) {
   return parts.join(" · ");
 }
 
+// The same scope as separate label and value pairs, for chips.
+export function groupScopeChips(group) {
+  const chips = [
+    { label: "Units", value: group.units.length ? group.units.map((item) => item.name).join(", ") : "All" },
+  ];
+  if (group.audience !== "STUDENTS") {
+    chips.push(
+      { label: "Positions", value: group.job_positions.length ? group.job_positions.map((item) => item.name).join(", ") : "All" },
+      { label: "Levels", value: group.job_levels.length ? group.job_levels.map((item) => item.name).join(", ") : "All" },
+    );
+  }
+  return chips;
+}
+
 export function groupTitle(group) {
   return audienceLabels[group.audience];
 }

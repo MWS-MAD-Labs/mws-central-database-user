@@ -117,12 +117,25 @@ describe('AppAccessPage', () => {
     const cards = screen.getAllByRole('heading', { level: 2 })
     expect(cards).toHaveLength(2)
     expect(screen.getByText(/Inside All Active Employees/)).toBeVisible()
-    expect(screen.getByText('Units: MAD Lab · All Positions · All Levels')).toBeVisible()
+    const chips = within(screen.getAllByRole('list', { name: 'Who this group covers' })[1])
+    expect(chips.getByText('MAD Lab')).toBeVisible()
+    expect(screen.getAllByText('Active').length).toBeGreaterThan(0)
     // The exception sits in the card of the group that covers it.
     const exceptionRow = (await screen.findByText('Dummy Staff')).closest('tr')
     expect(within(exceptionRow).getByText('ADMIN')).toBeVisible()
     expect(within(exceptionRow).getByText('Active')).toBeVisible()
     expect(screen.getByText(/No exceptions\. Everyone this group covers gets ADMIN\./)).toBeVisible()
+  })
+
+  it('disables Add group until the application has an active role', async () => {
+    const data = detail({ groups: [] })
+    globalThis.fetch = createFetchRouter([
+      { path: '/api/admin/application-access/apps/exima', method: 'GET', response: () => jsonResponse({ data }) },
+      { path: '/api/admin/application-roles', response: () => jsonResponse({ data: [] }) },
+    ])
+    renderPage()
+    await screen.findByText(/No group access yet/)
+    expect(screen.getByRole('button', { name: 'Add group' })).toBeDisabled()
   })
 
   it('has no exceptions to add before there is a group', async () => {

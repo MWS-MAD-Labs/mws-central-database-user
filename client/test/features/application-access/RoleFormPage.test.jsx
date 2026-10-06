@@ -44,17 +44,29 @@ describe('RoleFormPage', () => {
     expect(screen.getByLabelText('store.use')).toBeChecked()
     expect(screen.getByLabelText('app.admin')).not.toBeChecked()
 
-    await user.click(screen.getByLabelText('All permissions'))
-    expect(screen.getByLabelText('app.admin')).toBeChecked()
+    await user.type(screen.getByPlaceholderText(/Add a new permission/), 'store.refund')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+    expect(screen.getByLabelText('store.refund')).toBeChecked()
     expect(screen.getByText(/3 active entitlement\(s\) hold this role/)).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url, options]) =>
         url.endsWith('/application-roles/role-staff') && options.method === 'PATCH')
-      expect(JSON.parse(call[1].body).permissions.sort()).toEqual(['app.admin', 'store.use'])
+      expect(JSON.parse(call[1].body).permissions.sort()).toEqual(['store.refund', 'store.use'])
     })
     expect(await screen.findByText('App page')).toBeVisible()
+  })
+
+  it('blocks saving a role whose permissions match another active role', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage('/application-access/apps/exima/roles/role-staff')
+    await screen.findByText('Edit STAFF')
+    await user.click(screen.getByLabelText('app.admin'))
+    expect(screen.getByText(/ADMIN already has exactly these permissions/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await user.click(screen.getByLabelText('app.admin'))
+    expect(screen.queryByText(/already has exactly these permissions/)).not.toBeInTheDocument()
   })
 
   it('adds a role to an application with a new permission', async () => {

@@ -76,9 +76,9 @@ export function ApplicationAccessPage() {
             <>
               <th className="px-4 py-2.5">Application</th>
               <th className="px-4 py-2.5">Organization ID</th>
-              <th className="px-4 py-2.5 text-right">Roles</th>
-              <th className="px-4 py-2.5 text-right">Groups</th>
-              <th className="px-4 py-2.5 text-right">Exceptions</th>
+              <th className="px-4 py-2.5 text-center">Roles</th>
+              <th className="px-4 py-2.5 text-center">Groups</th>
+              <th className="px-4 py-2.5 text-center">Exceptions</th>
               <th className="px-4 py-2.5">Updated</th>
               <th className="px-4 py-2.5 text-right">Actions</th>
             </>
@@ -105,13 +105,13 @@ export function ApplicationAccessPage() {
               <td className={`${denseCellClass} max-w-64`}>
                 {row.organization_id ? <CopyableId value={row.organization_id} /> : "-"}
               </td>
-              <td className={`${denseCellClass} text-right`}>
+              <td className={`${denseCellClass} text-center`}>
                 {row.role_count === 0 ? <StatusBadge tone="amber">None</StatusBadge> : row.role_count}
               </td>
-              <td className={`${denseCellClass} text-right`}>
+              <td className={`${denseCellClass} text-center`}>
                 {row.active_group_count === 0 ? <StatusBadge tone="amber">None</StatusBadge> : row.active_group_count}
               </td>
-              <td className={`${denseCellClass} text-right`}>
+              <td className={`${denseCellClass} text-center`}>
                 {row.exception_count}
                 {row.blocked_count > 0 ? (
                   <span className="ml-2 text-xs text-(--mws-muted)">{row.blocked_count} blocked</span>

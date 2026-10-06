@@ -25,6 +25,13 @@ describe('AppCreatePage', () => {
     expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
   })
 
+  it('turns capital letters into lowercase as they are typed', async () => {
+    globalThis.fetch = createFetchRouter([])
+    const { user } = renderPage()
+    await user.type(screen.getByRole('textbox'), 'ExIMa')
+    expect(screen.getByRole('textbox')).toHaveValue('exima')
+  })
+
   it('rejects a badly formatted id without calling the server', async () => {
     const fetchMock = createFetchRouter([])
     globalThis.fetch = fetchMock

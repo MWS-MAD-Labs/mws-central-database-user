@@ -16,7 +16,7 @@ import { AppRolesTab } from "../components/AppRolesTab.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
 import { ExceptionsPanel } from "../components/ExceptionsPanel.jsx";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
-import { groupScopeSummary, groupTitle } from "../utils/groupSummary.js";
+import { groupScopeChips, groupScopeSummary, groupTitle } from "../utils/groupSummary.js";
 
 const BACK = "/application-access";
 const GROUP_PAGE_SIZE = 5;
@@ -41,6 +41,7 @@ export function AppAccessPage() {
   });
   const allRoles = useApplicationRoles().data || [];
   const roles = allRoles.filter((role) => role.application_id === applicationId);
+  const hasActiveRole = roles.some((role) => role.is_active);
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["application-access"] });
 
   const groupMutation = useMutation({
@@ -96,7 +97,12 @@ export function AppAccessPage() {
               </Link>
             </Button>
             {activeTab === "access" ? (
-              <Button type="button" onClick={() => navigate(`/application-access/apps/${applicationId}/groups/new`)}>
+              <Button
+                type="button"
+                disabled={!hasActiveRole}
+                title={hasActiveRole ? undefined : "Add a role first"}
+                onClick={() => navigate(`/application-access/apps/${applicationId}/groups/new`)}
+              >
                 <Plus size={16} />
                 Add group
               </Button>
@@ -142,23 +148,39 @@ export function AppAccessPage() {
                 key={group.id}
                 className="min-w-0 space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5"
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="font-display text-base font-bold text-(--mws-charcoal)">{groupTitle(group)}</h2>
                       <StatusBadge tone={group.is_active ? "green" : "neutral"}>
-                        {group.is_active ? "On" : "Off"}
+                        {group.is_active ? "Active" : "Inactive"}
                       </StatusBadge>
                     </div>
-                    <p className="mt-1 text-sm text-(--mws-muted)">{groupScopeSummary(group)}</p>
+                    <ul className="flex flex-wrap gap-2" aria-label="Who this group covers">
+                      {groupScopeChips(group).map((chip) => (
+                        <li
+                          key={chip.label}
+                          className="rounded-full border border-(--mws-line) px-2.5 py-0.5 text-xs text-(--mws-muted)"
+                        >
+                          {chip.label}: <span className="font-semibold text-(--mws-charcoal)">{chip.value}</span>
+                        </li>
+                      ))}
+                    </ul>
                     {group.parent_group_id ? (
                       <p className="text-xs text-(--mws-muted)">Inside {titleOf(group.parent_group_id)}</p>
                     ) : null}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-(--mws-charcoal)">
-                      Role <strong title={group.permissions.join(", ")}>{group.default_role_key}</strong>
-                    </span>
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="rounded-xl border border-(--mws-line) bg-(--mws-soft) px-3 py-2 text-right"
+                      title={group.permissions.join(", ")}
+                    >
+                      <span className="block text-xs text-(--mws-muted)">Gets role</span>
+                      <span className="block text-sm font-bold text-(--mws-charcoal)">{group.default_role_key}</span>
+                      <span className="block text-xs text-(--mws-muted)">
+                        {group.permissions.length} permission{group.permissions.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
                     <ActionsMenu label={`Actions for group ${groupTitle(group)}, ${groupScopeSummary(group)}`}>
                       {(closeMenu) => (
                         <>

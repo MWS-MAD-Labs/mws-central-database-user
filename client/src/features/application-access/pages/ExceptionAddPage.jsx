@@ -6,11 +6,13 @@ import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
 import { DebouncedSearchInput, Field, FilterSelect, SearchableSelect } from "../../../components/ui/FormControls.jsx";
+import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { enumOptions, formatStatus } from "../../../lib/format.js";
 import { showBulkFailureToast, showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
+import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
 import { employmentTypes } from "../../employees/api/employeesApi.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
@@ -25,7 +27,8 @@ export function ExceptionAddPage() {
   const queryClient = useQueryClient();
   const back = `/application-access/apps/${applicationId}`;
   const [roleKey, setRoleKey] = useState("");
-  const [params, setParams] = useState({ page: 1, size: 10, search: "", employment_type: "" });
+  const emptyFilters = { search: "", employment_type: "", unit_id: "", job_position_id: "", job_level_id: "" };
+  const [params, setParams] = useState({ page: 1, size: 10, ...emptyFilters });
   const [selected, setSelected] = useState(() => new Map());
   const [attempted, setAttempted] = useState(false);
 
@@ -33,6 +36,7 @@ export function ExceptionAddPage() {
     queryKey: ["application-access", "app", applicationId],
     queryFn: () => applicationAccessApi.getApplication(applicationId),
   }).data;
+  const formOptions = useQuery({ queryKey: ["employee-form-options"], queryFn: loadEmployeeFormOptions }).data || {};
   const group = detail?.groups.find((item) => item.id === ruleId);
   const roles = (useApplicationRoles().data || []).filter(
     (role) => role.application_id === applicationId && role.is_active,
@@ -48,6 +52,9 @@ export function ExceptionAddPage() {
         group_id: ruleId,
         exclude_own_access: true,
         employment_type: params.employment_type || undefined,
+        unit_id: params.unit_id || undefined,
+        job_position_id: params.job_position_id || undefined,
+        job_level_id: params.job_level_id || undefined,
         search: params.search || undefined,
         page: params.page,
         size: params.size,
@@ -125,6 +132,10 @@ export function ExceptionAddPage() {
     });
   }
 
+  function setFilter(patch) {
+    setParams((current) => ({ ...current, page: 1, ...patch }));
+  }
+
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
@@ -152,19 +163,39 @@ export function ExceptionAddPage() {
             {attempted && selected.size === 0 ? (
               <p className="text-sm font-semibold text-[#a43c41]">Pick at least one employee.</p>
             ) : null}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="w-full sm:w-72">
-                <DebouncedSearchInput
-                  value={params.search}
-                  onChange={(search) => setParams((current) => ({ ...current, page: 1, search }))}
-                  placeholder="Search employees"
-                />
-              </div>
+            <DebouncedSearchInput
+              value={params.search}
+              onChange={(search) => setParams((current) => ({ ...current, page: 1, search }))}
+              placeholder="Search employees"
+            />
+            <div className="flex min-w-0 flex-wrap items-end gap-3">
+              <FilterSelect
+                label="Unit"
+                value={params.unit_id}
+                onChange={(value) => setFilter({ unit_id: value })}
+                options={[{ value: "", label: "All Units" }, ...(formOptions.units || []).map((item) => ({ value: item.id, label: item.name }))]}
+              />
+              <FilterSelect
+                label="Job Position"
+                value={params.job_position_id}
+                onChange={(value) => setFilter({ job_position_id: value })}
+                options={[{ value: "", label: "All Job Positions" }, ...(formOptions.jobPositions || []).map((item) => ({ value: item.id, label: item.name }))]}
+              />
+              <FilterSelect
+                label="Job Level"
+                value={params.job_level_id}
+                onChange={(value) => setFilter({ job_level_id: value })}
+                options={[{ value: "", label: "All Job Levels" }, ...(formOptions.jobLevels || []).map((item) => ({ value: item.id, label: item.name }))]}
+              />
               <FilterSelect
                 label="Employment Type"
                 value={params.employment_type}
-                onChange={(value) => setParams((current) => ({ ...current, page: 1, employment_type: value }))}
+                onChange={(value) => setFilter({ employment_type: value })}
                 options={[{ value: "", label: "All Employment Types" }, ...enumOptions(employmentTypes)]}
+              />
+              <FilterResetButton
+                visible={Boolean(params.unit_id || params.job_position_id || params.job_level_id || params.employment_type || params.search)}
+                onReset={() => setParams((current) => ({ ...current, page: 1, ...emptyFilters }))}
               />
             </div>
             <DenseTable

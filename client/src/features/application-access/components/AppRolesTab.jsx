@@ -69,8 +69,8 @@ export function AppRolesTab({ applicationId, roles }) {
               <th className="px-4 py-2.5">Order</th>
               <th className="px-4 py-2.5">Role</th>
               <th className="px-4 py-2.5">Label</th>
-              <th className="px-4 py-2.5 text-right">Permissions</th>
-              <th className="px-4 py-2.5 text-right">In use</th>
+              <th className="px-4 py-2.5 text-center">Permissions</th>
+              <th className="px-4 py-2.5 text-center">In use</th>
               <th className="px-4 py-2.5">Status</th>
               <th className="px-4 py-2.5 text-right">Actions</th>
             </>
@@ -121,10 +121,10 @@ export function AppRolesTab({ applicationId, roles }) {
                 </td>
                 <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>{role.key}</td>
                 <td className={denseCellClass}>{role.label}</td>
-                <td className={`${denseCellClass} text-right`} title={role.permissions.join(", ")}>
+                <td className={`${denseCellClass} text-center`} title={role.permissions.join(", ")}>
                   {role.permissions.length}
                 </td>
-                <td className={`${denseCellClass} text-right`}>{role.active_entitlement_count}</td>
+                <td className={`${denseCellClass} text-center`}>{role.active_entitlement_count}</td>
                 <td className={denseCellClass}>
                   <StatusBadge tone={role.is_active ? "green" : "neutral"}>
                     {role.is_active ? "Active" : "Inactive"}

@@ -67,7 +67,7 @@ export function AppCreatePage() {
           hint="Lowercase letters, numbers, hyphens and underscores, starting with a letter. For example exima."
           error={attempted && !valid ? "Use lowercase letters, numbers, hyphens or underscores, starting with a letter." : undefined}
         >
-          <TextInput value={applicationId} onChange={(event) => setApplicationId(event.target.value)} />
+          <TextInput value={applicationId} onChange={(event) => setApplicationId(event.target.value.toLowerCase())} />
         </Field>
         <div className="flex gap-2">
           <Button asChild variant="secondary">

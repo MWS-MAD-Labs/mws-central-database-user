@@ -121,9 +121,30 @@ describe('ExceptionAddPage', () => {
     await user.click(screen.getByRole('button', { name: 'Select a role' }))
     const options = screen.getAllByRole('option')
     expect(options[0]).toHaveTextContent('ADMIN')
-    expect(options[0]).toHaveTextContent('Highest')
+    expect(options[0]).not.toHaveTextContent('Highest')
     expect(options[1]).toHaveTextContent('STAFF')
-    expect(options[1]).not.toHaveTextContent('Highest')
+  })
+
+  it('filters candidates by unit, job position, job level and employment type', async () => {
+    const fetchMock = createFetchRouter([
+      { path: /\/api\/admin\/units/, response: () => jsonResponse({ data: [{ id: 'unit-1', name: 'MAD Lab' }] }) },
+      { path: /\/api\/admin\/job-positions/, response: () => jsonResponse({ data: [{ id: 'pos-1', name: 'Developer' }] }) },
+      { path: /\/api\/admin\/job-levels/, response: () => jsonResponse({ data: [{ id: 'lvl-1', name: 'Senior' }] }) },
+      { path: /\/api\/admin\/buildings/, response: () => jsonResponse({ data: [] }) },
+      ...routes(),
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await screen.findByText('Alpha Person')
+    for (const label of ['Unit', 'Job Position', 'Job Level', 'Employment Type']) {
+      expect(screen.getByText(label, { selector: 'span' })).toBeVisible()
+    }
+    await user.click(await screen.findByRole('button', { name: 'All Units' }))
+    await user.click(await screen.findByRole('option', { name: 'MAD Lab' }))
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url]) => url.includes('/candidates') && url.includes('unit_id=unit-1'))).toBe(true)
+    })
+    expect(screen.getByRole('button', { name: 'Clear filters' })).toBeVisible()
   })
 
   it('cannot pick someone for the role they already get', async () => {
