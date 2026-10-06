@@ -22,7 +22,7 @@ import {
 import { OrganizationNote } from "../components/OrganizationNote.jsx";
 import { isRealUnit } from "../utils/legacyUnit.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
-import { useScopeOptions } from "../hooks/useScopeOptions.js";
+import { useScopeCatalog } from "../hooks/useScopeCatalog.js";
 import { useRoleAvailability } from "../hooks/useRoleAvailability.js";
 
 export function GroupAccessEditPage() {
@@ -52,7 +52,8 @@ function GroupAccessForm({ rule }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const back = `/application-access/apps/${rule.application_id}`;
-  const state = useGroupFilterState(rule);
+  const rules = useScopeCatalog();
+  const state = useGroupFilterState(rule, rule.audience === "STUDENTS" ? null : rules);
   const [roleKey, setRoleKey] = useState(rule.default_role_key);
   const [isActive, setIsActive] = useState(rule.is_active);
   const [attempted, setAttempted] = useState(false);
@@ -63,11 +64,10 @@ function GroupAccessForm({ rule }) {
   const options = useQuery({ queryKey: ["employee-form-options"], queryFn: loadEmployeeFormOptions }).data || {};
   // Only once the units are loaded, so an empty list is never read as All.
   const knownUnitIds = options.units?.length ? new Set(options.units.filter(isRealUnit).map((unit) => unit.id)) : undefined;
-  const allowed = useScopeOptions({ audience: rule.audience, scope: groupFilterPayload(state, rule.audience) });
   const unavailable = useRoleAvailability({
     applicationId: rule.application_id,
     audience: rule.audience,
-    scope: groupFilterPayload(state, rule.audience, knownUnitIds, allowed),
+    scope: groupFilterPayload(state, rule.audience, knownUnitIds),
     groupId: rule.id,
   });
   const lostRole = roleKey && unavailable.has(roleKey) ? roleKey : "";
@@ -78,7 +78,7 @@ function GroupAccessForm({ rule }) {
   const mutation = useMutation({
     mutationFn: () =>
       applicationAccessApi.updateRule(rule.id, {
-        ...groupFilterPayload(state, rule.audience, knownUnitIds, allowed),
+        ...groupFilterPayload(state, rule.audience, knownUnitIds),
         default_role_key: chosenRole,
         is_active: isActive,
       }),
@@ -93,7 +93,7 @@ function GroupAccessForm({ rule }) {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!chosenRole || hasGroupFilterError(state, rule.audience, allowed)) return;
+    if (!chosenRole || hasGroupFilterError(state, rule.audience)) return;
     mutation.mutate();
   }
 
@@ -114,7 +114,7 @@ function GroupAccessForm({ rule }) {
       <form onSubmit={submit} noValidate>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <section className="min-w-0 space-y-5 rounded-2xl border border-(--mws-line) bg-white p-5">
-            <GroupFilters audience={rule.audience} options={options} state={state} showErrors={attempted} allowed={allowed} />
+            <GroupFilters audience={rule.audience} options={options} state={state} showErrors={attempted} />
           </section>
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
             <div className="space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">

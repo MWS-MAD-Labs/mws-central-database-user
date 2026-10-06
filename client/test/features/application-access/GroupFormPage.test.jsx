@@ -7,7 +7,18 @@ import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 
 let unavailable = []
-let scopeAllowed = { units: ['unit-1', 'unit-2'], job_positions: ['pos-1', 'pos-2'], job_levels: [] }
+const scopeCatalog = {
+  units: [
+    { id: 'unit-1', name: 'MAD Lab' },
+    { id: 'unit-2', name: 'Elementary' },
+  ],
+  job_positions: [
+    { id: 'pos-1', name: 'Developer', unit_ids: ['unit-1'] },
+    { id: 'pos-2', name: 'Designer', unit_ids: [] },
+  ],
+  job_levels: [{ id: 'lvl-1', name: 'Staff', unit_ids: [] }],
+  pairs: { 'pos-1': ['lvl-1'], 'pos-2': ['lvl-1'] },
+}
 
 const roles = [
   { id: 'role-admin', application_id: 'exima', key: 'ADMIN', label: 'Admin', permissions: ['app.admin'], is_active: true, active_entitlement_count: 0 },
@@ -19,12 +30,12 @@ const roles = [
 const routes = (extra = []) => [
   ...extra,
   { path: '/api/admin/application-roles', response: () => jsonResponse({ data: roles }) },
-  { path: /\/api\/admin\/application-access\/scope-options/, response: () => jsonResponse({ data: scopeAllowed }) },
+  { path: '/api/admin/application-access/scope-catalog', response: () => jsonResponse({ data: scopeCatalog }) },
   { path: /\/api\/admin\/application-access\/apps\/exima\/role-options/, response: () => jsonResponse({ data: { unavailable } }) },
   { path: '/api/admin/application-organizations', response: () => jsonResponse({ data: [{ application_id: 'exima', organization_id: 'org_exima_a1b2c3' }] }) },
   { path: /^\/api\/admin\/units/, response: () => jsonResponse({ data: [{ id: 'unit-1', name: 'MAD Lab' }, { id: 'unit-2', name: 'Elementary' }, { id: 'unit-9', name: 'Unknown / Legacy' }] }) },
   { path: /^\/api\/admin\/job-positions/, response: () => jsonResponse({ data: [{ id: 'pos-1', name: 'Developer' }, { id: 'pos-2', name: 'Designer' }] }) },
-  { path: /^\/api\/admin\/job-levels/, response: () => jsonResponse({ data: [] }) },
+  { path: /^\/api\/admin\/job-levels/, response: () => jsonResponse({ data: [{ id: 'lvl-1', name: 'Staff' }] }) },
   { path: /^\/api\/admin\/buildings/, response: () => jsonResponse({ data: [] }) },
 ]
 
@@ -40,10 +51,17 @@ function renderPage(user = { role: 'SUPER_ADMIN' }) {
   )
 }
 
+// The scope rules come with their own request, so wait until they are in before clicking.
+async function rulesLoaded(fetchMock) {
+  await waitFor(() => {
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('scope-catalog'))).toBe(true)
+  })
+  await new Promise((resolve) => setTimeout(resolve, 50))
+}
+
 describe('GroupFormPage', () => {
   beforeEach(() => {
     unavailable = []
-    scopeAllowed = { units: ['unit-1', 'unit-2'], job_positions: ['pos-1', 'pos-2'], job_levels: [] }
   })
 
 
@@ -58,12 +76,31 @@ describe('GroupFormPage', () => {
     })
   })
 
-  it('offers only the positions the master data lets exist for the chosen units', async () => {
-    scopeAllowed = { units: ['unit-1', 'unit-2'], job_positions: ['pos-1'], job_levels: [] }
-    globalThis.fetch = createFetchRouter(routes())
-    renderPage()
-    expect(await screen.findByRole('switch', { name: 'Developer' })).toBeVisible()
-    await waitFor(() => expect(screen.queryByRole('switch', { name: 'Designer' })).not.toBeInTheDocument())
+  it('drops what only existed because of an unchecked unit and says so', async () => {
+    const fetchMock = createFetchRouter(routes())
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await screen.findByRole('switch', { name: 'Developer' })
+    await rulesLoaded(fetchMock)
+    // Pick only Developer, a position that exists only in MAD Lab.
+    await user.click(screen.getByRole('switch', { name: 'All Positions' }))
+    await user.click(screen.getByRole('switch', { name: 'Developer' }))
+    expect(screen.getByRole('switch', { name: 'Developer' })).toBeChecked()
+    // Leave MAD Lab out of the units: Developer has nowhere left to exist.
+    await user.click(screen.getByRole('switch', { name: 'MAD Lab' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Positions: Developer'))
+    expect(screen.queryByRole('switch', { name: 'Developer', checked: true })).not.toBeInTheDocument()
+  })
+
+  it('offers only the positions that exist in the chosen units', async () => {
+    const fetchMock = createFetchRouter(routes())
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await screen.findByRole('switch', { name: 'Developer' })
+    await rulesLoaded(fetchMock)
+    await user.click(screen.getByRole('switch', { name: 'MAD Lab' }))
+    expect(screen.queryByRole('switch', { name: 'Developer' })).not.toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Designer' })).toBeVisible()
   })
 
   it('does not offer the Unknown / Legacy unit', async () => {
@@ -142,7 +179,7 @@ describe('GroupFormPage', () => {
     await user.click(screen.getByRole('option', { name: /ADMIN/ }))
 
     await user.click(screen.getByRole('switch', { name: 'All Units' }))
-    await user.click(screen.getByRole('switch', { name: 'Elementary' }))
+    await user.click(screen.getByRole('switch', { name: 'MAD Lab' }))
     await user.click(screen.getByRole('switch', { name: 'All Positions' }))
     await user.click(screen.getByRole('switch', { name: 'Developer' }))
     await user.click(screen.getByRole('button', { name: 'Add group' }))
@@ -152,7 +189,7 @@ describe('GroupFormPage', () => {
       expect(JSON.parse(call[1].body)).toEqual({
         application_id: 'exima',
         audience: 'EMPLOYEES',
-        unit_ids: ['unit-2'],
+        unit_ids: ['unit-1'],
         job_position_ids: ['pos-1'],
         job_level_ids: [],
         default_role_key: 'ADMIN',

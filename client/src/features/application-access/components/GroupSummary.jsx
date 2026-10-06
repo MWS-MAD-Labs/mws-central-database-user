@@ -179,9 +179,9 @@ export function RemainingScope({ group, narrower }) {
         </div>
         <div className="space-y-2">
           <p className={labelClass}>Taken by narrower groups</p>
-          <ul className="space-y-2">
+          <ul className="divide-y divide-(--mws-line)">
             {narrower.map((child) => (
-              <li key={child.id} className="space-y-1 rounded-lg border border-(--mws-line) bg-white px-3 py-2">
+              <li key={child.id} className="space-y-1.5 py-2 first:pt-0 last:pb-0">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <RoleName className="text-sm">{child.default_role_key}</RoleName>
                   <span className="text-xs text-(--mws-muted)">
@@ -190,7 +190,19 @@ export function RemainingScope({ group, narrower }) {
                     <PermissionPopover permissions={child.permissions ?? []} />
                   </span>
                 </div>
-                <ScopeGrid group={child} label={`Scope of ${child.default_role_key} group`} />
+                <dl
+                  aria-label={`Scope of ${child.default_role_key} group`}
+                  className="grid grid-cols-[6rem_1fr] items-center gap-x-4 gap-y-1.5"
+                >
+                  {groupScopeChips(child).map((chip) => (
+                    <div key={chip.label} className="contents">
+                      <dt className="text-sm text-(--mws-muted)">{chip.label}</dt>
+                      <dd className="min-w-0">
+                        <NameList names={chip.names} noun={chip.noun} title={`${chip.label} of ${child.default_role_key}`} />
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
               </li>
             ))}
           </ul>

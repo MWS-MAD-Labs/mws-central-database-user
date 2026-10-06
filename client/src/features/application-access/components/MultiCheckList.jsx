@@ -31,7 +31,7 @@ export function MultiCheckList({ label, allLabel, items, selection, hint, error 
           />
         ) : null}
         <div className="mws-scrollbar flex max-h-40 flex-wrap gap-2 overflow-y-auto" role="group" aria-label={label}>
-          <ToggleChip checked={selected === null} onChange={(checked) => setSelected(checked ? null : [])}>
+          <ToggleChip checked={selected === null} onChange={(checked) => setSelected(checked ? null : [], { wipe: false })}>
             {allLabel}
           </ToggleChip>
           {shown.map((item) => (

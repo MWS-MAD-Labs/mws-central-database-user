@@ -16,7 +16,7 @@ import { GroupFilters } from "../components/GroupFilters.jsx";
 import { OrganizationNote } from "../components/OrganizationNote.jsx";
 import { isRealUnit } from "../utils/legacyUnit.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
-import { useScopeOptions } from "../hooks/useScopeOptions.js";
+import { useScopeCatalog } from "../hooks/useScopeCatalog.js";
 import { useRoleAvailability } from "../hooks/useRoleAvailability.js";
 import {
   audienceLabels,
@@ -35,7 +35,8 @@ export function GroupFormPage() {
   const [audience, setAudience] = useState("EMPLOYEES");
   const [roleKey, setRoleKey] = useState("");
   const [attempted, setAttempted] = useState(false);
-  const scope = useGroupFilterState();
+  const rules = useScopeCatalog();
+  const scope = useGroupFilterState({}, audience === "STUDENTS" ? null : rules);
 
   const roles = (useApplicationRoles().data || []).filter(
     (role) => role.application_id === applicationId && role.is_active,
@@ -43,11 +44,10 @@ export function GroupFormPage() {
   const options = useQuery({ queryKey: ["employee-form-options"], queryFn: loadEmployeeFormOptions }).data || {};
   // Only once the units are loaded, so an empty list is never read as All.
   const knownUnitIds = options.units?.length ? new Set(options.units.filter(isRealUnit).map((unit) => unit.id)) : undefined;
-  const allowed = useScopeOptions({ audience: audience, scope: groupFilterPayload(scope, audience) });
   const unavailable = useRoleAvailability({
     applicationId,
     audience,
-    scope: groupFilterPayload(scope, audience, knownUnitIds, allowed),
+    scope: groupFilterPayload(scope, audience, knownUnitIds),
   });
   // A role the scope can no longer take is dropped from the form.
   const lostRole = roleKey && unavailable.has(roleKey) ? roleKey : "";
@@ -60,7 +60,7 @@ export function GroupFormPage() {
       applicationAccessApi.createRule({
         application_id: applicationId,
         audience,
-        ...groupFilterPayload(scope, audience, knownUnitIds, allowed),
+        ...groupFilterPayload(scope, audience, knownUnitIds),
         default_role_key: chosenRole,
       }),
     onSuccess: () => {
@@ -83,7 +83,7 @@ export function GroupFormPage() {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!chosenRole || hasGroupFilterError(scope, audience, allowed)) return;
+    if (!chosenRole || hasGroupFilterError(scope, audience)) return;
     mutation.mutate();
   }
 
@@ -110,7 +110,7 @@ export function GroupFormPage() {
                 Who this covers. Leave a list on All to include every unit, position or level.
               </p>
             </div>
-            <GroupFilters audience={audience} options={options} state={scope} showErrors={attempted} allowed={allowed} />
+            <GroupFilters audience={audience} options={options} state={scope} showErrors={attempted} />
           </section>
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
             <div className="space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">

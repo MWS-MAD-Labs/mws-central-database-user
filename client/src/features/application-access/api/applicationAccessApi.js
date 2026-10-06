@@ -26,10 +26,9 @@ export const applicationAccessApi = {
     return apiRequest(`${ACCESS}/apps/${applicationId}/exceptions${query ? `?${query}` : ''}`)
   },
 
-  // Values of each dimension that can still hold someone given the others.
-  async scopeOptions(params = {}) {
-    const query = compactSearchParams(params).toString()
-    const response = await apiRequest(`${ACCESS}/scope-options?${query}`)
+  // Master data a scope picker needs: what exists where and which pairs match.
+  async scopeCatalog() {
+    const response = await apiRequest(`${ACCESS}/scope-catalog`)
     return response.data
   },
 

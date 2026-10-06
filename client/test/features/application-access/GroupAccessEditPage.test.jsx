@@ -35,6 +35,7 @@ function routes(extra = []) {
     { path: /^\/api\/admin\/units/, response: () => jsonResponse({ data: [{ id: 'unit-1', name: 'MAD Lab' }, { id: 'unit-2', name: 'Elementary' }] }) },
     { path: /^\/api\/admin\/job-positions/, response: () => jsonResponse({ data: [{ id: 'pos-1', name: 'Developer' }] }) },
     { path: /^\/api\/admin\/job-levels/, response: () => jsonResponse({ data: [] }) },
+    { path: '/api/admin/application-access/scope-catalog', response: () => jsonResponse({ data: { units: [{ id: 'unit-1', name: 'MAD Lab' }, { id: 'unit-2', name: 'Elementary' }], job_positions: [{ id: 'pos-1', name: 'Developer', unit_ids: [] }], job_levels: [{ id: 'lvl-1', name: 'Staff', unit_ids: [] }], pairs: { 'pos-1': ['lvl-1'] } } }) },
     { path: /^\/api\/admin\/buildings/, response: () => jsonResponse({ data: [] }) },
   ]
 }
