@@ -13,11 +13,14 @@ const scopeCatalog = {
     { id: 'unit-2', name: 'Elementary' },
   ],
   job_positions: [
-    { id: 'pos-1', name: 'Developer', unit_ids: ['unit-1'] },
+    { id: 'pos-1', name: 'Head of IT', unit_ids: ['unit-1'] },
+    { id: 'pos-3', name: 'IT Support', unit_ids: ['unit-1', 'unit-2'] },
+    { id: 'pos-4', name: 'Junior Fullstack Developer', unit_ids: ['unit-1'] },
+    { id: 'pos-5', name: 'Tutor', unit_ids: ['unit-2'] },
     { id: 'pos-2', name: 'Designer', unit_ids: [] },
   ],
   job_levels: [{ id: 'lvl-1', name: 'Staff', unit_ids: [] }],
-  pairs: { 'pos-1': ['lvl-1'], 'pos-2': ['lvl-1'] },
+  pairs: { 'pos-1': ['lvl-1'], 'pos-2': ['lvl-1'], 'pos-3': ['lvl-1'], 'pos-4': ['lvl-1'], 'pos-5': ['lvl-1'] },
 }
 
 const roles = [
@@ -34,7 +37,13 @@ const routes = (extra = []) => [
   { path: /\/api\/admin\/application-access\/apps\/exima\/role-options/, response: () => jsonResponse({ data: { unavailable } }) },
   { path: '/api/admin/application-organizations', response: () => jsonResponse({ data: [{ application_id: 'exima', organization_id: 'org_exima_a1b2c3' }] }) },
   { path: /^\/api\/admin\/units/, response: () => jsonResponse({ data: [{ id: 'unit-1', name: 'MAD Lab' }, { id: 'unit-2', name: 'Elementary' }, { id: 'unit-9', name: 'Unknown / Legacy' }] }) },
-  { path: /^\/api\/admin\/job-positions/, response: () => jsonResponse({ data: [{ id: 'pos-1', name: 'Developer' }, { id: 'pos-2', name: 'Designer' }] }) },
+  { path: /^\/api\/admin\/job-positions/, response: () => jsonResponse({ data: [
+    { id: 'pos-1', name: 'Head of IT' },
+    { id: 'pos-2', name: 'Designer' },
+    { id: 'pos-3', name: 'IT Support' },
+    { id: 'pos-4', name: 'Junior Fullstack Developer' },
+    { id: 'pos-5', name: 'Tutor' },
+  ] }) },
   { path: /^\/api\/admin\/job-levels/, response: () => jsonResponse({ data: [{ id: 'lvl-1', name: 'Staff' }] }) },
   { path: /^\/api\/admin\/buildings/, response: () => jsonResponse({ data: [] }) },
 ]
@@ -59,6 +68,12 @@ async function rulesLoaded(fetchMock) {
   await new Promise((resolve) => setTimeout(resolve, 50))
 }
 
+async function next(user, count = 1) {
+  for (let index = 0; index < count; index += 1) {
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+  }
+}
+
 describe('GroupFormPage', () => {
   beforeEach(() => {
     unavailable = []
@@ -80,26 +95,107 @@ describe('GroupFormPage', () => {
     const fetchMock = createFetchRouter(routes())
     globalThis.fetch = fetchMock
     const { user } = renderPage()
-    await screen.findByRole('switch', { name: 'Developer' })
+    await screen.findByRole('switch', { name: 'MAD Lab' })
     await rulesLoaded(fetchMock)
-    // Pick only Developer, a position that exists only in MAD Lab.
+    await next(user, 2)
+    // Pick only Head of IT, a position that exists only in MAD Lab.
     await user.click(screen.getByRole('switch', { name: 'All Positions' }))
-    await user.click(screen.getByRole('switch', { name: 'Developer' }))
-    expect(screen.getByRole('switch', { name: 'Developer' })).toBeChecked()
-    // Leave MAD Lab out of the units: Developer has nowhere left to exist.
+    await user.click(screen.getByRole('switch', { name: 'Head of IT' }))
+    expect(screen.getByRole('switch', { name: 'Head of IT' })).toBeChecked()
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    // Leave MAD Lab out of the units: Head of IT has nowhere left to exist.
     await user.click(screen.getByRole('switch', { name: 'MAD Lab' }))
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Positions: Developer'))
-    expect(screen.queryByRole('switch', { name: 'Developer', checked: true })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Positions: Head of IT'))
+    await next(user, 2)
+    expect(screen.getByRole('switch', { name: 'Head of IT' })).toBeDisabled()
+    expect(screen.getAllByText('Needs MAD Lab').length).toBeGreaterThan(0)
+  })
+
+  it('does not change units or levels when positions are unchecked', async () => {
+    const fetchMock = createFetchRouter(routes())
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await screen.findByRole('switch', { name: 'MAD Lab' })
+    await rulesLoaded(fetchMock)
+    await next(user, 2)
+
+    await user.click(screen.getByRole('switch', { name: 'Head of IT' }))
+    await user.click(screen.getByRole('switch', { name: 'IT Support' }))
+    await user.click(screen.getByRole('switch', { name: 'Junior Fullstack Developer' }))
+
+    expect(screen.getByRole('switch', { name: 'Designer' })).toBeChecked()
+    expect(screen.getByRole('switch', { name: 'Tutor' })).toBeChecked()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    await next(user)
+    expect(within(screen.getByLabelText('Scope review')).getByText('All Units')).toBeVisible()
+    expect(within(screen.getByLabelText('Scope review')).getByText('All Levels')).toBeVisible()
+  })
+
+  it('keeps a multi-unit position when one of its units is unchecked', async () => {
+    const fetchMock = createFetchRouter(routes())
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await screen.findByRole('switch', { name: 'MAD Lab' })
+    await rulesLoaded(fetchMock)
+    await next(user, 2)
+    await user.click(screen.getByRole('switch', { name: 'All Positions' }))
+    await user.click(screen.getByRole('switch', { name: 'IT Support' }))
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await user.click(screen.getByRole('switch', { name: 'MAD Lab' }))
+
+    expect(screen.getByRole('switch', { name: 'Elementary' })).toBeChecked()
+    await next(user, 2)
+    expect(screen.getByRole('switch', { name: 'IT Support' })).toBeChecked()
+  })
+
+  it('shows a compact review and only goes back one step at a time', async () => {
+    const fetchMock = createFetchRouter(routes())
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await screen.findByRole('switch', { name: 'MAD Lab' })
+    await rulesLoaded(fetchMock)
+    await next(user, 2)
+
+    await user.click(screen.getByRole('switch', { name: 'All Positions' }))
+    await user.click(screen.getByRole('switch', { name: 'Head of IT' }))
+    await user.click(screen.getByRole('switch', { name: 'IT Support' }))
+    await user.click(screen.getByRole('switch', { name: 'Junior Fullstack Developer' }))
+    await user.click(screen.getByRole('switch', { name: 'Tutor' }))
+    await next(user)
+
+    const review = screen.getByLabelText('Scope review')
+    expect(within(review).getByText('Head of IT')).toBeVisible()
+    expect(within(review).getByText('IT Support')).toBeVisible()
+    expect(within(review).getByText('Junior Fullstack Developer')).toBeVisible()
+    expect(within(review).getByRole('button', { name: 'View all' })).toBeVisible()
+    expect(within(review).queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.getByRole('group', { name: 'Job Positions' })).toBeVisible()
+  })
+
+  it('shows scope filters in unit, job level, job position order', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    await screen.findByRole('switch', { name: 'MAD Lab' })
+    expect(screen.getByRole('group', { name: 'Units' })).toBeVisible()
+    await next(user)
+    expect(screen.getByRole('group', { name: 'Job Levels' })).toBeVisible()
+    await next(user)
+    expect(screen.getByRole('group', { name: 'Job Positions' })).toBeVisible()
   })
 
   it('offers only the positions that exist in the chosen units', async () => {
     const fetchMock = createFetchRouter(routes())
     globalThis.fetch = fetchMock
     const { user } = renderPage()
-    await screen.findByRole('switch', { name: 'Developer' })
+    await screen.findByRole('switch', { name: 'MAD Lab' })
     await rulesLoaded(fetchMock)
     await user.click(screen.getByRole('switch', { name: 'MAD Lab' }))
-    expect(screen.queryByRole('switch', { name: 'Developer' })).not.toBeInTheDocument()
+    await next(user, 2)
+    expect(screen.getByRole('switch', { name: 'Head of IT' })).toBeDisabled()
     expect(screen.getByRole('switch', { name: 'Designer' })).toBeVisible()
   })
 
@@ -148,11 +244,11 @@ describe('GroupFormPage', () => {
     expect(screen.getByRole('switch', { name: 'All Units' })).toBeChecked()
 
     await user.click(screen.getByRole('switch', { name: 'All Units' }))
-    await user.click(screen.getByRole('button', { name: 'Add group' }))
-    expect(await screen.findByText('Pick at least one unit, or choose All Units.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
 
     await user.click(screen.getByRole('switch', { name: 'All Units' }))
+    await next(user, 3)
     await user.click(screen.getByRole('button', { name: 'Add group' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url, options]) =>
@@ -180,8 +276,10 @@ describe('GroupFormPage', () => {
 
     await user.click(screen.getByRole('switch', { name: 'All Units' }))
     await user.click(screen.getByRole('switch', { name: 'MAD Lab' }))
+    await next(user, 2)
     await user.click(screen.getByRole('switch', { name: 'All Positions' }))
-    await user.click(screen.getByRole('switch', { name: 'Developer' }))
+    await user.click(screen.getByRole('switch', { name: 'Head of IT' }))
+    await next(user)
     await user.click(screen.getByRole('button', { name: 'Add group' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url, options]) =>
@@ -201,11 +299,11 @@ describe('GroupFormPage', () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
     await screen.findByText('Add group to exima')
-    expect(screen.getByRole('switch', { name: 'All Positions' })).toBeVisible()
+    expect(screen.getByText('Job Positions')).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
     await user.click(screen.getByRole('option', { name: 'All Active Students' }))
-    expect(screen.queryByRole('switch', { name: 'All Positions' })).not.toBeInTheDocument()
     expect(screen.getByRole('switch', { name: 'All Units' })).toBeVisible()
+    expect(within(screen.getByLabelText('Scope steps')).queryByText('Job Positions')).not.toBeInTheDocument()
   })
 })

@@ -466,6 +466,21 @@ export class JobPositionService {
       name: searchRequest.search
         ? { contains: searchRequest.search, mode: "insensitive" as const }
         : undefined,
+      AND: [
+        searchRequest.unit_id
+          ? {
+              OR: [
+                { units: { none: {} } },
+                { units: { some: { unit_id: searchRequest.unit_id } } },
+              ],
+            }
+          : {},
+        searchRequest.capacity_scope === "UNLIMITED"
+          ? { capacity_scope: null, max_active_holders: null }
+          : searchRequest.capacity_scope
+            ? { capacity_scope: searchRequest.capacity_scope }
+            : {},
+      ],
     };
 
     return paginate(searchRequest.page, searchRequest.size, {

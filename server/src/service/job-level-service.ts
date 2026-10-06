@@ -415,6 +415,12 @@ export class JobLevelService {
       name: searchRequest.search
         ? { contains: searchRequest.search, mode: "insensitive" as const }
         : undefined,
+      OR: searchRequest.unit_id
+        ? [
+            { units: { none: {} } },
+            { units: { some: { unit_id: searchRequest.unit_id } } },
+          ]
+        : undefined,
     };
 
     return paginate(searchRequest.page, searchRequest.size, {

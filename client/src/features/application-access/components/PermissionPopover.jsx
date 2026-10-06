@@ -1,5 +1,5 @@
 import { groupPermissions } from "../utils/groupSummary.js";
-import { ListPopover } from "./ListPopover.jsx";
+import { ListPopover } from "../../../components/ui/ListPopover.jsx";
 
 // "15 permissions" that opens a readable list, grouped by area. `compact` shows only the count.
 export function PermissionPopover({ permissions, compact = false, className = "" }) {

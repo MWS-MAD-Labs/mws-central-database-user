@@ -81,6 +81,7 @@ export class JobLevelController {
       page: c.req.query("page") ? Number(c.req.query("page")) : 1,
       size: c.req.query("size") ? Number(c.req.query("size")) : 10,
       search: c.req.query("search"),
+      unit_id: c.req.query("unit_id"),
       sort_by: c.req.query("sort_by") as JobLevelSortField | undefined,
       sort_order: c.req.query("sort_order") as "asc" | "desc" | undefined,
     };

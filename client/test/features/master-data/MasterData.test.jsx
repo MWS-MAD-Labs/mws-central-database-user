@@ -89,4 +89,106 @@ describe('MasterData', () => {
     expect(screen.getByRole('button', { name: 'New Institution' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'New Major' })).toBeDisabled()
   })
+
+  it('filters job levels by unit and clears all filters', async () => {
+    const routes = [
+      { path: /^\/api\/admin\/job-levels\?.*$/, response: jsonResponse(listPayload([])) },
+      { path: /^\/api\/admin\/units\?.*$/, response: jsonResponse(listPayload([
+        unit,
+        { ...unit, id: 'unit_unknown_legacy', name: 'Unknown / Legacy' },
+      ])) },
+    ]
+    const { user, fetchMock } = renderPage({ route: '/master-data?tab=job-levels', routes })
+
+    await user.click(await screen.findByRole('button', { name: 'All Units' }))
+    await user.click(screen.getByRole('option', { name: 'Elementary' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
+      String(url).includes('/api/admin/job-levels?') && String(url).includes('unit_id=unit-1'))).toBe(true))
+    expect(screen.queryByRole('option', { name: 'Unknown / Legacy' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => {
+      const value = String(url)
+      return value.includes('/api/admin/job-levels?') && !value.includes('unit_id=')
+    })).toBe(true))
+  })
+
+  it('filters job positions by unit and active holder limit', async () => {
+    const routes = [
+      { path: /^\/api\/admin\/job-positions\?.*$/, response: jsonResponse(listPayload([])) },
+      { path: /^\/api\/admin\/units\?.*$/, response: jsonResponse(listPayload([unit])) },
+    ]
+    const { user, fetchMock } = renderPage({ route: '/master-data?tab=job-positions', routes })
+
+    await user.click(await screen.findByRole('button', { name: 'All Units' }))
+    await user.click(screen.getByRole('option', { name: 'Elementary' }))
+    await user.click(screen.getByRole('button', { name: 'All Active Holder Limits' }))
+    await user.click(screen.getByRole('option', { name: 'Per Unit' }))
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => {
+      const value = String(url)
+      return value.includes('/api/admin/job-positions?') &&
+        value.includes('unit_id=unit-1') && value.includes('capacity_scope=PER_UNIT')
+    })).toBe(true))
+  })
+
+  it('keeps multi-unit table rows compact and opens the complete unit list', async () => {
+    const position = {
+      id: 'position-1',
+      name: 'IT Support',
+      is_teaching_position: false,
+      units: [
+        { id: 'unit-1', name: 'Elementary' },
+        { id: 'unit-2', name: 'MAD Lab' },
+        { id: 'unit-3', name: 'Junior High' },
+      ],
+      capacity_scope: null,
+      max_active_holders: null,
+      created_at: '2026-01-10T08:00:00.000Z',
+    }
+    const routes = [
+      { path: /^\/api\/admin\/job-positions\?.*$/, response: jsonResponse(listPayload([position])) },
+      { path: /^\/api\/admin\/units\?.*$/, response: jsonResponse(listPayload(position.units)) },
+    ]
+    const { user } = renderPage({ route: '/master-data?tab=job-positions', routes })
+
+    await user.click(await screen.findByRole('button', { name: '3 Units' }))
+    const dialog = screen.getByRole('dialog', { name: 'Units for IT Support' })
+    expect(dialog).toHaveTextContent('Elementary')
+    expect(dialog).toHaveTextContent('MAD Lab')
+    expect(dialog).toHaveTextContent('Junior High')
+  })
+
+  it('uses title case for unit-wide scopes', async () => {
+    const positions = [
+      {
+        id: 'position-all',
+        name: 'Driver',
+        is_teaching_position: false,
+        units: [],
+        capacity_scope: null,
+        max_active_holders: null,
+        created_at: '2026-01-10T08:00:00.000Z',
+      },
+      {
+        id: 'position-academic',
+        name: 'Art Teacher',
+        is_teaching_position: true,
+        units: [],
+        capacity_scope: null,
+        max_active_holders: null,
+        created_at: '2026-01-10T08:00:00.000Z',
+      },
+    ]
+    const routes = [
+      { path: /^\/api\/admin\/job-positions\?.*$/, response: jsonResponse(listPayload(positions)) },
+      { path: /^\/api\/admin\/units\?.*$/, response: jsonResponse(listPayload([unit])) },
+    ]
+    renderPage({ route: '/master-data?tab=job-positions', routes })
+
+    const driverRow = (await screen.findByText('Driver')).closest('tr')
+    const teacherRow = (await screen.findByText('Art Teacher')).closest('tr')
+    expect(within(driverRow).getByText('All Units')).toBeVisible()
+    expect(within(teacherRow).getByText('All Academic Units')).toBeVisible()
+  })
 })

@@ -6,9 +6,7 @@ const GAP = 8;
 const WIDTH = 320;
 const MAX_HEIGHT = 288;
 
-// A count that opens a readable list of chips, grouped under optional titles.
-// The list is portaled so a table or card edge never clips it.
-// `groups` is [{ title?, items: string[] }]. `compact` shows only the number.
+// A count that opens a readable list, grouped under optional titles.
 export function ListPopover({
   label,
   count,
@@ -45,7 +43,6 @@ export function ListPopover({
     const onPointer = (event) => {
       if (!inside(event.target)) setOpen(false);
     };
-    // Scrolling the list itself must not close it, only the page behind.
     const onScroll = (event) => {
       if (!inside(event.target)) setOpen(false);
     };
@@ -94,17 +91,15 @@ export function ListPopover({
               {groups.map((group) => (
                 <div key={group.title ?? "all"}>
                   {group.title ? (
-                    <p className="mb-1 text-xs font-bold uppercase tracking-wide text-(--mws-muted)">
+                    <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-(--mws-muted)">
                       {group.title} <span className="font-normal">{group.items.length}</span>
                     </p>
                   ) : null}
-                  <ul className="flex flex-wrap gap-1.5">
+                  <ul className="space-y-1.5">
                     {group.items.map((item) => (
                       <li
                         key={item}
-                        className={`rounded bg-(--mws-soft) px-1.5 py-0.5 text-[11px] text-(--mws-charcoal) ${
-                          mono ? "font-mono" : "font-medium"
-                        }`}
+                        className={`break-words text-xs font-semibold text-(--mws-burgundy) ${mono ? "font-mono" : ""}`}
                       >
                         {item}
                       </li>

@@ -38,6 +38,8 @@ export type SearchJobPositionRequest = {
   page: number;
   size: number;
   search?: string;
+  unit_id?: string;
+  capacity_scope?: PositionCapacityScope | "UNLIMITED";
   sort_by?: JobPositionSortField;
   sort_order?: "asc" | "desc";
 };

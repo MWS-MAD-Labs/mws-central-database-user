@@ -118,7 +118,7 @@ export function MasterDataDialog({
   if (!values.name.trim()) missing.push(`${resource.singular} name is required.`)
   if (resource.unitScope && !values.allUnits && values.unitIds.length === 0) {
     missing.push(
-      `Select ${isTeachingFlag ? 'All academic units' : 'All units'} or at least one unit.`,
+      `Select ${isTeachingFlag ? 'All Academic Units' : 'All Units'} or at least one unit.`,
     )
   }
   if (
@@ -244,13 +244,13 @@ export function MasterDataDialog({
                 ? 'Teaching roles only apply to units that have grades, so the other units are disabled. '
                 : '') +
               (resource.unitScopeHint ||
-                'Check All units if this applies everywhere, or pick only the units it is scoped to (e.g. Head of CARE -> CARE).')
+                'Check All Units if this applies everywhere, or pick only the units it is scoped to (e.g. Head of CARE -> CARE).')
             }
           >
             <div className="space-y-2">
               <CheckboxField
                 checked={allUnitsChecked}
-                label={isTeachingFlag ? 'All academic units' : 'All units'}
+                label={isTeachingFlag ? 'All Academic Units' : 'All Units'}
                 onChange={(event) => toggleAllUnits(event.target.checked)}
               />
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">

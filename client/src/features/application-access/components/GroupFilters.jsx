@@ -1,15 +1,15 @@
+import { Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { Button } from "../../../components/ui/Button.jsx";
 import { groupFilterErrors } from "../utils/groupFilterState.js";
 import { isRealUnit } from "../utils/legacyUnit.js";
 import { MultiCheckList } from "./MultiCheckList.jsx";
+import { ListPopover } from "../../../components/ui/ListPopover.jsx";
 
-const fits = (allowedIds) => (item) => !allowedIds || allowedIds.has(item.id);
-
-// "Positions: A, B · Levels: C" for the values the last change dropped.
 function removedText(removed, options) {
   const named = (ids, list) =>
     ids.map((id) => (list || []).find((item) => item.id === id)?.name).filter(Boolean);
   return [
-    ["Units", named(removed.units, options.units)],
     ["Positions", named(removed.positions, options.jobPositions)],
     ["Levels", named(removed.levels, options.jobLevels)],
   ]
@@ -18,49 +18,187 @@ function removedText(removed, options) {
     .join(" · ");
 }
 
-// Unit, job position and job level filters of a group access. The three follow the master
-// data rules: each list offers what still fits the other two, and dropping a value also
-// drops what only existed because of it.
-export function GroupFilters({ audience, options, state, showErrors }) {
-  const employeesOnly = audience !== "STUDENTS";
-  const errors = showErrors ? groupFilterErrors(state, audience) : {};
-  const allowed = employeesOnly ? state.allowed : null;
-  const asItem = (item) => ({ id: item.id, name: item.name });
-  const dropped = state.removed ? removedText(state.removed, options) : "";
+function selectionNames(selected, items) {
+  if (selected === null) return [];
+  return selected
+    .map((id) => items.find((item) => item.id === id)?.name)
+    .filter(Boolean);
+}
+
+function ReviewValue({ selected, items, allLabel, dialogLabel }) {
+  if (selected === null) {
+    return <p className="text-sm font-semibold text-(--mws-charcoal)">{allLabel}</p>;
+  }
+  const names = selectionNames(selected, items);
+  const shown = names.slice(0, 3);
   return (
-    <>
-      <MultiCheckList
-        label="Units"
-        allLabel="All Units"
-        items={(options.units || []).filter(isRealUnit).filter(fits(allowed?.units)).map(asItem)}
-        selection={state.units}
-        error={errors.units}
-      />
-      {employeesOnly ? (
-        <>
-          <MultiCheckList
-            label="Job Positions"
-            allLabel="All Positions"
-            items={(options.jobPositions || []).filter(fits(allowed?.positions)).map(asItem)}
-            selection={state.positions}
-            hint="Only applies to employees."
-            error={errors.positions}
-          />
-          <MultiCheckList
-            label="Job Levels"
-            allLabel="All Levels"
-            items={(options.jobLevels || []).filter(fits(allowed?.levels)).map(asItem)}
-            selection={state.levels}
-            hint="Only applies to employees."
-            error={errors.levels}
-          />
-        </>
+    <div className="space-y-1.5">
+      {shown.length > 0 ? (
+        <ul className="space-y-1 text-sm text-(--mws-charcoal)">
+          {shown.map((name) => (
+            <li key={name} className="truncate" title={name}>{name}</li>
+          ))}
+        </ul>
       ) : null}
+      {names.length > shown.length ? (
+        <ListPopover
+          label="View all"
+          count={names.length}
+          dialogLabel={dialogLabel}
+          icon={false}
+          mono={false}
+          groups={[{ items: names }]}
+          className="[&>button]:text-xs [&>button]:text-(--mws-burgundy)"
+        />
+      ) : null}
+      {names.length === 0 ? <span className="text-xs text-(--mws-muted)">None selected</span> : null}
+    </div>
+  );
+}
+
+function StepTabs({ steps, current }) {
+  return (
+    <ol className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Scope steps">
+      {steps.map((step, index) => (
+        <li
+          key={step.key}
+          className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${
+            index === current
+              ? "border-(--mws-burgundy) bg-(--mws-soft) text-(--mws-burgundy)"
+              : index < current
+                ? "border-[#b8d2b5] bg-[#f2f8f1] text-[#476b43]"
+                : "border-(--mws-line) text-(--mws-muted)"
+          }`}
+        >
+          <span className="flex h-5 w-5 items-center justify-center rounded-full border border-current">
+            {index < current ? <Check size={12} /> : index + 1}
+          </span>
+          {step.label}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export function GroupFilters({ audience, options, state, showErrors, onReviewChange }) {
+  const employeesOnly = audience !== "STUDENTS";
+  const steps = employeesOnly
+    ? [
+        { key: "units", label: "Units" },
+        { key: "levels", label: "Job Levels" },
+        { key: "positions", label: "Job Positions" },
+        { key: "review", label: "Review" },
+      ]
+    : [
+        { key: "units", label: "Units" },
+        { key: "review", label: "Review" },
+      ];
+  const [stepIndex, setStepIndex] = useState(0);
+  const step = steps[stepIndex].key;
+  const errors = showErrors ? groupFilterErrors(state, audience) : {};
+  const dropped = state.removed ? removedText(state.removed, options) : "";
+  const realUnits = (options.units || []).filter(isRealUnit);
+  const selected = step === "units" ? state.units.selected : step === "levels" ? state.levels.selected : state.positions.selected;
+  const canContinue = step === "review" || selected === null || selected.length > 0;
+
+  const itemWithReason = (item, reasons) => ({
+    id: item.id,
+    name: item.name,
+    disabled: Boolean(reasons?.get(item.id)),
+    reason: reasons?.get(item.id) || undefined,
+  });
+
+  function move(next) {
+    setStepIndex(next);
+    onReviewChange?.(steps[next].key === "review");
+  }
+
+  return (
+    <div className="space-y-5">
+      <StepTabs steps={steps} current={stepIndex} />
+
+      {step === "units" ? (
+        <MultiCheckList
+          label="Units"
+          allLabel="All Units"
+          items={realUnits.map((item) => ({ id: item.id, name: item.name }))}
+          selection={state.units}
+          hint="Choose the units this group covers."
+          error={errors.units}
+        />
+      ) : null}
+
+      {step === "levels" ? (
+        <MultiCheckList
+          label="Job Levels"
+          allLabel="All Levels"
+          items={(options.jobLevels || []).map((item) => itemWithReason(item, state.availability?.levels))}
+          selection={state.levels}
+          hint="Go back to change units."
+          error={errors.levels}
+        />
+      ) : null}
+
+      {step === "positions" ? (
+        <MultiCheckList
+          label="Job Positions"
+          allLabel="All Positions"
+          items={(options.jobPositions || []).map((item) => itemWithReason(item, state.availability?.positions))}
+          selection={state.positions}
+          hint="Go back to change units or levels."
+          error={errors.positions}
+        />
+      ) : null}
+
+      {step === "review" ? (
+        <div className="space-y-3" aria-label="Scope review">
+          {[
+            ["Units", state.units.selected, realUnits, "All Units"],
+            ...(employeesOnly
+              ? [
+                  ["Job Levels", state.levels.selected, options.jobLevels || [], "All Levels"],
+                  ["Job Positions", state.positions.selected, options.jobPositions || [], "All Positions"],
+                ]
+              : []),
+          ].map(([label, selectedIds, items, allLabel]) => (
+            <div key={label} className="rounded-xl border border-(--mws-line) bg-white p-4">
+              <p className="mb-2 font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">{label}</p>
+              <ReviewValue
+                selected={selectedIds}
+                items={items}
+                allLabel={allLabel}
+                dialogLabel={`${label} selected`}
+              />
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {dropped ? (
         <p role="status" className="rounded-xl bg-(--mws-soft) px-3 py-2 text-xs text-(--mws-charcoal)">
-          Also removed because they no longer fit the other choices. {dropped}
+          Also removed because they no longer fit. {dropped}
         </p>
       ) : null}
-    </>
+
+      <div className="flex items-center justify-between gap-3 border-t border-(--mws-line) pt-4">
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={stepIndex === 0}
+          onClick={() => move(stepIndex - 1)}
+        >
+          <ChevronLeft size={15} />
+          Back
+        </Button>
+        {step !== "review" ? (
+          <Button type="button" disabled={!canContinue} onClick={() => move(stepIndex + 1)}>
+            Next
+            <ChevronRight size={15} />
+          </Button>
+        ) : (
+          <p className="text-xs font-medium text-[#476b43]">Scope is ready to save.</p>
+        )}
+      </div>
+    </div>
   );
 }

@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { buildScopeRules, hasRemoved } from '../../../src/features/application-access/utils/scopeRules.js'
 
-// MAD Lab and Elementary. Coder exists only in MAD Lab, Tutor only in Elementary, Aide anywhere.
-// Manager is a level that only pairs with Coder and Tutor, Staff pairs with everyone.
 const rules = buildScopeRules({
   units: [
     { id: 'mad', name: 'MAD Lab' },
@@ -10,92 +8,111 @@ const rules = buildScopeRules({
   ],
   job_positions: [
     { id: 'coder', name: 'Coder', unit_ids: ['mad'] },
+    { id: 'support', name: 'IT Support', unit_ids: ['mad', 'ele'] },
     { id: 'tutor', name: 'Tutor', unit_ids: ['ele'] },
     { id: 'aide', name: 'Aide', unit_ids: [] },
   ],
   job_levels: [
     { id: 'staff', name: 'Staff', unit_ids: [] },
-    { id: 'manager', name: 'Manager', unit_ids: [] },
+    { id: 'manager', name: 'Manager', unit_ids: ['mad'] },
   ],
-  pairs: { coder: ['staff', 'manager'], tutor: ['staff', 'manager'], aide: ['staff'] },
+  pairs: {
+    coder: ['staff', 'manager'],
+    support: ['staff', 'manager'],
+    tutor: ['staff'],
+    aide: ['staff'],
+  },
 })
 
 const pick = (units, positions, levels) => ({ units, positions, levels })
 
 describe('scope rules', () => {
-  it('offers only what still fits the other two dimensions', () => {
-    const allowed = rules.allowedValues(pick(['ele'], null, null))
-    expect([...allowed.positions].sort()).toEqual(['aide', 'tutor'])
-    expect([...rules.allowedValues(pick(null, ['aide'], null)).levels]).toEqual(['staff'])
+  it('offers every unit, levels for the selected units, and positions for units plus levels', () => {
+    const allowed = rules.allowedValues(pick(['ele'], null, ['staff']))
+    expect([...allowed.units].sort()).toEqual(['ele', 'mad'])
+    expect([...allowed.levels]).toEqual(['staff'])
+    expect([...allowed.positions].sort()).toEqual(['aide', 'support', 'tutor'])
   })
 
-  it('drops positions that only existed in a unit that was left out', () => {
-    const result = rules.settle(pick(['ele'], ['coder', 'aide'], null))
-    expect(result.selection.positions).toEqual(['aide'])
+  it('returns structured short reasons for unavailable choices', () => {
+    const availability = rules.availability(pick(['ele'], null, ['manager']))
+    expect(availability.levels.get('manager')).toEqual({ kind: 'units', names: ['MAD Lab'] })
+    expect(availability.positions.get('tutor')).toEqual({ kind: 'level' })
+  })
+
+  it('keeps a multi-unit position when one supporting unit remains', () => {
+    const result = rules.settle(
+      pick(['ele'], ['coder', 'support', 'tutor'], ['staff']),
+      'units',
+    )
+    expect(result.selection.units).toEqual(['ele'])
+    expect(result.selection.levels).toEqual(['staff'])
+    expect(result.selection.positions).toEqual(['support', 'tutor'])
     expect(result.removed.positions).toEqual(['coder'])
   })
 
-  it('drops a unit that no picked position can exist in any more', () => {
-    const result = rules.settle(pick(['mad', 'ele'], ['tutor'], null))
+  it('drops a level and its positions only when no selected unit supports them', () => {
+    const result = rules.settle(
+      pick(['ele'], ['support', 'tutor'], ['staff', 'manager']),
+      'units',
+    )
     expect(result.selection.units).toEqual(['ele'])
-    expect(result.removed.units).toEqual(['mad'])
-  })
-
-  it('drops units and positions that only existed through a level that was left out', () => {
-    // Aide pairs only with Staff, so with just Manager it has nowhere to be.
-    const result = rules.settle(pick(['mad', 'ele'], ['aide', 'coder'], ['manager']))
-    expect(result.selection.positions).toEqual(['coder'])
-    expect(result.selection.units).toEqual(['mad'])
-    expect(result.removed.positions).toEqual(['aide'])
-    expect(result.removed.units).toEqual(['ele'])
-  })
-
-  it('drops a level that no picked unit or position supports', () => {
-    const result = rules.settle(pick(null, ['aide'], ['staff', 'manager']))
     expect(result.selection.levels).toEqual(['staff'])
+    expect(result.selection.positions).toEqual(['support', 'tutor'])
     expect(result.removed.levels).toEqual(['manager'])
   })
 
-  it('never touches All and does not wipe the others when one list is empty', () => {
-    const all = rules.settle(pick(null, null, null))
-    expect(hasRemoved(all.removed)).toBe(false)
-    const none = rules.settle(pick(['mad'], [], null))
-    expect(none.selection.units).toEqual(['mad'])
-    expect(none.selection.positions).toEqual([])
+  it('changing levels only trims positions and never changes units', () => {
+    const result = rules.settle(
+      pick(['mad', 'ele'], ['coder', 'support', 'tutor', 'aide'], ['manager']),
+      'levels',
+    )
+    expect(result.selection.units).toEqual(['mad', 'ele'])
+    expect(result.selection.levels).toEqual(['manager'])
+    expect(result.selection.positions).toEqual(['coder', 'support'])
+    expect(result.removed.units).toEqual([])
   })
 
-  it('trims the others to what the user just edited, and not the other way round', () => {
-    // Leaving MAD Lab out drops Coder, but the unit pick stays as it is.
-    const dropUnit = rules.settle(pick(['ele'], ['coder', 'aide'], null), 'units')
-    expect(dropUnit.selection.units).toEqual(['ele'])
-    expect(dropUnit.selection.positions).toEqual(['aide'])
-    expect(dropUnit.removed.positions).toEqual(['coder'])
-
-    // Nothing fits Elementary and Coder together: Coder goes, the level and unit stay.
-    const clash = rules.settle(pick(['ele'], ['coder'], ['staff']), 'units')
-    expect(clash.selection.units).toEqual(['ele'])
-    expect(clash.selection.positions).toEqual([])
-    expect(clash.selection.levels).toEqual(['staff'])
+  it('changing positions never changes units or levels', () => {
+    const result = rules.settle(
+      pick(['mad'], ['aide'], ['staff', 'manager']),
+      'positions',
+    )
+    expect(result.selection).toEqual({
+      units: ['mad'],
+      positions: ['aide'],
+      levels: ['staff', 'manager'],
+    })
+    expect(hasRemoved(result.removed)).toBe(false)
   })
 
-  it('carries a removal on to what depended on it', () => {
-    // Staff alone keeps every position. With only Manager, Aide cannot exist,
-    // and Elementary is left without a position that can sit there.
-    const staff = rules.settle(pick(['mad', 'ele'], ['aide', 'coder'], ['staff']), 'levels')
-    expect(staff.selection.positions).toEqual(['aide', 'coder'])
-    const manager = rules.settle(pick(['mad', 'ele'], ['aide', 'coder'], ['manager']), 'levels')
-    expect(manager.selection.positions).toEqual(['coder'])
-    expect(manager.selection.units).toEqual(['mad'])
-    expect(manager.removed.units).toEqual(['ele'])
+  it('clears descendants when the last unit is unchecked', () => {
+    const result = rules.settle(pick([], ['coder'], ['staff']), 'units')
+    expect(result.selection).toEqual({ units: [], positions: [], levels: [] })
+    expect(result.removed.positions).toEqual(['coder'])
+    expect(result.removed.levels).toEqual(['staff'])
   })
 
-  it('clears what the others stood on when the last value of the edited list is unchecked', () => {
-    const cleared = rules.settle(pick([], ['coder'], ['staff']), 'units')
-    expect(cleared.selection).toEqual({ units: [], positions: [], levels: [] })
-    expect(cleared.removed.positions).toEqual(['coder'])
-    expect(cleared.removed.levels).toEqual(['staff'])
-    // Switching All off is only the start of picking: nothing else is touched.
-    const started = rules.settle(pick([], ['coder'], ['staff']), 'units', { wipe: false })
-    expect(started.selection.positions).toEqual(['coder'])
+  it('clears positions when the last level is unchecked', () => {
+    const result = rules.settle(pick(['mad'], ['coder'], []), 'levels')
+    expect(result.selection).toEqual({ units: ['mad'], positions: [], levels: [] })
+    expect(result.removed.positions).toEqual(['coder'])
+  })
+
+  it('does not clear descendants while switching All off to start picking', () => {
+    const units = rules.settle(pick([], ['coder'], ['staff']), 'units', { wipe: false })
+    expect(units.selection.positions).toEqual(['coder'])
+    expect(units.selection.levels).toEqual(['staff'])
+
+    const levels = rules.settle(pick(['mad'], ['coder'], []), 'levels', { wipe: false })
+    expect(levels.selection.positions).toEqual(['coder'])
+  })
+
+  it('settles stale groups from parents to descendants without narrowing units', () => {
+    const result = rules.settle(pick(['ele'], ['coder', 'support'], ['staff', 'manager']))
+    expect(result.selection.units).toEqual(['ele'])
+    expect(result.selection.levels).toEqual(['staff'])
+    expect(result.selection.positions).toEqual(['support'])
+    expect(result.removed.units).toEqual([])
   })
 })

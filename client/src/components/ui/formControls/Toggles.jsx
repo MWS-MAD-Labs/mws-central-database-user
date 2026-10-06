@@ -1,15 +1,16 @@
 import { Check } from "lucide-react";
 import { cn } from "../../../lib/cn.js";
 
-export function ToggleChip({ checked, onChange, children, className }) {
+export function ToggleChip({ checked, onChange, children, className, disabled = false }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        "inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition",
+        "inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
         checked
           ? "border-(--mws-burgundy) bg-(--mws-burgundy) text-white"
           : "border-(--mws-line) bg-white text-(--mws-muted) hover:border-(--mws-burgundy) hover:text-(--mws-charcoal)",

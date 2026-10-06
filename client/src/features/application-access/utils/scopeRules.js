@@ -7,6 +7,8 @@ const DIMENSIONS = ["units", "positions", "levels"];
 export function buildScopeRules(catalog) {
   const pairs = new Map(Object.entries(catalog.pairs).map(([id, levels]) => [id, new Set(levels)]));
   const allowedIn = (unitIds, unit) => unitIds.length === 0 || unitIds.includes(unit);
+  const selectedItems = (list, ids) => (ids === null ? list : list.filter((item) => ids.includes(item.id)));
+  const unitNames = new Map(catalog.units.map((unit) => [unit.id, unit.name]));
 
   // The (unit, position, level) triples that can hold an employee, inside a selection.
   // null or an empty list means every value of that dimension.
@@ -35,20 +37,48 @@ export function buildScopeRules(catalog) {
     levels: new Set(list.map((item) => item.levels)),
   });
 
-  // For each dimension, the values that still hold someone given the other two.
+  // Scope flows one way: units limit levels, then units and levels limit positions.
   function allowedValues(selection) {
-    const result = {};
-    for (const dimension of DIMENSIONS) {
-      result[dimension] = project(combos({ ...selection, [dimension]: null }))[dimension];
-    }
-    return result;
+    const units = new Set(catalog.units.map((unit) => unit.id));
+    const levels = project(combos({ units: selection.units, positions: null, levels: null })).levels;
+    const positions = project(combos({
+      units: selection.units,
+      levels: selection.levels,
+      positions: null,
+    })).positions;
+    return { units, levels, positions };
   }
 
-  // Drops picked values that nothing supports any more, and the ones that depended on
-  // those. All is never touched. Says what was dropped per dimension.
-  // `changed` is the dimension the user just edited. It stays as picked, and the others
-  // are trimmed to fit it, one hop at a time, so that leaving out a unit drops positions
-  // but not the other way round. Without it (loading an old group) everything is trimmed.
+  function availability(selection) {
+    const allowed = allowedValues(selection);
+    const units = selectedItems(catalog.units, selection.units);
+    const levels = selectedItems(catalog.job_levels, selection.levels);
+    const requiredUnits = (unitIds) => ({
+      kind: "units",
+      names: unitIds.map((id) => unitNames.get(id)).filter(Boolean),
+    });
+
+    return {
+      levels: new Map(catalog.job_levels.map((level) => {
+        if (allowed.levels.has(level.id)) return [level.id, null];
+        const hasUnit = units.some((unit) => allowedIn(level.unit_ids, unit.id));
+        return [level.id, hasUnit ? { kind: "no-positions" } : requiredUnits(level.unit_ids)];
+      })),
+      positions: new Map(catalog.job_positions.map((position) => {
+        if (allowed.positions.has(position.id)) return [position.id, null];
+        const hasUnit = units.some((unit) => allowedIn(position.unit_ids, unit.id));
+        if (!hasUnit) return [position.id, requiredUnits(position.unit_ids)];
+        const compatibleLevels = pairs.get(position.id) || new Set();
+        const hasSelectedLevel = levels.some((level) => compatibleLevels.has(level.id));
+        return [
+          position.id,
+          { kind: hasSelectedLevel ? "scope" : "level" },
+        ];
+      })),
+    };
+  }
+
+  // Parent changes trim invalid descendants. Descendant changes never alter their parents.
   function settle(selection, changed = null, { wipe = true } = {}) {
     const current = { ...selection };
     const removed = { units: [], positions: [], levels: [] };
@@ -57,52 +87,34 @@ export function buildScopeRules(catalog) {
       current[dimension] = kept;
     };
 
-    // Unchecking the last value of the edited dimension leaves it supporting nothing,
-    // so what was picked in the others has nothing to stand on. (Switching All off is
-    // only the start of picking, and keeps them.)
-    if (changed && wipe && current[changed] && current[changed].length === 0) {
-      for (const dimension of DIMENSIONS) {
-        const ids = current[dimension];
-        if (dimension !== changed && ids && ids.length > 0) trim(dimension, []);
-      }
+    if (changed === "units" && wipe && current.units?.length === 0) {
+      if (current.levels?.length) trim("levels", []);
+      if (current.positions?.length) trim("positions", []);
+      return { selection: current, removed };
+    }
+    if (changed === "levels" && wipe && current.levels?.length === 0) {
+      if (current.positions?.length) trim("positions", []);
       return { selection: current, removed };
     }
 
-    if (changed) {
-      const queue = [changed];
-      while (queue.length > 0) {
-        const source = queue.shift();
-        for (const dimension of DIMENSIONS) {
-          const ids = current[dimension];
-          if (dimension === source || dimension === changed || !ids || ids.length === 0) continue;
-          // Pairwise: what the source and this dimension allow together, the third left open.
-          const third = DIMENSIONS.find((item) => item !== source && item !== dimension);
-          const used = project(combos({ ...current, [third]: null }))[dimension];
-          const kept = ids.filter((id) => used.has(id));
-          if (kept.length === ids.length) continue;
-          trim(dimension, kept);
-          queue.push(dimension);
-        }
+    if (changed === null || changed === "units") {
+      const allowedLevels = allowedValues(current).levels;
+      if (current.levels?.length) {
+        trim("levels", current.levels.filter((id) => allowedLevels.has(id)));
       }
     }
 
-    for (let round = 0; round < 4; round += 1) {
-      const used = project(combos(current));
-      let trimmed = false;
-      for (const dimension of DIMENSIONS) {
-        const ids = current[dimension];
-        if (dimension === changed || !ids || ids.length === 0) continue;
-        const kept = ids.filter((id) => used[dimension].has(id));
-        if (kept.length === ids.length) continue;
-        trim(dimension, kept);
-        trimmed = true;
+    if (changed === null || changed === "units" || changed === "levels") {
+      const allowedPositions = allowedValues(current).positions;
+      if (current.positions?.length) {
+        trim("positions", current.positions.filter((id) => allowedPositions.has(id)));
       }
-      if (!trimmed) break;
     }
+
     return { selection: current, removed };
   }
 
-  return { combos, allowedValues, settle };
+  return { combos, allowedValues, availability, settle };
 }
 
 export const hasRemoved = (removed) => DIMENSIONS.some((dimension) => removed[dimension].length > 0);

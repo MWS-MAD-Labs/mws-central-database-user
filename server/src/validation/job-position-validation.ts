@@ -43,6 +43,8 @@ export class JobPositionValidation {
     page: z.number().min(1).positive().default(1),
     size: z.number().min(1).positive().max(100).default(10),
     search: z.string().optional(),
+    unit_id: z.string().min(1).optional(),
+    capacity_scope: z.enum(["UNLIMITED", "PER_UNIT", "GLOBAL"]).optional(),
     sort_by: z.enum(JOB_POSITION_SORT_FIELDS).default("name").optional(),
     sort_order: z.enum(["asc", "desc"]).default("asc").optional(),
   });

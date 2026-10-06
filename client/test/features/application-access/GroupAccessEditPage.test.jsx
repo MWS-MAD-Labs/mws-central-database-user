@@ -60,7 +60,7 @@ describe('GroupAccessEditPage', () => {
     expect(await screen.findByRole('switch', { name: 'MAD Lab' })).toBeChecked()
     expect(screen.getByRole('switch', { name: 'Elementary' })).not.toBeChecked()
     expect(screen.getByRole('switch', { name: 'All Units' })).not.toBeChecked()
-    expect(screen.getByRole('switch', { name: 'All Positions' })).toBeChecked()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
     expect(await screen.findByText('org_exima_a1b2c3')).toBeVisible()
   })
 
@@ -71,6 +71,10 @@ describe('GroupAccessEditPage', () => {
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await screen.findByRole('switch', { name: 'MAD Lab' })
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('switch', { name: 'All Positions' })).toBeChecked()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
 
     await user.click(screen.getByRole('button', { name: /STAFF/ }))
     await user.click(screen.getByRole('option', { name: /ADMIN/ }))

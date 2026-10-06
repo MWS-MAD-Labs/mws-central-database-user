@@ -10,6 +10,8 @@ describe('PermissionPopover', () => {
     )
     await user.click(screen.getByRole('button', { name: '3 permissions' }))
     const dialog = screen.getByRole('dialog', { name: 'Permissions' })
+    expect(within(dialog).getByText('users.manage')).toHaveClass('text-(--mws-burgundy)')
+    expect(within(dialog).getByText('users.manage')).not.toHaveClass('bg-(--mws-soft)')
     expect(within(dialog).getByText('users')).toBeVisible()
     expect(within(dialog).getByText('checkin')).toBeVisible()
     expect(within(dialog).getByText('users.manage')).toBeVisible()

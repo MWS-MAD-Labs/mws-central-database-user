@@ -35,6 +35,7 @@ export function GroupFormPage() {
   const [audience, setAudience] = useState("EMPLOYEES");
   const [roleKey, setRoleKey] = useState("");
   const [attempted, setAttempted] = useState(false);
+  const [scopeReviewed, setScopeReviewed] = useState(false);
   const rules = useScopeCatalog();
   const scope = useGroupFilterState({}, audience === "STUDENTS" ? null : rules);
 
@@ -83,8 +84,13 @@ export function GroupFormPage() {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!chosenRole || hasGroupFilterError(scope, audience)) return;
+    if (!scopeReviewed || !chosenRole || hasGroupFilterError(scope, audience)) return;
     mutation.mutate();
+  }
+
+  function changeAudience(nextAudience) {
+    setAudience(nextAudience);
+    setScopeReviewed(false);
   }
 
   return (
@@ -110,14 +116,21 @@ export function GroupFormPage() {
                 Who this covers. Leave a list on All to include every unit, position or level.
               </p>
             </div>
-            <GroupFilters audience={audience} options={options} state={scope} showErrors={attempted} />
+            <GroupFilters
+              key={audience}
+              audience={audience}
+              options={options}
+              state={scope}
+              showErrors={attempted}
+              onReviewChange={setScopeReviewed}
+            />
           </section>
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
             <div className="space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
               <Field label="Audience">
                 <SearchableSelect
                   value={audience}
-                  onChange={setAudience}
+                  onChange={changeAudience}
                   options={Object.entries(audienceLabels).map(([value, label]) => ({ value, label }))}
                   placeholder="Select an audience"
                 />
@@ -146,7 +159,7 @@ export function GroupFormPage() {
               <Button asChild variant="secondary" className="flex-1">
                 <Link to={back}>Cancel</Link>
               </Button>
-              <Button type="submit" className="flex-1" loading={mutation.isPending}>
+              <Button type="submit" className="flex-1" loading={mutation.isPending} disabled={!scopeReviewed}>
                 Add group
               </Button>
             </div>

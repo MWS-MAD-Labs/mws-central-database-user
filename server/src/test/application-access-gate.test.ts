@@ -319,6 +319,54 @@ describe("application access gate: no redundant access, parent removed last", ()
     expect((await TestRequest.get(url, dbAdmin.accessToken)).status).toBe(403);
   });
 
+  it("excludes a person in a removed unit even when their position supports both units", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const otherUnit = await prismaClient.masterUnit.create({
+      data: { name: `TEST_GATE_MULTI_UNIT_${randomBytes(3).toString("hex")}` },
+    });
+    const position = await prismaClient.masterJobPosition.create({
+      data: {
+        name: `TEST_GATE_MULTI_POSITION_${randomBytes(3).toString("hex")}`,
+        units: {
+          create: [
+            { unit_id: masterData.unit.id },
+            { unit_id: otherUnit.id },
+          ],
+        },
+      },
+    });
+    const inside = await EmployeeTest.create({
+      email: "test_gate_multi_inside@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    const outside = await EmployeeTest.create({
+      email: "test_gate_multi_outside@millennia21.id",
+      unitId: otherUnit.id,
+      jobPositionId: position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    const group = await (
+      await addRule(accessToken, {
+        unit_ids: [masterData.unit.id],
+        job_position_ids: [position.id],
+      })
+    ).json();
+
+    const response = await TestRequest.get(
+      `/api/admin/application-access/candidates?application_id=${appId}&coverage=GROUP&group_id=${group.data.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    const ids = body.data.map((item: { person_id: string }) => item.person_id);
+
+    expect(ids).toContain(inside.id);
+    expect(ids).not.toContain(outside.id);
+  });
+
   it("can leave out people who already have their own access", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const withOwn = await createEmployee("test_gate_own_a@millennia21.id");

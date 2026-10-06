@@ -9,9 +9,8 @@ export const audienceLabels = {
 
 const toSelection = (ids = []) => (ids.length > 0 ? ids : null);
 
-// The unit, position and level picks of a group. `rules` (from the scope catalog) makes the
-// three follow each other: dropping a value also drops what only existed because of it.
-// What the last change dropped is in `removed`; `allowed` says what is still worth offering.
+// Group scope follows Unit -> Job Level -> Job Position. Parent changes trim invalid
+// descendants, while descendant changes never alter their parents.
 export function useGroupFilterState(initial = {}, rules = null) {
   const [picked, setPicked] = useState({
     units: toSelection(initial.unit_ids),
@@ -23,6 +22,7 @@ export function useGroupFilterState(initial = {}, rules = null) {
   // Older groups may hold values nothing supports. They are left out as soon as the rules load.
   const settled = useMemo(() => (rules ? rules.settle(picked).selection : picked), [rules, picked]);
   const allowed = useMemo(() => (rules ? rules.allowedValues(settled) : null), [rules, settled]);
+  const availability = useMemo(() => (rules ? rules.availability(settled) : null), [rules, settled]);
 
   function change(dimension, next, options) {
     const base = { ...settled, [dimension]: next };
@@ -36,6 +36,7 @@ export function useGroupFilterState(initial = {}, rules = null) {
     positions: { selected: settled.positions, setSelected: (next, options) => change("positions", next, options) },
     levels: { selected: settled.levels, setSelected: (next, options) => change("levels", next, options) },
     allowed,
+    availability,
     removed,
   };
 }

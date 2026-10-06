@@ -80,9 +80,9 @@ describe('MasterDataDialog', () => {
 
     // An empty scope means all units, so every unit starts checked. Uncheck
     // Junior High to narrow the scope down to Elementary.
-    expect(await screen.findByRole('checkbox', { name: 'All units' })).toBeChecked()
+    expect(await screen.findByRole('checkbox', { name: 'All Units' })).toBeChecked()
     await user.click(await screen.findByRole('checkbox', { name: 'Junior High' }))
-    expect(screen.getByRole('checkbox', { name: 'All units' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'All Units' })).not.toBeChecked()
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     const impactDialog = await screen.findByRole('dialog', {
@@ -124,7 +124,7 @@ describe('MasterDataDialog', () => {
     // Named but no unit choice yet, so Save stays disabled.
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
 
-    await user.click(await screen.findByRole('checkbox', { name: 'All units' }))
+    await user.click(await screen.findByRole('checkbox', { name: 'All Units' }))
     expect(screen.getByRole('checkbox', { name: 'Elementary' })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'Junior High' })).toBeChecked()
 
