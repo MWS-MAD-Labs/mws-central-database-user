@@ -15,6 +15,23 @@ import { useApplicationPermissions } from "../hooks/useApplicationPermissions.js
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 
 
+// Keys are exact: capital letters, digits and underscores.
+function normalizeRoleKey(value) {
+  return value
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^A-Z0-9_]/g, "");
+}
+
+// SUPPORT_STAFF becomes "Support Staff".
+function suggestLabel(key) {
+  return key
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export function RoleFormPage() {
   const { user } = useAuth();
   const { applicationId, roleId } = useParams();
@@ -43,6 +60,8 @@ function RoleForm({ applicationId, role, roles }) {
   const application = applicationId;
   const [key, setKey] = useState(role?.key || "");
   const [label, setLabel] = useState(role?.label || "");
+  // The label follows the key as a suggestion until someone types in it.
+  const [labelEdited, setLabelEdited] = useState(false);
   const [permissions, setPermissions] = useState(role?.permissions || []);
   const [allowsEmployees, setAllowsEmployees] = useState(role?.allows_employees ?? true);
   const [allowsStudents, setAllowsStudents] = useState(role?.allows_students ?? false);
@@ -136,6 +155,11 @@ function RoleForm({ applicationId, role, roles }) {
       <form onSubmit={submit} noValidate>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <section className="min-w-0 space-y-5 rounded-2xl border border-(--mws-line) bg-white p-5">
+            {permissionsQuery.data && !permissionsQuery.data.has_manifest ? (
+              <p className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-3 py-2 text-xs text-[#805b18]">
+                This application has not published its permissions. These are not checked against its code, so a typo here is saved as is.
+              </p>
+            ) : null}
             <Field label="Permissions" hint="Check what this role may do. The application decides what each permission means.">
               {permissionsQuery.isLoading ? (
                 <p className="text-sm text-(--mws-muted)">Loading permissions…</p>
@@ -163,12 +187,27 @@ function RoleForm({ applicationId, role, roles }) {
               {isEdit ? null : (
                 <>
                   <Field label="Role Key" error={attempted && !key.trim() ? "Role key is required." : undefined}>
-                    <TextInput value={key} onChange={(event) => setKey(event.target.value)} />
+                    <TextInput
+                      value={key}
+                      onChange={(event) => {
+                        const next = normalizeRoleKey(event.target.value);
+                        setKey(next);
+                        if (!labelEdited) setLabel(suggestLabel(next));
+                      }}
+                    />
                   </Field>
                 </>
               )}
               <Field label="Label" error={attempted && !label.trim() ? "Label is required." : undefined}>
-                <TextInput value={label} maxLength={64} onChange={(event) => setLabel(event.target.value)} />
+                <TextInput
+                  value={label}
+                  maxLength={64}
+                  onChange={(event) => {
+                    setLabelEdited(event.target.value !== "");
+                    setLabel(event.target.value);
+                  }}
+                />
+                {!isEdit ? <p className="mt-1 text-xs text-(--mws-muted)">Suggested from the role key. You can change it.</p> : null}
               </Field>
               <Field
                 label="Who It Is For"

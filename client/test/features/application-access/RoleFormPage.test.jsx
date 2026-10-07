@@ -95,7 +95,8 @@ describe('RoleFormPage', () => {
     expect(screen.queryByText('Application ID')).not.toBeInTheDocument()
     const textboxes = screen.getAllByRole('textbox')
     await user.type(textboxes.find((input) => !input.placeholder), 'CASHIER')
-    await user.type(screen.getAllByRole('textbox').filter((input) => !input.placeholder)[1], 'Cashier')
+    // The label already follows the key as a suggestion.
+    expect(screen.getAllByRole('textbox').filter((input) => !input.placeholder)[1]).toHaveValue('Cashier')
     await user.type(await screen.findByPlaceholderText(/Add a new permission/), 'pos.checkout')
     await user.click(screen.getByRole('button', { name: 'Add Permission' }))
     expect(await screen.findByLabelText('pos.checkout')).toBeChecked()
@@ -191,6 +192,52 @@ describe('RoleFormPage', () => {
     expect(screen.queryByLabelText(/^other\.item2/)).not.toBeInTheDocument()
     expect(screen.getByLabelText(/^other\.item1/)).toBeVisible()
     registry = { ...registry, permissions: registry.permissions.slice(0, 0) }
+  })
+
+  it('writes the key in capitals and suggests a label until the label is edited', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage('/application-access/apps/exima/roles/new')
+    await screen.findByText('Add Role to exima')
+    const [keyInput, labelInput] = screen.getAllByRole('textbox').filter((input) => !input.placeholder)
+
+    await user.type(keyInput, 'support staff-2!')
+    expect(keyInput).toHaveValue('SUPPORT_STAFF_2')
+    expect(labelInput).toHaveValue('Support Staff 2')
+    expect(screen.getByText('Suggested from the role key. You can change it.')).toBeVisible()
+
+    await user.clear(labelInput)
+    await user.type(labelInput, 'Helpers')
+    await user.type(keyInput, 'x')
+    expect(keyInput).toHaveValue('SUPPORT_STAFF_2X')
+    expect(labelInput).toHaveValue('Helpers')
+
+    // Clearing the label hands it back to the suggestion.
+    await user.clear(labelInput)
+    await user.type(keyInput, 'y')
+    expect(labelInput).toHaveValue('Support Staff 2xy')
+  })
+
+  it('does not suggest a label when editing a role', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage('/application-access/apps/exima/roles/role-staff')
+    await screen.findByText('Edit STAFF')
+    expect(screen.getAllByRole('textbox').filter((input) => !input.placeholder)[0]).toHaveValue('Staff')
+    expect(screen.queryByText('Suggested from the role key. You can change it.')).not.toBeInTheDocument()
+  })
+
+  it('warns that permissions typed by hand are not checked against the application', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage('/application-access/apps/exima/roles/new')
+    expect(await screen.findByText(/has not published its permissions/)).toBeVisible()
+  })
+
+  it('has no warning for an application that publishes its own permissions', async () => {
+    registry = { ...registry, has_manifest: true }
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage('/application-access/apps/exima/roles/new')
+    await screen.findByText(/publishes its own permissions/)
+    expect(screen.queryByText(/has not published its permissions/)).not.toBeInTheDocument()
+    registry = { ...registry, has_manifest: false }
   })
 
   it('says when the role belongs to another application', async () => {
