@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, Plus } from "lucide-react";
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
@@ -30,6 +30,9 @@ import {
   gradeSelectOptions,
 } from "../utils/selectOptions.js";
 import { ClassDialog } from "./ClassDialog.jsx";
+import { ClassTeachers } from "./ClassTeachers.jsx";
+import { classGradeNames } from "../utils/classTeachers.js";
+import { NameList } from "../../../components/ui/NameList.jsx";
 import { SelectFilter } from "./SelectFilter.jsx";
 import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
 import { ListPopover } from "../../../components/ui/ListPopover.jsx";
@@ -246,9 +249,6 @@ export function ClassesPanel() {
           />
           {!classesQuery.isLoading
             ? (classesQuery.data?.data || []).map((klass) => {
-                const historyLabel = formatEnrollmentHistoryCounts(
-                  klass.enrollment_history_counts,
-                );
                 return (
                   <tr
                     key={klass.id}
@@ -257,38 +257,12 @@ export function ClassesPanel() {
                     <td className="px-4 py-3 font-semibold text-(--mws-charcoal)">
                       {klass.name}
                     </td>
-                    <td className="px-4 py-3">{klass.grade.name}</td>
+                    <td className="px-4 py-3">
+                      <NameList names={classGradeNames(klass)} noun="Grades" title={`Grades of ${klass.name}`} />
+                    </td>
                     <td className="px-4 py-3">{klass.academic_year.name}</td>
                     <td className="px-4 py-3">
-                      {klass.homeroom_teachers?.length ||
-                      klass.supporting_homeroom_teachers?.length ||
-                      klass.subject_teachers?.length ? (
-                        <div className="flex flex-wrap gap-1">
-                          <TeacherRoleBadge
-                            label="Homeroom"
-                            teachers={klass.homeroom_teachers}
-                            formatTooltip={(teacher) =>
-                               teacherName(teacher)
-                            }
-                          />
-                          <TeacherRoleBadge
-                            label="Supporting"
-                            teachers={klass.supporting_homeroom_teachers}
-                            formatTooltip={(teacher) =>
-                               teacherName(teacher)
-                            }
-                          />
-                          <TeacherRoleBadge
-                            label="Subject"
-                            teachers={klass.subject_teachers}
-                            formatTooltip={(teacher) =>
-                               `${teacherName(teacher)}${teacher.subject ? ` (${teacher.subject})` : ""}`
-                            }
-                          />
-                        </div>
-                      ) : (
-                        <span className="text-(--mws-muted)">-</span>
-                      )}
+                      <ClassTeachers klass={klass} />
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge tone={statusTone(klass.status)}>
@@ -298,19 +272,8 @@ export function ClassesPanel() {
                     <td className="px-4 py-3">
                       <p className="font-semibold text-(--mws-charcoal)">
                         {klass.active_enrollment_count ?? 0}
-                        {klass.capacity ? `/${klass.capacity}` : ""} students
-                        {historyLabel ? (
-                          <span
-                            className="ml-1 cursor-pointer text-xs font-normal text-(--mws-muted) underline decoration-dotted underline-offset-2"
-                            title={historyLabel}
-                          >
-                            (+
-                            {sumEnrollmentHistoryCounts(
-                              klass.enrollment_history_counts,
-                            )}
-                            )
-                          </span>
-                        ) : null}
+                        {klass.capacity ? `/${klass.capacity}` : ""} Students
+                        <PastEnrollments klass={klass} />
                       </p>
                       {klass.capacity ? (
                         <p className="text-xs text-(--mws-muted)">
@@ -365,53 +328,25 @@ export function ClassesPanel() {
   );
 }
 
-function TeacherRoleBadge({ label, teachers, formatTooltip }) {
-  if (!teachers?.length) return null;
-
-  const content = `${teachers.length} ${label}`;
-  const tooltip = teachers.map(formatTooltip).join(", ");
-
-  if (teachers.length === 1) {
-    const member = teachers[0].workforce_member || teachers[0].employee;
-    return (
-      <Link
-        to={member?.type === "INTERN" ? `/interns/${member.id}` : `/employees/${member?.id}`}
-        title={tooltip}
-      >
-        <StatusBadge tone="neutral" className="hover:underline">
-          {content}
-        </StatusBadge>
-      </Link>
-    );
-  }
-
-  // Several teachers: the count opens the list of names.
+// People who were in the class and moved on, as a count that opens how they left.
+function PastEnrollments({ klass }) {
+  const label = formatEnrollmentHistoryCounts(klass.enrollment_history_counts);
+  if (!label) return null;
   return (
-    <ListPopover
-      label={content}
-      count={teachers.length}
-      dialogLabel={`${label} teachers`}
-      icon={false}
-      mono={false}
-      groups={[{ items: teachers.map(formatTooltip) }]}
-      className="[&>button]:text-xs [&>button]:text-(--mws-charcoal)"
-    />
+    <span className="ml-1.5 align-middle">
+      <ListPopover
+        label={`+${sumEnrollmentHistoryCounts(klass.enrollment_history_counts)} Past`}
+        count={sumEnrollmentHistoryCounts(klass.enrollment_history_counts)}
+        dialogLabel={`Past enrollments of ${klass.name}`}
+        icon={false}
+        mono={false}
+        groups={[{ title: "Left The Class", items: label.split(" · "), hideCount: true }]}
+      />
+    </span>
   );
-}
-
-function teacherName(teacher) {
-  return teacher.workforce_member?.full_name || teacher.employee?.full_name || "Unknown teacher";
 }
 
 function ClassCard({ klass, canDelete, deleteTitle, onView, onDelete }) {
-  const historyLabel = formatEnrollmentHistoryCounts(
-    klass.enrollment_history_counts,
-  );
-  const hasTeachers =
-    klass.homeroom_teachers?.length ||
-    klass.supporting_homeroom_teachers?.length ||
-    klass.subject_teachers?.length;
-
   return (
     <div className="rounded-xl border border-(--mws-line) bg-white p-4">
       <div className="flex items-start justify-between gap-3">
@@ -420,7 +355,7 @@ function ClassCard({ klass, canDelete, deleteTitle, onView, onDelete }) {
             {klass.name}
           </p>
           <p className="text-xs text-(--mws-muted)">
-            {klass.grade.name} · {klass.academic_year.name}
+            {classGradeNames(klass).join(" + ")} · {klass.academic_year.name}
           </p>
         </div>
         <StatusBadge tone={statusTone(klass.status)} className="shrink-0">
@@ -428,45 +363,16 @@ function ClassCard({ klass, canDelete, deleteTitle, onView, onDelete }) {
         </StatusBadge>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-1">
-        {hasTeachers ? (
-          <>
-            <TeacherRoleBadge
-              label="Homeroom"
-              teachers={klass.homeroom_teachers}
-               formatTooltip={teacherName}
-            />
-            <TeacherRoleBadge
-              label="Supporting"
-              teachers={klass.supporting_homeroom_teachers}
-               formatTooltip={teacherName}
-            />
-            <TeacherRoleBadge
-              label="Subject"
-              teachers={klass.subject_teachers}
-               formatTooltip={(teacher) => `${teacherName(teacher)}${teacher.subject ? ` (${teacher.subject})` : ""}`}
-            />
-          </>
-        ) : (
-          <span className="text-sm text-(--mws-muted)">
-            No teachers assigned
-          </span>
-        )}
+      <div className="mt-3">
+        <ClassTeachers klass={klass} empty="No teachers assigned" />
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-3 border-t border-(--mws-line) pt-3">
         <div>
           <p className="text-sm font-semibold text-(--mws-charcoal)">
             {klass.active_enrollment_count ?? 0}
-            {klass.capacity ? `/${klass.capacity}` : ""} students
-            {historyLabel ? (
-              <span
-                className="ml-1 text-xs font-normal text-(--mws-muted) underline decoration-dotted underline-offset-2"
-                title={historyLabel}
-              >
-                (+{sumEnrollmentHistoryCounts(klass.enrollment_history_counts)})
-              </span>
-            ) : null}
+            {klass.capacity ? `/${klass.capacity}` : ""} Students
+            <PastEnrollments klass={klass} />
           </p>
           {klass.capacity ? (
             <p className="text-xs text-(--mws-muted)">

@@ -145,30 +145,63 @@ describe('ClassesPanel', () => {
     renderPanel(<ClassesPanel />, { route: '/academic?grade_id=grade-1&academic_year_id=year-2026' })
 
     expect(await screen.findAllByText('Grade 1A')).not.toHaveLength(0)
-    expect(screen.getAllByText('1/30 students')).not.toHaveLength(0)
+    expect(screen.getAllByText('1/30 Students')).not.toHaveLength(0)
     expect(screen.getAllByRole('button', { name: 'Delete' })[0]).toBeDisabled()
     expect(fetchMock.mock.calls.some(([url]) =>
       String(url).includes('grade_id=grade-1') && String(url).includes('academic_year_id=year-2026'),
     )).toBe(true)
   })
 
-  it('shows several teachers of a role as a count that opens their names', async () => {
-    const teacher = (id, name) => ({ id, workforce_member: { id: `emp-${id}`, type: 'EMPLOYEE', full_name: name } })
+  it('shows the teachers of a class in one line that opens their names by role', async () => {
+    const teacher = (id, name, extra = {}) => ({ id, workforce_member: { id: `emp-${id}`, type: 'EMPLOYEE', full_name: name }, ...extra })
     const klass = classFixture({
       homeroom_teachers: [teacher('t1', 'Alpha Teacher'), teacher('t2', 'Beta Teacher')],
       supporting_homeroom_teachers: [teacher('t3', 'Gamma Teacher')],
+      subject_teachers: [teacher('t4', 'Delta Teacher', { subject: 'Math' })],
     })
     globalThis.fetch = createFetchRouter(classRoutes([klass]))
     const { user } = renderPanel(<ClassesPanel />)
     await screen.findAllByText('Grade 1A')
 
-    // One supporting teacher stays a link to the profile.
-    expect(screen.getAllByRole('link', { name: '1 Supporting' })[0]).toHaveAttribute('href', '/employees/emp-t3')
     expect(screen.queryByText('Beta Teacher')).not.toBeInTheDocument()
-    await user.click(screen.getAllByRole('button', { name: '2 Homeroom' })[0])
-    const dialog = screen.getByRole('dialog', { name: 'Homeroom teachers' })
-    expect(within(dialog).getByText('Alpha Teacher')).toBeVisible()
+    await user.click(screen.getAllByRole('button', { name: '2 Homeroom · 1 Supporting · 1 Subject' })[0])
+    const dialog = screen.getByRole('dialog', { name: 'Teachers of Grade 1A' })
     expect(within(dialog).getByText('Beta Teacher')).toBeVisible()
+    expect(within(dialog).getByText('Delta Teacher (Math)')).toBeVisible()
+    expect(within(dialog).getByText('Homeroom')).toBeVisible()
+    expect(within(dialog).getByText('Subject')).toBeVisible()
+  })
+
+  it('shows a lone teacher by name as a link to the profile, and a dash when there is none', async () => {
+    const lone = classFixture({
+      homeroom_teachers: [{ id: 't1', workforce_member: { id: 'emp-t1', type: 'EMPLOYEE', full_name: 'Alpha Teacher' } }],
+    })
+    globalThis.fetch = createFetchRouter(classRoutes([lone, classFixture({ id: 'class-2', name: 'Grade 1B' })]))
+    const { container } = renderPanel(<ClassesPanel />)
+    await screen.findAllByText('Grade 1A')
+    expect(screen.getAllByRole('link', { name: 'Alpha Teacher' })[0]).toHaveAttribute('href', '/employees/emp-t1')
+    const second = container.querySelectorAll('tbody tr')[1]
+    expect(within(second).getAllByText('-').length).toBeGreaterThan(0)
+  })
+
+  it('names every grade of a mixed class and opens how past students left', async () => {
+    const mixed = classFixture({
+      additional_grades: [{ id: 'grade-2', name: 'Grade 2' }],
+      enrollment_history_counts: { transferred: 2, withdrawn: 0, completed: 1 },
+    })
+    globalThis.fetch = createFetchRouter(classRoutes([mixed]))
+    const { user, container } = renderPanel(<ClassesPanel />)
+    await screen.findAllByText('Grade 1A')
+
+    const row = container.querySelector('tbody tr')
+    await user.click(within(row).getByRole('button', { name: '2 Grades' }))
+    expect(within(screen.getByRole('dialog', { name: 'Grades of Grade 1A' })).getByText('Grade 2')).toBeVisible()
+    await user.keyboard('{Escape}')
+
+    await user.click(within(row).getByRole('button', { name: '+3 Past' }))
+    const past = screen.getByRole('dialog', { name: 'Past enrollments of Grade 1A' })
+    expect(within(past).getByText('2 transferred')).toBeVisible()
+    expect(within(past).getByText('1 completed')).toBeVisible()
   })
 
   it('creates a class and navigates to its detail route', async () => {
