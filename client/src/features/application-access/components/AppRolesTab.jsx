@@ -2,9 +2,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Plus } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
+import {
+  ActionsMenu,
+  ActionsMenuItem,
+} from "../../../components/ui/ActionsMenu.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
-import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
+import {
+  DenseTable,
+  denseCellClass,
+  denseRowClass,
+} from "../../../components/ui/DenseTable.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
@@ -22,9 +29,11 @@ export function AppRolesTab({ applicationId, roles }) {
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(10);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["application-access"] });
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ["application-access"] });
   const toggleMutation = useMutation({
-    mutationFn: (role) => applicationAccessApi.updateRole(role.id, { is_active: !role.is_active }),
+    mutationFn: (role) =>
+      applicationAccessApi.updateRole(role.id, { is_active: !role.is_active }),
     onSuccess: () => {
       invalidate();
       showSuccessToast("Role updated.");
@@ -55,21 +64,30 @@ export function AppRolesTab({ applicationId, roles }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 font-display text-base font-bold text-(--mws-charcoal)">
           Roles
-          <span className="text-sm font-normal text-(--mws-muted)">{roles.length}</span>
-          <Tip text="Highest role first. Role pickers in groups and exceptions follow this order." label="About order" />
+          <span className="text-sm font-normal text-(--mws-muted)">
+            {roles.length}
+          </span>
+          <Tip
+            text="Highest role first. Role pickers in groups and exceptions follow this order."
+            label="About Order"
+          />
         </h2>
         <button
           type="button"
-          aria-label="Add role"
-          title="Add role"
-          onClick={() => navigate(`/application-access/apps/${applicationId}/roles/new`)}
+          aria-label="Add Role"
+          title="Add Role"
+          onClick={() =>
+            navigate(`/application-access/apps/${applicationId}/roles/new`)
+          }
           className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) transition-colors hover:bg-(--mws-soft) hover:text-(--mws-burgundy) focus-visible:outline-2 focus-visible:outline-(--mws-burgundy)"
         >
           <Plus size={18} />
         </button>
       </div>
       {roles.length === 0 ? (
-        <PanelMessage>No roles yet. Add the first role of {applicationId}.</PanelMessage>
+        <PanelMessage>
+          No roles yet. Add the first role of {applicationId}.
+        </PanelMessage>
       ) : (
         <DenseTable
           minWidth={900}
@@ -80,14 +98,19 @@ export function AppRolesTab({ applicationId, roles }) {
               <th className="px-4 py-2.5">Label</th>
               <th className="px-4 py-2.5">For</th>
               <th className="px-4 py-2.5 text-center">Permissions</th>
-              <th className="px-4 py-2.5 text-center">In use</th>
+              <th className="px-4 py-2.5 text-center">In Use</th>
               <th className="px-4 py-2.5">Status</th>
               <th className="px-4 py-2.5 text-right">Actions</th>
             </>
           }
           footer={
             <PaginationBar
-              paging={{ current_page: currentPage, total_page: totalPage, total_item: roles.length, size }}
+              paging={{
+                current_page: currentPage,
+                total_page: totalPage,
+                total_item: roles.length,
+                size,
+              }}
               itemLabel="roles"
               isLoading={orderMutation.isPending}
               onPrevious={() => setPage(Math.max(currentPage - 1, 1))}
@@ -122,17 +145,26 @@ export function AppRolesTab({ applicationId, roles }) {
                       size="sm"
                       variant="secondary"
                       aria-label={`Move ${role.key} down`}
-                      disabled={index === roles.length - 1 || orderMutation.isPending}
+                      disabled={
+                        index === roles.length - 1 || orderMutation.isPending
+                      }
                       onClick={() => move(role, 1)}
                     >
                       <ArrowDown size={14} />
                     </Button>
                   </div>
                 </td>
-                <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>{role.key}</td>
+                <td
+                  className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}
+                >
+                  {role.key}
+                </td>
                 <td className={denseCellClass}>{role.label}</td>
                 <td className={denseCellClass}>
-                  {[role.allows_employees ? "Employees" : null, role.allows_students ? "Students" : null]
+                  {[
+                    role.allows_employees ? "Employees" : null,
+                    role.allows_students ? "Students" : null,
+                  ]
                     .filter(Boolean)
                     .join(" and ")}
                 </td>
@@ -148,7 +180,8 @@ export function AppRolesTab({ applicationId, roles }) {
                   {role.active_entitlement_count}
                   {role.active_group_count > 0 ? (
                     <span className="ml-1.5 text-xs text-(--mws-muted)">
-                      + {role.active_group_count} {role.active_group_count === 1 ? "group" : "groups"}
+                      + {role.active_group_count}{" "}
+                      {role.active_group_count === 1 ? "Group" : "Groups"}
                     </span>
                   ) : null}
                 </td>
@@ -158,13 +191,17 @@ export function AppRolesTab({ applicationId, roles }) {
                   </StatusBadge>
                 </td>
                 <td className={`${denseCellClass} text-right`}>
-                  <ActionsMenu label={`Actions for ${applicationId} ${role.key}`}>
+                  <ActionsMenu
+                    label={`Actions for ${applicationId} ${role.key}`}
+                  >
                     {(closeMenu) => (
                       <>
                         <ActionsMenuItem
                           onClick={() => {
                             closeMenu();
-                            navigate(`/application-access/apps/${applicationId}/roles/${role.id}`);
+                            navigate(
+                              `/application-access/apps/${applicationId}/roles/${role.id}`,
+                            );
                           }}
                         >
                           Edit

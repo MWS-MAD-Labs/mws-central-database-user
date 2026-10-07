@@ -36,7 +36,7 @@ export function AppCreatePage() {
   if (user?.role !== "SUPER_ADMIN") {
     return (
       <div className="min-w-0">
-        <PageHeader title="Add application" />
+        <PageHeader title="Add Application" />
         <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
       </div>
     );
@@ -52,7 +52,7 @@ export function AppCreatePage() {
   return (
     <div className="min-w-0">
       <PageHeader
-        title="Add application"
+        title="Add Application"
         description="Give it an id, then add its roles and groups. Its Organization ID is created for you."
         actions={
           <Button asChild variant="secondary">
@@ -76,7 +76,7 @@ export function AppCreatePage() {
             <Link to={BACK}>Cancel</Link>
           </Button>
           <Button type="submit" loading={mutation.isPending}>
-            Add application
+            Add Application
           </Button>
         </div>
       </form>

@@ -44,7 +44,7 @@ describe('AppCreatePage', () => {
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await user.type(screen.getByRole('textbox'), '9 lives')
-    await user.click(screen.getByRole('button', { name: 'Add application' }))
+    await user.click(screen.getByRole('button', { name: 'Add Application' }))
     expect(await screen.findByText(/^Use lowercase letters/)).toBeVisible()
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -60,7 +60,7 @@ describe('AppCreatePage', () => {
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await user.type(screen.getByRole('textbox'), 'demo')
-    await user.click(screen.getByRole('button', { name: 'Add application' }))
+    await user.click(screen.getByRole('button', { name: 'Add Application' }))
     expect(await screen.findByText('App page')).toBeVisible()
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')

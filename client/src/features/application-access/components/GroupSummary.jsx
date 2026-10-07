@@ -88,7 +88,7 @@ export function GroupFacts({ group, parentRole }) {
     },
     group.own_count !== undefined && group.own_count !== group.covered_count
       ? {
-          label: "Holds this role",
+          label: "Holds This Role",
           value: countOf(group.own_count, group.audience),
         }
       : null,
@@ -99,7 +99,7 @@ export function GroupFacts({ group, parentRole }) {
   ].filter(Boolean);
   return (
     <dl
-      aria-label="Group details"
+      aria-label="Group Details"
       className="flex flex-wrap gap-x-6 gap-y-1 border-t border-(--mws-line) pt-3"
     >
       {facts.map((fact) => (
@@ -157,8 +157,8 @@ export function RemainingScope({ group, narrower }) {
       <p className="mb-3 font-display text-sm font-bold text-(--mws-charcoal)">After Narrower Groups</p>
       <div className="grid gap-x-8 gap-y-4 lg:grid-cols-2">
         <div className="space-y-2">
-          <p className={labelClass}>Still held by this group</p>
-          <dl aria-label="What is left" className="grid grid-cols-[6rem_1fr] items-center gap-x-4 gap-y-1.5">
+          <p className={labelClass}>Still Held by This Group</p>
+          <dl aria-label="What Is Left" className="grid grid-cols-[6rem_1fr] items-center gap-x-4 gap-y-1.5">
             {chips.map((chip, index) => (
               <div key={chip.label} className="contents">
                 <dt className="text-sm text-(--mws-muted)">{chip.label}</dt>
@@ -169,7 +169,7 @@ export function RemainingScope({ group, narrower }) {
             ))}
             {group.own_count !== undefined ? (
               <div className="contents">
-                <dt className="text-sm text-(--mws-muted)">Holds this role</dt>
+                <dt className="text-sm text-(--mws-muted)">Holds This Role</dt>
                 <dd className="text-sm font-semibold text-(--mws-charcoal)">
                   {countOf(group.own_count, group.audience)}
                 </dd>
@@ -178,7 +178,7 @@ export function RemainingScope({ group, narrower }) {
           </dl>
         </div>
         <div className="space-y-2">
-          <p className={labelClass}>Taken by narrower groups</p>
+          <p className={labelClass}>Taken by Narrower Groups</p>
           <ul className="divide-y divide-(--mws-line)">
             {narrower.map((child) => (
               <li key={child.id} className="space-y-1.5 py-2 first:pt-0 last:pb-0">

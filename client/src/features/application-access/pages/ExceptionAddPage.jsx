@@ -85,7 +85,7 @@ export function ExceptionAddPage() {
   if (user?.role !== "SUPER_ADMIN") {
     return (
       <div className="min-w-0">
-        <PageHeader title="Add exception" />
+        <PageHeader title="Add Exception" />
         <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
       </div>
     );
@@ -149,7 +149,7 @@ export function ExceptionAddPage() {
   return (
     <div className="min-w-0">
       <PageHeader
-        title={`Add exception to ${applicationId}`}
+        title={`Add Exception to ${applicationId}`}
         description="Check the people who should get another role than their group."
         actions={
           <Button asChild variant="secondary">
@@ -213,7 +213,7 @@ export function ExceptionAddPage() {
                   <th className="w-10 px-4 py-2.5">
                     <input
                       type="checkbox"
-                      aria-label="Select all on this page"
+                      aria-label="Select All on This Page"
                       checked={allPageSelected}
                       disabled={candidatesQuery.isLoading || selectable.length === 0}
                       onChange={(event) => togglePage(event.target.checked, selectable)}
@@ -225,7 +225,7 @@ export function ExceptionAddPage() {
                   <th className="px-4 py-2.5">Job Position</th>
                   <th className="px-4 py-2.5">Job Level</th>
                   <th className="px-4 py-2.5">Employment Type</th>
-                  <th className="px-4 py-2.5">Current role</th>
+                  <th className="px-4 py-2.5">Current Role</th>
                 </>
               }
               footer={
@@ -270,7 +270,7 @@ export function ExceptionAddPage() {
                   <td className={denseCellClass}>
                     {item.inherited_role ?? "-"}
                     {item.disabled ? (
-                      <span className="block text-xs text-(--mws-muted)">Pick a different role</span>
+                      <span className="block text-xs text-(--mws-muted)">Pick a Different Role</span>
                     ) : null}
                   </td>
                 </tr>
@@ -291,7 +291,7 @@ export function ExceptionAddPage() {
               {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} /> : null}
               <p className="flex items-center gap-1.5 text-xs leading-none text-(--mws-muted)">
                 Group role {group.default_role_key}
-                <Tip text={`People who already get the role you pick cannot be selected for it.`} label="About roles" />
+                <Tip text={`People who already get the role you pick cannot be selected for it.`} label="About Roles" />
               </p>
             </div>
             <div className="flex gap-2">
@@ -299,7 +299,7 @@ export function ExceptionAddPage() {
                 <Link to={back}>Cancel</Link>
               </Button>
               <Button type="submit" className="flex-1" loading={mutation.isPending}>
-                Add exception
+                Add Exception
               </Button>
             </div>
           </aside>

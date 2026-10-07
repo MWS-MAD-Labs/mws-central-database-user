@@ -116,7 +116,7 @@ describe('ApplicationAccessPage', () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
     await screen.findByText('exima')
-    await user.click(screen.getByRole('button', { name: 'Add application' }))
+    await user.click(screen.getByRole('button', { name: 'Add Application' }))
     expect(await screen.findByText('New application page')).toBeVisible()
   })
 })

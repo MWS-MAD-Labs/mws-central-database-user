@@ -75,7 +75,7 @@ export function GroupFormPage() {
   if (user?.role !== "SUPER_ADMIN") {
     return (
       <div className="min-w-0">
-        <PageHeader title="Add group" />
+        <PageHeader title="Add Group" />
         <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
       </div>
     );
@@ -96,7 +96,7 @@ export function GroupFormPage() {
   return (
     <div className="min-w-0">
       <PageHeader
-        title={`Add group to ${applicationId}`}
+        title={`Add Group to ${applicationId}`}
         description="Everyone this group covers gets the role. If the group sits inside a broader one, the role has to differ from it."
         actions={
           <Button asChild variant="secondary">
@@ -163,7 +163,7 @@ export function GroupFormPage() {
                 <Link to={back}>Cancel</Link>
               </Button>
               <Button type="submit" className="flex-1" loading={mutation.isPending} disabled={!scopeReviewed}>
-                Add group
+                Add Group
               </Button>
             </div>
           </aside>

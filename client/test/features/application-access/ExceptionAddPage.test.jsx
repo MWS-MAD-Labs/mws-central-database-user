@@ -82,7 +82,7 @@ describe('ExceptionAddPage', () => {
     globalThis.fetch = fetchMock
     const { user } = renderPage()
 
-    expect(await screen.findByText('Add exception to exima')).toBeVisible()
+    expect(await screen.findByText('Add Exception to exima')).toBeVisible()
     expect(screen.getByText('Active Employees')).toBeVisible()
     expect(within(screen.getByLabelText('Who this group covers')).getByText('MAD Lab')).toBeVisible()
     const url = fetchMock.mock.calls.map(([callUrl]) => callUrl).find((callUrl) => callUrl.includes('/candidates'))
@@ -96,7 +96,7 @@ describe('ExceptionAddPage', () => {
     await user.click(screen.getAllByRole('button', { name: '1 permission' })[1])
     expect(within(screen.getByRole('dialog', { name: 'Permissions' })).getByText('app.admin')).toBeVisible()
     await user.click(await screen.findByLabelText('Select Alpha Person'))
-    await user.click(screen.getByRole('button', { name: 'Add exception' }))
+    await user.click(screen.getByRole('button', { name: 'Add Exception' }))
 
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([callUrl, options]) =>
@@ -111,7 +111,7 @@ describe('ExceptionAddPage', () => {
     const { user } = renderPage()
     const row = (await screen.findByText('Alpha Person')).closest('tr')
     expect(screen.getByText('alpha@millennia21.id')).toBeVisible()
-    for (const header of ['Name', 'Unit', 'Job Position', 'Job Level', 'Employment Type', 'Current role']) {
+    for (const header of ['Name', 'Unit', 'Job Position', 'Job Level', 'Employment Type', 'Current Role']) {
       expect(screen.getByRole('columnheader', { name: header })).toBeVisible()
     }
     expect(within(row).getByText('MAD Lab')).toBeVisible()

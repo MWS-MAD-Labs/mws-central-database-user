@@ -40,14 +40,14 @@ export function ExceptionsCard({ group, applicationId, roles, onAdd }) {
         </h3>
         <button
           type="button"
-          aria-label={`Add exception to ${group.default_role_key} group`}
+          aria-label={`Add Exception to ${group.default_role_key} Group`}
           disabled={cannotAdd}
           title={
             group.audience === "STUDENTS"
               ? "Exceptions are for employees"
               : !group.is_active
                 ? "Turn the group on first"
-                : "Add exception"
+                : "Add Exception"
           }
           onClick={onAdd}
           className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) transition-colors hover:bg-(--mws-soft) hover:text-(--mws-burgundy) focus-visible:outline-2 focus-visible:outline-(--mws-burgundy) disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-(--mws-muted)"

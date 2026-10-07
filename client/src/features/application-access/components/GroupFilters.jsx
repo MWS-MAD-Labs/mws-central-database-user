@@ -1,14 +1,19 @@
 import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
-import { groupFilterErrors, withoutStudents } from "../utils/groupFilterState.js";
+import {
+  groupFilterErrors,
+  withoutStudents,
+} from "../utils/groupFilterState.js";
 import { isRealUnit } from "../utils/legacyUnit.js";
 import { MultiCheckList } from "./MultiCheckList.jsx";
 import { ListPopover } from "../../../components/ui/ListPopover.jsx";
 
 function removedText(removed, options) {
   const named = (ids, list) =>
-    ids.map((id) => (list || []).find((item) => item.id === id)?.name).filter(Boolean);
+    ids
+      .map((id) => (list || []).find((item) => item.id === id)?.name)
+      .filter(Boolean);
   return [
     ["Positions", named(removed.positions, options.jobPositions)],
     ["Levels", named(removed.levels, options.jobLevels)],
@@ -27,7 +32,9 @@ function selectionNames(selected, items) {
 
 function ReviewValue({ selected, items, allLabel, dialogLabel }) {
   if (selected === null) {
-    return <p className="text-sm font-semibold text-(--mws-charcoal)">{allLabel}</p>;
+    return (
+      <p className="text-sm font-semibold text-(--mws-charcoal)">{allLabel}</p>
+    );
   }
   const names = selectionNames(selected, items);
   const shown = names.slice(0, 3);
@@ -36,13 +43,15 @@ function ReviewValue({ selected, items, allLabel, dialogLabel }) {
       {shown.length > 0 ? (
         <ul className="space-y-1 text-sm text-(--mws-charcoal)">
           {shown.map((name) => (
-            <li key={name} className="truncate" title={name}>{name}</li>
+            <li key={name} className="truncate" title={name}>
+              {name}
+            </li>
           ))}
         </ul>
       ) : null}
       {names.length > shown.length ? (
         <ListPopover
-          label="View all"
+          label="View All"
           count={names.length}
           dialogLabel={dialogLabel}
           icon={false}
@@ -51,14 +60,19 @@ function ReviewValue({ selected, items, allLabel, dialogLabel }) {
           className="[&>button]:text-xs [&>button]:text-(--mws-burgundy)"
         />
       ) : null}
-      {names.length === 0 ? <span className="text-xs text-(--mws-muted)">None selected</span> : null}
+      {names.length === 0 ? (
+        <span className="text-xs text-(--mws-muted)">None selected</span>
+      ) : null}
     </div>
   );
 }
 
 function StepTabs({ steps, current }) {
   return (
-    <ol className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Scope steps">
+    <ol
+      className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4"
+      aria-label="Scope Steps"
+    >
       {steps.map((step, index) => (
         <li
           key={step.key}
@@ -124,7 +138,7 @@ function UnsupportedPicks({ picks, onRemove, onRemoveAll }) {
             onClick={onRemoveAll}
             className="cursor-pointer text-xs font-semibold text-(--mws-burgundy) hover:underline"
           >
-            Remove all
+            Remove All
           </button>
         ) : null}
       </div>
@@ -132,7 +146,15 @@ function UnsupportedPicks({ picks, onRemove, onRemoveAll }) {
   );
 }
 
-export function GroupFilters({ audience, options, state, showErrors, knownUnitIds, studentUnits, onReviewChange }) {
+export function GroupFilters({
+  audience,
+  options,
+  state,
+  showErrors,
+  knownUnitIds,
+  studentUnits,
+  onReviewChange,
+}) {
   const employeesOnly = audience !== "STUDENTS";
   const steps = employeesOnly
     ? [
@@ -147,25 +169,50 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
       ];
   const [stepIndex, setStepIndex] = useState(0);
   const step = steps[stepIndex].key;
-  const studentUnitIds = studentUnits ? new Set(studentUnits.map((unit) => unit.id)) : undefined;
-  const errors = showErrors ? groupFilterErrors(state, audience, knownUnitIds, studentUnitIds) : {};
+  const studentUnitIds = studentUnits
+    ? new Set(studentUnits.map((unit) => unit.id))
+    : undefined;
+  const errors = showErrors
+    ? groupFilterErrors(state, audience, knownUnitIds, studentUnitIds)
+    : {};
   const dropped = state.removed ? removedText(state.removed, options) : "";
   const realUnits = (options.units || []).filter(isRealUnit);
   // Students only live in units that have grades, so a student group is offered those only.
-  const unitChoices = employeesOnly ? realUnits : (studentUnits || []).filter(isRealUnit);
-  const selected = step === "units" ? state.units.selected : step === "levels" ? state.levels.selected : state.positions.selected;
-  const canContinue = step === "review" || selected === null || selected.length > 0;
+  const unitChoices = employeesOnly
+    ? realUnits
+    : (studentUnits || []).filter(isRealUnit);
+  const selected =
+    step === "units"
+      ? state.units.selected
+      : step === "levels"
+        ? state.levels.selected
+        : state.positions.selected;
+  const canContinue =
+    step === "review" || selected === null || selected.length > 0;
 
-  const unitNames = new Map((options.units || []).map((unit) => [unit.id, unit.name]));
+  const unitNames = new Map(
+    (options.units || []).map((unit) => [unit.id, unit.name]),
+  );
   const noStudents = employeesOnly
     ? []
-    : withoutStudents(state.units, studentUnitIds).map((id) => ({ id, name: unitNames.get(id) || id, kind: "students" }));
+    : withoutStudents(state.units, studentUnitIds).map((id) => ({
+        id,
+        name: unitNames.get(id) || id,
+        kind: "students",
+      }));
   const unsupported = employeesOnly ? state.unsupported?.all || [] : noStudents;
-  const dropOne = (pick) => state.dropPicks({ [pick.kind === "students" ? "units" : pick.kind]: [pick.id] });
+  const dropOne = (pick) =>
+    state.dropPicks({
+      [pick.kind === "students" ? "units" : pick.kind]: [pick.id],
+    });
   const dropAll = () =>
     state.dropPicks({
-      units: unsupported.filter((pick) => pick.kind === "units" || pick.kind === "students").map((pick) => pick.id),
-      levels: unsupported.filter((pick) => pick.kind === "levels").map((pick) => pick.id),
+      units: unsupported
+        .filter((pick) => pick.kind === "units" || pick.kind === "students")
+        .map((pick) => pick.id),
+      levels: unsupported
+        .filter((pick) => pick.kind === "levels")
+        .map((pick) => pick.id),
     });
 
   const itemWithReason = (item, reasons) => ({
@@ -205,7 +252,9 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
         <MultiCheckList
           label="Job Levels"
           allLabel="All Levels"
-          items={(options.jobLevels || []).map((item) => itemWithReason(item, state.availability?.levels))}
+          items={(options.jobLevels || []).map((item) =>
+            itemWithReason(item, state.availability?.levels),
+          )}
           selection={state.levels}
           hint="Go back to change units."
           error={errors.levels}
@@ -216,31 +265,63 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
         <MultiCheckList
           label="Job Positions"
           allLabel="All Positions"
-          items={(options.jobPositions || []).map((item) => itemWithReason(item, state.availability?.positions))}
+          items={(options.jobPositions || []).map((item) =>
+            itemWithReason(item, state.availability?.positions),
+          )}
           selection={state.positions}
           hint="Go back to change units or levels."
           error={errors.positions}
         />
       ) : null}
 
-      {(step === "units" && !employeesOnly) || step === "levels" || step === "positions" ? (
-        <UnsupportedPicks picks={unsupported} onRemove={dropOne} onRemoveAll={dropAll} />
+      {(step === "units" && !employeesOnly) ||
+      step === "levels" ||
+      step === "positions" ? (
+        <UnsupportedPicks
+          picks={unsupported}
+          onRemove={dropOne}
+          onRemoveAll={dropAll}
+        />
       ) : null}
 
       {step === "review" ? (
-        <div className="space-y-3" aria-label="Scope review">
-          <UnsupportedPicks picks={unsupported} onRemove={dropOne} onRemoveAll={dropAll} />
+        <div className="space-y-3" aria-label="Scope Review">
+          <UnsupportedPicks
+            picks={unsupported}
+            onRemove={dropOne}
+            onRemoveAll={dropAll}
+          />
           {[
-            [employeesOnly ? "Units" : "Students in", state.units.selected, unitChoices, employeesOnly ? "All Units" : "All school units"],
+            [
+              employeesOnly ? "Units" : "Students in",
+              state.units.selected,
+              unitChoices,
+              employeesOnly ? "All Units" : "All School Units",
+            ],
             ...(employeesOnly
               ? [
-                  ["Job Levels", state.levels.selected, options.jobLevels || [], "All Levels"],
-                  ["Job Positions", state.positions.selected, options.jobPositions || [], "All Positions"],
+                  [
+                    "Job Levels",
+                    state.levels.selected,
+                    options.jobLevels || [],
+                    "All Levels",
+                  ],
+                  [
+                    "Job Positions",
+                    state.positions.selected,
+                    options.jobPositions || [],
+                    "All Positions",
+                  ],
                 ]
               : []),
           ].map(([label, selectedIds, items, allLabel]) => (
-            <div key={label} className="rounded-xl border border-(--mws-line) bg-white p-4">
-              <p className="mb-2 font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">{label}</p>
+            <div
+              key={label}
+              className="rounded-xl border border-(--mws-line) bg-white p-4"
+            >
+              <p className="mb-2 font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">
+                {label}
+              </p>
               <ReviewValue
                 selected={selectedIds}
                 items={items}
@@ -253,7 +334,10 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
       ) : null}
 
       {dropped ? (
-        <p role="status" className="rounded-xl bg-(--mws-soft) px-3 py-2 text-xs text-(--mws-charcoal)">
+        <p
+          role="status"
+          className="rounded-xl bg-(--mws-soft) px-3 py-2 text-xs text-(--mws-charcoal)"
+        >
           Also removed because they no longer fit. {dropped}
         </p>
       ) : null}
@@ -269,16 +353,22 @@ export function GroupFilters({ audience, options, state, showErrors, knownUnitId
           Back
         </Button>
         {step !== "review" ? (
-          <Button type="button" disabled={!canContinue} onClick={() => move(stepIndex + 1)}>
+          <Button
+            type="button"
+            disabled={!canContinue}
+            onClick={() => move(stepIndex + 1)}
+          >
             Next
             <ChevronRight size={15} />
           </Button>
+        ) : unsupported.length === 0 ? (
+          <p className="text-xs font-medium text-[#476b43]">
+            Scope is ready to save.
+          </p>
         ) : (
-          unsupported.length === 0 ? (
-            <p className="text-xs font-medium text-[#476b43]">Scope is ready to save.</p>
-          ) : (
-            <p className="text-xs font-medium text-[#805b18]">Remove the picks above before saving.</p>
-          )
+          <p className="text-xs font-medium text-[#805b18]">
+            Remove the picks above before saving.
+          </p>
         )}
       </div>
     </div>

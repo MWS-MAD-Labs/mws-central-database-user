@@ -85,7 +85,7 @@ describe('GroupFormPage', () => {
     unavailable = [{ role: 'STAFF', reason: 'Same as the broader group' }]
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
-    await screen.findByText('Add group to exima')
+    await screen.findByText('Add Group to exima')
     await user.click(screen.getByRole('button', { name: 'Select a role' }))
     await waitFor(() => {
       expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([expect.stringContaining('ADMIN')])
@@ -129,8 +129,8 @@ describe('GroupFormPage', () => {
     expect(screen.getByRole('switch', { name: 'Tutor' })).toBeChecked()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     await next(user)
-    expect(within(screen.getByLabelText('Scope review')).getByText('All Units')).toBeVisible()
-    expect(within(screen.getByLabelText('Scope review')).getByText('All Levels')).toBeVisible()
+    expect(within(screen.getByLabelText('Scope Review')).getByText('All Units')).toBeVisible()
+    expect(within(screen.getByLabelText('Scope Review')).getByText('All Levels')).toBeVisible()
   })
 
   it('keeps a multi-unit position when one of its units is unchecked', async () => {
@@ -166,11 +166,11 @@ describe('GroupFormPage', () => {
     await user.click(screen.getByRole('switch', { name: 'Tutor' }))
     await next(user)
 
-    const review = screen.getByLabelText('Scope review')
+    const review = screen.getByLabelText('Scope Review')
     expect(within(review).getByText('Head of IT')).toBeVisible()
     expect(within(review).getByText('IT Support')).toBeVisible()
     expect(within(review).getByText('Junior Fullstack Developer')).toBeVisible()
-    expect(within(review).getByRole('button', { name: 'View all' })).toBeVisible()
+    expect(within(review).getByRole('button', { name: 'View All' })).toBeVisible()
     expect(within(review).queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Back' }))
@@ -216,7 +216,7 @@ describe('GroupFormPage', () => {
   it('offers only the active roles of this application and shows the organization id', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
-    expect(await screen.findByText('Add group to exima')).toBeVisible()
+    expect(await screen.findByText('Add Group to exima')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Select a role' }))
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
       expect.stringContaining('ADMIN'),
@@ -250,7 +250,7 @@ describe('GroupFormPage', () => {
 
     await user.click(screen.getByRole('switch', { name: 'All Units' }))
     await next(user, 3)
-    await user.click(screen.getByRole('button', { name: 'Add group' }))
+    await user.click(screen.getByRole('button', { name: 'Add Group' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url, options]) =>
         url === '/api/admin/application-access-rules' && options.method === 'POST')
@@ -281,7 +281,7 @@ describe('GroupFormPage', () => {
     await user.click(screen.getByRole('switch', { name: 'All Positions' }))
     await user.click(screen.getByRole('switch', { name: 'Head of IT' }))
     await next(user)
-    await user.click(screen.getByRole('button', { name: 'Add group' }))
+    await user.click(screen.getByRole('button', { name: 'Add Group' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url, options]) =>
         url === '/api/admin/application-access-rules' && options.method === 'POST')
@@ -299,19 +299,19 @@ describe('GroupFormPage', () => {
   it('hides job positions and levels when the audience is students', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
-    await screen.findByText('Add group to exima')
+    await screen.findByText('Add Group to exima')
     expect(screen.getByText('Job Positions')).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
     await user.click(screen.getByRole('option', { name: 'All Active Students' }))
     expect(screen.getByRole('switch', { name: 'All Units' })).toBeVisible()
-    expect(within(screen.getByLabelText('Scope steps')).queryByText('Job Positions')).not.toBeInTheDocument()
+    expect(within(screen.getByLabelText('Scope Steps')).queryByText('Job Positions')).not.toBeInTheDocument()
   })
 
   it('offers only the units that have students when the audience is students', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
-    await screen.findByText('Add group to exima')
+    await screen.findByText('Add Group to exima')
     await waitFor(() => expect(screen.getByRole('switch', { name: 'MAD Lab' })).toBeVisible())
 
     await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
@@ -325,7 +325,7 @@ describe('GroupFormPage', () => {
   it('no longer offers the audience for employees and students together', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
-    await screen.findByText('Add group to exima')
+    await screen.findByText('Add Group to exima')
     await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
     expect(screen.getByRole('option', { name: 'All Active Students' })).toBeVisible()
     expect(screen.queryByRole('option', { name: 'All Active Employees and Students' })).not.toBeInTheDocument()

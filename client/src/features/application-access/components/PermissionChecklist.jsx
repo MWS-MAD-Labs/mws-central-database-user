@@ -43,7 +43,7 @@ export function PermissionChecklist({ options, value, onChange, canRegister, onR
         <CheckboxField
           checked={all}
           disabled={keys.length === 0}
-          label="All permissions"
+          label="All Permissions"
           onChange={(event) =>
             onChange(
               event.target.checked
@@ -88,8 +88,8 @@ export function PermissionChecklist({ options, value, onChange, canRegister, onR
           <Button
             type="button"
             variant="secondary"
-            aria-label="Add permission"
-            title="Add permission"
+            aria-label="Add Permission"
+            title="Add Permission"
             className="h-11 w-11 shrink-0 px-0"
             loading={registering}
             onClick={addDraft}

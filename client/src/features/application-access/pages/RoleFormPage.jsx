@@ -118,7 +118,7 @@ function RoleForm({ applicationId, role, roles }) {
   return (
     <div className="min-w-0">
       <PageHeader
-        title={isEdit ? `Edit ${role.key}` : `Add role to ${applicationId}`}
+        title={isEdit ? `Edit ${role.key}` : `Add Role to ${applicationId}`}
         description={
           isEdit
             ? `Role of ${role.application_id}. The key stays as created.`

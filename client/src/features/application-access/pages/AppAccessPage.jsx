@@ -116,7 +116,7 @@ export function AppAccessPage() {
                 onClick={() => navigate(`/application-access/apps/${applicationId}/groups/new`)}
               >
                 <Plus size={16} />
-                Add group
+                Add Group
               </Button>
             ) : null}
           </>
@@ -237,7 +237,7 @@ export function AppAccessPage() {
           {detail.other_count > 0 ? (
             <section className="min-w-0 space-y-3 rounded-2xl border border-(--mws-line) bg-white p-5">
               <div>
-                <h2 className="font-display text-base font-bold text-(--mws-charcoal)">Other access</h2>
+                <h2 className="font-display text-base font-bold text-(--mws-charcoal)">Other Access</h2>
                 <p className="text-sm text-(--mws-muted)">
                   Older access for people no group covers. It can be removed or blocked, not changed.
                 </p>

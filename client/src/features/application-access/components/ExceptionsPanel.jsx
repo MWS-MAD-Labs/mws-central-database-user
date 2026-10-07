@@ -74,7 +74,7 @@ export function ExceptionsPanel({ applicationId, groupId, roles, canChange, tota
 
   async function block(row) {
     const confirmed = await confirm({
-      title: "Block access",
+      title: "Block Access",
       description: `${row.full_name} will not be able to open ${applicationId}, even if a group covers them.`,
       confirmLabel: "Block",
     });
@@ -159,7 +159,7 @@ export function ExceptionsPanel({ applicationId, groupId, roles, canChange, tota
                           setRoleTarget(row);
                         }}
                       >
-                        Change role
+                        Change Role
                       </ActionsMenuItem>
                     ) : null}
                     {!row.is_active && canChange ? (
@@ -188,7 +188,7 @@ export function ExceptionsPanel({ applicationId, groupId, roles, canChange, tota
                           block(row);
                         }}
                       >
-                        Block access
+                        Block Access
                       </ActionsMenuItem>
                     ) : null}
                   </>

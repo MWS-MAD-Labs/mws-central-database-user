@@ -70,7 +70,7 @@ describe('GroupFilters review', () => {
     await user.click(screen.getByRole('button', { name: 'Next' }))
     expect(screen.getAllByRole('alert')).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Remove Junior High' })).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'Remove all' }))
+    await user.click(screen.getByRole('button', { name: 'Remove All' }))
     expect(picked).toEqual({ units: ['ele', 'jh'], levels: ['lead'] })
   })
 

@@ -242,12 +242,12 @@ describe("AppAccessPage", () => {
 
     // Each card adds to its own group.
     expect(
-      screen.getAllByRole("button", { name: /^Add exception to/ }),
+      screen.getAllByRole("button", { name: /^Add Exception to/ }),
     ).toHaveLength(2);
 
     // The narrow group explains where it sits.
     await openGroup(user, 1);
-    const facts = screen.getByLabelText("Group details");
+    const facts = screen.getByLabelText("Group Details");
     expect(within(facts).getByText("STAFF")).toBeVisible();
     expect(within(facts).getByText(/Group$/)).toBeVisible();
     expect(
@@ -259,7 +259,7 @@ describe("AppAccessPage", () => {
     // The broad group says what is left after the narrower one and who holds the role.
     await openGroup(user, 0);
     expect(screen.getByText("After Narrower Groups")).toBeVisible();
-    const left = within(screen.getByLabelText("What is left"));
+    const left = within(screen.getByLabelText("What Is Left"));
     expect(left.getByText("Elementary")).toBeVisible();
     // Few positions taken out of many: say what was taken, not what is left.
     await user.click(left.getByRole("button", { name: "All except 1" }));
@@ -277,7 +277,7 @@ describe("AppAccessPage", () => {
     expect(within(takenCard).getByText(/8 Employees/)).toBeVisible();
     expect(within(takenCard).getByRole("button", { name: "1 permission" })).toBeVisible();
     expect(
-      within(screen.getByLabelText("Group details")).getByText("112 Employees"),
+      within(screen.getByLabelText("Group Details")).getByText("112 Employees"),
     ).toBeVisible();
 
     await openExceptions(user, "STAFF");
@@ -320,7 +320,7 @@ describe("AppAccessPage", () => {
     ]);
     renderPage();
     await screen.findByText(/No group access yet/);
-    expect(screen.getByRole("button", { name: "Add group" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add Group" })).toBeDisabled();
   });
 
   it("has no exceptions to add before there is a group", async () => {
@@ -328,9 +328,9 @@ describe("AppAccessPage", () => {
     const { user } = renderPage();
     expect(await screen.findByText(/No group access yet/)).toBeVisible();
     expect(
-      screen.queryByRole("button", { name: "Add exception" }),
+      screen.queryByRole("button", { name: "Add Exception" }),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Add group" }));
+    await user.click(screen.getByRole("button", { name: "Add Group" }));
     expect(await screen.findByText("New group page")).toBeVisible();
   });
 
@@ -339,7 +339,7 @@ describe("AppAccessPage", () => {
     const { user } = renderPage();
     await user.click(
       await screen.findByRole("button", {
-        name: "Add exception to STAFF group",
+        name: "Add Exception to STAFF Group",
       }),
     );
     expect(await screen.findByText("New exception page")).toBeVisible();
@@ -391,9 +391,9 @@ describe("AppAccessPage", () => {
     await user.click(
       screen.getByRole("button", { name: /Actions for Dummy Staff on exima/ }),
     );
-    await user.click(screen.getByRole("button", { name: "Block access" }));
+    await user.click(screen.getByRole("button", { name: "Block Access" }));
     const blockDialog = await screen.findByRole("dialog", {
-      name: "Block access",
+      name: "Block Access",
     });
     await user.click(
       within(blockDialog).getByRole("button", { name: "Block" }),
@@ -538,7 +538,7 @@ describe("AppAccessPage", () => {
     await user.click(
       screen.getByRole("button", { name: /Actions for Dummy Staff on exima/ }),
     );
-    await user.click(screen.getByRole("button", { name: "Change role" }));
+    await user.click(screen.getByRole("button", { name: "Change Role" }));
     const dialog = await screen.findByRole("dialog", { name: "Change Role" });
     await user.click(within(dialog).getByRole("button", { name: /^ADMIN/ }));
     await user.click(screen.getByRole("option", { name: /STAFF/ }));
@@ -568,17 +568,17 @@ describe("AppAccessPage", () => {
       }),
     );
     const { user } = renderPage();
-    expect(await screen.findByText("Other access")).toBeVisible();
+    expect(await screen.findByText("Other Access")).toBeVisible();
     await user.click(
       await screen.findByRole("button", {
         name: /Actions for Far Away on exima/,
       }),
     );
     expect(
-      screen.queryByRole("button", { name: "Change role" }),
+      screen.queryByRole("button", { name: "Change Role" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Block access" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Block Access" })).toBeVisible();
   });
 
   it("has no exception table for a group without exceptions", async () => {
@@ -677,7 +677,7 @@ describe("AppAccessPage", () => {
       routes(detail({ groups: [baselineGroup()] })),
     );
     renderPage();
-    expect(await screen.findByLabelText("Group details")).toBeVisible();
+    expect(await screen.findByLabelText("Group Details")).toBeVisible();
   });
 
   describe("Permissions tab", () => {
@@ -773,7 +773,7 @@ describe("AppAccessPage", () => {
       ]);
       renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
       const admin = (await screen.findByText("ADMIN")).closest("tr");
-      expect(within(admin).getByText("+ 2 groups")).toBeVisible();
+      expect(within(admin).getByText("+ 2 Groups")).toBeVisible();
     });
 
     it("flags a role that misses a permission its permissions need", async () => {
@@ -809,7 +809,7 @@ describe("AppAccessPage", () => {
         "/application-access/apps/exima?tab=roles",
       );
       await screen.findByText("ADMIN");
-      await user.click(screen.getByRole("button", { name: "Add role" }));
+      await user.click(screen.getByRole("button", { name: "Add Role" }));
       expect(await screen.findByText("New role page")).toBeVisible();
     });
 
@@ -846,7 +846,7 @@ describe("AppAccessPage", () => {
       await screen.findByText("Dummy Staff");
       await user.click(screen.getByRole("button", { name: "Roles" }));
       expect(
-        await screen.findByRole("button", { name: "Add role" }),
+        await screen.findByRole("button", { name: "Add Role" }),
       ).toBeVisible();
       await user.click(screen.getByRole("button", { name: "Access" }));
       expect(await screen.findAllByRole("heading", { level: 2 })).toHaveLength(

@@ -48,7 +48,7 @@ export function ApplicationAccessPage() {
         actions={
           <Button type="button" onClick={() => navigate("/application-access/apps/new")}>
             <Plus size={16} />
-            Add application
+            Add Application
           </Button>
         }
       />
