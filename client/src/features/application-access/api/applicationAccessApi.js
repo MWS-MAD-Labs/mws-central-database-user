@@ -87,6 +87,11 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  async unblock(id) {
+    const response = await apiRequest(`${ENTITLEMENTS}/unblock/${id}`, { method: 'PATCH' })
+    return response.data
+  },
+
   async revoke(id) {
     const response = await apiRequest(`${ENTITLEMENTS}/revoke/${id}`, { method: 'PATCH' })
     return response.data

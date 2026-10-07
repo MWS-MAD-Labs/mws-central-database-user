@@ -44,8 +44,7 @@ export function ExceptionsPanel({ applicationId, groupId, roles, canChange, tota
     onError: (error) => showErrorToast(error, "Could not block this access."),
   });
   const unblockMutation = useMutation({
-    mutationFn: (row) =>
-      applicationAccessApi.grant({ person_id: row.person_id, application_id: applicationId, role: row.role }),
+    mutationFn: (row) => applicationAccessApi.unblock(row.id),
     onSuccess: () => {
       invalidate();
       showSuccessToast("Access unblocked.");

@@ -498,9 +498,9 @@ describe("AppAccessPage", () => {
         }),
         [
           {
-            path: "/api/admin/application-entitlements",
-            method: "POST",
-            response: () => jsonResponse({ data: {} }),
+            path: "/api/admin/application-entitlements/unblock/ent-2",
+            method: "PATCH",
+            response: () => jsonResponse({ data: { id: "ent-2", restored: "GROUP_ACCESS" } }),
           },
           {
             path: "/api/admin/application-entitlements/ent-1",
@@ -534,17 +534,19 @@ describe("AppAccessPage", () => {
     );
     await user.click(screen.getByRole("button", { name: "Unblock" }));
     await waitFor(() => {
-      const call = fetchMock.mock.calls.find(
-        ([url, options]) =>
-          url === "/api/admin/application-entitlements" &&
-          options.method === "POST",
-      );
-      expect(JSON.parse(call[1].body)).toEqual({
-        person_id: "person-2",
-        application_id: "exima",
-        role: "ADMIN",
-      });
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, options]) =>
+            url === "/api/admin/application-entitlements/unblock/ent-2" && options.method === "PATCH",
+        ),
+      ).toBe(true);
     });
+    // Unblocking no longer sends the role again, the server decides what the person goes back to.
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, options]) => url === "/api/admin/application-entitlements" && options.method === "POST",
+      ),
+    ).toBe(false);
 
     await user.click(
       screen.getByRole("button", { name: /Actions for Dummy Staff on exima/ }),
