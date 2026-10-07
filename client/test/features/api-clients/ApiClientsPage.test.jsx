@@ -231,23 +231,41 @@ describe('ApiClientsPage application profiles', () => {
       expect(within(all).getByText('All Apps')).toBeVisible()
       const only = screen.getByText('Full student roster').closest('tr')
       expect(within(only).getByText('Daily Check-in')).toBeVisible()
-      expect(within(only).getByText('Only this app')).toBeVisible()
       expect(within(screen.getByText('List classes').closest('tr')).getByText('No app yet')).toBeVisible()
     })
 
     it('filters the endpoints by app', async () => {
       const { user } = renderPage([], { profiles, endpoints })
       await screen.findByText('List employees')
-      await user.click(screen.getByRole('button', { name: 'All Apps' }))
-      await user.click(await screen.findByRole('option', { name: 'Daily Check-in' }))
+      await user.click(screen.getByRole('switch', { name: 'Daily Check-in' }))
       expect(await screen.findByText('Full student roster')).toBeVisible()
       expect(screen.getByText('List employees')).toBeVisible()
       expect(screen.queryByText('List classes')).not.toBeInTheDocument()
 
-      await user.click(screen.getByRole('button', { name: 'Daily Check-in' }))
-      await user.click(await screen.findByRole('option', { name: 'MWS Hub' }))
+      await user.click(screen.getByRole('switch', { name: 'MWS Hub' }))
       expect(await screen.findByText('List employees')).toBeVisible()
       expect(screen.queryByText('Full student roster')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('endpoint details', () => {
+    const endpoints = [
+      { method: 'GET', path: '/api/internal/students', scope: 'students:read', title: 'List students', group: 'Students', purpose: 'Gets the list of students.' },
+    ]
+
+    it('keeps the method and path out of the way until Details is opened', async () => {
+      const { user } = renderPage([], { endpoints })
+      await screen.findByText('List students')
+      expect(screen.queryByText('/api/internal/students')).not.toBeInTheDocument()
+      expect(screen.getByText('Students')).toBeVisible()
+
+      await user.click(screen.getByRole('button', { name: 'Details of List students' }))
+      expect(await screen.findByText('/api/internal/students')).toBeVisible()
+      expect(screen.getByText('GET')).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Copy path of List students' })).toBeVisible()
+
+      await user.click(screen.getByRole('button', { name: 'Details of List students' }))
+      expect(screen.queryByText('/api/internal/students')).not.toBeInTheDocument()
     })
   })
 
@@ -348,7 +366,7 @@ describe('ApiClientsPage application profiles', () => {
     it('shows one compact row with environment, purpose and version and a single actions menu', async () => {
       renderPage([], { clients: [managed] })
 
-      expect(await screen.findByText('MWS Hub')).toBeVisible()
+      expect((await screen.findAllByText('MWS Hub'))[0]).toBeVisible()
       expect(screen.getByText('Development · Backend Service · v2')).toBeVisible()
       expect(screen.getByText('mws_new')).toBeVisible()
       expect(screen.getByText(/Old token retires/)).toBeVisible()
@@ -360,7 +378,7 @@ describe('ApiClientsPage application profiles', () => {
     it('lists rotate, revoke old token and revoke client in the menu of a managed client', async () => {
       const { user } = renderPage([], { clients: [managed] })
 
-      await screen.findByText('MWS Hub')
+      await screen.findAllByText('MWS Hub')
       await user.click(screen.getByRole('button', { name: 'Actions for MWS Hub' }))
       expect(await screen.findByRole('button', { name: 'Rotate Credentials' })).toBeVisible()
       expect(screen.getByRole('button', { name: 'Revoke Old Token' })).toBeVisible()
