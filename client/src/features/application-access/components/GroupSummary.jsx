@@ -8,7 +8,7 @@ import {
 import { UNKNOWN_LEGACY_UNIT_NAME } from "../utils/legacyUnit.js";
 import { ListPopover } from "../../../components/ui/ListPopover.jsx";
 import { PermissionPopover } from "./PermissionPopover.jsx";
-import { NameList } from "./NameList.jsx";
+import { NameList } from "../../../components/ui/NameList.jsx";
 import { RoleName } from "./RoleName.jsx";
 
 export function AudienceIcon({ audience, size = 18 }) {

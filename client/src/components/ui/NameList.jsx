@@ -1,4 +1,4 @@
-import { ListPopover } from "../../../components/ui/ListPopover.jsx";
+import { ListPopover } from "./ListPopover.jsx";
 
 // A list of names: "All" when empty, the name itself for one, a clickable count for more.
 export function NameList({ names, noun, title, plain, danger = false }) {

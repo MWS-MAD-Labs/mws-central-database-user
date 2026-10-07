@@ -336,6 +336,7 @@ export function ApiClientsPage() {
 
       <InternalApiPanel
         endpoints={internalEndpoints}
+        profiles={profiles}
         isLoading={internalEndpointsQuery.isLoading}
       />
         </>

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
+import { NameList } from "../../../components/ui/NameList.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { usePagedList } from "../hooks/usePagedList.js";
@@ -10,15 +11,23 @@ import { describeScope } from "../utils/scopes.js";
 import { TryEndpointDialog } from "./TryEndpointDialog.jsx";
 
 const ALL_GROUPS = "";
+const ALL_APPS = "";
 
 // What connected MWS apps can ask for, written for people who do not read
 // API paths. The technical path stays visible in a muted column.
-export function InternalApiPanel({ endpoints, isLoading }) {
+export function InternalApiPanel({ endpoints, profiles = [], isLoading }) {
   const [group, setGroup] = useState(ALL_GROUPS);
+  const [app, setApp] = useState(ALL_APPS);
   const [trying, setTrying] = useState(null);
 
   const groups = [...new Set(endpoints.map((endpoint) => endpoint.group).filter(Boolean))];
-  const visible = group ? endpoints.filter((endpoint) => endpoint.group === group) : endpoints;
+  // Which applications can use a scope: the ones whose profile includes it.
+  const appsOf = (endpoint) =>
+    profiles.filter((profile) => (profile.scopes || []).some((scope) => scope.name === endpoint.scope));
+  const visible = endpoints.filter(
+    (endpoint) =>
+      (!group || endpoint.group === group) && (!app || appsOf(endpoint).some((profile) => profile.code === app)),
+  );
   const paged = usePagedList(visible);
 
   async function copyPath(endpoint) {
@@ -47,7 +56,23 @@ export function InternalApiPanel({ endpoints, isLoading }) {
             </p>
           </div>
         </div>
-        <div className="w-full lg:w-56">
+        <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+          <div className="w-full sm:w-52">
+            <SearchableSelect
+              value={app}
+              onChange={(next) => {
+                setApp(next);
+                paged.onPageSizeChange(paged.paging.size);
+              }}
+              options={[
+                { value: ALL_APPS, label: "All Apps" },
+                ...profiles.map((profile) => ({ value: profile.code, label: profile.name })),
+              ]}
+              placeholder="All Apps"
+              searchableThreshold={99}
+            />
+          </div>
+          <div className="w-full sm:w-52">
           <SearchableSelect
             value={group}
             onChange={(next) => {
@@ -61,6 +86,7 @@ export function InternalApiPanel({ endpoints, isLoading }) {
             placeholder="All Groups"
             searchableThreshold={99}
           />
+          </div>
         </div>
       </div>
 
@@ -71,6 +97,7 @@ export function InternalApiPanel({ endpoints, isLoading }) {
               <th className="px-4 py-3">What It Does</th>
               <th className="px-4 py-3">Group</th>
               <th className="px-4 py-3">Permission Needed</th>
+              <th className="px-4 py-3">Used By</th>
               <th className="px-4 py-3">Technical</th>
               <th className="px-4 py-3" />
             </tr>
@@ -78,13 +105,13 @@ export function InternalApiPanel({ endpoints, isLoading }) {
           <tbody>
             {isLoading ? (
               <tr>
-                <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={5}>
+                <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
                   Loading endpoints...
                 </td>
               </tr>
             ) : visible.length === 0 ? (
               <tr>
-                <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={5}>
+                <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
                   No internal endpoints registered.
                 </td>
               </tr>
@@ -107,6 +134,9 @@ export function InternalApiPanel({ endpoints, isLoading }) {
                       {scope.sensitive ? (
                         <StatusBadge tone="red" className="mt-1">Sensitive</StatusBadge>
                       ) : null}
+                    </td>
+                    <td className="px-4 py-3">
+                      <UsedBy apps={appsOf(endpoint)} total={profiles.length} scope={scope.title} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex min-w-0 max-w-xs items-center gap-2">
@@ -153,5 +183,23 @@ export function InternalApiPanel({ endpoints, isLoading }) {
 
       {trying ? <TryEndpointDialog endpoint={trying} onClose={() => setTrying(null)} /> : null}
     </section>
+  );
+}
+
+// Every app, the one app that uses it, or a count that opens the list.
+function UsedBy({ apps, total, scope }) {
+  if (apps.length === 0) return <span className="text-xs text-(--mws-muted)">No app yet</span>;
+  if (total > 1 && apps.length === total) {
+    return <span className="text-sm font-semibold text-(--mws-charcoal)">All Apps</span>;
+  }
+  return (
+    <div className="space-y-0.5">
+      <NameList
+        names={apps.map((profile) => profile.name)}
+        noun="apps"
+        title={`Apps that use ${scope}`}
+      />
+      {apps.length === 1 ? <p className="text-xs text-(--mws-muted)">Only this app</p> : null}
+    </div>
   );
 }

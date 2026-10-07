@@ -207,6 +207,50 @@ describe('ApiClientsPage application profiles', () => {
     expect(screen.queryByText('Extra 09')).not.toBeInTheDocument()
   })
 
+  describe('per app view of the endpoints', () => {
+    const endpoints = [
+      { method: 'GET', path: '/api/internal/employees', scope: 'employees:read', title: 'List employees', group: 'Employees', purpose: 'Gets employees.' },
+      { method: 'GET', path: '/api/internal/students/roster', scope: 'students:roster_export:read', title: 'Full student roster', group: 'Students', purpose: 'Gets the roster.' },
+      { method: 'GET', path: '/api/internal/orphan', scope: 'classes:read', title: 'List classes', group: 'Classes and Teachers', purpose: 'Gets classes.' },
+    ]
+    const profile = (code, name, names) => ({
+      ...hubProfile,
+      id: `profile-${code}`,
+      code,
+      name,
+      scopes: names.map((scopeName) => ({ name: scopeName, description: '', is_sensitive: false })),
+    })
+    const profiles = [
+      profile('hub', 'MWS Hub', ['employees:read']),
+      profile('daily-checkin', 'Daily Check-in', ['employees:read', 'students:roster_export:read']),
+    ]
+
+    it('says which apps use each scope, and that a scope used by one app is only for it', async () => {
+      renderPage([], { profiles, endpoints })
+      const all = (await screen.findByText('List employees')).closest('tr')
+      expect(within(all).getByText('All Apps')).toBeVisible()
+      const only = screen.getByText('Full student roster').closest('tr')
+      expect(within(only).getByText('Daily Check-in')).toBeVisible()
+      expect(within(only).getByText('Only this app')).toBeVisible()
+      expect(within(screen.getByText('List classes').closest('tr')).getByText('No app yet')).toBeVisible()
+    })
+
+    it('filters the endpoints by app', async () => {
+      const { user } = renderPage([], { profiles, endpoints })
+      await screen.findByText('List employees')
+      await user.click(screen.getByRole('button', { name: 'All Apps' }))
+      await user.click(await screen.findByRole('option', { name: 'Daily Check-in' }))
+      expect(await screen.findByText('Full student roster')).toBeVisible()
+      expect(screen.getByText('List employees')).toBeVisible()
+      expect(screen.queryByText('List classes')).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Daily Check-in' }))
+      await user.click(await screen.findByRole('option', { name: 'MWS Hub' }))
+      expect(await screen.findByText('List employees')).toBeVisible()
+      expect(screen.queryByText('Full student roster')).not.toBeInTheDocument()
+    })
+  })
+
   describe('Try dialog', () => {
     const endpoints = [
       { method: 'GET', path: '/api/internal/students', scope: 'students:read', title: 'List students', group: 'Students', purpose: 'Gets the list of students.' },

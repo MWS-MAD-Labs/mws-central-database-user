@@ -5,7 +5,7 @@ import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useApplicationPermissions } from "../hooks/useApplicationPermissions.js";
-import { NameList } from "./NameList.jsx";
+import { NameList } from "../../../components/ui/NameList.jsx";
 
 function syncedText(value) {
   return value ? `Last published ${new Date(value).toLocaleString()}` : "Not published by the application yet";

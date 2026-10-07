@@ -18,7 +18,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { NameList } from "./NameList.jsx";
+import { NameList } from "../../../components/ui/NameList.jsx";
 import { PermissionPopover } from "./PermissionPopover.jsx";
 import { Tip } from "./Tip.jsx";
 
