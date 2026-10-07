@@ -106,6 +106,31 @@ describe('ExceptionAddPage', () => {
     expect(await screen.findByText('App page')).toBeVisible()
   })
 
+  it('blocks the checked people instead of giving them another role', async () => {
+    const fetchMock = createFetchRouter(routes([
+      {
+        path: '/api/admin/application-entitlements/bulk',
+        method: 'POST',
+        response: () => jsonResponse({ data: { total_count: 1, success_count: 1, failed_count: 0, items: [] } }),
+      },
+    ]))
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await screen.findByText('Add Exception to exima')
+
+    await user.click(screen.getByRole('switch', { name: 'Blocked' }))
+    expect(screen.queryByRole('button', { name: 'Select a role' })).not.toBeInTheDocument()
+    expect(screen.getByText(/get no access to exima/)).toBeVisible()
+    await user.click(await screen.findByLabelText('Select Alpha Person'))
+    await user.click(screen.getByRole('button', { name: 'Block Access' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([callUrl, options]) =>
+        callUrl === '/api/admin/application-entitlements/bulk' && options.method === 'POST')
+      expect(JSON.parse(call[1].body)).toEqual({ person_ids: ['person-2'], application_id: 'exima', blocked: true })
+    })
+  })
+
   it('shows the people as a table with their details and the roles highest first', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()

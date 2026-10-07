@@ -114,7 +114,9 @@ export function ApplicationAccessPage() {
               <td className={`${denseCellClass} text-center`}>
                 {row.exception_count}
                 {row.blocked_count > 0 ? (
-                  <span className="ml-2 text-xs text-(--mws-muted)">{row.blocked_count} blocked</span>
+                  <StatusBadge tone="red" className="ml-2">
+                    {row.blocked_count} Blocked
+                  </StatusBadge>
                 ) : null}
               </td>
               <td className={`${denseCellClass} whitespace-nowrap text-xs text-(--mws-muted)`}>

@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
-import { DebouncedSearchInput, Field, FilterSelect, SearchableSelect } from "../../../components/ui/FormControls.jsx";
+import { DebouncedSearchInput, Field, FilterSelect, SearchableSelect, ToggleChip } from "../../../components/ui/FormControls.jsx";
 import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
@@ -30,6 +30,8 @@ export function ExceptionAddPage() {
   const queryClient = useQueryClient();
   const back = `/application-access/apps/${applicationId}`;
   const [roleKey, setRoleKey] = useState("");
+  // Blocked shuts the people out instead of giving them another role.
+  const [blocked, setBlocked] = useState(false);
   const emptyFilters = { search: "", employment_type: "", unit_id: "", job_position_id: "", job_level_id: "" };
   const [params, setParams] = useState({ page: 1, size: 10, ...emptyFilters });
   const [selected, setSelected] = useState(() => new Map());
@@ -68,15 +70,23 @@ export function ExceptionAddPage() {
 
   const mutation = useMutation({
     mutationFn: () =>
-      applicationAccessApi.bulkGrant({
-        person_ids: Array.from(selected.keys()),
-        application_id: applicationId,
-        role: roleKey,
-      }),
+      applicationAccessApi.bulkGrant(
+        blocked
+          ? { person_ids: Array.from(selected.keys()), application_id: applicationId, blocked: true }
+          : { person_ids: Array.from(selected.keys()), application_id: applicationId, role: roleKey },
+      ),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["application-access"] });
-      if (result.success_count > 0) showSuccessToast(`Exception added for ${result.success_count} person(s).`);
-      if (result.failed_count > 0) showBulkFailureToast("person(s) could not be added", result);
+      if (result.success_count > 0) {
+        showSuccessToast(
+          blocked
+            ? `Access blocked for ${result.success_count} person(s).`
+            : `Exception added for ${result.success_count} person(s).`,
+        );
+      }
+      if (result.failed_count > 0) {
+        showBulkFailureToast(blocked ? "person(s) could not be blocked" : "person(s) could not be added", result);
+      }
       navigate(back);
     },
     onError: (error) => showErrorToast(error, "Could not add these exceptions."),
@@ -104,7 +114,7 @@ export function ExceptionAddPage() {
     ...employee,
     id: employee.person_id,
     inheritedRole: employee.inherited_role,
-    disabled: Boolean(roleKey) && employee.inherited_role === roleKey,
+    disabled: !blocked && Boolean(roleKey) && employee.inherited_role === roleKey,
   }));
   const selectable = items.filter((item) => !item.disabled);
   const allPageSelected = selectable.length > 0 && selectable.every((item) => selected.has(item.id));
@@ -142,7 +152,7 @@ export function ExceptionAddPage() {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!roleKey || selected.size === 0) return;
+    if ((!blocked && !roleKey) || selected.size === 0) return;
     mutation.mutate();
   }
 
@@ -150,7 +160,11 @@ export function ExceptionAddPage() {
     <div className="min-w-0">
       <PageHeader
         title={`Add Exception to ${applicationId}`}
-        description="Check the people who should get another role than their group."
+        description={
+          blocked
+            ? "Check the people who should lose access even though their group gives it."
+            : "Check the people who should get another role than their group."
+        }
         actions={
           <Button asChild variant="secondary">
             <Link to={back}>
@@ -279,27 +293,46 @@ export function ExceptionAddPage() {
           </section>
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
             <div className="space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
-              <Field label="Role" error={attempted && !roleKey ? "Role is required." : undefined}>
-                <SearchableSelect
-                  value={roleKey}
-                  onChange={chooseRole}
-                  options={roleOptions(roles)}
-                  placeholder="Select a role"
-                  searchPlaceholder="Search role"
-                />
+              <Field label="Add As">
+                <div className="flex flex-wrap gap-2" role="group" aria-label="Add As">
+                  <ToggleChip checked={!blocked} onChange={() => setBlocked(false)}>
+                    Different Role
+                  </ToggleChip>
+                  <ToggleChip checked={blocked} onChange={() => setBlocked(true)}>
+                    Blocked
+                  </ToggleChip>
+                </div>
               </Field>
-              {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} /> : null}
-              <p className="flex items-center gap-1.5 text-xs leading-none text-(--mws-muted)">
-                Group role {group.default_role_key}
-                <Tip text={`People who already get the role you pick cannot be selected for it.`} label="About Roles" />
-              </p>
+              {blocked ? (
+                <p className="text-xs leading-5 text-(--mws-muted)">
+                  Blocked people get no access to {applicationId}, even though group {group.default_role_key} gives it. You can
+                  unblock them later.
+                </p>
+              ) : (
+                <>
+                  <Field label="Role" error={attempted && !roleKey ? "Role is required." : undefined}>
+                    <SearchableSelect
+                      value={roleKey}
+                      onChange={chooseRole}
+                      options={roleOptions(roles)}
+                      placeholder="Select a role"
+                      searchPlaceholder="Search role"
+                    />
+                  </Field>
+                  {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} /> : null}
+                  <p className="flex items-center gap-1.5 text-xs leading-none text-(--mws-muted)">
+                    Group role {group.default_role_key}
+                    <Tip text={`People who already get the role you pick cannot be selected for it.`} label="About Roles" />
+                  </p>
+                </>
+              )}
             </div>
             <div className="flex gap-2">
               <Button asChild variant="secondary" className="flex-1">
                 <Link to={back}>Cancel</Link>
               </Button>
               <Button type="submit" className="flex-1" loading={mutation.isPending}>
-                Add Exception
+                {blocked ? "Block Access" : "Add Exception"}
               </Button>
             </div>
           </aside>

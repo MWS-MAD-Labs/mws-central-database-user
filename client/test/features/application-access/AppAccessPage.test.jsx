@@ -479,6 +479,17 @@ describe("AppAccessPage", () => {
     });
   });
 
+  it("shows the exceptions of a group as a count with a red Blocked badge", async () => {
+    globalThis.fetch = createFetchRouter(
+      routes(detail({ groups: [baselineGroup({ exception_count: 3, blocked_count: 1 })] })),
+    );
+    renderPage();
+    const card = await screen.findByRole("region", { name: "Exceptions of STAFF group" });
+    expect(within(card).getByText("3")).toBeVisible();
+    expect(within(card).getByText("1 Blocked")).toBeVisible();
+    expect(within(card).queryByText(/, 1 blocked/)).not.toBeInTheDocument();
+  });
+
   it("unblocks a blocked exception and changes the role of an active one", async () => {
     const fetchMock = createFetchRouter(
       routes(

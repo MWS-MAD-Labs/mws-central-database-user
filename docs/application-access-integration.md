@@ -70,6 +70,10 @@ Saat membuat role baru, pastikan setiap permission-nya sudah dikenal aplikasi pe
 
 Kode: Hub di `backend/src/lib/hub-access-gate.ts` (`userHasHubPermission`) dan `lib/admin-access.ts` (`isHubAdmin`). Daily Check-in memakai `PERMISSION_SET`.
 
+## Memblokir satu orang
+
+Orang yang aksesnya datang dari group bisa diblokir tanpa mengganti role mereka: di kartu Exceptions pilih Add Exception, ubah "Add As" menjadi Blocked, centang orangnya, lalu Block Access. Central menyimpan satu baris entitlement tidak aktif dengan role yang diberikan group, dan baris tidak aktif selalu menang atas group, jadi lookup mengembalikan tidak ada akses. Orang itu tampil di daftar exception dengan status Blocked dan lencana merah "Blocked" di ringkasan. Unblock mengembalikannya ke akses group (atau ke role exception-nya), dan Remove menghapus barisnya. Hanya orang yang tercakup group yang bisa diblokir.
+
 ## Menghapus role
 
 Role bisa dihapus dari tab Roles (Delete, Super Admin saja) hanya bila tidak pernah dirujuk: tidak ada orang yang pernah memegangnya (termasuk yang aksesnya sudah dicabut) dan tidak ada group yang memberikannya (termasuk yang dimatikan). Selain itu Central menolak dengan hitungannya, dan jalannya adalah memindahkan orang lewat Change Role atau group lewat Edit Group, atau cukup menonaktifkan role itu. Urutan role dirapatkan kembali setelah hapus dan penghapusan tercatat di audit log.

@@ -71,7 +71,7 @@ describe('ApplicationAccessPage', () => {
     expect(within(exima).getByText('3')).toBeVisible()
     expect(within(exima).getByText('2')).toBeVisible()
     expect(within(exima).getByText('4')).toBeVisible()
-    expect(within(exima).getByText('1 blocked')).toBeVisible()
+    expect(within(exima).getByText('1 Blocked')).toBeVisible()
     const hub = screen.getByText('hub').closest('tr')
     expect(within(hub).getAllByText('None')).toHaveLength(2)
   })
