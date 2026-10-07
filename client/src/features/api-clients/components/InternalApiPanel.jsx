@@ -212,5 +212,5 @@ function UsedBy({ apps, total, scope }) {
   if (total > 1 && apps.length === total) {
     return <span className="text-sm font-semibold text-(--mws-charcoal)">All Apps</span>;
   }
-  return <NameList names={apps.map((profile) => profile.name)} noun="apps" title={`Apps that use ${scope}`} />;
+  return <NameList names={apps.map((profile) => profile.name)} noun="Apps" title={`Apps that use ${scope}`} />;
 }
