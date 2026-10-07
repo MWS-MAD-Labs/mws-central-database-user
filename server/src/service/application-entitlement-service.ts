@@ -72,7 +72,13 @@ import {
   type ScopeCatalog,
 } from "./application-scope-rules";
 import { AuditService } from "./audit-service";
-import { assertPermissionsRegistered } from "./application-permission-service";
+import {
+  assertPermissionDependencies,
+  assertPermissionsRegistered,
+  loadRequires,
+  loadRequiresByApplication,
+  missingDependencies,
+} from "./application-permission-service";
 import {
   loadActiveRules,
   assertHasGroup,
@@ -651,7 +657,15 @@ export class ApplicationRoleService {
     const groupsOf = (role: { application_id: string; key: string }) =>
       groupCounts.find((c) => c.application_id === role.application_id && c.default_role_key === role.key)
         ?._count._all ?? 0;
-    return roles.map((role) => toApplicationRoleResponse(role, countOf(role), groupsOf(role)));
+    const requires = await loadRequiresByApplication([...new Set(roles.map((role) => role.application_id))]);
+    return roles.map((role) =>
+      toApplicationRoleResponse(
+        role,
+        countOf(role),
+        groupsOf(role),
+        [...new Set(missingDependencies(role.permissions, requires.get(role.application_id) ?? new Map()).map(([, needed]) => needed))],
+      ),
+    );
   }
 
   static async create(
@@ -668,6 +682,7 @@ export class ApplicationRoleService {
       throw new ResponseError(400, `Role ${input.key} already exists for ${input.application_id}`);
     }
     await assertPermissionsRegistered(input.application_id, input.permissions);
+    await assertPermissionDependencies(input.application_id, input.permissions);
     await assertDistinctPermissions(input.application_id, input.permissions);
     // A new application gets its organization together with its first role.
     await resolveOrganizationId(input.application_id);
@@ -810,6 +825,10 @@ export class ApplicationRoleService {
 
     if (input.permissions !== undefined) {
       await assertPermissionsRegistered(existing.application_id, input.permissions, existing.permissions);
+      // An old role that already misses something may keep its permissions as they are.
+      const sameSet =
+        [...new Set(input.permissions)].sort().join("\n") === [...new Set(existing.permissions)].sort().join("\n");
+      if (!sameSet) await assertPermissionDependencies(existing.application_id, input.permissions);
     }
     const willBeActive = input.is_active ?? existing.is_active;
     const permissionsChanged =
@@ -858,7 +877,10 @@ export class ApplicationRoleService {
       );
       return saved;
     });
-    return toApplicationRoleResponse(updated, activeCount, activeGroups);
+    const requires = await loadRequires(updated.application_id);
+    return toApplicationRoleResponse(updated, activeCount, activeGroups, [
+      ...new Set(missingDependencies(updated.permissions, requires).map(([, needed]) => needed)),
+    ]);
   }
 }
 

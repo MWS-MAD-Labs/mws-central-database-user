@@ -16,6 +16,7 @@ import { AuditService } from "./audit-service";
 export type ApplicationPermissionResponse = {
   key: string;
   description: string | null;
+  requires: string[];
   source: "MANIFEST" | "MANUAL";
   deprecated: boolean;
   role_count: number;
@@ -58,6 +59,80 @@ export async function assertPermissionsRegistered(
   );
 }
 
+type RequiresMap = Map<string, string[]>;
+
+// Everything a permission needs, directly or through the ones it needs.
+function requiredBy(key: string, requires: RequiresMap): string[] {
+  const seen = new Set<string>();
+  const queue = [...(requires.get(key) ?? [])];
+  while (queue.length > 0) {
+    const next = queue.shift() as string;
+    if (seen.has(next)) continue;
+    seen.add(next);
+    queue.push(...(requires.get(next) ?? []));
+  }
+  return [...seen];
+}
+
+// Pairs of [permission, what it needs] that a set of permissions leaves out.
+export function missingDependencies(permissions: string[], requires: RequiresMap): [string, string][] {
+  const carried = new Set(permissions);
+  return [...carried].flatMap((key) =>
+    requiredBy(key, requires)
+      .filter((needed) => !carried.has(needed))
+      .map((needed): [string, string] => [key, needed]),
+  );
+}
+
+export async function loadRequires(applicationId: string): Promise<RequiresMap> {
+  const rows = await prismaClient.applicationPermission.findMany({
+    where: { application_id: applicationId },
+    select: { key: true, requires: true },
+  });
+  return new Map(rows.map((row) => [row.key, row.requires]));
+}
+
+// What each role of the given applications still lacks, by application.
+export async function loadRequiresByApplication(applicationIds: string[]): Promise<Map<string, RequiresMap>> {
+  const rows = await prismaClient.applicationPermission.findMany({
+    where: { application_id: { in: applicationIds } },
+    select: { application_id: true, key: true, requires: true },
+  });
+  const byApplication = new Map<string, RequiresMap>();
+  for (const row of rows) {
+    const map = byApplication.get(row.application_id) ?? new Map<string, string[]>();
+    map.set(row.key, row.requires);
+    byApplication.set(row.application_id, map);
+  }
+  return byApplication;
+}
+
+// A role has to carry what its permissions need.
+export async function assertPermissionDependencies(applicationId: string, permissions: string[]) {
+  const missing = missingDependencies(permissions, await loadRequires(applicationId));
+  if (missing.length === 0) return;
+  throw new ResponseError(
+    400,
+    missing.map(([key, needed]) => `Permission "${key}" needs "${needed}"`).join(". "),
+  );
+}
+
+// What a manifest says it needs has to exist in the same manifest and cannot loop.
+function assertManifestDependencies(permissions: { key: string; requires?: string[] }[]) {
+  const map: RequiresMap = new Map(permissions.map((row) => [row.key, row.requires ?? []]));
+  for (const [key, needs] of map) {
+    for (const needed of needs) {
+      if (needed === key) throw new ResponseError(400, `Permission "${key}" cannot need itself`);
+      if (!map.has(needed)) throw new ResponseError(400, `Permission "${key}" needs "${needed}", which is not in the list`);
+    }
+  }
+  for (const key of map.keys()) {
+    if (requiredBy(key, map).includes(key)) {
+      throw new ResponseError(400, `Permission "${key}" needs itself through the permissions it requires`);
+    }
+  }
+}
+
 export class ApplicationPermissionService {
   static async list(admin: AdminUser, request: { application_id?: string }): Promise<ApplicationPermissionList> {
     assertSuperAdmin(admin);
@@ -80,6 +155,7 @@ export class ApplicationPermissionService {
       permissions: rows.map((row) => ({
         key: row.key,
         description: row.description,
+        requires: row.requires,
         source: row.source,
         deprecated: Boolean(row.deprecated_at),
         role_count: roles.filter((role) => role.permissions.includes(row.key)).length,
@@ -129,16 +205,17 @@ export class ApplicationPermissionService {
       );
       return saved;
     });
-    return { key: created.key, description: created.description, source: created.source, deprecated: false, role_count: 0 };
+    return { key: created.key, description: created.description, requires: [], source: created.source, deprecated: false, role_count: 0 };
   }
 
   // An application publishes what its code understands. The client has to be the one made for it.
   static async sync(
     client: Pick<ApiClientVariables, "clientId">,
-    request: { application_id: string; permissions: { key: string; description?: string }[] },
+    request: { application_id: string; permissions: { key: string; description?: string; requires?: string[] }[] },
     context: AuditRequestContext = {},
   ) {
     const input = Validation.validate(ApplicationPermissionValidation.SYNC, request);
+    assertManifestDependencies(input.permissions);
     const owner = await prismaClient.apiClient.findUnique({
       where: { id: client.clientId },
       select: { profile: { select: { code: true } } },
@@ -161,6 +238,7 @@ export class ApplicationPermissionService {
               application_id: input.application_id,
               key: row.key,
               description: row.description ?? null,
+              requires: row.requires ?? [],
               source: ApplicationPermissionSource.MANIFEST,
               synced_at: now,
             },
@@ -171,6 +249,7 @@ export class ApplicationPermissionService {
             where: { id: current.id },
             data: {
               description: row.description ?? current.description,
+              requires: row.requires ?? [],
               source: ApplicationPermissionSource.MANIFEST,
               deprecated_at: null,
               synced_at: now,

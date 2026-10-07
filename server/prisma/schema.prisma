@@ -1665,6 +1665,8 @@ model ApplicationPermission {
   application_id String
   key            String
   description    String?
+  // Permissions that must come with this one, for example manage needs read. Roles are checked against it.
+  requires       String[]                    @default([])
   source         ApplicationPermissionSource @default(MANUAL)
   // Dropped from the application's manifest. Roles that already carry it keep it, new roles cannot pick it.
   deprecated_at  DateTime?

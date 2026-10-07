@@ -264,6 +264,7 @@ export class ApplicationPermissionValidation {
         z.object({
           key: permissionKey,
           description: z.string().trim().max(200, "Description is too long").optional(),
+          requires: z.array(permissionKey).max(50, "Too many required permissions").optional(),
         }),
       )
       .min(1, "Send at least one permission")

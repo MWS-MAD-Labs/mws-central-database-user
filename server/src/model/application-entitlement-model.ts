@@ -283,6 +283,8 @@ export type ApplicationRoleResponse = {
   active_entitlement_count: number;
   // Active groups that hand this role out.
   active_group_count: number;
+  // Permissions its permissions need that it does not carry. Empty when the role is complete.
+  missing_permissions: string[];
   created_at: string;
   updated_at: string;
 };
@@ -319,6 +321,7 @@ export function toApplicationRoleResponse(
   role: ApplicationRole,
   activeEntitlementCount: number,
   activeGroupCount = 0,
+  missingPermissions: string[] = [],
 ): ApplicationRoleResponse {
   return {
     id: role.id,
@@ -332,6 +335,7 @@ export function toApplicationRoleResponse(
     is_active: role.is_active,
     active_entitlement_count: activeEntitlementCount,
     active_group_count: activeGroupCount,
+    missing_permissions: missingPermissions,
     created_at: role.created_at.toISOString(),
     updated_at: role.updated_at.toISOString(),
   };

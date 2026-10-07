@@ -48,7 +48,7 @@ describe("application permission catalog", () => {
     return { token, profileCode: profile.code };
   }
 
-  const sync = (token: string, application: string, permissions: { key: string; description?: string }[]) =>
+  const sync = (token: string, application: string, permissions: { key: string; description?: string; requires?: string[] }[]) =>
     TestRequest.put(`/api/internal/application-permissions/${application}`, { permissions }, undefined, {
       Authorization: `Bearer ${token}`,
     });
@@ -63,7 +63,7 @@ describe("application permission catalog", () => {
     const body = await (await TestRequest.get(`${PERMISSIONS}?application_id=${appId}`, accessToken)).json();
     expect(body.data.has_manifest).toBe(false);
     expect(body.data.permissions).toEqual([
-      { key: "tab.a", description: "Opens tab A", source: "MANUAL", deprecated: false, role_count: 0 },
+      { key: "tab.a", description: "Opens tab A", requires: [], source: "MANUAL", deprecated: false, role_count: 0 },
     ]);
     expect(await prismaClient.auditLog.count({ where: { action: AuditAction.APPLICATION_PERMISSION_CREATE } })).toBeGreaterThan(0);
 
@@ -154,5 +154,78 @@ describe("application permission catalog", () => {
     const { token: readOnly } = await ApiClientTest.createWithToken({ scopeNames: [API_SCOPES.APPLICATION_ENTITLEMENTS_READ] });
     expect((await sync(readOnly, profileCode, [{ key: "tab.a" }])).status).toBe(403);
     expect((await sync(token, profileCode, [])).status).toBe(400);
+  });
+
+  describe("permissions that need others", () => {
+    const manifest = [
+      { key: "inv.read", description: "Opens the inventory tab" },
+      { key: "inv.manage", description: "Adds, edits and deletes items", requires: ["inv.read"] },
+      { key: "inv.export", requires: ["inv.manage"] },
+    ];
+
+    it("refuses a role that carries a permission without what it needs", async () => {
+      const { token, profileCode } = await publisher("dep");
+      appId = profileCode;
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      expect((await sync(token, appId, manifest)).status).toBe(200);
+
+      const alone = await TestRequest.post(ROLES, { application_id: appId, key: "KEEPER", label: "Keeper", permissions: ["inv.manage"] }, accessToken);
+      expect(alone.status).toBe(400);
+      expect((await alone.json()).errors).toContain('Permission "inv.manage" needs "inv.read"');
+
+      // Needs reach through the ones it needs.
+      const deep = await TestRequest.post(ROLES, { application_id: appId, key: "KEEPER", label: "Keeper", permissions: ["inv.export", "inv.manage"] }, accessToken);
+      expect((await deep.json()).errors).toContain('Permission "inv.export" needs "inv.read"');
+
+      const whole = await TestRequest.post(ROLES, { application_id: appId, key: "KEEPER", label: "Keeper", permissions: ["inv.read", "inv.manage"] }, accessToken);
+      expect(whole.status).toBe(200);
+      expect((await whole.json()).data.missing_permissions).toEqual([]);
+
+      const role = (await prismaClient.applicationRole.findFirstOrThrow({ where: { application_id: appId, key: "KEEPER" } }));
+      const dropRead = await TestRequest.patch(`${ROLES}/${role.id}`, { permissions: ["inv.manage"] }, accessToken);
+      expect(dropRead.status).toBe(400);
+    });
+
+    it("flags an old role that misses something but still lets its label change", async () => {
+      const { token, profileCode } = await publisher("old");
+      appId = profileCode;
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await sync(token, appId, [{ key: "inv.read" }, { key: "inv.manage" }]);
+      const role = await prismaClient.applicationRole.create({
+        data: { application_id: appId, key: "OLD", label: "Old", permissions: ["inv.manage"] },
+      });
+      // The application starts saying manage needs read.
+      await sync(token, appId, [{ key: "inv.read" }, { key: "inv.manage", requires: ["inv.read"] }]);
+
+      const list = await (await TestRequest.get(`${ROLES}?application_id=${appId}`, accessToken)).json();
+      expect(list.data.find((item: { key: string }) => item.key === "OLD").missing_permissions).toEqual(["inv.read"]);
+
+      const relabel = await TestRequest.patch(`${ROLES}/${role.id}`, { label: "Older" }, accessToken);
+      expect(relabel.status).toBe(200);
+      expect((await relabel.json()).data.missing_permissions).toEqual(["inv.read"]);
+      const complete = await TestRequest.patch(`${ROLES}/${role.id}`, { permissions: ["inv.manage", "inv.read"] }, accessToken);
+      expect(complete.status).toBe(200);
+    });
+
+    it("rejects a manifest whose needs do not exist, loop, or point at themselves", async () => {
+      const { token, profileCode } = await publisher("bad");
+      appId = profileCode;
+      const unknown = await sync(token, appId, [{ key: "a.read" }, { key: "a.manage", requires: ["a.missing"] }]);
+      expect(unknown.status).toBe(400);
+      const self = await sync(token, appId, [{ key: "a.read", requires: ["a.read"] }]);
+      expect(self.status).toBe(400);
+      const loop = await sync(token, appId, [{ key: "a.x", requires: ["a.y"] }, { key: "a.y", requires: ["a.x"] }]);
+      expect(loop.status).toBe(400);
+      expect(await prismaClient.applicationPermission.count({ where: { application_id: appId } })).toBe(0);
+    });
+
+    it("shows what each permission needs", async () => {
+      const { token, profileCode } = await publisher("show");
+      appId = profileCode;
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await sync(token, appId, manifest);
+      const body = await (await TestRequest.get(`${PERMISSIONS}?application_id=${appId}`, accessToken)).json();
+      expect(body.data.permissions.find((p: { key: string }) => p.key === "inv.manage").requires).toEqual(["inv.read"]);
+    });
   });
 });
