@@ -150,6 +150,10 @@ async function resolveRolePermissions(
       `Role "${role}" is not an active role of ${applicationId}. Use a role from the registry, spelled exactly.`,
     );
   }
+  // Own access rows (exceptions) are for employees.
+  if (!entry.allows_employees) {
+    throw new ResponseError(400, `Role "${role}" is not for employees`);
+  }
   if (permissions !== undefined) {
     const same =
       permissions.length === entry.permissions.length &&
@@ -584,6 +588,8 @@ function roleAuditSnapshot(role: {
   key: string;
   label: string;
   permissions: string[];
+  allows_employees: boolean;
+  allows_students: boolean;
   is_active: boolean;
 }) {
   return {
@@ -591,6 +597,8 @@ function roleAuditSnapshot(role: {
     key: role.key,
     label: role.label,
     permissions: role.permissions,
+    allows_employees: role.allows_employees,
+    allows_students: role.allows_students,
     is_active: role.is_active,
   };
 }
@@ -668,7 +676,12 @@ export class ApplicationRoleService {
         _max: { rank: true },
       });
       const saved = await tx.applicationRole.create({
-        data: { ...input, rank: (lowest._max.rank ?? -1) + 1 },
+        data: {
+          ...input,
+          allows_employees: input.allows_employees ?? true,
+          allows_students: input.allows_students ?? false,
+          rank: (lowest._max.rank ?? -1) + 1,
+        },
       });
       await AuditService.record(
         {
@@ -760,6 +773,39 @@ export class ApplicationRoleService {
       );
     }
 
+    // Taking away who a role is for must not strand a group or person that uses it.
+    const nextEmployees = input.allows_employees ?? existing.allows_employees;
+    const nextStudents = input.allows_students ?? existing.allows_students;
+    if (!nextEmployees && !nextStudents) {
+      throw new ResponseError(400, "A role has to be for employees, students or both");
+    }
+    if (existing.allows_students && !nextStudents) {
+      const used = await prismaClient.applicationAccessRule.count({
+        where: {
+          application_id: existing.application_id,
+          default_role_key: existing.key,
+          is_active: true,
+          audience: { in: [ApplicationAudience.STUDENTS, ApplicationAudience.EMPLOYEES_AND_STUDENTS] },
+        },
+      });
+      if (used > 0) {
+        throw new ResponseError(400, `${used} active group(s) of students still give this role. Change those groups first.`);
+      }
+    }
+    if (existing.allows_employees && !nextEmployees) {
+      const usedByGroups = await prismaClient.applicationAccessRule.count({
+        where: {
+          application_id: existing.application_id,
+          default_role_key: existing.key,
+          is_active: true,
+          audience: { in: [ApplicationAudience.EMPLOYEES, ApplicationAudience.EMPLOYEES_AND_STUDENTS] },
+        },
+      });
+      if (usedByGroups > 0 || activeCount > 0) {
+        throw new ResponseError(400, "Employees still use this role through a group or their own access. Change those first.");
+      }
+    }
+
     const willBeActive = input.is_active ?? existing.is_active;
     const permissionsChanged =
       input.permissions !== undefined &&
@@ -780,6 +826,8 @@ export class ApplicationRoleService {
         data: {
           label: input.label,
           permissions: input.permissions,
+          allows_employees: input.allows_employees,
+          allows_students: input.allows_students,
           is_active: input.is_active,
         },
       });
@@ -878,6 +926,16 @@ async function assertRuleReferences(
   });
   if (checkRole && (!role || !role.is_active)) {
     throw new ResponseError(400, `Role "${rule.default_role_key}" is not an active role of ${rule.application_id}`);
+  }
+  if (checkRole && role) {
+    const forEmployees = rule.audience !== ApplicationAudience.STUDENTS;
+    const forStudents = rule.audience !== ApplicationAudience.EMPLOYEES;
+    if (forEmployees && !role.allows_employees) {
+      throw new ResponseError(400, `Role "${role.key}" is not for employees`);
+    }
+    if (forStudents && !role.allows_students) {
+      throw new ResponseError(400, `Role "${role.key}" is not for students`);
+    }
   }
   if (
     rule.audience === ApplicationAudience.STUDENTS &&
@@ -1512,12 +1570,21 @@ export class ApplicationAccessService {
       loadGateState(applicationId),
       prismaClient.applicationRole.findMany({
         where: { application_id: applicationId, is_active: true },
-        select: { key: true },
+        select: { key: true, allows_employees: true, allows_students: true },
       }),
     ]);
     const previous = input.group_id ? (state.before.find((rule) => rule.id === input.group_id) ?? null) : null;
     const unavailable: ApplicationRoleOptions["unavailable"] = [];
     for (const role of roles) {
+      // A role is for employees, students or both, and a group can only hand out what fits.
+      if (input.audience !== ApplicationAudience.STUDENTS && !role.allows_employees) {
+        unavailable.push({ role: role.key, reason: "Not for employees" });
+        continue;
+      }
+      if (input.audience !== ApplicationAudience.EMPLOYEES && !role.allows_students) {
+        unavailable.push({ role: role.key, reason: "Not for students" });
+        continue;
+      }
       try {
         checkRuleGate(
           state,

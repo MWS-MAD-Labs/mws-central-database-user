@@ -278,6 +278,8 @@ export type ApplicationRoleResponse = {
   permissions: string[];
   rank: number;
   is_active: boolean;
+  allows_employees: boolean;
+  allows_students: boolean;
   active_entitlement_count: number;
   // Active groups that hand this role out.
   active_group_count: number;
@@ -290,12 +292,16 @@ export type CreateApplicationRoleRequest = {
   key: string;
   label: string;
   permissions: string[];
+  allows_employees?: boolean;
+  allows_students?: boolean;
 };
 
 export type UpdateApplicationRoleRequest = {
   id: string;
   label?: string;
   permissions?: string[];
+  allows_employees?: boolean;
+  allows_students?: boolean;
   is_active?: boolean;
 };
 
@@ -321,6 +327,8 @@ export function toApplicationRoleResponse(
     label: role.label,
     permissions: role.permissions,
     rank: role.rank,
+    allows_employees: role.allows_employees,
+    allows_students: role.allows_students,
     is_active: role.is_active,
     active_entitlement_count: activeEntitlementCount,
     active_group_count: activeGroupCount,

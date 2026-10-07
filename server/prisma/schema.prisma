@@ -1638,6 +1638,9 @@ model ApplicationRole {
   permissions    String[] @default([])
   // 0 is the highest role of the application, then 1, 2 and so on.
   rank           Int      @default(0)
+  // Who the role is meant for. A group of students can only hand out roles that allow students.
+  allows_employees Boolean @default(true)
+  allows_students  Boolean @default(false)
   is_active      Boolean  @default(true)
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt

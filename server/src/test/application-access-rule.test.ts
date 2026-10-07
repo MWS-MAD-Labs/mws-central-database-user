@@ -26,9 +26,9 @@ describe("application baseline access rules", () => {
     masterData = await MasterDataTest.create();
     await prismaClient.applicationRole.createMany({
       data: [
-        { application_id: appId, key: "STAFF", label: "Staff", permissions: ["store.use"] },
-        { application_id: appId, key: "ADMIN", label: "Admin", permissions: ["store.use", "app.admin"] },
-        { application_id: appId, key: "MEMBER", label: "Member", permissions: [] },
+        { application_id: appId, key: "STAFF", label: "Staff", permissions: ["store.use"], allows_students: true },
+        { application_id: appId, key: "ADMIN", label: "Admin", permissions: ["store.use", "app.admin"], allows_students: true },
+        { application_id: appId, key: "MEMBER", label: "Member", permissions: [], allows_students: true },
       ],
     });
   });
@@ -142,6 +142,35 @@ describe("application baseline access rules", () => {
 
     await TestRequest.patch(`${ENTITLEMENTS}/revoke/${granted.data.id}`, {}, accessToken);
     expect((await lookup(person.id)).status).toBe(404);
+  });
+
+  it("only lets a group hand out roles that are for its audience", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await prismaClient.applicationRole.create({
+      data: { application_id: appId, key: "TEACHER_ONLY", label: "Teacher only", permissions: ["a.read"], allows_students: false },
+    });
+    await prismaClient.applicationRole.create({
+      data: { application_id: appId, key: "KIDS_ONLY", label: "Kids only", permissions: ["b.read"], allows_employees: false, allows_students: true },
+    });
+
+    const toStudents = await addRule(accessToken, { audience: "STUDENTS", default_role_key: "TEACHER_ONLY" });
+    expect(toStudents.status).toBe(400);
+    expect(String((await toStudents.json()).errors)).toContain('Role "TEACHER_ONLY" is not for students');
+    const toEmployees = await addRule(accessToken, { audience: "EMPLOYEES", default_role_key: "KIDS_ONLY" });
+    expect(toEmployees.status).toBe(400);
+    expect(String((await toEmployees.json()).errors)).toContain('Role "KIDS_ONLY" is not for employees');
+
+    expect((await addRule(accessToken, { audience: "STUDENTS", default_role_key: "KIDS_ONLY" })).status).toBe(200);
+    expect((await addRule(accessToken, { audience: "EMPLOYEES", default_role_key: "TEACHER_ONLY" })).status).toBe(200);
+
+    // The role picker says the same.
+    const options = await (await TestRequest.get(
+      `/api/admin/application-access/apps/${appId}/role-options?audience=STUDENTS`,
+      accessToken,
+    )).json();
+    const reasons = Object.fromEntries(options.data.unavailable.map((item: { role: string; reason: string }) => [item.role, item.reason]));
+    expect(reasons.TEACHER_ONLY).toBe("Not for students");
+    expect(reasons.KIDS_ONLY).not.toBe("Not for students");
   });
 
   it("keeps a student group to units that have grades", async () => {

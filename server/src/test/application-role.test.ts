@@ -208,4 +208,24 @@ describe("application role registry", () => {
     // Turning it back on needs an active role.
     expect((await TestRequest.patch(`/api/admin/application-access-rules/${group.data.id}`, { is_active: true }, accessToken)).status).toBe(400);
   });
+
+  it("says who a role is for, and does not let that be taken away from a group that uses it", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const fresh = (await (await TestRequest.post(BASE, { application_id: appId, key: "LEARNER", label: "Learner", permissions: ["a.read"] }, accessToken)).json()).data;
+    // New roles start for employees only.
+    expect([fresh.allows_employees, fresh.allows_students]).toEqual([true, false]);
+
+    const both = await TestRequest.patch(`${BASE}/${fresh.id}`, { allows_students: true }, accessToken);
+    expect((await both.json()).data.allows_students).toBe(true);
+    expect((await TestRequest.patch(`${BASE}/${fresh.id}`, { allows_employees: false, allows_students: false }, accessToken)).status).toBe(400);
+
+    await TestRequest.post(
+      "/api/admin/application-access-rules",
+      { application_id: appId, audience: "STUDENTS", default_role_key: "LEARNER" },
+      accessToken,
+    );
+    const refused = await TestRequest.patch(`${BASE}/${fresh.id}`, { allows_students: false }, accessToken);
+    expect(refused.status).toBe(400);
+    expect(String((await refused.json()).errors)).toContain("group(s) of students still give this role");
+  });
 });

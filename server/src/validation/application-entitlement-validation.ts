@@ -189,26 +189,37 @@ export class ApplicationAccessRuleValidation {
 }
 
 export class ApplicationRoleValidation {
-  static readonly CREATE = z.object({
-    application_id: applicationId,
-    key: roleKey,
-    label: z.string().trim().min(1, "Label is required").max(64, "Label is too long"),
-    permissions,
-  });
+  static readonly CREATE = z
+    .object({
+      application_id: applicationId,
+      key: roleKey,
+      label: z.string().trim().min(1, "Label is required").max(64, "Label is too long"),
+      permissions,
+      allows_employees: z.boolean().optional(),
+      allows_students: z.boolean().optional(),
+    })
+    .refine((value) => (value.allows_employees ?? true) || (value.allows_students ?? false), {
+      message: "A role has to be for employees, students or both",
+      path: ["allows_employees"],
+    });
 
   static readonly UPDATE = z
     .object({
       id: nonemptyId("Role ID"),
       label: z.string().trim().min(1, "Label is required").max(64, "Label is too long").optional(),
       permissions: permissions.optional(),
+      allows_employees: z.boolean().optional(),
+      allows_students: z.boolean().optional(),
       is_active: z.boolean().optional(),
     })
     .refine(
       (value) =>
         value.label !== undefined ||
         value.permissions !== undefined ||
+        value.allows_employees !== undefined ||
+        value.allows_students !== undefined ||
         value.is_active !== undefined,
-      { message: "Provide a label, permissions, or is_active to update" },
+      { message: "Provide a label, permissions, who the role is for, or is_active to update" },
     );
 
   static readonly LIST = z.object({
