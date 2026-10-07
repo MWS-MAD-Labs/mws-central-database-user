@@ -138,6 +138,11 @@ export function AppRolesTab({ applicationId, roles }) {
                 </td>
                 <td className={`${denseCellClass} text-center`}>
                   <PermissionPopover permissions={role.permissions} compact />
+                  {role.missing_permissions?.length > 0 ? (
+                    <span className="mt-1 block text-xs font-semibold text-[#a43c41]">
+                      Missing {role.missing_permissions.join(", ")}
+                    </span>
+                  ) : null}
                 </td>
                 <td className={`${denseCellClass} text-center`}>
                   {role.active_entitlement_count}

@@ -152,6 +152,26 @@ describe('RoleFormPage', () => {
     registry = { ...registry, permissions: registry.permissions.slice(0, 2) }
   })
 
+  it('ticks what a permission needs and keeps it while something still needs it', async () => {
+    registry = {
+      ...registry,
+      permissions: [
+        { key: 'inv.read', description: 'Opens the inventory tab', requires: [], source: 'MANIFEST', deprecated: false, role_count: 0 },
+        { key: 'inv.manage', description: 'Edits items', requires: ['inv.read'], source: 'MANIFEST', deprecated: false, role_count: 0 },
+      ],
+    }
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage('/application-access/apps/exima/roles/new')
+    await screen.findByText('Add role to exima')
+    await user.click(await screen.findByLabelText(/^inv\.manage/))
+    expect(screen.getByLabelText(/^inv\.read/)).toBeChecked()
+    expect(screen.getByText('Needed by inv.manage')).toBeVisible()
+    expect(screen.getByLabelText(/^inv\.read/)).toBeDisabled()
+    await user.click(screen.getByLabelText(/^inv\.manage/))
+    expect(screen.getByLabelText(/^inv\.read/)).not.toBeDisabled()
+    registry = { ...registry, permissions: registry.permissions.slice(0, 0) }
+  })
+
   it('says when the role belongs to another application', async () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage('/application-access/apps/hub/roles/role-staff')

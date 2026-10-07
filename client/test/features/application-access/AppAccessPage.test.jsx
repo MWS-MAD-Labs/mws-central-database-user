@@ -686,7 +686,7 @@ describe("AppAccessPage", () => {
       has_manifest: true,
       last_synced_at: "2026-10-07T01:00:00.000Z",
       permissions: [
-        { key: "pos.checkout", description: "Opens the cashier tab", source: "MANIFEST", deprecated: false, role_count: 2 },
+        { key: "pos.checkout", description: "Opens the cashier tab", requires: ["pos.catalog.read"], source: "MANIFEST", deprecated: false, role_count: 2 },
         { key: "store.old", description: null, source: "MANIFEST", deprecated: true, role_count: 1 },
       ],
       ...extra,
@@ -704,6 +704,7 @@ describe("AppAccessPage", () => {
       const row = (await screen.findByText("pos.checkout")).closest("tr");
       expect(within(row).getByText("Opens the cashier tab")).toBeVisible();
       expect(within(row).getByText("Current")).toBeVisible();
+      expect(within(row).getByText("pos.catalog.read")).toBeVisible();
       expect(within(screen.getByText("store.old").closest("tr")).getByText("Dropped")).toBeVisible();
       expect(screen.getByText(/publishes these from its code/)).toBeVisible();
     });
@@ -773,6 +774,17 @@ describe("AppAccessPage", () => {
       renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
       const admin = (await screen.findByText("ADMIN")).closest("tr");
       expect(within(admin).getByText("+ 2 groups")).toBeVisible();
+    });
+
+    it("flags a role that misses a permission its permissions need", async () => {
+      const incomplete = roles.map((role) => (role.key === "ADMIN" ? { ...role, missing_permissions: ["store.read"] } : role));
+      globalThis.fetch = createFetchRouter([
+        ...routes(detail(), orderRoutes).filter((item) => item.path !== "/api/admin/application-roles"),
+        { path: "/api/admin/application-roles", response: () => jsonResponse({ data: incomplete }) },
+      ]);
+      renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      const admin = (await screen.findByText("ADMIN")).closest("tr");
+      expect(within(admin).getByText("Missing store.read")).toBeVisible();
     });
 
     it("shows who each role is for", async () => {

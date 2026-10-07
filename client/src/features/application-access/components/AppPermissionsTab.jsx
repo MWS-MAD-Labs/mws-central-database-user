@@ -30,11 +30,12 @@ export function AppPermissionsTab({ applicationId }) {
         <PanelMessage>No permissions registered yet. Add one when you create a role.</PanelMessage>
       ) : (
         <DenseTable
-          minWidth={640}
+          minWidth={760}
           head={
             <>
               <th className="px-4 py-2.5">Permission</th>
               <th className="px-4 py-2.5">What it opens</th>
+              <th className="px-4 py-2.5">Needs</th>
               <th className="px-4 py-2.5">Source</th>
               <th className="px-4 py-2.5 text-center">Roles</th>
               <th className="px-4 py-2.5">Status</th>
@@ -45,6 +46,7 @@ export function AppPermissionsTab({ applicationId }) {
             <tr key={permission.key} className={denseRowClass}>
               <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>{permission.key}</td>
               <td className={denseCellClass}>{permission.description || "-"}</td>
+              <td className={denseCellClass}>{permission.requires?.length ? permission.requires.join(", ") : "-"}</td>
               <td className={denseCellClass}>{permission.source === "MANIFEST" ? "Application" : "Added by hand"}</td>
               <td className={`${denseCellClass} text-center`}>{permission.role_count}</td>
               <td className={denseCellClass}>

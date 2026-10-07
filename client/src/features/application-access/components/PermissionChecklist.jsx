@@ -10,12 +10,25 @@ export function PermissionChecklist({ options, value, onChange, canRegister, onR
   const keys = options.filter((option) => !option.deprecated).map((option) => option.key);
   const all = keys.length > 0 && keys.every((key) => value.includes(key));
 
+  const requiresOf = new Map(options.map((option) => [option.key, option.requires || []]));
+  // Everything a permission needs, directly or through the ones it needs.
+  function needed(key, seen = new Set()) {
+    for (const next of requiresOf.get(key) || []) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      needed(next, seen);
+    }
+    return seen;
+  }
+  // Checked permissions that need this one, so it has to stay.
+  const neededBy = (key) => value.filter((item) => item !== key && needed(item).has(key));
+
   function toggle(permission) {
-    onChange(
-      value.includes(permission)
-        ? value.filter((item) => item !== permission)
-        : [...value, permission],
-    );
+    if (value.includes(permission)) {
+      if (neededBy(permission).length === 0) onChange(value.filter((item) => item !== permission));
+      return;
+    }
+    onChange([...new Set([...value, permission, ...needed(permission)])]);
   }
 
   async function addDraft() {
@@ -39,15 +52,25 @@ export function PermissionChecklist({ options, value, onChange, canRegister, onR
             )
           }
         />
-        {options.map((option) => (
-          <CheckboxField
-            key={option.key}
-            checked={value.includes(option.key)}
-            label={option.key}
-            description={option.deprecated ? "Dropped by the application. Replace it with a current one." : option.description || undefined}
-            onChange={() => toggle(option.key)}
-          />
-        ))}
+        {options.map((option) => {
+          const holders = value.includes(option.key) ? neededBy(option.key) : [];
+          return (
+            <CheckboxField
+              key={option.key}
+              checked={value.includes(option.key)}
+              disabled={holders.length > 0}
+              label={option.key}
+              description={
+                holders.length > 0
+                  ? `Needed by ${holders.join(", ")}`
+                  : option.deprecated
+                    ? "Dropped by the application. Replace it with a current one."
+                    : option.description || undefined
+              }
+              onChange={() => toggle(option.key)}
+            />
+          );
+        })}
       </div>
       {canRegister ? (
         <div className="flex gap-2">
