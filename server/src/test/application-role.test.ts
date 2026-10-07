@@ -107,6 +107,83 @@ describe("application role registry", () => {
     expect(entitlement.version).toBe(2);
   });
 
+  describe("deleting a role", () => {
+    const post = (accessToken: string, key: string, permissions: string[] = []) =>
+      TestRequest.post(BASE, { application_id: appId, key, label: key, permissions }, accessToken);
+
+    it("deletes a role nobody used, closes the gap in the order and audits it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const first = (await (await post(accessToken, "TOP", ["top.use"])).json()).data;
+      const middle = (await (await post(accessToken, "MIDDLE", ["middle.use"])).json()).data;
+      const last = (await (await post(accessToken, "BOTTOM", ["bottom.use"])).json()).data;
+
+      const response = await TestRequest.delete(`${BASE}/${middle.id}`, accessToken);
+      expect(response.status).toBe(200);
+      expect(await prismaClient.applicationRole.findUnique({ where: { id: middle.id } })).toBeNull();
+      const left = await prismaClient.applicationRole.findMany({ where: { application_id: appId }, orderBy: { rank: "asc" } });
+      expect(left.map((role) => [role.key, role.rank])).toEqual([["TOP", 0], ["BOTTOM", 1]]);
+      expect(first.id).toBeDefined();
+      expect(last.id).toBeDefined();
+      const audit = await prismaClient.auditLog.findFirst({
+        where: { action: AuditAction.APPLICATION_ROLE_DELETE, entity_id: middle.id },
+      });
+      expect(audit).not.toBeNull();
+      await prismaClient.auditLog.deleteMany({ where: { entity_id: middle.id } });
+    });
+
+    it("refuses a role a group gives out, active or turned off", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const role = (await (await post(accessToken, "GIVEN")).json()).data;
+      const group = await prismaClient.applicationAccessRule.create({
+        data: { application_id: appId, audience: "EMPLOYEES", default_role_key: "GIVEN", organization_id: "org_test", is_active: false },
+      });
+      const off = await TestRequest.delete(`${BASE}/${role.id}`, accessToken);
+      expect(off.status).toBe(400);
+      expect((await off.json()).errors).toContain("1 group still use this role");
+      await prismaClient.applicationAccessRule.update({ where: { id: group.id }, data: { is_active: true } });
+      expect((await TestRequest.delete(`${BASE}/${role.id}`, accessToken)).status).toBe(400);
+      expect(await prismaClient.applicationRole.findUnique({ where: { id: role.id } })).not.toBeNull();
+    });
+
+    it("refuses a role a person holds, even after the access was revoked", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const role = (await (await post(accessToken, "HELD")).json()).data;
+      const { position, level, building, unit } = masterData;
+      const person = await EmployeeTest.create({
+        email: `test_del_${randomBytes(3).toString("hex")}@millennia21.id`,
+        unitId: unit.id,
+        jobPositionId: position.id,
+        jobLevelId: level.id,
+        buildingId: building.id,
+      });
+      await prismaClient.applicationRole.create({ data: { application_id: appId, key: "BASE", label: "Base", permissions: [] } });
+      await prismaClient.applicationAccessRule.create({
+        data: { application_id: appId, audience: "EMPLOYEES", default_role_key: "BASE", organization_id: "org_test" },
+      });
+      const granted = await TestRequest.post(
+        "/api/admin/application-entitlements",
+        { person_id: person.id, application_id: appId, role: "HELD" },
+        accessToken,
+      );
+      expect(granted.status).toBe(200);
+      const refused = await TestRequest.delete(`${BASE}/${role.id}`, accessToken);
+      expect(refused.status).toBe(400);
+      expect((await refused.json()).errors).toContain("1 person still use this role");
+
+      await prismaClient.applicationEntitlement.updateMany({ where: { application_id: appId }, data: { is_active: false } });
+      expect((await TestRequest.delete(`${BASE}/${role.id}`, accessToken)).status).toBe(400);
+    });
+
+    it("answers 404 for a role that does not exist and 403 for anyone but a Super Admin", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      expect((await TestRequest.delete(`${BASE}/missing-role`, accessToken)).status).toBe(404);
+      const role = (await (await post(accessToken, "SAFE")).json()).data;
+      const { accessToken: dbAdmin } = await AdminUserTest.createDatabaseAdmin();
+      expect((await TestRequest.delete(`${BASE}/${role.id}`, dbAdmin)).status).toBe(403);
+      expect(await prismaClient.applicationRole.findUnique({ where: { id: role.id } })).not.toBeNull();
+    });
+  });
+
   it("creates the organization of a new application together with its first role", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await TestRequest.post(BASE, { application_id: appId, key: "LEAD", label: "Lead", permissions: [] }, accessToken);

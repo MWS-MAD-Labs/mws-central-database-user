@@ -105,6 +105,11 @@ export class ApplicationEntitlementController {
 }
 
 export class ApplicationRoleController {
+  static async remove(c: Context<{ Variables: AdminVariables }>) {
+    await ApplicationRoleService.remove(c.var.admin, c.req.param("id") ?? "", getAuditRequestContext(c));
+    return c.json({ data: true });
+  }
+
   static async reorder(c: Context<{ Variables: AdminVariables }>) {
     const request = (await c.req.json()) as ReorderApplicationRolesRequest;
     const response = await ApplicationRoleService.reorder(

@@ -718,6 +718,58 @@ export class ApplicationRoleService {
     return toApplicationRoleResponse(created, 0);
   }
 
+  // A role nobody ever used can go. One that people or groups still point at is deactivated instead,
+  // so what points at it keeps making sense.
+  static async remove(admin: AdminUser, id: string, context: AuditRequestContext = {}): Promise<void> {
+    assertSuperAdmin(admin);
+    const role = await prismaClient.applicationRole.findUnique({ where: { id } });
+    if (!role) throw new ResponseError(404, "Role not found");
+
+    const [people, groups] = await Promise.all([
+      prismaClient.applicationEntitlement.count({ where: { application_id: role.application_id, role: role.key } }),
+      prismaClient.applicationAccessRule.count({
+        where: { application_id: role.application_id, default_role_key: role.key },
+      }),
+    ]);
+    if (people > 0 || groups > 0) {
+      const used = [
+        people > 0 ? `${people} ${people === 1 ? "person" : "people"}` : null,
+        groups > 0 ? `${groups} ${groups === 1 ? "group" : "groups"}` : null,
+      ]
+        .filter(Boolean)
+        .join(" and ");
+      throw new ResponseError(
+        400,
+        `${used} still use this role. Move them to another role first, or deactivate it instead.`,
+      );
+    }
+
+    await prismaClient.$transaction(async (tx) => {
+      await tx.applicationRole.delete({ where: { id } });
+      // Keep the order 0..n-1 without a hole.
+      const rest = await tx.applicationRole.findMany({
+        where: { application_id: role.application_id },
+        orderBy: [{ rank: "asc" }, { key: "asc" }],
+      });
+      for (const [index, item] of rest.entries()) {
+        if (item.rank !== index) await tx.applicationRole.update({ where: { id: item.id }, data: { rank: index } });
+      }
+      await AuditService.record(
+        {
+          action: AuditAction.APPLICATION_ROLE_DELETE,
+          source: AuditSource.UI,
+          entity_type: "ApplicationRole",
+          entity_id: role.id,
+          admin_id: admin.id,
+          old_values: roleAuditSnapshot(role),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+  }
+
   // Puts the roles of one application in order, highest first.
   static async reorder(
     admin: AdminUser,
