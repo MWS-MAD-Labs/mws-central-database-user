@@ -70,6 +70,27 @@ Saat membuat role baru, pastikan setiap permission-nya sudah dikenal aplikasi pe
 
 Kode: Hub di `backend/src/lib/hub-access-gate.ts` (`userHasHubPermission`) dan `lib/admin-access.ts` (`isHubAdmin`). Daily Check-in memakai `PERMISSION_SET`.
 
+## Mendaftarkan permission
+
+Role di Central hanya boleh membawa permission yang sudah didaftarkan untuk aplikasinya. Permission yang tidak dikenal ditolak saat role dibuat atau diubah (`Permission "x" is not registered for <app>`), jadi salah ketik tidak lolos diam-diam.
+
+Daftar permission dimiliki aplikasi. Tulis sebagai satu konstanta di kode (contoh Exima: `APP_PERMISSIONS`), pakai konstanta yang sama untuk menjaga rute, tab dan API, lalu kirim ke Central setiap deploy:
+
+```
+PUT /api/internal/application-permissions/<application_id>
+Authorization: Bearer <token API client aplikasi>
+{ "permissions": [{ "key": "pos.checkout", "description": "Opens the cashier tab" }] }
+```
+
+- Token harus dari API client yang profilnya sama dengan `<application_id>` dan punya scope `application_permissions:write`.
+- Kirim daftar lengkap. Yang baru didaftarkan, yang hilang dari daftar ditandai dropped (tidak dihapus), yang muncul lagi dihidupkan kembali. Mengirim ulang daftar yang sama aman.
+- Role lama tetap boleh membawa permission yang sudah dropped dan tetap bisa disimpan. Role baru tidak bisa memilihnya. Tab Permissions di halaman aplikasi menunjukkan permission mana yang dropped dan berapa role yang masih membawanya.
+- Sebelum aplikasi pernah mengirim daftar, permission bisa ditambah dari form role di Central. Setelah itu penambahan manual ditolak, permission baru datang dari kode aplikasi.
+- Jadikan langkah ini bagian dari deploy dan buat deploy gagal bila panggilannya gagal. Tambahkan test di aplikasi yang memastikan daftar di kode sama dengan yang dikirim.
+- Untuk membandingkan sebaliknya, `GET /api/internal/application-permissions/<application_id>/usage` (scope `application_entitlements:read`) mengembalikan permission yang dibawa role aktif. Aplikasi bisa memeriksa tidak ada yang tidak dikenal kodenya.
+
+Mengganti nama permission: tambah yang baru di kode dan deploy, pindahkan role ke yang baru di Central, lalu hapus yang lama dari kode. Contoh Exima: Cashier membawa `pos.checkout` dan Resource membawa `inventory.export`, dan middleware Exima memetakan rute ke permission itu.
+
 ## Lewat Hub
 
 Di layar admin Hub, isi kolom Central entitlement app id pada entri aplikasi dengan Application ID di Central. Setelah terisi, Launch ditolak bila orang itu tidak punya akses aktif di Central, dan `role`, `permissions`, `version`, `organization_id` ikut di token SSO. Kolom kosong berarti Hub tidak memeriksa akses Central untuk aplikasi itu.
