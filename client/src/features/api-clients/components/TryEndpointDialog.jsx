@@ -103,16 +103,16 @@ export function TryEndpointDialog({ endpoint, onClose }) {
         <div className="rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3 text-sm">
           <p className="text-(--mws-charcoal)">{endpoint.purpose}</p>
           <p className="mt-2 text-xs text-(--mws-muted)">
-            Permission needed: <strong className="text-(--mws-charcoal)">{scope.title}</strong>
+            Permission Needed: <strong className="text-(--mws-charcoal)">{scope.title}</strong>
             {scope.sensitive ? (
               <span className="ml-1.5 font-semibold text-[#a43c41]">Sensitive</span>
             ) : null}
           </p>
         </div>
 
-        <Field label="API token" hint="The token shown once when the client was created.">
+        <Field label="API Token" hint="The token shown once when the client was created.">
           <TextAreaInput
-            aria-label="API token"
+            aria-label="API Token"
             autoFocus
             value={token}
             onChange={(event) => setToken(event.target.value)}
@@ -131,7 +131,7 @@ export function TryEndpointDialog({ endpoint, onClose }) {
           <div className="flex min-w-0 items-center gap-2">
             <StatusBadge tone="green">{endpoint.method}</StatusBadge>
             <TextInput
-              aria-label="Request path"
+              aria-label="Request Path"
               value={path}
               onChange={(event) => setPath(event.target.value)}
               className="font-mono text-xs"
@@ -153,7 +153,7 @@ export function TryEndpointDialog({ endpoint, onClose }) {
               className="mt-2 text-xs font-semibold text-(--mws-burgundy) underline"
               onClick={() => setShowRaw((open) => !open)}
             >
-              {showRaw ? "Hide technical response" : "Show technical response"}
+              {showRaw ? "Hide Technical Response" : "Show Technical Response"}
             </button>
             {showRaw ? (
               <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-(--mws-soft) p-3 font-mono text-xs text-(--mws-charcoal)">

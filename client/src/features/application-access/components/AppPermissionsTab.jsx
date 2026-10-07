@@ -34,7 +34,7 @@ export function AppPermissionsTab({ applicationId }) {
           head={
             <>
               <th className="px-4 py-2.5">Permission</th>
-              <th className="px-4 py-2.5">What it opens</th>
+              <th className="px-4 py-2.5">What It Opens</th>
               <th className="px-4 py-2.5">Needs</th>
               <th className="px-4 py-2.5">Source</th>
               <th className="px-4 py-2.5 text-center">Roles</th>

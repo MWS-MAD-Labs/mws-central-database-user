@@ -107,9 +107,9 @@ export function ApiClientsPage() {
 
   async function handleRevokeCredential(client, credential) {
     if (await confirm({
-      title: "Revoke credential",
+      title: "Revoke Credential",
       description: `Credential ${credential.token_prefix} will stop working immediately.`,
-      confirmLabel: "Revoke credential",
+      confirmLabel: "Revoke Credential",
       tone: "danger",
     })) {
       revokeCredentialMutation.mutate({
@@ -122,7 +122,7 @@ export function ApiClientsPage() {
   async function handleRevoke(client) {
     if (
       await confirm({
-        title: "Revoke API client",
+        title: "Revoke API Client",
         description: `"${client.name}" will be revoked.`,
         confirmLabel: "Revoke",
         tone: "danger",
@@ -135,11 +135,11 @@ export function ApiClientsPage() {
   async function handleRotate(options) {
     const emergency = options.mode === "emergency";
     const confirmed = await confirm({
-      title: emergency ? "Emergency token rotation" : "Rotate API client token",
+      title: emergency ? "Emergency Token Rotation" : "Rotate API Client Token",
       description: emergency
         ? "The current credential will stop working immediately. Confirm that the replacement can be deployed now."
         : "A new credential will be issued and the current credential will remain valid for 24 hours.",
-      confirmLabel: emergency ? "Rotate immediately" : "Start rotation",
+      confirmLabel: emergency ? "Rotate Immediately" : "Start Rotation",
       tone: emergency ? "danger" : undefined,
     });
     if (confirmed) rotateMutation.mutate({ id: rotateDialogFor.id, ...options });
@@ -163,7 +163,7 @@ export function ApiClientsPage() {
   const serverEnvironment =
     profilesQuery.data?.environment ||
     clients.find((client) => client.environment)?.environment ||
-    "Server managed";
+    "Server Managed";
 
   return (
     <div className="min-w-0">
@@ -238,7 +238,7 @@ export function ApiClientsPage() {
                 <th className="px-4 py-3">Application</th>
                 <th className="px-4 py-3">Scopes</th>
                 <th className="px-4 py-3">Credential</th>
-                <th className="px-4 py-3">Last used</th>
+                <th className="px-4 py-3">Last Used</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -506,7 +506,7 @@ function ApiClientDialog({
           />
         </Field>
         <div>
-          <p className="mb-2 font-display text-sm font-bold text-(--mws-charcoal)">Automatic scopes</p>
+          <p className="mb-2 font-display text-sm font-bold text-(--mws-charcoal)">Automatic Scopes</p>
           <ScopeGroupList scopes={selectedProfile?.scopes || []} emptyLabel="Select a profile to preview its managed scopes." />
         </div>
         {existingClient ? (
@@ -548,13 +548,13 @@ function RotateClientDialog({ client, isSubmitting, onClose, onSubmit }) {
         <label className={`block cursor-pointer rounded-xl border p-4 ${mode === "graceful" ? "border-(--mws-burgundy) bg-[#7E15180D]" : "border-(--mws-line)"}`}>
           <span className="flex items-start gap-3">
             <input type="radio" name="rotation-mode" value="graceful" checked={mode === "graceful"} onChange={() => setMode("graceful")} className="mt-1" />
-            <span><strong className="block text-(--mws-charcoal)">Graceful rotation (recommended)</strong><span className="text-sm text-(--mws-muted)">Keep the current credential valid for 24 hours while the new credential is deployed.</span></span>
+            <span><strong className="block text-(--mws-charcoal)">Graceful Rotation (Recommended)</strong><span className="text-sm text-(--mws-muted)">Keep the current credential valid for 24 hours while the new credential is deployed.</span></span>
           </span>
         </label>
         <label className={`block cursor-pointer rounded-xl border p-4 ${mode === "emergency" ? "border-[#c75f64] bg-[#fff0f1]" : "border-(--mws-line)"}`}>
           <span className="flex items-start gap-3">
             <input type="radio" name="rotation-mode" value="emergency" checked={mode === "emergency"} onChange={() => setMode("emergency")} className="mt-1" />
-            <span><strong className="flex items-center gap-2 text-[#a43c41]"><AlertTriangle size={16} />Emergency immediate</strong><span className="text-sm text-(--mws-muted)">Revoke the current credential as soon as the new one is issued.</span></span>
+            <span><strong className="flex items-center gap-2 text-[#a43c41]"><AlertTriangle size={16} />Emergency Immediate</strong><span className="text-sm text-(--mws-muted)">Revoke the current credential as soon as the new one is issued.</span></span>
           </span>
         </label>
       </div>
@@ -668,7 +668,7 @@ function TokenDialog({ title, client, onClose }) {
           <ShieldCheck size={18} className="text-(--mws-burgundy)" />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-(--mws-charcoal)">
-              {client.new_token_prefix || activeCredential?.token_prefix || client.token_prefix || "New credential"}
+              {client.new_token_prefix || activeCredential?.token_prefix || client.token_prefix || "New Credential"}
             </p>
             <p className="break-words text-xs text-(--mws-muted)">
               {getEffectiveScopes(client).map(scopeName).map(formatStatus).join(", ")}
@@ -676,7 +676,7 @@ function TokenDialog({ title, client, onClose }) {
           </div>
         </div>
         <div>
-          <p className="mb-2 font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">New token - shown once</p>
+          <p className="mb-2 font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">New Token - Shown Once</p>
           <textarea
           ref={tokenRef}
           readOnly
@@ -686,7 +686,7 @@ function TokenDialog({ title, client, onClose }) {
         </div>
         {currentToken ? (
           <div>
-            <p className="mb-2 font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">Current token - retiring</p>
+            <p className="mb-2 font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">Current Token - Retiring</p>
             <textarea readOnly value={currentToken} className="min-h-24 w-full rounded-xl border border-[#d8b45b] bg-[#fff8e8] px-3 py-2 font-mono text-sm text-(--mws-charcoal) outline-none" />
           </div>
         ) : null}
@@ -752,7 +752,7 @@ function ClientActionsMenu({ client, onRotate, onEditScopes, onRevokeCredential,
               onRotate();
             }}
           >
-            Rotate credentials
+            Rotate Credentials
           </ActionsMenuItem>
           {!client.profile ? (
             <ActionsMenuItem
@@ -762,7 +762,7 @@ function ClientActionsMenu({ client, onRotate, onEditScopes, onRevokeCredential,
                 onEditScopes();
               }}
             >
-              Edit legacy scopes
+              Edit Legacy Scopes
             </ActionsMenuItem>
           ) : null}
           {retiring.map((credential) => (
@@ -773,7 +773,7 @@ function ClientActionsMenu({ client, onRotate, onEditScopes, onRevokeCredential,
                 onRevokeCredential(credential);
               }}
             >
-              Revoke old token
+              Revoke Old Token
             </ActionsMenuItem>
           ))}
           <div className="my-1 border-t border-(--mws-line)" />
@@ -785,7 +785,7 @@ function ClientActionsMenu({ client, onRotate, onEditScopes, onRevokeCredential,
               onRevoke();
             }}
           >
-            Revoke client
+            Revoke Client
           </ActionsMenuItem>
         </>
       )}
@@ -813,7 +813,7 @@ function normalizeValue(value) {
 
 function formatEnvironment(value) {
   if (!value) return "-";
-  if (value === "Server managed") return value;
+  if (value === "Server Managed") return value;
   return formatStatus(String(value).toUpperCase().replaceAll("-", "_"));
 }
 

@@ -55,10 +55,10 @@ export function InternalApiPanel({ endpoints, isLoading }) {
               paged.onPageSizeChange(paged.paging.size);
             }}
             options={[
-              { value: ALL_GROUPS, label: "All groups" },
+              { value: ALL_GROUPS, label: "All Groups" },
               ...groups.map((name) => ({ value: name, label: name })),
             ]}
-            placeholder="All groups"
+            placeholder="All Groups"
             searchableThreshold={99}
           />
         </div>
@@ -68,9 +68,9 @@ export function InternalApiPanel({ endpoints, isLoading }) {
         <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
             <tr>
-              <th className="px-4 py-3">What it does</th>
+              <th className="px-4 py-3">What It Does</th>
               <th className="px-4 py-3">Group</th>
-              <th className="px-4 py-3">Permission needed</th>
+              <th className="px-4 py-3">Permission Needed</th>
               <th className="px-4 py-3">Technical</th>
               <th className="px-4 py-3" />
             </tr>
@@ -120,7 +120,7 @@ export function InternalApiPanel({ endpoints, isLoading }) {
                         <button
                           type="button"
                           aria-label={`Copy path of ${endpoint.title || endpoint.path}`}
-                          title="Copy path"
+                          title="Copy Path"
                           onClick={() => copyPath(endpoint)}
                           className="shrink-0 cursor-pointer rounded-lg p-1 text-(--mws-muted) transition-colors hover:text-(--mws-burgundy)"
                         >

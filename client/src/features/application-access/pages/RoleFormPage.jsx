@@ -162,7 +162,7 @@ function RoleForm({ applicationId, role, roles }) {
             <div className="space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
               {isEdit ? null : (
                 <>
-                  <Field label="Role key" error={attempted && !key.trim() ? "Role key is required." : undefined}>
+                  <Field label="Role Key" error={attempted && !key.trim() ? "Role key is required." : undefined}>
                     <TextInput value={key} onChange={(event) => setKey(event.target.value)} />
                   </Field>
                 </>
@@ -171,11 +171,11 @@ function RoleForm({ applicationId, role, roles }) {
                 <TextInput value={label} maxLength={64} onChange={(event) => setLabel(event.target.value)} />
               </Field>
               <Field
-                label="Who it is for"
+                label="Who It Is For"
                 hint="Groups of students can only use roles that allow students."
                 error={attempted && !allowsEmployees && !allowsStudents ? "Pick employees, students or both." : undefined}
               >
-                <div className="flex flex-wrap gap-2" role="group" aria-label="Who it is for">
+                <div className="flex flex-wrap gap-2" role="group" aria-label="Who It Is For">
                   <ToggleChip checked={allowsEmployees} onChange={setAllowsEmployees}>
                     Employees
                   </ToggleChip>
