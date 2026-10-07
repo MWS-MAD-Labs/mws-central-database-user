@@ -48,8 +48,13 @@ describe("application permission catalog", () => {
     return { token, profileCode: profile.code };
   }
 
-  const sync = (token: string, application: string, permissions: { key: string; description?: string; requires?: string[] }[]) =>
-    TestRequest.put(`/api/internal/application-permissions/${application}`, { permissions }, undefined, {
+  const sync = (
+    token: string,
+    application: string,
+    permissions: { key: string; description?: string; requires?: string[] }[],
+    extra: Record<string, unknown> = {},
+  ) =>
+    TestRequest.put(`/api/internal/application-permissions/${application}`, { permissions, ...extra }, undefined, {
       Authorization: `Bearer ${token}`,
     });
 
@@ -226,6 +231,57 @@ describe("application permission catalog", () => {
       await sync(token, appId, manifest);
       const body = await (await TestRequest.get(`${PERMISSIONS}?application_id=${appId}`, accessToken)).json();
       expect(body.data.permissions.find((p: { key: string }) => p.key === "inv.manage").requires).toEqual(["inv.read"]);
+    });
+  });
+
+  describe("safe syncing", () => {
+    it("names the active roles that still carry what a sync drops", async () => {
+      const { token, profileCode } = await publisher("aff");
+      appId = profileCode;
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await sync(token, appId, [{ key: "a.read" }, { key: "a.write" }, { key: "a.old" }]);
+      await TestRequest.post(ROLES, { application_id: appId, key: "KEEPER", label: "Keeper", permissions: ["a.old"] }, accessToken);
+      const dropped = await sync(token, appId, [{ key: "a.read" }, { key: "a.write" }]);
+      expect((await dropped.json()).data).toMatchObject({
+        deprecated: ["a.old"],
+        affected_roles: [{ role: "KEEPER", permissions: ["a.old"] }],
+      });
+    });
+
+    it("refuses a list that drops most of what was published unless confirmed", async () => {
+      const { token, profileCode } = await publisher("half");
+      appId = profileCode;
+      await sync(token, appId, [{ key: "a.1" }, { key: "a.2" }, { key: "a.3" }, { key: "a.4" }]);
+      const refused = await sync(token, appId, [{ key: "a.1" }]);
+      expect(refused.status).toBe(409);
+      expect(await prismaClient.applicationPermission.count({ where: { application_id: appId, deprecated_at: null } })).toBe(4);
+      const confirmed = await sync(token, appId, [{ key: "a.1" }], { confirm_removals: true });
+      expect(confirmed.status).toBe(200);
+    });
+
+    it("takes turns when the same application is synced twice at once", async () => {
+      const { token, profileCode } = await publisher("race");
+      appId = profileCode;
+      const list = [{ key: "a.1" }, { key: "a.2" }, { key: "a.3" }];
+      const results = await Promise.all([sync(token, appId, list), sync(token, appId, list), sync(token, appId, list)]);
+      expect(results.map((response) => response.status)).toEqual([200, 200, 200]);
+      expect(await prismaClient.applicationPermission.count({ where: { application_id: appId } })).toBe(3);
+    });
+
+    it("lets a client read only the permissions of its own application", async () => {
+      const { token, profileCode } = await publisher("own2");
+      appId = profileCode;
+      await sync(token, appId, [{ key: "a.1", description: "One" }]);
+      const own = await TestRequest.get(`/api/internal/application-permissions/${appId}`, undefined, { Authorization: `Bearer ${token}` });
+      expect((await own.json()).data).toEqual([
+        { key: "a.1", description: "One", requires: [], source: "MANIFEST", deprecated: false },
+      ]);
+
+      const other = await publisher("other2");
+      const foreign = await TestRequest.get(`/api/internal/application-permissions/${appId}`, undefined, { Authorization: `Bearer ${other.token}` });
+      expect(foreign.status).toBe(403);
+      const foreignUsage = await TestRequest.get(`/api/internal/application-permissions/${appId}/usage`, undefined, { Authorization: `Bearer ${other.token}` });
+      expect(foreignUsage.status).toBe(403);
     });
   });
 });

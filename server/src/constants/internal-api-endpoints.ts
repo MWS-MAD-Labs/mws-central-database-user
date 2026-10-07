@@ -118,6 +118,14 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
+    path: "/api/internal/application-permissions/exima",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Registered application permissions",
+    group: "Application access",
+    purpose: "Lists the permissions registered for an application, to check them against its code.",
+  },
+  {
+    method: "GET",
     path: "/api/internal/application-permissions/exima/usage",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
     title: "Permissions roles carry",

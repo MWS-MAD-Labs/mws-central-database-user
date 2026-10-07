@@ -133,6 +133,17 @@ function assertManifestDependencies(permissions: { key: string; requires?: strin
   }
 }
 
+// Only the API client made for an application may publish or read its permissions.
+async function assertOwnsApplication(clientId: string, applicationId: string) {
+  const owner = await prismaClient.apiClient.findUnique({
+    where: { id: clientId },
+    select: { profile: { select: { code: true } } },
+  });
+  if (owner?.profile?.code !== applicationId) {
+    throw new ResponseError(403, `This API client may not use the permissions of ${applicationId}`);
+  }
+}
+
 export class ApplicationPermissionService {
   static async list(admin: AdminUser, request: { application_id?: string }): Promise<ApplicationPermissionList> {
     assertSuperAdmin(admin);
@@ -211,22 +222,22 @@ export class ApplicationPermissionService {
   // An application publishes what its code understands. The client has to be the one made for it.
   static async sync(
     client: Pick<ApiClientVariables, "clientId">,
-    request: { application_id: string; permissions: { key: string; description?: string; requires?: string[] }[] },
+    request: {
+      application_id: string;
+      permissions: { key: string; description?: string; requires?: string[] }[];
+      confirm_removals?: boolean;
+    },
     context: AuditRequestContext = {},
   ) {
     const input = Validation.validate(ApplicationPermissionValidation.SYNC, request);
     assertManifestDependencies(input.permissions);
-    const owner = await prismaClient.apiClient.findUnique({
-      where: { id: client.clientId },
-      select: { profile: { select: { code: true } } },
-    });
-    if (owner?.profile?.code !== input.application_id) {
-      throw new ResponseError(403, `This API client may not publish permissions for ${input.application_id}`);
-    }
+    await assertOwnsApplication(client.clientId, input.application_id);
 
     const now = new Date();
     const keys = input.permissions.map((row) => row.key);
     const result = await prismaClient.$transaction(async (tx) => {
+      // Two syncs of one application take turns instead of colliding on the same rows.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`application-permissions:${input.application_id}`}))`;
       const existing = await tx.applicationPermission.findMany({ where: { application_id: input.application_id } });
       const byKey = new Map(existing.map((row) => [row.key, row]));
       let added = 0;
@@ -258,6 +269,24 @@ export class ApplicationPermissionService {
         }
       }
       const dropped = existing.filter((row) => !keys.includes(row.key) && !row.deprecated_at);
+      const published = existing.filter((row) => row.source === ApplicationPermissionSource.MANIFEST && !row.deprecated_at);
+      if (!input.confirm_removals && published.length > 0 && dropped.filter((row) => row.source === ApplicationPermissionSource.MANIFEST).length > published.length / 2) {
+        throw new ResponseError(
+          409,
+          `This list drops ${dropped.length} of ${existing.length} permissions of ${input.application_id}. Send confirm_removals if that is intended.`,
+        );
+      }
+      const droppedKeys = dropped.map((row) => row.key);
+      const carrying = droppedKeys.length
+        ? await tx.applicationRole.findMany({
+            where: { application_id: input.application_id, is_active: true, permissions: { hasSome: droppedKeys } },
+            select: { key: true, permissions: true },
+          })
+        : [];
+      const affectedRoles = carrying.map((role) => ({
+        role: role.key,
+        permissions: role.permissions.filter((key) => droppedKeys.includes(key)),
+      }));
       if (dropped.length > 0) {
         await tx.applicationPermission.updateMany({
           where: { id: { in: dropped.map((row) => row.id) } },
@@ -271,23 +300,40 @@ export class ApplicationPermissionService {
           api_client_id: client.clientId,
           entity_type: "ApplicationPermission",
           entity_id: input.application_id,
-          new_values: { application_id: input.application_id, total: keys.length, added, deprecated: dropped.map((row) => row.key) },
+          new_values: { application_id: input.application_id, total: keys.length, added, deprecated: droppedKeys, affected_roles: affectedRoles },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
         tx,
       );
-      return { added, deprecated: dropped.map((row) => row.key) };
+      return { added, deprecated: droppedKeys, affected_roles: affectedRoles };
     });
     return { application_id: input.application_id, total: keys.length, ...result };
   }
 
   // What active roles carry, so the application can compare it with its code.
-  static async usage(applicationId: string): Promise<string[]> {
+  static async usage(client: Pick<ApiClientVariables, "clientId">, applicationId: string): Promise<string[]> {
+    await assertOwnsApplication(client.clientId, applicationId);
     const roles = await prismaClient.applicationRole.findMany({
       where: { application_id: applicationId, is_active: true },
       select: { permissions: true },
     });
     return [...new Set(roles.flatMap((role) => role.permissions))].sort();
+  }
+
+  // What the application has registered, for its own check against its code.
+  static async registered(client: Pick<ApiClientVariables, "clientId">, applicationId: string) {
+    await assertOwnsApplication(client.clientId, applicationId);
+    const rows = await prismaClient.applicationPermission.findMany({
+      where: { application_id: applicationId },
+      orderBy: { key: "asc" },
+    });
+    return rows.map((row) => ({
+      key: row.key,
+      description: row.description,
+      requires: row.requires,
+      source: row.source,
+      deprecated: Boolean(row.deprecated_at),
+    }));
   }
 }

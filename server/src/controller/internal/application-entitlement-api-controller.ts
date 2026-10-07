@@ -33,10 +33,17 @@ export class ApplicationEntitlementApiController {
   }
 
   static async syncPermissions(c: Context<{ Variables: ApiClientVariables }>) {
-    const body = (await c.req.json()) as { permissions?: { key: string; description?: string }[] };
+    const body = (await c.req.json()) as {
+      permissions?: { key: string; description?: string; requires?: string[] }[];
+      confirm_removals?: boolean;
+    };
     const response = await ApplicationPermissionService.sync(
       { clientId: c.var.clientId },
-      { application_id: c.req.param("applicationId") ?? "", permissions: body.permissions ?? [] },
+      {
+        application_id: c.req.param("applicationId") ?? "",
+        permissions: body.permissions ?? [],
+        confirm_removals: body.confirm_removals,
+      },
       getAuditRequestContext(c),
     );
     return c.json({ success: true, data: response });
@@ -45,7 +52,14 @@ export class ApplicationEntitlementApiController {
   static async permissionUsage(c: Context<{ Variables: ApiClientVariables }>) {
     return c.json({
       success: true,
-      data: await ApplicationPermissionService.usage(c.req.param("applicationId") ?? ""),
+      data: await ApplicationPermissionService.usage({ clientId: c.var.clientId }, c.req.param("applicationId") ?? ""),
+    });
+  }
+
+  static async registeredPermissions(c: Context<{ Variables: ApiClientVariables }>) {
+    return c.json({
+      success: true,
+      data: await ApplicationPermissionService.registered({ clientId: c.var.clientId }, c.req.param("applicationId") ?? ""),
     });
   }
 }

@@ -259,6 +259,8 @@ export class ApplicationPermissionValidation {
 
   static readonly SYNC = z.object({
     application_id: applicationId,
+    // Needed when this send would drop more than half of what the application published before.
+    confirm_removals: z.boolean().optional(),
     permissions: z
       .array(
         z.object({

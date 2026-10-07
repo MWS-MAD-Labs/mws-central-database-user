@@ -32,3 +32,8 @@ applicationPermissionApiRouter.get(
   requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
   (c) => ApplicationEntitlementApiController.permissionUsage(c),
 );
+applicationPermissionApiRouter.get(
+  "/:applicationId",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.registeredPermissions(c),
+);
