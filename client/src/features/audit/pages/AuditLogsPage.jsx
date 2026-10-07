@@ -1,123 +1,145 @@
-import { useQuery } from '@tanstack/react-query'
-import { Eye } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { PageHeader } from '../../../components/layout/PageHeader.jsx'
-import { Button } from '../../../components/ui/Button.jsx'
-import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
-import { DateField, DebouncedSearchInput, FilterSelect } from '../../../components/ui/FormControls.jsx'
-import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
-import { SortableHeader } from '../../../components/ui/SortableHeader.jsx'
-import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
-import { LiveIndicator } from '../../../components/ui/LiveIndicator.jsx'
-import { FilterResetButton } from '../../../components/ui/FilterResetButton.jsx'
-import { formatDateTime, formatDiffValue, formatStatus } from '../../../lib/format.js'
-import { auditActions, auditLogsApi, auditSources } from '../api/auditLogsApi.js'
+import { useQuery } from "@tanstack/react-query";
+import { Eye } from "lucide-react";
+import { useMemo, useState } from "react";
+import { PageHeader } from "../../../components/layout/PageHeader.jsx";
+import { Button } from "../../../components/ui/Button.jsx";
+import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
+import {
+  DateField,
+  DebouncedSearchInput,
+  FilterSelect,
+} from "../../../components/ui/FormControls.jsx";
+import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
+import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
+import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { LiveIndicator } from "../../../components/ui/LiveIndicator.jsx";
+import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
+import {
+  formatDateTime,
+  formatDiffValue,
+  formatStatus,
+} from "../../../lib/format.js";
+import {
+  auditActions,
+  auditLogsApi,
+  auditSources,
+} from "../api/auditLogsApi.js";
 
 export function AuditLogsPage() {
-  const [selectedLog, setSelectedLog] = useState(null)
-  const [dateRangePreset, setDateRangePreset] = useState('this_week')
+  const [selectedLog, setSelectedLog] = useState(null);
+  const [dateRangePreset, setDateRangePreset] = useState("this_week");
   const [params, setParams] = useState({
     page: 1,
     size: 10,
-    search: '',
-    action: '',
-    source: '',
-    entity_type: '',
-    ...computeDateRange('this_week'),
-    sort_by: 'created_at',
-    sort_order: 'desc',
-  })
+    search: "",
+    action: "",
+    source: "",
+    entity_type: "",
+    ...computeDateRange("this_week"),
+    sort_by: "created_at",
+    sort_order: "desc",
+  });
 
   const queryParams = useMemo(
     () => ({
       ...params,
-      date_from: params.date_from ? `${params.date_from}T00:00:00.000` : undefined,
+      date_from: params.date_from
+        ? `${params.date_from}T00:00:00.000`
+        : undefined,
       date_to: params.date_to ? `${params.date_to}T23:59:59.999` : undefined,
     }),
     [params],
-  )
+  );
   const logsQuery = useQuery({
-    queryKey: ['audit-logs', queryParams],
+    queryKey: ["audit-logs", queryParams],
     queryFn: () => auditLogsApi.list(queryParams),
-  })
+  });
   const paging = logsQuery.data?.paging || {
     current_page: params.page,
     total_page: 1,
     total_item: 0,
     size: params.size,
-  }
+  };
 
   const displayRows = useMemo(() => {
-    const rows = logsQuery.data?.data || []
-    const PAIR_WINDOW_MS = 5000
-    const consumed = new Set()
-    const result = []
+    const rows = logsQuery.data?.data || [];
+    const PAIR_WINDOW_MS = 5000;
+    const consumed = new Set();
+    const result = [];
 
     for (let i = 0; i < rows.length; i++) {
-      if (consumed.has(i)) continue
-      const row = rows[i]
+      if (consumed.has(i)) continue;
+      const row = rows[i];
       const isLookupRow =
-        row.action === 'API_ACCESS' &&
-        (row.entity_type === 'Student' || row.entity_type === 'Employee') &&
+        row.action === "API_ACCESS" &&
+        (row.entity_type === "Student" || row.entity_type === "Employee") &&
         row.api_client?.id &&
-        row.new_values?.requested_email
+        row.new_values?.requested_email;
 
       const pairIndex = isLookupRow
         ? rows.findIndex((candidate, j) => {
-            if (j === i || consumed.has(j)) return false
+            if (j === i || consumed.has(j)) return false;
             return (
-              candidate.action === 'API_ACCESS' &&
+              candidate.action === "API_ACCESS" &&
               candidate.api_client?.id === row.api_client.id &&
-              candidate.new_values?.requested_email === row.new_values.requested_email &&
+              candidate.new_values?.requested_email ===
+                row.new_values.requested_email &&
               candidate.entity_type &&
               candidate.entity_type !== row.entity_type &&
-              Math.abs(new Date(candidate.created_at).getTime() - new Date(row.created_at).getTime()) <= PAIR_WINDOW_MS
-            )
+              Math.abs(
+                new Date(candidate.created_at).getTime() -
+                  new Date(row.created_at).getTime(),
+              ) <= PAIR_WINDOW_MS
+            );
           })
-        : -1
+        : -1;
 
       if (pairIndex !== -1) {
-        consumed.add(i)
-        consumed.add(pairIndex)
-        const pair = rows[pairIndex]
-        const primary = row.new_values?.found ? row : pair.new_values?.found ? pair : row
-        const secondary = primary === row ? pair : row
-        result.push({ ...primary, pairedWith: secondary })
-        continue
+        consumed.add(i);
+        consumed.add(pairIndex);
+        const pair = rows[pairIndex];
+        const primary = row.new_values?.found
+          ? row
+          : pair.new_values?.found
+            ? pair
+            : row;
+        const secondary = primary === row ? pair : row;
+        result.push({ ...primary, pairedWith: secondary });
+        continue;
       }
 
-      result.push(row)
+      result.push(row);
     }
 
-    return result
-  }, [logsQuery.data])
+    return result;
+  }, [logsQuery.data]);
 
   function updateParams(patch) {
-    setParams((current) => ({ ...current, ...patch }))
+    setParams((current) => ({ ...current, ...patch }));
   }
 
   function resetPageAndUpdate(patch) {
-    updateParams({ ...patch, page: 1 })
+    updateParams({ ...patch, page: 1 });
   }
   const hasActiveFilters = Boolean(
     params.search ||
-      params.action ||
-      params.source ||
-      params.entity_type ||
-      dateRangePreset !== 'this_week',
-  )
+    params.action ||
+    params.source ||
+    params.entity_type ||
+    dateRangePreset !== "this_week",
+  );
 
   function resetFilters() {
-    setDateRangePreset('this_week')
+    setDateRangePreset("this_week");
     setParams((current) => ({
       ...current,
       page: 1,
-      search: '',
-      action: '',
-      source: '',
-      entity_type: '',
-      ...computeDateRange('this_week'),
-    }))
+      search: "",
+      action: "",
+      source: "",
+      entity_type: "",
+      ...computeDateRange("this_week"),
+    }));
   }
 
   return (
@@ -137,7 +159,10 @@ export function AuditLogsPage() {
               onChange={(search) => resetPageAndUpdate({ search })}
             />
             <LiveIndicator isSyncing={logsQuery.isFetching} />
-            <FilterResetButton visible={hasActiveFilters} onReset={resetFilters} />
+            <FilterResetButton
+              visible={hasActiveFilters}
+              onReset={resetFilters}
+            />
           </div>
           <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:flex xl:flex-wrap xl:items-end xl:justify-end xl:gap-2">
             <FilterSelect
@@ -145,7 +170,7 @@ export function AuditLogsPage() {
               value={params.action}
               onChange={(value) => resetPageAndUpdate({ action: value })}
               options={[
-                { value: '', label: 'All Actions' },
+                { value: "", label: "All Actions" },
                 ...enumOptions(auditActions),
               ]}
             />
@@ -154,7 +179,7 @@ export function AuditLogsPage() {
               value={params.source}
               onChange={(value) => resetPageAndUpdate({ source: value })}
               options={[
-                { value: '', label: 'All Sources' },
+                { value: "", label: "All Sources" },
                 ...enumOptions(auditSources),
               ]}
             />
@@ -163,13 +188,13 @@ export function AuditLogsPage() {
               value={params.entity_type}
               onChange={(value) => resetPageAndUpdate({ entity_type: value })}
               options={[
-                { value: '', label: 'All Entities' },
-                { value: 'Student', label: 'Student' },
-                { value: 'Employee', label: 'Employee' },
-                { value: 'ConsentRecord', label: 'Consent' },
-                { value: 'HealthRecord', label: 'Health Record' },
-                { value: 'HealthNote', label: 'Health Note' },
-                { value: 'ApiClient', label: 'API Client' },
+                { value: "", label: "All Entities" },
+                { value: "Student", label: "Student" },
+                { value: "Employee", label: "Employee" },
+                { value: "ConsentRecord", label: "Consent" },
+                { value: "HealthRecord", label: "Health Record" },
+                { value: "HealthNote", label: "Health Note" },
+                { value: "ApiClient", label: "API Client" },
               ]}
             />
           </div>
@@ -180,12 +205,16 @@ export function AuditLogsPage() {
             label="Date Range"
             value={dateRangePreset}
             onChange={(value) => {
-              setDateRangePreset(value)
-              resetPageAndUpdate(value === 'custom' ? defaultDateRange() : computeDateRange(value))
+              setDateRangePreset(value);
+              resetPageAndUpdate(
+                value === "custom"
+                  ? defaultDateRange()
+                  : computeDateRange(value),
+              );
             }}
             options={DATE_RANGE_OPTIONS}
           />
-          {dateRangePreset === 'custom' ? (
+          {dateRangePreset === "custom" ? (
             <>
               <div className="flex min-w-[9rem] flex-col gap-1.5">
                 <span className="block font-display text-xs font-bold text-(--mws-muted)">
@@ -193,9 +222,15 @@ export function AuditLogsPage() {
                 </span>
                 <DateField
                   value={params.date_from}
-                  min={params.date_to ? shiftDate(params.date_to, -MAX_DATE_RANGE_DAYS) : undefined}
+                  min={
+                    params.date_to
+                      ? shiftDate(params.date_to, -MAX_DATE_RANGE_DAYS)
+                      : undefined
+                  }
                   max={params.date_to || todayDateOnly()}
-                  onChange={(event) => resetPageAndUpdate({ date_from: event.target.value })}
+                  onChange={(event) =>
+                    resetPageAndUpdate({ date_from: event.target.value })
+                  }
                 />
               </div>
               <div className="flex min-w-[9rem] flex-col gap-1.5">
@@ -207,10 +242,15 @@ export function AuditLogsPage() {
                   min={params.date_from || undefined}
                   max={
                     params.date_from
-                      ? minDateOnly(shiftDate(params.date_from, MAX_DATE_RANGE_DAYS), todayDateOnly())
+                      ? minDateOnly(
+                          shiftDate(params.date_from, MAX_DATE_RANGE_DAYS),
+                          todayDateOnly(),
+                        )
                       : todayDateOnly()
                   }
-                  onChange={(event) => resetPageAndUpdate({ date_to: event.target.value })}
+                  onChange={(event) =>
+                    resetPageAndUpdate({ date_to: event.target.value })
+                  }
                 />
               </div>
               <p className="w-full text-xs text-(--mws-muted)">
@@ -224,9 +264,24 @@ export function AuditLogsPage() {
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
               <tr>
-                <HeaderCell label="Time" column="created_at" params={params} onSort={resetPageAndUpdate} />
-                <HeaderCell label="Action" column="action" params={params} onSort={resetPageAndUpdate} />
-                <HeaderCell label="Source" column="source" params={params} onSort={resetPageAndUpdate} />
+                <HeaderCell
+                  label="Time"
+                  column="created_at"
+                  params={params}
+                  onSort={resetPageAndUpdate}
+                />
+                <HeaderCell
+                  label="Action"
+                  column="action"
+                  params={params}
+                  onSort={resetPageAndUpdate}
+                />
+                <HeaderCell
+                  label="Source"
+                  column="source"
+                  params={params}
+                  onSort={resetPageAndUpdate}
+                />
                 <th className="px-4 py-3">Actor</th>
                 <th className="px-4 py-3">Entity</th>
                 <th className="px-4 py-3" />
@@ -235,13 +290,19 @@ export function AuditLogsPage() {
             <tbody>
               {logsQuery.isLoading ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
+                  <td
+                    className="px-4 py-10 text-center text-(--mws-muted)"
+                    colSpan={6}
+                  >
                     Loading audit logs...
                   </td>
                 </tr>
               ) : displayRows.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
+                  <td
+                    className="px-4 py-10 text-center text-(--mws-muted)"
+                    colSpan={6}
+                  >
                     No audit logs found.
                   </td>
                 </tr>
@@ -253,32 +314,37 @@ export function AuditLogsPage() {
                     className="cursor-pointer border-t border-(--mws-line) bg-white hover:bg-(--mws-soft) focus:bg-(--mws-soft) focus:outline-none"
                     onClick={() => setSelectedLog(log)}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        setSelectedLog(log)
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedLog(log);
                       }
                     }}
                   >
-                    <td className="px-4 py-3 whitespace-nowrap">{formatDateTime(log.created_at)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {formatDateTime(log.created_at)}
+                    </td>
                     <td className="px-4 py-3">
-                      <StatusBadge tone={actionTone(log.action)}>{formatStatus(log.action)}</StatusBadge>
+                      <StatusBadge tone={actionTone(log.action)}>
+                        {formatStatus(log.action)}
+                      </StatusBadge>
                     </td>
                     <td className="px-4 py-3">{formatStatus(log.source)}</td>
                     <td className="px-4 py-3">
                       <p className="font-semibold text-(--mws-charcoal)">
-                        {log.admin?.email || log.api_client?.name || 'System'}
+                        {log.admin?.email || log.api_client?.name || "System"}
                       </p>
                       <p className="text-xs text-(--mws-muted)">
                         {log.admin?.role
                           ? formatStatus(log.admin.role)
-                          : log.api_client?.token_prefix || '-'}
+                          : log.api_client?.token_prefix || "-"}
                       </p>
                     </td>
                     <td className="px-4 py-3">
                       <p className="font-semibold text-(--mws-charcoal)">
-                        {log.entity_label || log.entity_type || '-'}
+                        {log.entity_label || log.entity_type || "-"}
                       </p>
-                      {log.entity_type === 'ImportJob' || (log.new_values?.job_id && log.new_values?.entity) ? (
+                      {log.entity_type === "ImportJob" ||
+                      (log.new_values?.job_id && log.new_values?.entity) ? (
                         <p
                           className="max-w-[220px] truncate text-xs text-(--mws-muted)"
                           title={log.new_values?.file_name}
@@ -292,19 +358,25 @@ export function AuditLogsPage() {
                                 : null,
                           ]
                             .filter(Boolean)
-                            .join(' · ') || '-'}
+                            .join(" · ") || "-"}
                         </p>
                       ) : (
-                        <p className="max-w-[220px] truncate text-xs text-(--mws-muted)" title={log.entity_id}>
+                        <p
+                          className="max-w-[220px] truncate text-xs text-(--mws-muted)"
+                          title={log.entity_id}
+                        >
                           {log.entity_label ? log.entity_type : null}
-                          {log.entity_label && log.entity_type ? ' · ' : null}
-                          {log.entity_id || '-'}
+                          {log.entity_label && log.entity_type ? " · " : null}
+                          {log.entity_id || "-"}
                         </p>
                       )}
                       {log.pairedWith ? (
                         <p className="mt-0.5 text-xs text-(--mws-muted)">
                           Also checked: {log.pairedWith.entity_type} (
-                          {log.pairedWith.new_values?.found ? 'found' : 'not found'})
+                          {log.pairedWith.new_values?.found
+                            ? "found"
+                            : "not found"}
+                          )
                         </p>
                       ) : null}
                     </td>
@@ -314,8 +386,8 @@ export function AuditLogsPage() {
                         variant="ghost"
                         size="sm"
                         onClick={(event) => {
-                          event.stopPropagation()
-                          setSelectedLog(log)
+                          event.stopPropagation();
+                          setSelectedLog(log);
                         }}
                       >
                         <Eye size={15} />
@@ -346,7 +418,7 @@ export function AuditLogsPage() {
         />
       ) : null}
     </div>
-  )
+  );
 }
 
 function HeaderCell({ label, column, params, onSort }) {
@@ -362,91 +434,97 @@ function HeaderCell({ label, column, params, onSort }) {
         }
       />
     </th>
-  )
+  );
 }
 
 function toDateOnly(date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
-const MAX_DATE_RANGE_DAYS = 30
+const MAX_DATE_RANGE_DAYS = 30;
 
 function shiftDate(dateOnlyString, days) {
-  const date = new Date(`${dateOnlyString}T00:00:00.000`)
-  date.setDate(date.getDate() + days)
-  return toDateOnly(date)
+  const date = new Date(`${dateOnlyString}T00:00:00.000`);
+  date.setDate(date.getDate() + days);
+  return toDateOnly(date);
 }
 
 function todayDateOnly() {
-  return toDateOnly(new Date())
+  return toDateOnly(new Date());
 }
 
 function minDateOnly(a, b) {
-  return a < b ? a : b
+  return a < b ? a : b;
 }
 
 function startOfWeek(date) {
-  const result = new Date(date)
-  const day = result.getDay()
-  const diff = (day === 0 ? -6 : 1) - day
-  result.setDate(result.getDate() + diff)
-  return result
+  const result = new Date(date);
+  const day = result.getDay();
+  const diff = (day === 0 ? -6 : 1) - day;
+  result.setDate(result.getDate() + diff);
+  return result;
 }
 
 const DATE_RANGE_OPTIONS = [
-  { value: 'today', label: 'Today' },
-  { value: 'this_week', label: 'This Week' },
-  { value: 'this_month', label: 'This Month' },
-  { value: 'last_month', label: 'Last Month' },
-  { value: 'custom', label: 'Custom Range' },
-]
+  { value: "today", label: "Today" },
+  { value: "this_week", label: "This Week" },
+  { value: "this_month", label: "This Month" },
+  { value: "last_month", label: "Last Month" },
+  { value: "custom", label: "Custom Range" },
+];
 
 function defaultDateRange() {
-  const now = new Date()
-  const start = new Date(now)
-  start.setDate(start.getDate() - MAX_DATE_RANGE_DAYS)
-  return { date_from: toDateOnly(start), date_to: toDateOnly(now) }
+  const now = new Date();
+  const start = new Date(now);
+  start.setDate(start.getDate() - MAX_DATE_RANGE_DAYS);
+  return { date_from: toDateOnly(start), date_to: toDateOnly(now) };
 }
 
 function computeDateRange(preset) {
-  const now = new Date()
-  const today = toDateOnly(now)
+  const now = new Date();
+  const today = toDateOnly(now);
   switch (preset) {
-    case 'today':
-      return { date_from: today, date_to: today }
-    case 'this_week': {
-      const start = startOfWeek(now)
-      const end = new Date(start)
-      end.setDate(end.getDate() + 6)
-      return { date_from: toDateOnly(start), date_to: minDateOnly(toDateOnly(end), today) }
+    case "today":
+      return { date_from: today, date_to: today };
+    case "this_week": {
+      const start = startOfWeek(now);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 6);
+      return {
+        date_from: toDateOnly(start),
+        date_to: minDateOnly(toDateOnly(end), today),
+      };
     }
-    case 'this_month': {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1)
-      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-      return { date_from: toDateOnly(start), date_to: minDateOnly(toDateOnly(end), today) }
+    case "this_month": {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return {
+        date_from: toDateOnly(start),
+        date_to: minDateOnly(toDateOnly(end), today),
+      };
     }
-    case 'last_month': {
-      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-      const end = new Date(now.getFullYear(), now.getMonth(), 0)
-      return { date_from: toDateOnly(start), date_to: toDateOnly(end) }
+    case "last_month": {
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), 0);
+      return { date_from: toDateOnly(start), date_to: toDateOnly(end) };
     }
     default:
-      return { date_from: '', date_to: '' }
+      return { date_from: "", date_to: "" };
   }
 }
 
 function enumOptions(values) {
-  return values.map((value) => ({ value, label: formatStatus(value) }))
+  return values.map((value) => ({ value, label: formatStatus(value) }));
 }
 
 function actionTone(action) {
-  if (action.includes('DELETE') || action.includes('REVOKE')) return 'red'
-  if (action.includes('CREATE') || action.includes('LOGIN')) return 'green'
-  if (action.includes('ACCESS')) return 'amber'
-  return 'neutral'
+  if (action.includes("DELETE") || action.includes("REVOKE")) return "red";
+  if (action.includes("CREATE") || action.includes("LOGIN")) return "green";
+  if (action.includes("ACCESS")) return "amber";
+  return "neutral";
 }
 
 function AuditLogDetailsDialog({ log, onClose }) {
@@ -468,33 +546,47 @@ function AuditLogDetailsDialog({ log, onClose }) {
           <DetailItem label="Time" value={formatDateTime(log.created_at)} />
           <DetailItem label="Action" value={formatStatus(log.action)} />
           <DetailItem label="Source" value={formatStatus(log.source)} />
-          <DetailItem label="Actor" value={log.admin?.email || log.api_client?.name || 'System'} />
+          <DetailItem
+            label="Actor"
+            value={log.admin?.email || log.api_client?.name || "System"}
+          />
           <DetailItem
             label="Actor Role / Token"
             value={
               log.admin?.role
                 ? formatStatus(log.admin.role)
-                : log.api_client?.token_prefix || '-'
+                : log.api_client?.token_prefix || "-"
             }
           />
-          <DetailItem label="Entity" value={log.entity_label || log.entity_type || '-'} />
-          <DetailItem label="Entity Type / ID" value={[log.entity_type, log.entity_id].filter(Boolean).join(' · ') || '-'} />
-          <DetailItem label="IP Address" value={log.ip_address || '-'} />
+          <DetailItem
+            label="Entity"
+            value={log.entity_label || log.entity_type || "-"}
+          />
+          <DetailItem
+            label="Entity Type / ID"
+            value={
+              [log.entity_type, log.entity_id].filter(Boolean).join(" · ") ||
+              "-"
+            }
+          />
+          <DetailItem label="IP Address" value={log.ip_address || "-"} />
         </div>
 
         {log.pairedWith ? (
           <p className="rounded-xl bg-(--mws-soft) p-3 text-xs leading-5 text-(--mws-muted)">
-            This SSO lookup also checked <strong>{log.pairedWith.entity_type}</strong> for the
-            same email ({log.pairedWith.new_values?.found ? 'found' : 'not found'}) - Central
-            checks Student and Employee separately to resolve who signed in.
+            This SSO lookup also checked{" "}
+            <strong>{log.pairedWith.entity_type}</strong> for the same email (
+            {log.pairedWith.new_values?.found ? "found" : "not found"}) -
+            Central checks Student and Employee separately to resolve who signed
+            in.
           </p>
         ) : null}
 
         <div>
           <h3 className="mb-2 font-display text-sm font-bold text-(--mws-charcoal)">
-            {log.action === 'EXPORT_DATA' ? 'Export Summary' : 'Changes'}
+            {log.action === "EXPORT_DATA" ? "Export Summary" : "Changes"}
           </h3>
-          {log.action === 'EXPORT_DATA' ? (
+          {log.action === "EXPORT_DATA" ? (
             <ExportAuditSummary values={log.new_values} />
           ) : (
             <AuditDiffTable
@@ -510,12 +602,12 @@ function AuditLogDetailsDialog({ log, onClose }) {
             User Agent
           </h3>
           <p className="rounded-xl bg-(--mws-soft) p-3 text-xs leading-5 text-(--mws-muted)">
-            {log.user_agent || '-'}
+            {log.user_agent || "-"}
           </p>
         </div>
       </div>
     </CrudDialog>
-  )
+  );
 }
 
 function DetailItem({ label, value }) {
@@ -526,7 +618,7 @@ function DetailItem({ label, value }) {
         {value}
       </p>
     </div>
-  )
+  );
 }
 
 function ExportAuditSummary({ values }) {
@@ -535,33 +627,41 @@ function ExportAuditSummary({ values }) {
       <p className="rounded-xl bg-(--mws-soft) p-3 text-sm text-(--mws-muted)">
         No export details recorded.
       </p>
-    )
+    );
   }
 
   const columns = Array.isArray(values.included_columns)
     ? values.included_columns
-    : []
-  const filters = values.filters && typeof values.filters === 'object'
-    ? values.filters
-    : {}
-  const filterEntries = Object.entries(filters)
+    : [];
+  const filters =
+    values.filters && typeof values.filters === "object" ? values.filters : {};
+  const filterEntries = Object.entries(filters);
 
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <DetailItem label="Data" value={exportEntityLabel(values.entity)} />
-        <DetailItem label="File Format" value={String(values.format || '-').toUpperCase()} />
-        <DetailItem label="Records Exported" value={values.row_count ?? '-'} />
+        <DetailItem
+          label="File Format"
+          value={String(values.format || "-").toUpperCase()}
+        />
+        <DetailItem label="Records Exported" value={values.row_count ?? "-"} />
         <DetailItem
           label="Data Sensitivity"
-          value={values.included_sensitive_data ? 'Sensitive data included' : 'Standard data only'}
+          value={
+            values.included_sensitive_data
+              ? "Sensitive data included"
+              : "Standard data only"
+          }
         />
       </div>
 
       <div className="rounded-xl border border-(--mws-line) bg-white p-3">
         <p className="text-xs font-semibold text-(--mws-muted)">Export mode</p>
         <p className="mt-1 text-sm font-semibold text-(--mws-charcoal)">
-          {values.export_mode === 'sensitive' ? 'Sensitive export' : 'Standard export'}
+          {values.export_mode === "sensitive"
+            ? "Sensitive export"
+            : "Standard export"}
         </p>
         <p className="mt-1 text-xs leading-5 text-(--mws-muted)">
           This activity was recorded in Audit Logs.
@@ -582,18 +682,26 @@ function ExportAuditSummary({ values }) {
             ))}
           </div>
         ) : (
-          <p className="mt-1 text-sm text-(--mws-muted)">No filters. All available records were included.</p>
+          <p className="mt-1 text-sm text-(--mws-muted)">
+            No filters. All available records were included.
+          </p>
         )}
       </div>
 
       <div className="rounded-xl border border-(--mws-line) bg-white p-3">
-        <p className="text-xs font-semibold text-(--mws-muted)">Included fields</p>
+        <p className="text-xs font-semibold text-(--mws-muted)">
+          Included fields
+        </p>
         <p className="mt-1 text-sm text-(--mws-charcoal)">
-          {columns.length} field{columns.length === 1 ? '' : 's'} included in the file.
+          {columns.length} field{columns.length === 1 ? "" : "s"} included in
+          the file.
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {columns.map((column) => (
-            <span key={column} className="rounded-md border border-(--mws-line) px-2 py-1 text-xs text-(--mws-muted)">
+            <span
+              key={column}
+              className="rounded-md border border-(--mws-line) px-2 py-1 text-xs text-(--mws-muted)"
+            >
               {column}
             </span>
           ))}
@@ -609,41 +717,42 @@ function ExportAuditSummary({ values }) {
         </pre>
       </details>
     </div>
-  )
+  );
 }
 
 function exportEntityLabel(entity) {
-  if (entity === 'Employee') return 'Employee records'
-  if (entity === 'Student') return 'Student records'
-  return formatStatus(entity)
+  if (entity === "Employee") return "Employee records";
+  if (entity === "Student") return "Student records";
+  return formatStatus(entity);
 }
 
 function exportFilterLabel(key) {
   const labels = {
-    status: 'Status',
-    sort_by: 'Sorted by',
-    sort_order: 'Order',
-    is_deleted: 'Records',
-    unit_id: 'Unit',
-    building_id: 'Building',
-    current_grade_id: 'Grade',
-    current_class_id: 'Class',
-    search: 'Search',
-  }
-  return labels[key] || formatStatus(key)
+    status: "Status",
+    sort_by: "Sorted by",
+    sort_order: "Order",
+    is_deleted: "Records",
+    unit_id: "Unit",
+    building_id: "Building",
+    current_grade_id: "Grade",
+    current_class_id: "Class",
+    search: "Search",
+  };
+  return labels[key] || formatStatus(key);
 }
 
 function exportFilterValue(key, value) {
-  if (key === 'is_deleted') return value ? 'Trash bin' : 'Active records'
-  if (key === 'sort_by') return formatStatus(String(value))
-  if (key === 'sort_order') return value === 'desc' ? 'Newest first' : 'Oldest first'
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
-  return formatStatus(String(value))
+  if (key === "is_deleted") return value ? "Trash Bin" : "Active records";
+  if (key === "sort_by") return formatStatus(String(value));
+  if (key === "sort_order")
+    return value === "desc" ? "Newest first" : "Oldest first";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return formatStatus(String(value));
 }
 
 function formatAuditValue(key, value, resolvedLabels) {
-  if (key === 'phase' && typeof value === 'string') return formatStatus(value)
-  return formatDiffValue(value, resolvedLabels)
+  if (key === "phase" && typeof value === "string") return formatStatus(value);
+  return formatDiffValue(value, resolvedLabels);
 }
 
 export function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
@@ -652,26 +761,30 @@ export function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
       <p className="rounded-xl bg-(--mws-soft) p-3 text-sm text-(--mws-muted)">
         No field values recorded for this action.
       </p>
-    )
+    );
   }
 
-  const isDiff = Boolean(oldValues) && Boolean(newValues)
+  const isDiff = Boolean(oldValues) && Boolean(newValues);
   const keys = Array.from(
     new Set([
       ...(oldValues ? Object.keys(oldValues) : []),
       ...(newValues ? Object.keys(newValues) : []),
     ]),
-  ).sort()
+  ).sort();
 
   const changedKeys = isDiff
-    ? keys.filter((key) => JSON.stringify(oldValues[key]) !== JSON.stringify(newValues[key]))
-    : keys
+    ? keys.filter(
+        (key) =>
+          JSON.stringify(oldValues[key]) !== JSON.stringify(newValues[key]),
+      )
+    : keys;
 
   return (
     <div>
       {isDiff ? (
         <p className="mb-2 text-xs text-(--mws-muted)">
-          {changedKeys.length} of {keys.length} field{keys.length === 1 ? '' : 's'} changed
+          {changedKeys.length} of {keys.length} field
+          {keys.length === 1 ? "" : "s"} changed
         </p>
       ) : null}
       <div className="max-h-96 overflow-auto rounded-xl border border-(--mws-line)">
@@ -685,11 +798,11 @@ export function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
           </thead>
           <tbody>
             {keys.map((key) => {
-              const changed = isDiff && changedKeys.includes(key)
+              const changed = isDiff && changedKeys.includes(key);
               return (
                 <tr
                   key={key}
-                  className={`border-t border-(--mws-line) ${changed ? 'bg-[#fff4d8]' : 'bg-white'}`}
+                  className={`border-t border-(--mws-line) ${changed ? "bg-[#fff4d8]" : "bg-white"}`}
                 >
                   <td className="px-3 py-2 align-top font-medium text-(--mws-charcoal)">
                     {formatStatus(key)}
@@ -697,25 +810,33 @@ export function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
                   {oldValues ? (
                     <td
                       className="px-3 py-2 align-top text-(--mws-muted)"
-                      title={typeof oldValues[key] === 'string' ? oldValues[key] : undefined}
+                      title={
+                        typeof oldValues[key] === "string"
+                          ? oldValues[key]
+                          : undefined
+                      }
                     >
                       {formatAuditValue(key, oldValues[key], resolvedLabels)}
                     </td>
                   ) : null}
                   {newValues ? (
                     <td
-                      className={`px-3 py-2 align-top ${changed ? 'font-semibold text-(--mws-charcoal)' : 'text-(--mws-muted)'}`}
-                      title={typeof newValues[key] === 'string' ? newValues[key] : undefined}
+                      className={`px-3 py-2 align-top ${changed ? "font-semibold text-(--mws-charcoal)" : "text-(--mws-muted)"}`}
+                      title={
+                        typeof newValues[key] === "string"
+                          ? newValues[key]
+                          : undefined
+                      }
                     >
                       {formatAuditValue(key, newValues[key], resolvedLabels)}
                     </td>
                   ) : null}
                 </tr>
-              )
+              );
             })}
           </tbody>
         </table>
       </div>
     </div>
-  )
+  );
 }

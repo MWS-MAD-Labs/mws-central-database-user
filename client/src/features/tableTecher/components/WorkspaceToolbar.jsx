@@ -8,6 +8,7 @@ import { formatStatus } from "../../../lib/format.js";
 
 export function WorkspaceToolbar({
   context,
+  defaultAcademicYearId,
   onContextChange,
   onReset,
   options,
@@ -16,14 +17,17 @@ export function WorkspaceToolbar({
   onToggleFullscreen,
 }) {
   const isFilterActive = Boolean(
-    context.academicYearId || context.gradeId || context.classId || context.search,
+    (context.academicYearId && context.academicYearId !== defaultAcademicYearId) ||
+      context.gradeId ||
+      context.classId ||
+      context.search,
   );
 
   return (
     <div className="shrink-0 border-b border-(--mws-line) p-4">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <p className="min-w-0 text-sm text-(--mws-muted)">
-          Workspace context applies to every tab.
+          Students are listed for the academic year you pick. The other tabs do not use these filters.
         </p>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -45,10 +49,7 @@ export function WorkspaceToolbar({
             label="Academic Year"
             value={context.academicYearId}
             onChange={(value) => onContextChange({ academicYearId: value })}
-            options={[
-              { value: "", label: "All Join Years" },
-              ...academicYearOptions(options.academicYears),
-            ]}
+            options={academicYearOptions(options.academicYears)}
           />
 
           <FilterSelect
