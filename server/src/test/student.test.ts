@@ -2343,6 +2343,59 @@ describe("GET /api/admin/students", () => {
     expect(body.paging.total_page).toBe(2);
   });
 
+  it("should filter by the academic year a student has an enrollment in", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const currentYear = new Date().getFullYear();
+    const otherYear = await prismaClient.academicYear.create({
+      data: {
+        name: `TEST_ENROLLED_${Date.now()}`,
+        status: "UPCOMING",
+        start_date: new Date(currentYear + 10, 6, 1),
+        end_date: new Date(currentYear + 11, 5, 30),
+      },
+    });
+    const otherClass = await prismaClient.class.create({
+      data: { name: "TEST_STU_CLASS_OTHER", grade_id: gradeAId, academic_year_id: otherYear.id },
+    });
+    const enrolledNow = await StudentTest.create({
+      email: "test_stu_enrolled_now@millennia21.id",
+      nis: "9000031",
+      entry_type: "PSB",
+      currentGradeId: gradeAId,
+      joinAcademicYearId: academicYearId,
+    });
+    const enrolledLater = await StudentTest.create({
+      email: "test_stu_enrolled_later@millennia21.id",
+      nis: "9000032",
+      entry_type: "PSB",
+      currentGradeId: gradeAId,
+      joinAcademicYearId: academicYearId,
+    });
+    await StudentTest.create({
+      email: "test_stu_never_enrolled@millennia21.id",
+      nis: "9000033",
+      entry_type: "PSB",
+      currentGradeId: gradeAId,
+      joinAcademicYearId: academicYearId,
+    });
+    await EnrollmentTest.create({ studentId: enrolledNow.student!.id, classId, academicYearId, gradeLevel: "TEST_STU_GRADE_A", gradeId: gradeAId });
+    await EnrollmentTest.create({ studentId: enrolledLater.student!.id, classId: otherClass.id, academicYearId: otherYear.id, gradeLevel: "TEST_STU_GRADE_A", gradeId: gradeAId });
+    // An enrollment taken out of the books does not count.
+    await EnrollmentTest.create({ studentId: enrolledLater.student!.id, classId, academicYearId, gradeLevel: "TEST_STU_GRADE_A", gradeId: gradeAId, deletedAt: new Date() });
+
+    const nis = async (query: string) =>
+      (await (await TestRequest.get(`/api/admin/students?${query}`, accessToken)).json()).data.map(
+        (item: { academic: { nis: string } }) => item.academic.nis,
+      );
+    expect(await nis(`enrolled_academic_year_id=${academicYearId}`)).toEqual(["9000031"]);
+    expect(await nis(`enrolled_academic_year_id=${otherYear.id}`)).toEqual(["9000032"]);
+    expect(await nis(`enrolled_academic_year_id=${academicYearId}&current_class_id=${classId}`)).toEqual([]);
+
+    await EnrollmentTest.delete();
+    await prismaClient.class.delete({ where: { id: otherClass.id } });
+    await prismaClient.academicYear.delete({ where: { id: otherYear.id } });
+  });
+
   it("should search by full_name, nis, and nisn", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await StudentTest.create({

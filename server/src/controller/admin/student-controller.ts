@@ -98,6 +98,7 @@ export class StudentController {
       current_grade_id: c.req.query("current_grade_id"),
       current_class_id: c.req.query("current_class_id"),
       join_academic_year_id: c.req.query("join_academic_year_id"),
+      enrolled_academic_year_id: c.req.query("enrolled_academic_year_id"),
       leave_year: c.req.query("leave_year"),
       pickup_drop_service: c.req.query("pickup_drop_service")
         ? c.req.query("pickup_drop_service") === "true"
@@ -142,6 +143,7 @@ export class StudentController {
       current_grade_id: c.req.query("current_grade_id"),
       current_class_id: c.req.query("current_class_id"),
       join_academic_year_id: c.req.query("join_academic_year_id"),
+      enrolled_academic_year_id: c.req.query("enrolled_academic_year_id"),
       leave_year: c.req.query("leave_year"),
       pickup_drop_service: c.req.query("pickup_drop_service")
         ? c.req.query("pickup_drop_service") === "true"
