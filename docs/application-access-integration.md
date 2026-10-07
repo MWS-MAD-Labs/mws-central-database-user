@@ -105,6 +105,20 @@ Permission bisa menyebut permission lain yang harus menyertainya lewat `requires
 - Role lama yang sudah ada tidak diputus. Bila daftar baru menambah `requires`, role yang kurang ditandai "Missing ..." di tab Roles, label dan audience-nya masih bisa diubah, tetapi mengubah daftar permission-nya harus lengkap.
 - `requires` hanya menutup kombinasi yang tidak masuk akal di Central. Aplikasi tetap menjaga di server: tiap endpoint memeriksa permission aksinya sendiri (CRUD memeriksa `manage`), dan menyembunyikan tab di UI bukan penjagaan.
 
+### Menjalankan sinkron
+
+Jalankan sebagai langkah deploy yang gagal-keras, bukan di dalam boot aplikasi (Central yang mati tidak boleh menahan aplikasi start, dan beberapa instance tidak perlu mengirim bersamaan). Hub sudah punya contohnya: `bun run permissions:sync` dan `bun run permissions:check` (`backend/scripts/sync-permissions.ts`). Aplikasi lain memakai `CentralDataClient` dari `mws-central-auth/data-client`: `publishPermissions`, `listRegisteredPermissions`, `permissionUsage`, dan `comparePermissions` untuk mode check.
+
+- `check` tidak menulis apa pun dan gagal bila role aktif membawa permission yang tidak dikenal kode, `requires` berbeda, atau kode kehilangan permission yang masih terdaftar. Jalankan di CI.
+- Respons sinkron menyebut `affected_roles`, yaitu role aktif yang masih membawa permission yang baru dihapus dari daftar. Cetak sebagai peringatan keras.
+- Daftar yang menghapus lebih dari separuh permission yang pernah dikirim ditolak (409) kecuali `confirm_removals: true`, supaya daftar yang terpotong tidak lolos diam-diam.
+- Sinkron untuk satu aplikasi bergantian (dikunci), jadi dua deploy sekaligus tidak bertabrakan.
+- Token hanya boleh dari API client berprofil sama dengan aplikasinya. Membaca daftar terdaftar dan pemakaian role juga dibatasi begitu.
+
+Menghapus permission dilakukan dua rilis: pindahkan role ke permission yang baru di Central, baru hapus dari kode. Permission yang dihapus dari daftar ditandai dropped, tidak memutus role yang membawanya, tetapi aplikasi mengabaikannya. Rollback aplikasi ke versi lama menandai permission barunya dropped saat deploy sinkron berikutnya, role tidak putus, dan deploy ulang menghidupkannya kembali.
+
+Aplikasi yang menolak permission asing (Daily Check-in memeriksa `PERMISSION_SET`): sampai skrip sinkronnya ada, permission yang ditambah manual di Central harus persis sama dengan daftar di kodenya.
+
 Mengganti nama permission: tambah yang baru di kode dan deploy, pindahkan role ke yang baru di Central, lalu hapus yang lama dari kode. Contoh Exima: Cashier membawa `pos.checkout` dan Resource membawa `inventory.export`, dan middleware Exima memetakan rute ke permission itu.
 
 ## Lewat Hub
