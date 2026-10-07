@@ -60,6 +60,16 @@ Respons 200:
 - `organization_id` harus cocok dengan Organization ID aplikasi itu di Central. Untuk aplikasi lama, Central mempertahankan ID yang sudah dipakai.
 - Orang tanpa akses (404) tidak boleh masuk. Jangan meng-cache 404 lebih lama dari beberapa menit.
 
+## Role atau permission
+
+Yang berwenang adalah `permissions`. Field `role` hanya key stabil (`UPPER_SNAKE`, huruf besar kecil dibedakan) untuk tampilan atau pencatatan. Label role tidak dikirim.
+
+Aplikasi penerima mengotorisasi dari permission, misalnya Hub memakai `hub.admin`, bukan `role === "ADMIN"`. "ADMIN" di satu aplikasi tidak sama artinya dengan "ADMIN" di aplikasi lain, dan role baru bisa ditambah di Central tanpa mengubah kode aplikasi selama permission yang dipakai sudah dikenal.
+
+Saat membuat role baru, pastikan setiap permission-nya sudah dikenal aplikasi penerima. Role juga punya audience (Employees, Students, atau keduanya). Group murid hanya bisa memakai role yang mengizinkan murid.
+
+Kode: Hub di `backend/src/lib/hub-access-gate.ts` (`userHasHubPermission`) dan `lib/admin-access.ts` (`isHubAdmin`). Daily Check-in memakai `PERMISSION_SET`.
+
 ## Lewat Hub
 
 Di layar admin Hub, isi kolom Central entitlement app id pada entri aplikasi dengan Application ID di Central. Setelah terisi, Launch ditolak bila orang itu tidak punya akses aktif di Central, dan `role`, `permissions`, `version`, `organization_id` ikut di token SSO. Kolom kosong berarti Hub tidak memeriksa akses Central untuk aplikasi itu.
