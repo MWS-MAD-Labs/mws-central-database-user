@@ -72,6 +72,13 @@ export class ApplicationEntitlementController {
     return c.json({ data: response });
   }
 
+  static async unblock(c: Context<{ Variables: AdminVariables }>) {
+    const id = c.req.param("id");
+    if (!id) throw new ResponseError(400, "Entitlement ID is required");
+    const response = await ApplicationEntitlementService.unblock(c.var.admin, { id }, getAuditRequestContext(c));
+    return c.json({ data: response });
+  }
+
   static async remove(c: Context<{ Variables: AdminVariables }>) {
     const id = c.req.param("id");
     if (!id) throw new ResponseError(400, "Entitlement ID is required");

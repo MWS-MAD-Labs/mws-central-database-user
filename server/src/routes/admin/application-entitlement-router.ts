@@ -18,6 +18,9 @@ applicationEntitlementRouter.get("/", (c) =>
 applicationEntitlementRouter.patch("/revoke/:id", (c) =>
   ApplicationEntitlementController.revoke(c),
 );
+applicationEntitlementRouter.patch("/unblock/:id", (c) =>
+  ApplicationEntitlementController.unblock(c),
+);
 applicationEntitlementRouter.delete("/:id", (c) =>
   ApplicationEntitlementController.remove(c),
 );

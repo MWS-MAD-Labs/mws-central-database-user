@@ -133,6 +133,59 @@ describe("application baseline access rules", () => {
       expect(JSON.stringify(again)).toContain("already blocked");
     });
 
+    it("lifts a block by sending the person back to group access", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const person = await createEmployee("test_unblock_group@millennia21.id");
+      await addRule(accessToken);
+      await TestRequest.post(BULK, { person_ids: [person.id], application_id: appId, blocked: true }, accessToken);
+      const row = await prismaClient.applicationEntitlement.findFirstOrThrow({ where: { application_id: appId, person_id: person.id } });
+
+      const response = await TestRequest.patch(`/api/admin/application-entitlements/unblock/${row.id}`, {}, accessToken);
+      expect(response.status).toBe(200);
+      expect((await response.json()).data.restored).toBe("GROUP_ACCESS");
+      expect(await prismaClient.applicationEntitlement.findUnique({ where: { id: row.id } })).toBeNull();
+      const found = await (await lookup(person.id)).json();
+      expect(found.data.is_active).toBe(true);
+      expect(found.data.role).toBe("STAFF");
+      expect(found.data.is_default).toBe(true);
+    });
+
+    it("switches a blocked exception back on with the role it had", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const person = await createEmployee("test_unblock_exception@millennia21.id");
+      await addRule(accessToken);
+      const granted = await TestRequest.post(
+        "/api/admin/application-entitlements",
+        { person_id: person.id, application_id: appId, role: "ADMIN" },
+        accessToken,
+      );
+      const entitlement = (await granted.json()).data;
+      await TestRequest.patch(`/api/admin/application-entitlements/revoke/${entitlement.id}`, {}, accessToken);
+
+      const response = await TestRequest.patch(`/api/admin/application-entitlements/unblock/${entitlement.id}`, {}, accessToken);
+      expect(response.status).toBe(200);
+      expect((await response.json()).data.restored).toBe("EXCEPTION");
+      const row = await prismaClient.applicationEntitlement.findUniqueOrThrow({ where: { id: entitlement.id } });
+      expect(row.is_active).toBe(true);
+      expect(row.role).toBe("ADMIN");
+    });
+
+    it("refuses to unblock someone who is not blocked, and anyone but a Super Admin", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const person = await createEmployee("test_unblock_active@millennia21.id");
+      await addRule(accessToken);
+      const granted = await TestRequest.post(
+        "/api/admin/application-entitlements",
+        { person_id: person.id, application_id: appId, role: "ADMIN" },
+        accessToken,
+      );
+      const id = (await granted.json()).data.id;
+      expect((await TestRequest.patch(`/api/admin/application-entitlements/unblock/${id}`, {}, accessToken)).status).toBe(400);
+      expect((await TestRequest.patch(`/api/admin/application-entitlements/unblock/missing`, {}, accessToken)).status).toBe(404);
+      const { accessToken: dbAdmin } = await AdminUserTest.createDatabaseAdmin();
+      expect((await TestRequest.patch(`/api/admin/application-entitlements/unblock/${id}`, {}, dbAdmin)).status).toBe(403);
+    });
+
     it("needs a role when it is not a block", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const person = await createEmployee("test_block_norole@millennia21.id");

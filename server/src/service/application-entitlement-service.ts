@@ -588,6 +588,68 @@ export class ApplicationEntitlementService {
   }
 
   // Deletes the person's own access row: they fall back to group access, if any.
+  // Lifts a block. A row that only blocks the group's own role is deleted, so the person is back on
+  // group access. An exception that was blocked is switched on again with the role it had.
+  static async unblock(
+    admin: AdminUser,
+    request: RevokeApplicationEntitlementRequest,
+    context: AuditRequestContext = {},
+  ): Promise<{ id: string; restored: "GROUP_ACCESS" | "EXCEPTION" }> {
+    assertSuperAdmin(admin);
+    const input = Validation.validate(ApplicationEntitlementValidation.REVOKE, request);
+    const existing = await prismaClient.applicationEntitlement.findUnique({ where: { id: input.id } });
+    if (!existing) throw new ResponseError(404, "Application entitlement not found");
+    if (existing.is_active) throw new ResponseError(400, "This person is not blocked");
+
+    const rules = await loadActiveRules(existing.application_id);
+    const subject = await loadRuleSubject(existing.person_id);
+    const inherited = subject ? inheritedRole(subject, rules) : undefined;
+
+    if (inherited && inherited.default_role_key === existing.role) {
+      await prismaClient.$transaction(async (tx) => {
+        await tx.applicationEntitlement.delete({ where: { id: existing.id } });
+        await AuditService.record(
+          {
+            action: AuditAction.APPLICATION_ENTITLEMENT_DELETE,
+            source: AuditSource.UI,
+            entity_type: "ApplicationEntitlement",
+            entity_id: existing.id,
+            admin_id: admin.id,
+            old_values: auditSnapshot(existing),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+      });
+      return { id: existing.id, restored: "GROUP_ACCESS" };
+    }
+
+    const permissions = await resolveRolePermissions(existing.application_id, existing.role, undefined);
+    await assertPersonException(existing.application_id, existing.person_id, existing.role, rules);
+    await prismaClient.$transaction(async (tx) => {
+      const saved = await tx.applicationEntitlement.update({
+        where: { id: existing.id },
+        data: { is_active: true, permissions, version: { increment: 1 }, granted_at: new Date() },
+      });
+      await AuditService.record(
+        {
+          action: AuditAction.APPLICATION_ENTITLEMENT_GRANT,
+          source: AuditSource.UI,
+          entity_type: "ApplicationEntitlement",
+          entity_id: saved.id,
+          admin_id: admin.id,
+          old_values: auditSnapshot(existing),
+          new_values: auditSnapshot(saved),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+    return { id: existing.id, restored: "EXCEPTION" };
+  }
+
   static async remove(
     admin: AdminUser,
     request: RevokeApplicationEntitlementRequest,
