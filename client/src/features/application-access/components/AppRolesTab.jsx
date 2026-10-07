@@ -242,7 +242,7 @@ export function AppRolesTab({ applicationId, roles }) {
                           {role.is_active ? "Deactivate" : "Activate"}
                         </ActionsMenuItem>
                         <ActionsMenuItem
-                          tone="danger"
+                          tone={role.is_active ? "danger" : undefined}
                           disabled={
                             role.active_entitlement_count > 0 ||
                             role.active_group_count > 0
