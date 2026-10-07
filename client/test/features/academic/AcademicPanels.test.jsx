@@ -152,6 +152,25 @@ describe('ClassesPanel', () => {
     )).toBe(true)
   })
 
+  it('shows several teachers of a role as a count that opens their names', async () => {
+    const teacher = (id, name) => ({ id, workforce_member: { id: `emp-${id}`, type: 'EMPLOYEE', full_name: name } })
+    const klass = classFixture({
+      homeroom_teachers: [teacher('t1', 'Alpha Teacher'), teacher('t2', 'Beta Teacher')],
+      supporting_homeroom_teachers: [teacher('t3', 'Gamma Teacher')],
+    })
+    globalThis.fetch = createFetchRouter(classRoutes([klass]))
+    const { user } = renderPanel(<ClassesPanel />)
+    await screen.findAllByText('Grade 1A')
+
+    // One supporting teacher stays a link to the profile.
+    expect(screen.getAllByRole('link', { name: '1 Supporting' })[0]).toHaveAttribute('href', '/employees/emp-t3')
+    expect(screen.queryByText('Beta Teacher')).not.toBeInTheDocument()
+    await user.click(screen.getAllByRole('button', { name: '2 Homeroom' })[0])
+    const dialog = screen.getByRole('dialog', { name: 'Homeroom teachers' })
+    expect(within(dialog).getByText('Alpha Teacher')).toBeVisible()
+    expect(within(dialog).getByText('Beta Teacher')).toBeVisible()
+  })
+
   it('creates a class and navigates to its detail route', async () => {
     const fetchMock = createFetchRouter(classRoutes())
     globalThis.fetch = fetchMock

@@ -32,6 +32,7 @@ import {
 import { ClassDialog } from "./ClassDialog.jsx";
 import { SelectFilter } from "./SelectFilter.jsx";
 import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
+import { ListPopover } from "../../../components/ui/ListPopover.jsx";
 
 export function ClassesPanel() {
   const queryClient = useQueryClient();
@@ -382,10 +383,17 @@ function TeacherRoleBadge({ label, teachers, formatTooltip }) {
     );
   }
 
+  // Several teachers: the count opens the list of names.
   return (
-    <StatusBadge tone="neutral" title={tooltip}>
-      {content}
-    </StatusBadge>
+    <ListPopover
+      label={content}
+      count={teachers.length}
+      dialogLabel={`${label} teachers`}
+      icon={false}
+      mono={false}
+      groups={[{ items: teachers.map(formatTooltip) }]}
+      className="[&>button]:text-xs [&>button]:text-(--mws-charcoal)"
+    />
   );
 }
 
