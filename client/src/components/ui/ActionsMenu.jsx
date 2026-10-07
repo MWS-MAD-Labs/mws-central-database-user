@@ -109,7 +109,9 @@ export function ActionsMenuItem({
         'flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50',
         tone === 'danger'
           ? 'text-[#9f3d41] hover:bg-[#fff5f5]'
-          : 'text-(--mws-charcoal) hover:bg-(--mws-soft)',
+          : tone === 'success'
+            ? 'text-[#476b43] hover:bg-[#edf4eb]'
+            : 'text-(--mws-charcoal) hover:bg-(--mws-soft)',
       ].join(' ')}
     >
       <span>{children}</span>

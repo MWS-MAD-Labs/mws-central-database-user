@@ -807,6 +807,19 @@ describe("AppAccessPage", () => {
       );
     });
 
+    it("shows Activate in green and keeps Delete red for an inactive role", async () => {
+      const inactive = roles.map((role) => (role.key === "STAFF" ? { ...role, is_active: false } : role));
+      globalThis.fetch = createFetchRouter([
+        ...routes(detail(), orderRoutes).filter((item) => item.path !== "/api/admin/application-roles"),
+        { path: "/api/admin/application-roles", response: () => jsonResponse({ data: inactive }) },
+      ]);
+      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      await screen.findByText("STAFF");
+      await user.click(screen.getByRole("button", { name: "Actions for exima STAFF" }));
+      expect(screen.getByRole("button", { name: "Activate" })).toHaveClass("text-[#476b43]");
+      expect(screen.getByRole("button", { name: "Delete" })).toHaveClass("text-[#9f3d41]");
+    });
+
     it("keeps Delete off for a role that people still hold", async () => {
       globalThis.fetch = createFetchRouter(routes(detail(), orderRoutes));
       const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");

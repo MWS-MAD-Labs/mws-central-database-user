@@ -222,7 +222,7 @@ export function AppRolesTab({ applicationId, roles }) {
                           Edit
                         </ActionsMenuItem>
                         <ActionsMenuItem
-                          tone={role.is_active ? "danger" : undefined}
+                          tone={role.is_active ? "danger" : "success"}
                           onClick={async () => {
                             closeMenu();
                             if (role.is_active) {
@@ -242,7 +242,7 @@ export function AppRolesTab({ applicationId, roles }) {
                           {role.is_active ? "Deactivate" : "Activate"}
                         </ActionsMenuItem>
                         <ActionsMenuItem
-                          tone={role.is_active ? "danger" : undefined}
+                          tone="danger"
                           disabled={
                             role.active_entitlement_count > 0 ||
                             role.active_group_count > 0
@@ -259,7 +259,6 @@ export function AppRolesTab({ applicationId, roles }) {
                               title: "Delete Role",
                               description: `${role.key} will be removed from ${applicationId}. A role that was ever used by a person or a group cannot be deleted, deactivate it instead.`,
                               confirmLabel: "Delete",
-                              tone: "danger",
                             });
                             if (confirmed) deleteMutation.mutate(role);
                           }}
