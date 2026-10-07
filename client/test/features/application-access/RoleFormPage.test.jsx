@@ -84,6 +84,7 @@ describe('RoleFormPage', () => {
     await user.type(screen.getByPlaceholderText(/Add a new permission/), 'pos.checkout')
     await user.click(screen.getByRole('button', { name: 'Add permission' }))
     expect(screen.getByLabelText('pos.checkout')).toBeChecked()
+    await user.click(screen.getByRole('switch', { name: 'Students' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
@@ -94,6 +95,8 @@ describe('RoleFormPage', () => {
         key: 'CASHIER',
         label: 'Cashier',
         permissions: ['pos.checkout'],
+        allows_employees: true,
+        allows_students: true,
       })
     })
   })
@@ -102,6 +105,14 @@ describe('RoleFormPage', () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage('/application-access/apps/hub/roles/role-staff')
     expect(await screen.findByText('This role could not be found.')).toBeVisible()
+  })
+
+  it('starts a new role for employees only and says so', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage('/application-access/apps/exima/roles/new')
+    await screen.findByText('Add role to exima')
+    expect(screen.getByRole('switch', { name: 'Employees' })).toBeChecked()
+    expect(screen.getByRole('switch', { name: 'Students' })).not.toBeChecked()
   })
 
   it('refuses a non Super Admin', async () => {

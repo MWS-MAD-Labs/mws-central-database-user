@@ -72,12 +72,13 @@ export function AppRolesTab({ applicationId, roles }) {
         <PanelMessage>No roles yet. Add the first role of {applicationId}.</PanelMessage>
       ) : (
         <DenseTable
-          minWidth={800}
+          minWidth={900}
           head={
             <>
               <th className="px-4 py-2.5">Order</th>
               <th className="px-4 py-2.5">Role</th>
               <th className="px-4 py-2.5">Label</th>
+              <th className="px-4 py-2.5">For</th>
               <th className="px-4 py-2.5 text-center">Permissions</th>
               <th className="px-4 py-2.5 text-center">In use</th>
               <th className="px-4 py-2.5">Status</th>
@@ -130,6 +131,11 @@ export function AppRolesTab({ applicationId, roles }) {
                 </td>
                 <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>{role.key}</td>
                 <td className={denseCellClass}>{role.label}</td>
+                <td className={denseCellClass}>
+                  {[role.allows_employees ? "Employees" : null, role.allows_students ? "Students" : null]
+                    .filter(Boolean)
+                    .join(" and ")}
+                </td>
                 <td className={`${denseCellClass} text-center`}>
                   <PermissionPopover permissions={role.permissions} compact />
                 </td>

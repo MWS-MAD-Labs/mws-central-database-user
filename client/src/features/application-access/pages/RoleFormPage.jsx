@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
-import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
+import { Field, TextInput, ToggleChip } from "../../../components/ui/FormControls.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
@@ -43,6 +43,8 @@ function RoleForm({ applicationId, role, roles }) {
   const [key, setKey] = useState(role?.key || "");
   const [label, setLabel] = useState(role?.label || "");
   const [permissions, setPermissions] = useState(role?.permissions || []);
+  const [allowsEmployees, setAllowsEmployees] = useState(role?.allows_employees ?? true);
+  const [allowsStudents, setAllowsStudents] = useState(role?.allows_students ?? false);
   const [attempted, setAttempted] = useState(false);
 
   // Every permission already used by a role of this application, plus the ones
@@ -67,12 +69,19 @@ function RoleForm({ applicationId, role, roles }) {
   const mutation = useMutation({
     mutationFn: () =>
       isEdit
-        ? applicationAccessApi.updateRole(role.id, { label: label.trim(), permissions })
+        ? applicationAccessApi.updateRole(role.id, {
+            label: label.trim(),
+            permissions,
+            allows_employees: allowsEmployees,
+            allows_students: allowsStudents,
+          })
         : applicationAccessApi.createRole({
             application_id: application,
             key: key.trim(),
             label: label.trim(),
             permissions,
+            allows_employees: allowsEmployees,
+            allows_students: allowsStudents,
           }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["application-access"] });
@@ -85,6 +94,7 @@ function RoleForm({ applicationId, role, roles }) {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
+    if (!allowsEmployees && !allowsStudents) return;
     if (twin || !label.trim() || (!isEdit && !key.trim())) return;
     mutation.mutate();
   }
@@ -130,6 +140,20 @@ function RoleForm({ applicationId, role, roles }) {
               )}
               <Field label="Label" error={attempted && !label.trim() ? "Label is required." : undefined}>
                 <TextInput value={label} maxLength={64} onChange={(event) => setLabel(event.target.value)} />
+              </Field>
+              <Field
+                label="Who it is for"
+                hint="Groups of students can only use roles that allow students."
+                error={attempted && !allowsEmployees && !allowsStudents ? "Pick employees, students or both." : undefined}
+              >
+                <div className="flex flex-wrap gap-2" role="group" aria-label="Who it is for">
+                  <ToggleChip checked={allowsEmployees} onChange={setAllowsEmployees}>
+                    Employees
+                  </ToggleChip>
+                  <ToggleChip checked={allowsStudents} onChange={setAllowsStudents}>
+                    Students
+                  </ToggleChip>
+                </div>
               </Field>
               {changesPermissions && role.active_entitlement_count > 0 ? (
                 <p className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-3 py-2 text-xs text-[#805b18]">

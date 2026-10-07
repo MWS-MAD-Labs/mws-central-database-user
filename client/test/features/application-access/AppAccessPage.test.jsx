@@ -738,6 +738,21 @@ describe("AppAccessPage", () => {
       expect(within(admin).getByText("+ 2 groups")).toBeVisible();
     });
 
+    it("shows who each role is for", async () => {
+      const withAudience = roles.map((role) =>
+        role.key === "ADMIN" ? { ...role, allows_employees: true, allows_students: false } : { ...role, allows_employees: true, allows_students: true },
+      );
+      globalThis.fetch = createFetchRouter([
+        ...routes(detail(), orderRoutes).filter((item) => item.path !== "/api/admin/application-roles"),
+        { path: "/api/admin/application-roles", response: () => jsonResponse({ data: withAudience }) },
+      ]);
+      renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      const admin = (await screen.findByText("ADMIN")).closest("tr");
+      expect(within(admin).getByText("Employees")).toBeVisible();
+      const staff = screen.getByText("STAFF").closest("tr");
+      expect(within(staff).getByText("Employees and Students")).toBeVisible();
+    });
+
     it("opens the add role page", async () => {
       globalThis.fetch = createFetchRouter(routes(detail(), orderRoutes));
       const { user } = renderPage(
