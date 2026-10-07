@@ -227,6 +227,23 @@ describe("application entitlements", () => {
     expect(response.status).toBe(403);
   });
 
+  it("lists the application ids set up in Application Access, with the read scope only", async () => {
+    const denied = await createApiClient(["employees:read"]);
+    const refused = await TestRequest.get("/api/internal/application-entitlements/applications", undefined, {
+      Authorization: `Bearer ${denied.token}`,
+    });
+    expect(refused.status).toBe(403);
+
+    const { token } = await createApiClient([API_SCOPES.APPLICATION_ENTITLEMENTS_READ]);
+    const response = await TestRequest.get("/api/internal/application-entitlements/applications", undefined, {
+      Authorization: `Bearer ${token}`,
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(Array.isArray(body.data)).toBe(true);
+    expect(body.data).toContain("exima");
+  });
+
   it("grants and looks up an entitlement by stable Person.id without using email", async () => {
     const person = await createEmployee();
     const { accessToken } = await createSuperAdmin();

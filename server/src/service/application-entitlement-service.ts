@@ -1270,6 +1270,16 @@ function remainingScope(
 }
 
 export class ApplicationAccessService {
+  // Ids of the applications set up in Application Access, for other services to check an id against.
+  static async applicationIds(): Promise<string[]> {
+    const [roles, organizations, groups] = await Promise.all([
+      prismaClient.applicationRole.findMany({ distinct: ["application_id"], select: { application_id: true } }),
+      prismaClient.applicationOrganization.findMany({ select: { application_id: true } }),
+      prismaClient.applicationAccessRule.findMany({ distinct: ["application_id"], select: { application_id: true } }),
+    ]);
+    return [...new Set([...roles, ...organizations, ...groups].map((row) => row.application_id))].sort();
+  }
+
   // One row per application with how much access it has, paged.
   static async applications(
     admin: AdminUser,

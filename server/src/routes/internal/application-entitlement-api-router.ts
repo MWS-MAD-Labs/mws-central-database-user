@@ -13,3 +13,9 @@ applicationEntitlementApiRouter.get(
   requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
   (c) => ApplicationEntitlementApiController.lookup(c),
 );
+
+applicationEntitlementApiRouter.get(
+  "/applications",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.applications(c),
+);

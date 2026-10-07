@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { ResponseError } from "../../error/response-error";
-import { ApplicationEntitlementService } from "../../service/application-entitlement-service";
+import { ApplicationAccessService, ApplicationEntitlementService } from "../../service/application-entitlement-service";
 import type { ApiClientVariables } from "../../type/hono-context";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 
@@ -25,5 +25,9 @@ export class ApplicationEntitlementApiController {
       getAuditRequestContext(c),
     );
     return c.json({ success: true, data: response });
+  }
+
+  static async applications(c: Context<{ Variables: ApiClientVariables }>) {
+    return c.json({ success: true, data: await ApplicationAccessService.applicationIds() });
   }
 }
