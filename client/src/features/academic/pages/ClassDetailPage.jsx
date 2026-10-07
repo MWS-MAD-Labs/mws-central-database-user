@@ -184,6 +184,7 @@ export function ClassDetailPage() {
     : [];
 
   const assignTeacherMutation = useMutation({
+    meta: { successMessage: "Teacher assigned." },
     mutationFn: (payload) => classesApi.assignTeacher(classId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -309,6 +310,7 @@ export function ClassDetailPage() {
   });
 
   const endTeacherAssignmentMutation = useMutation({
+    meta: { successMessage: "Teacher assignment ended." },
     mutationFn: (assignment) =>
       classesApi.endTeacherAssignment(classId, assignment.id),
     onSuccess: () => queryClient.invalidateQueries({
@@ -317,6 +319,7 @@ export function ClassDetailPage() {
   });
 
   const removeTeacherAssignmentMutation = useMutation({
+    meta: { successMessage: "Teacher assignment removed." },
     mutationFn: (assignment) =>
       classesApi.removeTeacherAssignment(classId, assignment.id),
     onSuccess: () => queryClient.invalidateQueries({
@@ -325,6 +328,7 @@ export function ClassDetailPage() {
   });
 
   const reopenTeacherAssignmentMutation = useMutation({
+    meta: { successMessage: "Teacher assignment reopened." },
     mutationFn: (assignment) =>
       classesApi.reopenTeacherAssignment(classId, assignment.id),
     onSuccess: () => queryClient.invalidateQueries({
@@ -333,6 +337,7 @@ export function ClassDetailPage() {
   });
 
   const updateMutation = useMutation({
+    meta: { successMessage: "Class updated." },
     mutationFn: (payload) => classesApi.update(classId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["classes", classId] });

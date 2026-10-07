@@ -35,6 +35,7 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
   })
 
   const createMutation = useMutation({
+    meta: { successMessage: "Consent added." },
     mutationFn: (payload) => studentSensitiveApi.createConsent(studentId, payload),
     onSuccess: () => {
       invalidateConsents(queryClient, studentId)
@@ -42,6 +43,7 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const updateMutation = useMutation({
+    meta: { successMessage: "Consent updated." },
     mutationFn: ({ id, payload }) =>
       studentSensitiveApi.updateConsent(studentId, id, payload),
     onSuccess: () => {
@@ -50,10 +52,12 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const deleteMutation = useMutation({
+    meta: { successMessage: "Consent deleted." },
     mutationFn: (id) => studentSensitiveApi.removeConsent(studentId, id),
     onSuccess: () => invalidateConsents(queryClient, studentId),
   })
   const restoreMutation = useMutation({
+    meta: { successMessage: "Consent restored." },
     mutationFn: (id) => studentSensitiveApi.restoreConsent(studentId, id),
     onSuccess: () => invalidateConsents(queryClient, studentId),
   })
@@ -221,6 +225,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
     enabled: canViewSensitive,
   })
   const uploadMutation = useMutation({
+    meta: { successMessage: "File uploaded." },
     mutationFn: (file) => studentSensitiveApi.uploadAttachment(studentId, consentId, file),
     onSuccess: () =>
       queryClient.invalidateQueries({
@@ -228,6 +233,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
       }),
   })
   const deleteMutation = useMutation({
+    meta: { successMessage: "File deleted." },
     mutationFn: (attachmentId) =>
       studentSensitiveApi.removeAttachment(studentId, consentId, attachmentId),
     onSuccess: () =>
@@ -236,6 +242,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
       }),
   })
   const restoreMutation = useMutation({
+    meta: { successMessage: "File restored." },
     mutationFn: (attachmentId) =>
       studentSensitiveApi.restoreAttachment(studentId, consentId, attachmentId),
     onSuccess: () =>

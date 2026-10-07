@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
+import toast from 'react-hot-toast'
 import { fireEvent, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
@@ -112,6 +113,7 @@ describe('Student create and edit pages', () => {
         : jsonResponse({ data: studentFixture() }) },
     ])
     globalThis.fetch = fetchMock
+    const success = spyOn(toast, 'success').mockImplementation(() => '')
     const { user } = renderRoute(<StudentEditPage />, '/students/student-1/edit', '/students/:studentId/edit')
 
     expect(screen.getByText('Loading student...')).toBeVisible()
@@ -138,6 +140,8 @@ describe('Student create and edit pages', () => {
       url === '/api/admin/students/student-1' && options.method === 'PATCH',
     )
     expect(JSON.parse(patch[1].body).full_name).toBe('Ari Updated')
+    expect(success).toHaveBeenCalledWith('Student updated.')
+    success.mockRestore()
   })
 
   it('leaves birth details out of the update when they were never shown', async () => {

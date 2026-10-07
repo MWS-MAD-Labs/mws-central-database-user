@@ -24,6 +24,7 @@ export function SupportAssignmentsPanel({
   })
 
   const endMutation = useMutation({
+    meta: { successMessage: "Assignment ended." },
     mutationFn: ({ studentId, assignmentId }) =>
       studentSensitiveApi.endSupportAssignment(studentId, assignmentId),
     onSuccess: () =>
@@ -32,6 +33,7 @@ export function SupportAssignmentsPanel({
       }),
   })
   const dropMutation = useMutation({
+    meta: { successMessage: "Assignment removed." },
     mutationFn: ({ studentId, assignmentId }) =>
       studentSensitiveApi.removeSupportAssignment(studentId, assignmentId),
     onSuccess: () =>
@@ -40,6 +42,7 @@ export function SupportAssignmentsPanel({
       }),
   })
   const reactivateMutation = useMutation({
+    meta: { successMessage: "Assignment reactivated." },
     mutationFn: ({ studentId, assignmentId }) =>
       studentSensitiveApi.reactivateSupportAssignment(studentId, assignmentId),
     onSuccess: () =>

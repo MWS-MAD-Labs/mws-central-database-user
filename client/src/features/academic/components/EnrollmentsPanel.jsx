@@ -142,6 +142,7 @@ export function EnrollmentsPanel() {
   });
 
   const transferMutation = useMutation({
+    meta: { successMessage: "Student moved." },
     mutationFn: ({ enrollment, payload }) =>
       enrollmentsApi.transfer(enrollment.student.id, enrollment.id, payload),
     onSuccess: () => {
@@ -162,6 +163,7 @@ export function EnrollmentsPanel() {
   });
 
   const promoteMutation = useMutation({
+    meta: { successMessage: "Student promoted." },
     mutationFn: ({ enrollment, payload }) =>
       enrollmentsApi.promote(enrollment.student.id, enrollment.id, payload),
     onSuccess: () => {
@@ -248,6 +250,7 @@ export function EnrollmentsPanel() {
   });
 
   const closeMutation = useMutation({
+    meta: { successMessage: "Enrollment closed." },
     mutationFn: ({ enrollment, payload }) =>
       enrollmentsApi.close(enrollment.student.id, enrollment.id, payload),
     onSuccess: () => {
@@ -257,12 +260,14 @@ export function EnrollmentsPanel() {
   });
 
   const deleteMutation = useMutation({
+    meta: { successMessage: "Enrollment deleted." },
     mutationFn: (enrollment) =>
       enrollmentsApi.remove(enrollment.student.id, enrollment.id),
     onSuccess: () => invalidateEnrollmentData(queryClient),
   });
 
   const restoreMutation = useMutation({
+    meta: { successMessage: "Enrollment restored." },
     mutationFn: (enrollment) =>
       enrollmentsApi.restore(enrollment.student.id, enrollment.id),
     onSuccess: () => invalidateEnrollmentData(queryClient),

@@ -73,6 +73,7 @@ export function StudentsPage() {
   });
 
   const restoreMutation = useMutation({
+    meta: { successMessage: "Student restored." },
     mutationFn: studentsApi.restore,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students"] });

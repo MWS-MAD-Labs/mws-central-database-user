@@ -1,5 +1,4 @@
 import {
-  MutationCache,
   QueryCache,
   QueryClient,
   QueryClientProvider,
@@ -9,6 +8,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { Toaster } from 'react-hot-toast'
 import { ConfirmProvider } from '../components/ui/ConfirmDialog.jsx'
 import { AuthProvider } from '../features/auth/context/AuthContext.jsx'
+import { createMutationCache } from '../lib/mutationFeedback.js'
 import { showErrorToast } from '../lib/toast.js'
 import 'dayjs/locale/id'
 
@@ -16,9 +16,7 @@ const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error) => showErrorToast(error),
   }),
-  mutationCache: new MutationCache({
-    onError: (error) => showErrorToast(error),
-  }),
+  mutationCache: createMutationCache(),
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: true,

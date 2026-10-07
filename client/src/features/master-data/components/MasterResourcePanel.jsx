@@ -72,6 +72,7 @@ export function MasterResourcePanel({ resource }) {
   });
 
   const createMutation = useMutation({
+    meta: { successMessage: `${resource.singular} created.` },
     mutationFn: resource.api.create,
     onSuccess: () => {
       invalidateMasterData(queryClient, resource.id);
@@ -80,6 +81,7 @@ export function MasterResourcePanel({ resource }) {
   });
 
   const updateMutation = useMutation({
+    meta: { successMessage: `${resource.singular} updated.` },
     mutationFn: ({ id, payload }) => resource.api.update(id, payload),
     onSuccess: () => {
       invalidateMasterData(queryClient, resource.id);
@@ -88,6 +90,7 @@ export function MasterResourcePanel({ resource }) {
   });
 
   const deleteMutation = useMutation({
+    meta: { successMessage: `${resource.singular} deleted.` },
     mutationFn: resource.api.remove,
     onSuccess: () => {
       invalidateMasterData(queryClient, resource.id);

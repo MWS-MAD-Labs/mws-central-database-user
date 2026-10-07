@@ -33,6 +33,7 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
     enabled: Boolean(studentId),
   })
   const createMutation = useMutation({
+    meta: { successMessage: "Support teacher assigned." },
     mutationFn: (payload) =>
       studentSensitiveApi.createSupportAssignment(studentId, payload),
     onSuccess: () => {
@@ -41,21 +42,25 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
     },
   })
   const endMutation = useMutation({
+    meta: { successMessage: "Assignment ended." },
     mutationFn: (id) => studentSensitiveApi.endSupportAssignment(studentId, id),
     onSuccess: () =>
       invalidateStudentRelation(queryClient, studentId, 'support-assignments'),
   })
   const dropMutation = useMutation({
+    meta: { successMessage: "Assignment removed." },
     mutationFn: (id) => studentSensitiveApi.removeSupportAssignment(studentId, id),
     onSuccess: () =>
       invalidateStudentRelation(queryClient, studentId, 'support-assignments'),
   })
   const reactivateMutation = useMutation({
+    meta: { successMessage: "Assignment reactivated." },
     mutationFn: (id) => studentSensitiveApi.reactivateSupportAssignment(studentId, id),
     onSuccess: () =>
       invalidateStudentRelation(queryClient, studentId, 'support-assignments'),
   })
   const changeMutation = useMutation({
+    meta: { successMessage: "Support teacher changed." },
     mutationFn: async ({ endAssignmentId, payload }) => {
       await studentSensitiveApi.endSupportAssignment(studentId, endAssignmentId)
       return studentSensitiveApi.createSupportAssignment(studentId, payload)

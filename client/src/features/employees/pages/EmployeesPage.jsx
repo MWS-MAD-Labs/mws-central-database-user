@@ -86,6 +86,7 @@ export function EmployeesPage() {
   });
 
   const restoreMutation = useMutation({
+    meta: { successMessage: "Employee restored." },
     mutationFn: employeesApi.restore,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });

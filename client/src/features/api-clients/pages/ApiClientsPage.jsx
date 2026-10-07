@@ -81,6 +81,7 @@ export function ApiClientsPage() {
   });
 
   const revokeMutation = useMutation({
+    meta: { successMessage: "API client revoked." },
     mutationFn: apiClientsApi.revoke,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["api-clients"] });

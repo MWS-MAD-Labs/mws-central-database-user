@@ -63,6 +63,7 @@ export function ClassesPanel() {
   const optionsQuery = useClassOptionsQuery();
 
   const createMutation = useMutation({
+    meta: { successMessage: "Class created." },
     mutationFn: classesApi.create,
     onSuccess: (created) => {
       invalidateClassData(queryClient);
@@ -72,6 +73,7 @@ export function ClassesPanel() {
   });
 
   const deleteMutation = useMutation({
+    meta: { successMessage: "Class deleted." },
     mutationFn: classesApi.remove,
     onSuccess: () => invalidateClassData(queryClient),
   });

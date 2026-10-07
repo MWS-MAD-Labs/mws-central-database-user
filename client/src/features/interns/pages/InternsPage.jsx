@@ -69,6 +69,7 @@ export function InternsPage() {
   })
 
   const restoreMutation = useMutation({
+    meta: { successMessage: 'Intern restored.' },
     mutationFn: internsApi.restore,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['interns'] })

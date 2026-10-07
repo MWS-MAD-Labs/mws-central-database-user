@@ -50,6 +50,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
     enabled: Boolean(studentId) && canViewSensitive && revealed,
   })
   const createMutation = useMutation({
+    meta: { successMessage: "Vaccine record added." },
     mutationFn: (payload) => studentSensitiveApi.createVaccine(studentId, payload),
     onSuccess: () => {
       invalidateStudentRelation(queryClient, studentId, 'vaccine-records')
@@ -57,6 +58,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const updateMutation = useMutation({
+    meta: { successMessage: "Vaccine record updated." },
     mutationFn: ({ id, payload }) =>
       studentSensitiveApi.updateVaccine(studentId, id, payload),
     onSuccess: () => {
@@ -65,10 +67,12 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const deleteMutation = useMutation({
+    meta: { successMessage: "Vaccine record deleted." },
     mutationFn: (id) => studentSensitiveApi.removeVaccine(studentId, id),
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'vaccine-records'),
   })
   const restoreMutation = useMutation({
+    meta: { successMessage: "Vaccine record restored." },
     mutationFn: (id) => studentSensitiveApi.restoreVaccine(studentId, id),
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'vaccine-records'),
   })

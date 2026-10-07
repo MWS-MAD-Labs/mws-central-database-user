@@ -39,6 +39,7 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
   })
 
   const createMutation = useMutation({
+    meta: { successMessage: "Parent added." },
     mutationFn: (payload) => studentSensitiveApi.createParent(studentId, payload),
     onSuccess: () => {
       invalidateStudentRelation(queryClient, studentId, 'parents')
@@ -46,6 +47,7 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
     },
   })
   const updateMutation = useMutation({
+    meta: { successMessage: "Parent updated." },
     mutationFn: ({ id, payload }) =>
       studentSensitiveApi.updateParent(studentId, id, payload),
     onSuccess: () => {
@@ -54,10 +56,12 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
     },
   })
   const deleteMutation = useMutation({
+    meta: { successMessage: "Parent removed." },
     mutationFn: (id) => studentSensitiveApi.removeParent(studentId, id),
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'parents'),
   })
   const restoreMutation = useMutation({
+    meta: { successMessage: "Parent restored." },
     mutationFn: (id) => studentSensitiveApi.restoreParent(studentId, id),
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'parents'),
   })
