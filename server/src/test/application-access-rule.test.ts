@@ -24,6 +24,9 @@ describe("application baseline access rules", () => {
   beforeEach(async () => {
     appId = `test-baseline-${randomBytes(4).toString("hex")}`;
     masterData = await MasterDataTest.create();
+    await prismaClient.applicationPermission.createMany({
+      data: ["store.use", "app.admin", "store.refund", "a.read", "b.read"].map((key) => ({ application_id: appId, key })),
+    });
     await prismaClient.applicationRole.createMany({
       data: [
         { application_id: appId, key: "STAFF", label: "Staff", permissions: ["store.use"], allows_students: true },
@@ -37,6 +40,7 @@ describe("application baseline access rules", () => {
     await prismaClient.auditLog.deleteMany({
       where: { OR: [{ api_client_id: { in: apiClientIds } }, { admin: { email: { contains: "@millennia21.id" } } }] },
     });
+    await prismaClient.applicationPermission.deleteMany({ where: { application_id: appId } });
     await prismaClient.applicationEntitlement.deleteMany({ where: { application_id: appId } });
     await prismaClient.applicationAccessRule.deleteMany({ where: { application_id: appId } });
     await prismaClient.applicationRole.deleteMany({ where: { application_id: appId } });

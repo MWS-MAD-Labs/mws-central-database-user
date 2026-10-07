@@ -1,7 +1,7 @@
 import { API_SCOPES } from "./api-scopes";
 
 export type InternalApiEndpointDoc = {
-  method: "GET" | "POST" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   scope: string;
   // Plain-language name and grouping for the admin-facing reference.
@@ -107,5 +107,21 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     title: "Who may use an application",
     group: "Application access",
     purpose: "Checks whether a person currently has access to an MWS application.",
+  },
+  {
+    method: "PUT",
+    path: "/api/internal/application-permissions/exima",
+    scope: API_SCOPES.APPLICATION_PERMISSIONS_WRITE,
+    title: "Publish application permissions",
+    group: "Application access",
+    purpose: "An application sends the permissions its code understands, so roles can only use those.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/application-permissions/exima/usage",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Permissions roles carry",
+    group: "Application access",
+    purpose: "Lists the permissions active roles of an application carry, to compare with the application's code.",
   },
 ];

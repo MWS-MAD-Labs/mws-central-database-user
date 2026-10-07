@@ -237,3 +237,37 @@ export class ApplicationRoleValidation {
       .refine((values) => new Set(values).size === values.length, "Roles must be unique"),
   });
 }
+
+const permissionKey = z
+  .string()
+  .trim()
+  .min(1, "Permission is required")
+  .max(128, "Permission is too long")
+  .regex(
+    /^[a-z][a-z0-9_]*([.:-][a-z0-9_]+)*$/,
+    "Permission must be lowercase letters, numbers and underscores, joined by dots",
+  );
+
+export class ApplicationPermissionValidation {
+  static readonly LIST = z.object({ application_id: applicationId });
+
+  static readonly CREATE = z.object({
+    application_id: applicationId,
+    key: permissionKey,
+    description: z.string().trim().max(200, "Description is too long").optional(),
+  });
+
+  static readonly SYNC = z.object({
+    application_id: applicationId,
+    permissions: z
+      .array(
+        z.object({
+          key: permissionKey,
+          description: z.string().trim().max(200, "Description is too long").optional(),
+        }),
+      )
+      .min(1, "Send at least one permission")
+      .max(300, "Too many permissions")
+      .refine((rows) => new Set(rows.map((row) => row.key)).size === rows.length, "Permissions must be unique"),
+  });
+}

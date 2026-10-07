@@ -72,6 +72,7 @@ import {
   type ScopeCatalog,
 } from "./application-scope-rules";
 import { AuditService } from "./audit-service";
+import { assertPermissionsRegistered } from "./application-permission-service";
 import {
   loadActiveRules,
   assertHasGroup,
@@ -666,6 +667,7 @@ export class ApplicationRoleService {
     if (existing) {
       throw new ResponseError(400, `Role ${input.key} already exists for ${input.application_id}`);
     }
+    await assertPermissionsRegistered(input.application_id, input.permissions);
     await assertDistinctPermissions(input.application_id, input.permissions);
     // A new application gets its organization together with its first role.
     await resolveOrganizationId(input.application_id);
@@ -806,6 +808,9 @@ export class ApplicationRoleService {
       }
     }
 
+    if (input.permissions !== undefined) {
+      await assertPermissionsRegistered(existing.application_id, input.permissions, existing.permissions);
+    }
     const willBeActive = input.is_active ?? existing.is_active;
     const permissionsChanged =
       input.permissions !== undefined &&

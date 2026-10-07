@@ -10,6 +10,7 @@ import type {
   ReorderApplicationRolesRequest,
   UpdateApplicationRoleRequest,
 } from "../../model/application-entitlement-model";
+import { ApplicationPermissionService } from "../../service/application-permission-service";
 import { ResponseError } from "../../error/response-error";
 import {
   ApplicationAccessRuleService,
@@ -310,5 +311,20 @@ export class ApplicationAccessController {
       size: size ? Number(size) : undefined,
     });
     return c.json(response);
+  }
+}
+
+export class ApplicationPermissionController {
+  static async list(c: Context<{ Variables: AdminVariables }>) {
+    const response = await ApplicationPermissionService.list(c.var.admin, {
+      application_id: c.req.query("application_id"),
+    });
+    return c.json({ data: response });
+  }
+
+  static async create(c: Context<{ Variables: AdminVariables }>) {
+    const request = (await c.req.json()) as { application_id: string; key: string; description?: string };
+    const response = await ApplicationPermissionService.create(c.var.admin, request, getAuditRequestContext(c));
+    return c.json({ data: response });
   }
 }

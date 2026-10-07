@@ -3,6 +3,7 @@ import {
   ApplicationAccessController,
   ApplicationAccessRuleController,
   ApplicationOrganizationController,
+  ApplicationPermissionController,
   ApplicationRoleController,
 } from "../../controller/admin/application-entitlement-controller";
 import type { AdminVariables } from "../../type/hono-context";
@@ -35,3 +36,8 @@ applicationAccessRouter.get("/", (c) => ApplicationAccessController.list(c));
 export const applicationOrganizationRouter = new Hono<{ Variables: AdminVariables }>();
 
 applicationOrganizationRouter.get("/", (c) => ApplicationOrganizationController.list(c));
+
+export const applicationPermissionRouter = new Hono<{ Variables: AdminVariables }>();
+
+applicationPermissionRouter.get("/", (c) => ApplicationPermissionController.list(c));
+applicationPermissionRouter.post("/", (c) => ApplicationPermissionController.create(c));

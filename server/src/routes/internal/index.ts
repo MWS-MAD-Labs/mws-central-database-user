@@ -8,7 +8,7 @@ import { classApiRouter } from "./class-api-router";
 import { classTeacherAssignmentApiRouter } from "./class-teacher-assignment-api-router";
 import { studentSupportAssignmentApiRouter } from "./student-support-assignment-api-router";
 import type { ApiClientVariables } from "../../type/hono-context";
-import { applicationEntitlementApiRouter } from "./application-entitlement-api-router";
+import { applicationEntitlementApiRouter, applicationPermissionApiRouter } from "./application-entitlement-api-router";
 
 export const internalRouter = new Hono<{ Variables: ApiClientVariables }>();
 
@@ -28,3 +28,4 @@ internalRouter.route(
   "/application-entitlements",
   applicationEntitlementApiRouter,
 );
+internalRouter.route("/application-permissions", applicationPermissionApiRouter);

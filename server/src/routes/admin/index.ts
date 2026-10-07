@@ -28,6 +28,7 @@ import {
   applicationAccessRuleRouter,
   applicationOrganizationRouter,
   applicationRoleRouter,
+  applicationPermissionRouter,
 } from "./application-role-router";
 import { applicationIntegrationProfileRouter } from "./application-integration-profile-router";
 
@@ -59,6 +60,7 @@ adminRouter.route("/support-assignments", studentSupportAssignmentRouter);
 adminRouter.route("/identifier-change-requests", identifierChangeRequestRouter);
 adminRouter.route("/application-entitlements", applicationEntitlementRouter);
 adminRouter.route("/application-roles", applicationRoleRouter);
+adminRouter.route("/application-permissions", applicationPermissionRouter);
 adminRouter.route("/application-access-rules", applicationAccessRuleRouter);
 adminRouter.route("/application-access", applicationAccessRouter);
 adminRouter.route("/application-organizations", applicationOrganizationRouter);

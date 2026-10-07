@@ -13,6 +13,9 @@ describe("application role registry", () => {
   beforeEach(async () => {
     appId = `test-app-${randomBytes(4).toString("hex")}`;
     masterData = await MasterDataTest.create();
+    await prismaClient.applicationPermission.createMany({
+      data: ["a.read", "a.write", "top.use", "middle.use", "bottom.use"].map((key) => ({ application_id: appId, key })),
+    });
   });
 
   afterEach(async () => {
@@ -23,6 +26,7 @@ describe("application role registry", () => {
     await prismaClient.applicationEntitlement.deleteMany({ where: { application_id: appId } });
     await prismaClient.applicationAccessRule.deleteMany({ where: { application_id: appId } });
     await prismaClient.applicationRole.deleteMany({ where: { application_id: appId } });
+    await prismaClient.applicationPermission.deleteMany({ where: { application_id: appId } });
     await prismaClient.applicationOrganization.deleteMany({ where: { application_id: appId } });
     await EmployeeTest.delete();
     await AdminUserTest.delete();

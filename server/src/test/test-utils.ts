@@ -493,12 +493,13 @@ export class TestRequest {
     url: string,
     body: T,
     accessToken?: string,
+    customHeaders?: Record<string, string>,
   ): Promise<Response> {
     return web.request(
       url,
       {
         method: "PUT",
-        headers: this.makeHeaders(accessToken),
+        headers: this.makeHeaders(accessToken, customHeaders),
         body: JSON.stringify(body),
       },
       this.createMockEnv(),

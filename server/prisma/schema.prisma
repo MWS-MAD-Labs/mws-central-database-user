@@ -316,6 +316,8 @@ enum AuditAction {
   APPLICATION_ENTITLEMENT_DELETE
   APPLICATION_CREATE
   APPLICATION_ROLE_CREATE
+  APPLICATION_PERMISSION_CREATE
+  APPLICATION_PERMISSION_SYNC
   APPLICATION_ROLE_UPDATE
   APPLICATION_ACCESS_RULE_SET
   APPLICATION_ACCESS_RULE_CREATE
@@ -1647,6 +1649,32 @@ model ApplicationRole {
 
   @@unique([application_id, key])
   @@map("application_roles")
+}
+
+// Where a registered permission came from: the application's own manifest, or typed in by hand
+// for an application that has not synced one.
+enum ApplicationPermissionSource {
+  MANIFEST
+  MANUAL
+}
+
+// What an application understands. Roles can only carry permissions registered here. The meaning
+// of a permission lives in the application's code, this table is the contract Central checks against.
+model ApplicationPermission {
+  id             String                      @id @default(cuid())
+  application_id String
+  key            String
+  description    String?
+  source         ApplicationPermissionSource @default(MANUAL)
+  // Dropped from the application's manifest. Roles that already carry it keep it, new roles cannot pick it.
+  deprecated_at  DateTime?
+  // Last time the application's manifest listed it.
+  synced_at      DateTime?
+  created_at     DateTime                    @default(now())
+  updated_at     DateTime                    @updatedAt
+
+  @@unique([application_id, key])
+  @@map("application_permissions")
 }
 
 model AuditLog {

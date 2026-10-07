@@ -19,3 +19,16 @@ applicationEntitlementApiRouter.get(
   requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
   (c) => ApplicationEntitlementApiController.applications(c),
 );
+
+export const applicationPermissionApiRouter = new Hono<{ Variables: ApiClientVariables }>();
+
+applicationPermissionApiRouter.put(
+  "/:applicationId",
+  requireScope(API_SCOPES.APPLICATION_PERMISSIONS_WRITE),
+  (c) => ApplicationEntitlementApiController.syncPermissions(c),
+);
+applicationPermissionApiRouter.get(
+  "/:applicationId/usage",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.permissionUsage(c),
+);

@@ -21,8 +21,9 @@ const SCOPE_DEFINITIONS: Record<
     description: "Read student consent attachments",
     is_sensitive: true,
   },
-  [API_SCOPES.STUDENTS_SUPPORT_CONTACTS_READ]:
-    { description: "Read a student's current class homeroom/subject teachers" },
+  [API_SCOPES.STUDENTS_SUPPORT_CONTACTS_READ]: {
+    description: "Read a student's current class homeroom/subject teachers",
+  },
   [API_SCOPES.STUDENTS_ROSTER_EXPORT_READ]: {
     description:
       "Read the full flat roster export (includes health, parent contact, and consent fields)",
@@ -32,18 +33,20 @@ const SCOPE_DEFINITIONS: Record<
     description:
       "Read every active class, independent of whether it has a teacher assigned",
   },
-  [API_SCOPES.CLASS_TEACHER_ASSIGNMENTS_READ]:
-    {
-      description:
-        "Read which classes a teacher's account is currently assigned to (homeroom/subject)",
-    },
-  [API_SCOPES.STUDENT_SUPPORT_ASSIGNMENTS_READ]:
-    {
-      description:
-        "Read which students an employee is the active SE/support teacher for",
-    },
-  [API_SCOPES.APPLICATION_ENTITLEMENTS_READ]:
-    { description: "Read active application entitlements by stable person ID" },
+  [API_SCOPES.CLASS_TEACHER_ASSIGNMENTS_READ]: {
+    description:
+      "Read which classes a teacher's account is currently assigned to (homeroom/subject)",
+  },
+  [API_SCOPES.STUDENT_SUPPORT_ASSIGNMENTS_READ]: {
+    description:
+      "Read which students an employee is the active SE/support teacher for",
+  },
+  [API_SCOPES.APPLICATION_ENTITLEMENTS_READ]: {
+    description: "Read active application entitlements by stable person ID",
+  },
+  [API_SCOPES.APPLICATION_PERMISSIONS_WRITE]: {
+    description: "Publish the permissions an application understands",
+  },
 };
 
 export async function syncApiScopes(): Promise<void> {
@@ -92,7 +95,10 @@ export async function syncApiScopes(): Promise<void> {
           })
         ).id;
       await tx.applicationIntegrationProfileScope.createMany({
-        data: scopes.map((scope) => ({ profile_id: profileId, scope_id: scope.id })),
+        data: scopes.map((scope) => ({
+          profile_id: profileId,
+          scope_id: scope.id,
+        })),
         skipDuplicates: true,
       });
     }

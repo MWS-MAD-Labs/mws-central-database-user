@@ -12,6 +12,8 @@ export const API_SCOPES = {
   // SE teacher access is student-scoped, not class-scoped.
   STUDENT_SUPPORT_ASSIGNMENTS_READ: "student_support_assignments:read",
   APPLICATION_ENTITLEMENTS_READ: "application_entitlements:read",
+  // An application publishes the permissions its code understands.
+  APPLICATION_PERMISSIONS_WRITE: "application_permissions:write",
 } as const;
 
 export type ApiScopeName = (typeof API_SCOPES)[keyof typeof API_SCOPES];
