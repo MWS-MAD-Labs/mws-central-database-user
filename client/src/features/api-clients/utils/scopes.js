@@ -43,32 +43,38 @@ const SCOPE_INFO = {
       "One flat list of every student, including health, parent contact and consent fields.",
   },
   "classes:read": {
-    group: "Classes and teachers",
+    group: "Classes and Teachers",
     title: "View all classes",
     description: "Every active class, even those without a teacher assigned.",
   },
   "class_teacher_assignments:read": {
-    group: "Classes and teachers",
+    group: "Classes and Teachers",
     title: "View which classes a teacher is assigned to",
     description: "Homeroom and subject class assignments of a teacher.",
   },
   "student_support_assignments:read": {
-    group: "Classes and teachers",
+    group: "Classes and Teachers",
     title: "View which students a support teacher looks after",
     description: "Students assigned to a special education or support teacher.",
   },
   "application_entitlements:read": {
-    group: "Application access",
+    group: "Application Access",
     title: "View who may use an application",
     description: "Which people currently have access to each MWS application.",
+  },
+  "application_permissions:write": {
+    group: "Application Access",
+    title: "Publish an application's permissions",
+    description:
+      "Lets an application send the permissions its code understands, so roles can only use those.",
   },
 };
 
 export const SCOPE_GROUP_ORDER = [
   "Employees",
   "Students",
-  "Classes and teachers",
-  "Application access",
+  "Classes and Teachers",
+  "Application Access",
   "Other",
 ];
 
@@ -106,9 +112,9 @@ export function groupScopes(scopes) {
 }
 
 export const PURPOSE_LABELS = {
-  backend: "Backend service",
-  "roster-sync": "Roster sync",
-  "report-export": "Report export",
-  ci: "CI / automation",
+  backend: "Backend Service",
+  "roster-sync": "Roster Sync",
+  "report-export": "Report Export",
+  ci: "CI / Automation",
   other: "Other",
 };

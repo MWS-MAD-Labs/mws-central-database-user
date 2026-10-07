@@ -6,7 +6,7 @@ export type InternalApiEndpointDoc = {
   scope: string;
   // Plain-language name and grouping for the admin-facing reference.
   title: string;
-  group: "Students" | "Employees" | "Classes and teachers" | "Application access";
+  group: "Students" | "Employees" | "Classes and Teachers" | "Application Access";
   purpose: string;
 };
 
@@ -89,7 +89,7 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     path: "/api/internal/class-teacher-assignments",
     scope: API_SCOPES.CLASS_TEACHER_ASSIGNMENTS_READ,
     title: "Classes a teacher is assigned to",
-    group: "Classes and teachers",
+    group: "Classes and Teachers",
     purpose: "Shows which classes a teacher is currently assigned to, as homeroom or subject teacher.",
   },
   {
@@ -97,7 +97,7 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     path: "/api/internal/student-support-assignments",
     scope: API_SCOPES.STUDENT_SUPPORT_ASSIGNMENTS_READ,
     title: "Students a support teacher looks after",
-    group: "Classes and teachers",
+    group: "Classes and Teachers",
     purpose: "Shows which students a special education or support teacher is currently responsible for.",
   },
   {
@@ -105,7 +105,7 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     path: "/api/internal/application-entitlements/lookup?person_id={person_id}&application_id=exima",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
     title: "Who may use an application",
-    group: "Application access",
+    group: "Application Access",
     purpose: "Checks whether a person currently has access to an MWS application.",
   },
   {
@@ -113,7 +113,7 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     path: "/api/internal/application-permissions/exima",
     scope: API_SCOPES.APPLICATION_PERMISSIONS_WRITE,
     title: "Publish application permissions",
-    group: "Application access",
+    group: "Application Access",
     purpose: "An application sends the permissions its code understands, so roles can only use those.",
   },
   {
@@ -121,7 +121,7 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     path: "/api/internal/application-permissions/exima",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
     title: "Registered application permissions",
-    group: "Application access",
+    group: "Application Access",
     purpose: "Lists the permissions registered for an application, to check them against its code.",
   },
   {
@@ -129,7 +129,7 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     path: "/api/internal/application-permissions/exima/usage",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
     title: "Permissions roles carry",
-    group: "Application access",
+    group: "Application Access",
     purpose: "Lists the permissions active roles of an application carry, to compare with the application's code.",
   },
 ];
