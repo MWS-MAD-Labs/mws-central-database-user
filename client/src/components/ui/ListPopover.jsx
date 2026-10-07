@@ -92,7 +92,8 @@ export function ListPopover({
                 <div key={group.title ?? "all"}>
                   {group.title ? (
                     <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-(--mws-muted)">
-                      {group.title} <span className="font-normal">{group.items.length}</span>
+                      {group.title}
+                      {group.hideCount ? null : <span className="ml-1 font-normal">{group.items.length}</span>}
                     </p>
                   ) : null}
                   <ul className="space-y-1.5">

@@ -27,7 +27,7 @@ export function WorkspaceToolbar({
     <div className="shrink-0 border-b border-(--mws-line) p-4">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <p className="min-w-0 text-sm text-(--mws-muted)">
-          Students are listed for the academic year you pick. The other tabs do not use these filters.
+          Students are listed for the academic year you pick. 
         </p>
 
         <div className="flex shrink-0 items-center gap-2">
