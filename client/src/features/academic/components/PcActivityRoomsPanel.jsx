@@ -52,6 +52,7 @@ import { LoadingRows } from "../../master-data/components/LoadingRows.jsx";
 import { PanelFrame } from "../../master-data/components/PanelFrame.jsx";
 import { RowActions } from "../../master-data/components/RowActions.jsx";
 import { SearchBox } from "../../master-data/components/SearchBox.jsx";
+import { RoomCoverage, RoomMentors } from "./RoomCoverage.jsx";
 import { SelectFilter } from "./SelectFilter.jsx";
 import { useMentorOptions } from "../../master-data/hooks/useMentorOptions.js";
 import { workforceTargetValue } from "../utils/selectOptions.js";
@@ -329,51 +330,10 @@ export function PcActivityRoomsPanel() {
                     {formatStatus(room.day)}
                   </td>
                   <td className="px-4 py-3 align-middle text-(--mws-muted)">
-                    <p
-                      className="truncate font-medium text-(--mws-charcoal)"
-                      title={room.units.map((unit) => unit.name).join(", ")}
-                    >
-                      {room.units.map((unit) => unit.name).join(", ")}
-                    </p>
-                    {room.grades.length > 0 || room.classes.length > 0 ? (
-                      <p
-                        className="mt-1 truncate text-xs"
-                        title={[
-                          room.grades.length > 0
-                            ? room.grades.map((grade) => grade.name).join(", ")
-                            : null,
-                          room.classes.length > 0
-                            ? room.classes.map((klass) => klass.name).join(", ")
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      >
-                        {room.grades.length > 0
-                          ? `${room.grades.length} grade${room.grades.length === 1 ? "" : "s"}`
-                          : "All grades"}
-                        {room.classes.length > 0
-                          ? ` · ${room.classes.length} class${room.classes.length === 1 ? "" : "es"}`
-                          : ""}
-                      </p>
-                    ) : null}
+                    <RoomCoverage room={room} />
                   </td>
                   <td className="px-4 py-3 align-middle text-(--mws-muted)">
-                    {room.mentors.length === 0 ? (
-                      "No mentor"
-                    ) : (
-                      <p
-                        className="truncate text-(--mws-charcoal)"
-                        title={room.mentors
-                          .map((mentor) => mentor.name)
-                          .join(", ")}
-                      >
-                        {room.mentors[0].name}
-                        {room.mentors.length > 1
-                          ? ` +${room.mentors.length - 1} more`
-                          : ""}
-                      </p>
-                    )}
+                    <RoomMentors room={room} />
                   </td>
                   <td className="px-4 py-3 align-middle text-(--mws-muted)">
                     {room.student_count} active
