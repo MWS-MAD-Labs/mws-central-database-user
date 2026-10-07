@@ -1,7 +1,7 @@
 import { ChevronDown, Copy, Play, Server } from "lucide-react";
 import { Fragment, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
-import { SearchableSelect, ToggleChip } from "../../../components/ui/FormControls.jsx";
+import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import { NameList } from "../../../components/ui/NameList.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
@@ -56,7 +56,7 @@ export function InternalApiPanel({ endpoints, profiles = [], isLoading }) {
 
   return (
     <section className="mt-5 min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="space-y-4 border-b border-(--mws-line) p-4">
+      <div className="flex min-w-0 flex-col gap-3 border-b border-(--mws-line) p-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef3fb] text-(--mws-navy)">
             <Server size={19} />
@@ -71,18 +71,18 @@ export function InternalApiPanel({ endpoints, profiles = [], isLoading }) {
             </p>
           </div>
         </div>
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by app">
-            <ToggleChip checked={app === ALL} onChange={() => pick(setApp)(ALL)}>
-              All Apps
-            </ToggleChip>
-            {profiles.map((profile) => (
-              <ToggleChip key={profile.code} checked={app === profile.code} onChange={() => pick(setApp)(profile.code)}>
-                {profile.name}
-              </ToggleChip>
-            ))}
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+          <div className="w-full sm:w-56">
+            <SearchableSelect
+              value={app}
+              onChange={pick(setApp)}
+              options={[{ value: ALL, label: "All Apps" }, ...profiles.map((profile) => ({ value: profile.code, label: profile.name }))]}
+              placeholder="All Apps"
+              searchPlaceholder="Search app"
+              searchableThreshold={8}
+            />
           </div>
-          <div className="w-full lg:w-56">
+          <div className="w-full sm:w-56">
             <SearchableSelect
               value={group}
               onChange={pick(setGroup)}

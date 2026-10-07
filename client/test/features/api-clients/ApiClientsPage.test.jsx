@@ -237,12 +237,14 @@ describe('ApiClientsPage application profiles', () => {
     it('filters the endpoints by app', async () => {
       const { user } = renderPage([], { profiles, endpoints })
       await screen.findByText('List employees')
-      await user.click(screen.getByRole('switch', { name: 'Daily Check-in' }))
+      await user.click(screen.getByRole('button', { name: 'All Apps' }))
+      await user.click(await screen.findByRole('option', { name: 'Daily Check-in' }))
       expect(await screen.findByText('Full student roster')).toBeVisible()
       expect(screen.getByText('List employees')).toBeVisible()
       expect(screen.queryByText('List classes')).not.toBeInTheDocument()
 
-      await user.click(screen.getByRole('switch', { name: 'MWS Hub' }))
+      await user.click(screen.getByRole('button', { name: 'Daily Check-in' }))
+      await user.click(await screen.findByRole('option', { name: 'MWS Hub' }))
       expect(await screen.findByText('List employees')).toBeVisible()
       expect(screen.queryByText('Full student roster')).not.toBeInTheDocument()
     })
