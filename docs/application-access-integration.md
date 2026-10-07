@@ -89,6 +89,22 @@ Authorization: Bearer <token API client aplikasi>
 - Jadikan langkah ini bagian dari deploy dan buat deploy gagal bila panggilannya gagal. Tambahkan test di aplikasi yang memastikan daftar di kode sama dengan yang dikirim.
 - Untuk membandingkan sebaliknya, `GET /api/internal/application-permissions/<application_id>/usage` (scope `application_entitlements:read`) mengembalikan permission yang dibawa role aktif. Aplikasi bisa memeriksa tidak ada yang tidak dikenal kodenya.
 
+### Permission yang butuh permission lain
+
+Permission bisa menyebut permission lain yang harus menyertainya lewat `requires`, misalnya mengelola barang butuh bisa membuka tab barangnya:
+
+```
+{ "permissions": [
+  { "key": "inventory.read", "description": "Opens the inventory tab" },
+  { "key": "inventory.manage", "description": "Adds, edits and deletes items", "requires": ["inventory.read"] }
+] }
+```
+
+- Central menolak role yang membawa `inventory.manage` tanpa `inventory.read`, dan form role mencentang yang dibutuhkan secara otomatis. Berlaku juga lewat rantai (`a` butuh `b`, `b` butuh `c`).
+- Isi `requires` harus ada di daftar yang sama, tidak boleh menunjuk dirinya sendiri atau membentuk lingkaran. Daftar yang melanggar ditolak seluruhnya.
+- Role lama yang sudah ada tidak diputus. Bila daftar baru menambah `requires`, role yang kurang ditandai "Missing ..." di tab Roles, label dan audience-nya masih bisa diubah, tetapi mengubah daftar permission-nya harus lengkap.
+- `requires` hanya menutup kombinasi yang tidak masuk akal di Central. Aplikasi tetap menjaga di server: tiap endpoint memeriksa permission aksinya sendiri (CRUD memeriksa `manage`), dan menyembunyikan tab di UI bukan penjagaan.
+
 Mengganti nama permission: tambah yang baru di kode dan deploy, pindahkan role ke yang baru di Central, lalu hapus yang lama dari kode. Contoh Exima: Cashier membawa `pos.checkout` dan Resource membawa `inventory.export`, dan middleware Exima memetakan rute ke permission itu.
 
 ## Lewat Hub
