@@ -680,6 +680,43 @@ describe("AppAccessPage", () => {
     expect(await screen.findByLabelText("Group details")).toBeVisible();
   });
 
+  describe("Permissions tab", () => {
+    const registry = (extra = {}) => ({
+      application_id: "exima",
+      has_manifest: true,
+      last_synced_at: "2026-10-07T01:00:00.000Z",
+      permissions: [
+        { key: "pos.checkout", description: "Opens the cashier tab", source: "MANIFEST", deprecated: false, role_count: 2 },
+        { key: "store.old", description: null, source: "MANIFEST", deprecated: true, role_count: 1 },
+      ],
+      ...extra,
+    });
+    const permissionRoutes = (data) => [
+      {
+        path: /\/api\/admin\/application-permissions\?application_id=exima/,
+        response: () => jsonResponse({ data }),
+      },
+    ];
+
+    it("lists what the application publishes, what it opens and which are dropped", async () => {
+      globalThis.fetch = createFetchRouter(routes(detail(), permissionRoutes(registry())));
+      renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=permissions");
+      const row = (await screen.findByText("pos.checkout")).closest("tr");
+      expect(within(row).getByText("Opens the cashier tab")).toBeVisible();
+      expect(within(row).getByText("Current")).toBeVisible();
+      expect(within(screen.getByText("store.old").closest("tr")).getByText("Dropped")).toBeVisible();
+      expect(screen.getByText(/publishes these from its code/)).toBeVisible();
+    });
+
+    it("says when the permissions were added by hand", async () => {
+      globalThis.fetch = createFetchRouter(
+        routes(detail(), permissionRoutes(registry({ has_manifest: false, last_synced_at: null }))),
+      );
+      renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=permissions");
+      expect(await screen.findByText(/has not published its permissions/)).toBeVisible();
+    });
+  });
+
   describe("Roles tab", () => {
     const orderRoutes = [
       {

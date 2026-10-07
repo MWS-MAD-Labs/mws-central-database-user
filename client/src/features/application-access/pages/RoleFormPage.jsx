@@ -11,6 +11,7 @@ import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { OrganizationNote } from "../components/OrganizationNote.jsx";
 import { PermissionChecklist } from "../components/PermissionChecklist.jsx";
+import { useApplicationPermissions } from "../hooks/useApplicationPermissions.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 
 
@@ -47,14 +48,29 @@ function RoleForm({ applicationId, role, roles }) {
   const [allowsStudents, setAllowsStudents] = useState(role?.allows_students ?? false);
   const [attempted, setAttempted] = useState(false);
 
-  // Every permission already used by a role of this application, plus the ones
-  // added here, so a role can reuse them as a checklist.
-  const catalog = [
-    ...new Set([
-      ...roles.filter((item) => item.application_id === application).flatMap((item) => item.permissions),
-      ...permissions,
-    ]),
-  ].sort();
+  const permissionsQuery = useApplicationPermissions(application);
+  const registry = permissionsQuery.data;
+  // The registered permissions, plus any the role carries that the application dropped.
+  const options = [
+    ...(registry?.permissions || []).filter((item) => !item.deprecated || permissions.includes(item.key)),
+    ...permissions
+      .filter((key) => !(registry?.permissions || []).some((item) => item.key === key))
+      .map((key) => ({ key, description: null, deprecated: false })),
+  ].sort((left, right) => left.key.localeCompare(right.key));
+  const register = useMutation({
+    mutationFn: (permission) => applicationAccessApi.createPermission({ application_id: application, key: permission }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["application-access", "permissions", application] }),
+    onError: (error) => showErrorToast(error, "Could not add this permission."),
+  });
+  async function registerPermission(permission) {
+    try {
+      await register.mutateAsync(permission);
+    } catch {
+      return false;
+    }
+    setPermissions((current) => (current.includes(permission) ? current : [...current, permission]));
+    return true;
+  }
   // Another active role of this application with exactly these permissions.
   const twin = roles.find(
     (item) =>
@@ -121,7 +137,20 @@ function RoleForm({ applicationId, role, roles }) {
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <section className="min-w-0 space-y-5 rounded-2xl border border-(--mws-line) bg-white p-5">
             <Field label="Permissions" hint="Check what this role may do. The application decides what each permission means.">
-              <PermissionChecklist catalog={catalog} value={permissions} onChange={setPermissions} />
+              {permissionsQuery.isLoading ? (
+                <p className="text-sm text-(--mws-muted)">Loading permissions…</p>
+              ) : permissionsQuery.isError ? (
+                <p className="text-sm font-semibold text-[#a43c41]">The permissions of this application could not be loaded.</p>
+              ) : (
+                <PermissionChecklist
+                  options={options}
+                  value={permissions}
+                  onChange={setPermissions}
+                  canRegister={!registry?.has_manifest}
+                  onRegister={registerPermission}
+                  registering={register.isPending}
+                />
+              )}
               {twin ? (
                 <p className="text-sm font-semibold text-[#a43c41]">
                   {twin.key} already has exactly these permissions. Reuse it, or change the permissions.

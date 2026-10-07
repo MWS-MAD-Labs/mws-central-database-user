@@ -11,9 +11,21 @@ const roles = [
   { id: 'role-staff', application_id: 'exima', key: 'STAFF', label: 'Staff', permissions: ['store.use'], is_active: true, active_entitlement_count: 3 },
 ]
 
+let registry = {
+  application_id: 'exima',
+  has_manifest: false,
+  last_synced_at: null,
+  permissions: [
+    { key: 'app.admin', description: 'Opens the admin area', source: 'MANUAL', deprecated: false, role_count: 1 },
+    { key: 'store.use', description: null, source: 'MANUAL', deprecated: false, role_count: 2 },
+  ],
+}
+
 function routes(extra = []) {
   return [
     ...extra,
+    { path: /\/api\/admin\/application-permissions\?application_id=exima/, method: 'GET', response: () => jsonResponse({ data: registry }) },
+    { path: '/api/admin/application-permissions', method: 'POST', response: () => jsonResponse({ data: {} }) },
     { path: '/api/admin/application-roles', method: 'GET', response: () => jsonResponse({ data: roles }) },
     { path: '/api/admin/application-organizations', response: () => jsonResponse({ data: [{ application_id: 'exima', organization_id: 'org_exima_a1b2c3' }] }) },
   ]
@@ -41,12 +53,15 @@ describe('RoleFormPage', () => {
     const { user } = renderPage('/application-access/apps/exima/roles/role-staff')
 
     expect(await screen.findByText('Edit STAFF')).toBeVisible()
-    expect(screen.getByLabelText('store.use')).toBeChecked()
-    expect(screen.getByLabelText('app.admin')).not.toBeChecked()
+    expect(await screen.findByLabelText('store.use')).toBeChecked()
+    expect(screen.getByLabelText(/^app\.admin/)).not.toBeChecked()
 
-    await user.type(screen.getByPlaceholderText(/Add a new permission/), 'store.refund')
+    await user.type(await screen.findByPlaceholderText(/Add a new permission/), 'store.refund')
     await user.click(screen.getByRole('button', { name: 'Add permission' }))
-    expect(screen.getByLabelText('store.refund')).toBeChecked()
+    expect(await screen.findByLabelText('store.refund')).toBeChecked()
+    expect(fetchMock.mock.calls.some(([url, options]) =>
+      url === '/api/admin/application-permissions' && options.method === 'POST'
+      && JSON.parse(options.body).key === 'store.refund')).toBe(true)
     expect(screen.getByText(/3 active entitlement\(s\) hold this role/)).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
@@ -62,10 +77,10 @@ describe('RoleFormPage', () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage('/application-access/apps/exima/roles/role-staff')
     await screen.findByText('Edit STAFF')
-    await user.click(screen.getByLabelText('app.admin'))
+    await user.click(await screen.findByLabelText(/^app\.admin/))
     expect(screen.getByText(/ADMIN already has exactly these permissions/)).toBeVisible()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
-    await user.click(screen.getByLabelText('app.admin'))
+    await user.click(screen.getByLabelText(/^app\.admin/))
     expect(screen.queryByText(/already has exactly these permissions/)).not.toBeInTheDocument()
   })
 
@@ -81,9 +96,9 @@ describe('RoleFormPage', () => {
     const textboxes = screen.getAllByRole('textbox')
     await user.type(textboxes.find((input) => !input.placeholder), 'CASHIER')
     await user.type(screen.getAllByRole('textbox').filter((input) => !input.placeholder)[1], 'Cashier')
-    await user.type(screen.getByPlaceholderText(/Add a new permission/), 'pos.checkout')
+    await user.type(await screen.findByPlaceholderText(/Add a new permission/), 'pos.checkout')
     await user.click(screen.getByRole('button', { name: 'Add permission' }))
-    expect(screen.getByLabelText('pos.checkout')).toBeChecked()
+    expect(await screen.findByLabelText('pos.checkout')).toBeChecked()
     await user.click(screen.getByRole('switch', { name: 'Students' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
@@ -99,6 +114,42 @@ describe('RoleFormPage', () => {
         allows_students: true,
       })
     })
+  })
+
+  it('shows what a permission opens and offers only what is registered', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage('/application-access/apps/exima/roles/new')
+    await screen.findByText('Add role to exima')
+    expect(await screen.findByText('Opens the admin area')).toBeVisible()
+    expect(await screen.findByLabelText('store.use')).not.toBeChecked()
+  })
+
+  it('does not let a new permission be typed for an application that publishes its own', async () => {
+    registry = { ...registry, has_manifest: true }
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage('/application-access/apps/exima/roles/new')
+    await screen.findByText('Add role to exima')
+    expect(await screen.findByText(/publishes its own permissions/)).toBeVisible()
+    expect(screen.queryByPlaceholderText(/Add a new permission/)).not.toBeInTheDocument()
+    registry = { ...registry, has_manifest: false }
+  })
+
+  it('marks a permission the application dropped and keeps it on the role', async () => {
+    registry = {
+      ...registry,
+      permissions: [
+        ...registry.permissions,
+        { key: 'store.old', description: null, source: 'MANIFEST', deprecated: true, role_count: 1 },
+      ],
+    }
+    roles.push({ ...roles[1], id: 'role-old', key: 'OLD', permissions: ['store.use', 'store.old'] })
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage('/application-access/apps/exima/roles/role-old')
+    await screen.findByText('Edit OLD')
+    expect(await screen.findByLabelText(/^store\.old/)).toBeChecked()
+    expect(screen.getByText(/Dropped by the application/)).toBeVisible()
+    roles.pop()
+    registry = { ...registry, permissions: registry.permissions.slice(0, 2) }
   })
 
   it('says when the role belongs to another application', async () => {

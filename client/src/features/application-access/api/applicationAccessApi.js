@@ -3,6 +3,7 @@ import { compactSearchParams } from '../../../lib/url.js'
 
 const ENTITLEMENTS = '/api/admin/application-entitlements'
 const ROLES = '/api/admin/application-roles'
+const PERMISSIONS = '/api/admin/application-permissions'
 const RULES = '/api/admin/application-access-rules'
 const ACCESS = '/api/admin/application-access'
 
@@ -94,6 +95,16 @@ export const applicationAccessApi = {
   async listRoles(params = {}) {
     const query = compactSearchParams(params).toString()
     const response = await apiRequest(`${ROLES}${query ? `?${query}` : ''}`)
+    return response.data
+  },
+
+  async listPermissions(applicationId) {
+    const response = await apiRequest(`${PERMISSIONS}?application_id=${encodeURIComponent(applicationId)}`)
+    return response.data
+  },
+
+  async createPermission(payload) {
+    const response = await apiRequest(PERMISSIONS, { method: 'POST', body: payload })
     return response.data
   },
 

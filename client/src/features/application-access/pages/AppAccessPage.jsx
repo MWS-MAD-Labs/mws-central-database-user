@@ -11,6 +11,7 @@ import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { AppPermissionsTab } from "../components/AppPermissionsTab.jsx";
 import { AppRolesTab } from "../components/AppRolesTab.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
 import { ExceptionsPanel } from "../components/ExceptionsPanel.jsx";
@@ -23,6 +24,7 @@ const GROUP_PAGE_SIZE = 10;
 const tabs = [
   { id: "access", label: "Access" },
   { id: "roles", label: "Roles" },
+  { id: "permissions", label: "Permissions" },
 ];
 
 export function AppAccessPage() {
@@ -145,6 +147,8 @@ export function AppAccessPage() {
 
       {activeTab === "roles" ? (
         <AppRolesTab applicationId={applicationId} roles={roles} />
+      ) : activeTab === "permissions" ? (
+        <AppPermissionsTab applicationId={applicationId} />
       ) : (
         <>
           {detail.groups.length === 0 ? (
