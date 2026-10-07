@@ -55,7 +55,9 @@ export type ListApplicationEntitlementsRequest = {
 export type BulkGrantApplicationEntitlementRequest = {
   person_ids: string[];
   application_id: string;
-  role: string;
+  role?: string;
+  // Block the people instead of giving them a role.
+  blocked?: boolean;
 };
 
 export type CreateApplicationAccessRuleRequest = {

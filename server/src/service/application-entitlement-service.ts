@@ -366,6 +366,86 @@ export class ApplicationEntitlementService {
     return toApplicationEntitlementResponse(entitlement);
   }
 
+  // Shuts a person out of an application they would get through a group. The row keeps the
+  // role the group gives, switched off, and a row that is off always wins over the group.
+  static async blockPerson(
+    admin: AdminUser,
+    personId: string,
+    applicationId: string,
+    context: AuditRequestContext = {},
+  ): Promise<ApplicationEntitlementResponse> {
+    assertSuperAdmin(admin);
+    const person = await prismaClient.person.findFirst({
+      where: {
+        id: personId,
+        deleted_at: null,
+        person_type: PersonType.EMPLOYEE,
+        employee: { status: EmployeeStatus.ACTIVE, deleted_at: null },
+      },
+      select: { id: true, full_name: true },
+    });
+    if (!person) throw new ResponseError(404, "Active employee person not found");
+
+    const rules = await loadActiveRules(applicationId);
+    assertHasGroup(applicationId, rules);
+    const subject = await loadRuleSubject(personId);
+    const inherited = subject ? inheritedRole(subject, rules) : undefined;
+    if (!inherited) {
+      throw new ResponseError(
+        400,
+        `${person.full_name} is not covered by any group of ${applicationId}, so there is nothing to block.`,
+      );
+    }
+
+    const existing = await prismaClient.applicationEntitlement.findUnique({
+      where: { person_id_application_id: { person_id: personId, application_id: applicationId } },
+    });
+    if (existing && !existing.is_active) {
+      throw new ResponseError(400, `${person.full_name} is already blocked on ${applicationId}`);
+    }
+    const organizationId = await resolveOrganizationId(applicationId);
+    const rolePermissions = existing
+      ? existing.permissions
+      : (await prismaClient.applicationRole.findUnique({
+          where: { application_id_key: { application_id: applicationId, key: inherited.default_role_key } },
+          select: { permissions: true },
+        }))?.permissions ?? [];
+
+    const saved = await prismaClient.$transaction(async (tx) => {
+      const row = existing
+        ? await tx.applicationEntitlement.update({
+            where: { id: existing.id },
+            data: { is_active: false, version: { increment: 1 } },
+          })
+        : await tx.applicationEntitlement.create({
+            data: {
+              person_id: personId,
+              application_id: applicationId,
+              organization_id: organizationId,
+              role: inherited.default_role_key,
+              permissions: rolePermissions,
+              is_active: false,
+            },
+          });
+      await AuditService.record(
+        {
+          action: AuditAction.APPLICATION_ENTITLEMENT_REVOKE,
+          source: AuditSource.UI,
+          entity_type: "ApplicationEntitlement",
+          entity_id: row.id,
+          admin_id: admin.id,
+          old_values: existing ? auditSnapshot(existing) : undefined,
+          new_values: auditSnapshot(row),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+      return row;
+    });
+    return toApplicationEntitlementResponse(saved);
+  }
+
   static async bulkGrant(
     admin: AdminUser,
     request: BulkGrantApplicationEntitlementRequest,
@@ -374,21 +454,23 @@ export class ApplicationEntitlementService {
     assertSuperAdmin(admin);
     const input = Validation.validate(ApplicationEntitlementValidation.BULK_GRANT, request);
     // Fail the whole call early on a bad role instead of once per person.
-    await resolveRolePermissions(input.application_id, input.role, undefined);
+    if (!input.blocked) await resolveRolePermissions(input.application_id, input.role as string, undefined);
     assertHasGroup(input.application_id, await loadActiveRules(input.application_id));
 
     const items = [];
     for (const personId of input.person_ids) {
       try {
-        const data = await this.grant(
-          admin,
-          {
-            person_id: personId,
-            application_id: input.application_id,
-            role: input.role,
-          },
-          context,
-        );
+        const data = input.blocked
+          ? await this.blockPerson(admin, personId, input.application_id, context)
+          : await this.grant(
+              admin,
+              {
+                person_id: personId,
+                application_id: input.application_id,
+                role: input.role as string,
+              },
+              context,
+            );
         items.push({ id: personId, status: "SUCCESS" as const, data });
       } catch (error) {
         items.push({

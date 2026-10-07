@@ -91,6 +91,57 @@ describe("application baseline access rules", () => {
     return (await response.json()).data.id as string;
   }
 
+  describe("blocking a person the group covers", () => {
+    const BULK = "/api/admin/application-entitlements/bulk";
+
+    it("shuts a group member out without giving them another role", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const person = await createEmployee("test_block_member@millennia21.id");
+      const other = await createEmployee("test_block_other@millennia21.id");
+      expect((await addRule(accessToken)).status).toBe(200);
+      expect((await lookup(person.id)).status).toBe(200);
+
+      const response = await TestRequest.post(BULK, { person_ids: [person.id], application_id: appId, blocked: true }, accessToken);
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(JSON.stringify(body)).not.toContain("FAILED");
+
+      const row = await prismaClient.applicationEntitlement.findFirstOrThrow({ where: { application_id: appId, person_id: person.id } });
+      expect(row.is_active).toBe(false);
+      // The row keeps the role the group gives.
+      expect(row.role).toBe("STAFF");
+      // An off row wins over the group, so the lookup finds nobody with access.
+      const found = await lookup(person.id);
+      expect(found.status === 404 || (await found.json()).data?.is_active === false).toBe(true);
+      // Someone else in the group is untouched.
+      expect((await (await lookup(other.id)).json()).data.is_active).toBe(true);
+    });
+
+    it("refuses someone no group covers, and someone already blocked", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const person = await createEmployee("test_block_twice@millennia21.id");
+      // Only students are covered, so the employee has nothing to block.
+      await addRule(accessToken, { audience: "STUDENTS", default_role_key: "MEMBER" });
+      const uncovered = await TestRequest.post(BULK, { person_ids: [person.id], application_id: appId, blocked: true }, accessToken);
+      expect(uncovered.status).toBe(400);
+      expect(JSON.stringify(await uncovered.json())).toContain("Set up a group");
+
+      await addRule(accessToken);
+      const first = await (await TestRequest.post(BULK, { person_ids: [person.id], application_id: appId, blocked: true }, accessToken)).json();
+      expect(JSON.stringify(first)).not.toContain("FAILED");
+      const again = await (await TestRequest.post(BULK, { person_ids: [person.id], application_id: appId, blocked: true }, accessToken)).json();
+      expect(JSON.stringify(again)).toContain("already blocked");
+    });
+
+    it("needs a role when it is not a block", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const person = await createEmployee("test_block_norole@millennia21.id");
+      await addRule(accessToken);
+      const response = await TestRequest.post(BULK, { person_ids: [person.id], application_id: appId }, accessToken);
+      expect(response.status).toBe(400);
+    });
+  });
+
   it("gives every active employee the default role and marks it as group access", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const person = await createEmployee("test_rule_employee@millennia21.id");

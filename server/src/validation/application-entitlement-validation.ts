@@ -46,15 +46,19 @@ export class ApplicationEntitlementValidation {
     permissions: permissions.optional(),
   });
 
-  static readonly BULK_GRANT = z.object({
-    person_ids: z
-      .array(nonemptyId("Person ID"))
-      .min(1, "Pick at least one person")
-      .max(200, "Pick at most 200 people at a time")
-      .refine((values) => new Set(values).size === values.length, "People must be unique"),
-    application_id: applicationId,
-    role: roleKey,
-  });
+  static readonly BULK_GRANT = z
+    .object({
+      person_ids: z
+        .array(nonemptyId("Person ID"))
+        .min(1, "Pick at least one person")
+        .max(200, "Pick at most 200 people at a time")
+        .refine((values) => new Set(values).size === values.length, "People must be unique"),
+      application_id: applicationId,
+      role: roleKey.optional(),
+      // Shuts the person out of the application instead of giving them a role.
+      blocked: z.boolean().optional(),
+    })
+    .refine((value) => value.blocked || value.role, { message: "Role is required", path: ["role"] });
 
   static readonly UPDATE = z
     .object({
