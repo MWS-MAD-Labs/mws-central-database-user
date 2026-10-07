@@ -784,6 +784,63 @@ describe("AppAccessPage", () => {
       expect(await screen.findByText("Edit role page")).toBeVisible();
     });
 
+    it("deletes a role nobody uses after a confirmation", async () => {
+      const fetchMock = createFetchRouter(
+        routes(detail(), [
+          ...orderRoutes,
+          { path: "/api/admin/application-roles/role-staff", method: "DELETE", response: () => jsonResponse({ data: true }) },
+        ]),
+      );
+      globalThis.fetch = fetchMock;
+      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      await screen.findByText("STAFF");
+      await user.click(screen.getByRole("button", { name: "Actions for exima STAFF" }));
+      await user.click(screen.getByRole("button", { name: "Delete" }));
+      const dialog = await screen.findByRole("dialog", { name: "Delete Role" });
+      await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(
+            ([url, options]) => url === "/api/admin/application-roles/role-staff" && options.method === "DELETE",
+          ),
+        ).toBe(true),
+      );
+    });
+
+    it("keeps Delete off for a role that people still hold", async () => {
+      globalThis.fetch = createFetchRouter(routes(detail(), orderRoutes));
+      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      await screen.findByText("ADMIN");
+      await user.click(screen.getByRole("button", { name: "Actions for exima ADMIN" }));
+      const remove = screen.getByRole("button", { name: "Delete" });
+      expect(remove).toBeDisabled();
+      expect(remove).toHaveAttribute("title", "Still used. Deactivate it instead.");
+    });
+
+    it("keeps the role listed when Central refuses the delete", async () => {
+      const fetchMock = createFetchRouter(
+        routes(detail(), [
+          ...orderRoutes,
+          {
+            path: "/api/admin/application-roles/role-staff",
+            method: "DELETE",
+            response: () => jsonResponse({ errors: "1 person still use this role. Move them to another role first, or deactivate it instead." }, 400),
+          },
+        ]),
+      );
+      globalThis.fetch = fetchMock;
+      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      await screen.findByText("STAFF");
+      await user.click(screen.getByRole("button", { name: "Actions for exima STAFF" }));
+      await user.click(screen.getByRole("button", { name: "Delete" }));
+      const dialog = await screen.findByRole("dialog", { name: "Delete Role" });
+      await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+      await waitFor(() =>
+        expect(fetchMock.mock.calls.some(([, options]) => options.method === "DELETE")).toBe(true),
+      );
+      expect(screen.getByText("STAFF")).toBeVisible();
+    });
+
     it("opens the permissions of a role from its count", async () => {
       globalThis.fetch = createFetchRouter(routes(detail(), orderRoutes));
       const { user } = renderPage(

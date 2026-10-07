@@ -41,6 +41,14 @@ export function AppRolesTab({ applicationId, roles }) {
     },
     onError: (error) => showErrorToast(error, "Could not update this role."),
   });
+  const deleteMutation = useMutation({
+    mutationFn: (role) => applicationAccessApi.deleteRole(role.id),
+    onSuccess: () => {
+      invalidate();
+      showSuccessToast("Role deleted.");
+    },
+    onError: (error) => showErrorToast(error, "Could not delete this role."),
+  });
   const orderMutation = useMutation({
     mutationFn: (ids) => applicationAccessApi.reorderRoles(applicationId, ids),
     onSuccess: invalidate,
@@ -232,6 +240,31 @@ export function AppRolesTab({ applicationId, roles }) {
                           }}
                         >
                           {role.is_active ? "Deactivate" : "Activate"}
+                        </ActionsMenuItem>
+                        <ActionsMenuItem
+                          tone="danger"
+                          disabled={
+                            role.active_entitlement_count > 0 ||
+                            role.active_group_count > 0
+                          }
+                          title={
+                            role.active_entitlement_count > 0 ||
+                            role.active_group_count > 0
+                              ? "Still used. Deactivate it instead."
+                              : undefined
+                          }
+                          onClick={async () => {
+                            closeMenu();
+                            const confirmed = await confirm({
+                              title: "Delete Role",
+                              description: `${role.key} will be removed from ${applicationId}. A role that was ever used by a person or a group cannot be deleted, deactivate it instead.`,
+                              confirmLabel: "Delete",
+                              tone: "danger",
+                            });
+                            if (confirmed) deleteMutation.mutate(role);
+                          }}
+                        >
+                          Delete
                         </ActionsMenuItem>
                       </>
                     )}

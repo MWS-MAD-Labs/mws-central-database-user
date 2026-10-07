@@ -70,6 +70,10 @@ Saat membuat role baru, pastikan setiap permission-nya sudah dikenal aplikasi pe
 
 Kode: Hub di `backend/src/lib/hub-access-gate.ts` (`userHasHubPermission`) dan `lib/admin-access.ts` (`isHubAdmin`). Daily Check-in memakai `PERMISSION_SET`.
 
+## Menghapus role
+
+Role bisa dihapus dari tab Roles (Delete, Super Admin saja) hanya bila tidak pernah dirujuk: tidak ada orang yang pernah memegangnya (termasuk yang aksesnya sudah dicabut) dan tidak ada group yang memberikannya (termasuk yang dimatikan). Selain itu Central menolak dengan hitungannya, dan jalannya adalah memindahkan orang lewat Change Role atau group lewat Edit Group, atau cukup menonaktifkan role itu. Urutan role dirapatkan kembali setelah hapus dan penghapusan tercatat di audit log.
+
 ## Mendaftarkan permission
 
 Role di Central hanya boleh membawa permission yang sudah didaftarkan untuk aplikasinya. Permission yang tidak dikenal ditolak saat role dibuat atau diubah (`Permission "x" is not registered for <app>`), jadi salah ketik tidak lolos diam-diam.

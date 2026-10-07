@@ -118,6 +118,11 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  async deleteRole(id) {
+    const response = await apiRequest(`${ROLES}/${id}`, { method: 'DELETE' })
+    return response.data
+  },
+
   async getRule(id) {
     const response = await apiRequest(`${RULES}/${id}`)
     return response.data
