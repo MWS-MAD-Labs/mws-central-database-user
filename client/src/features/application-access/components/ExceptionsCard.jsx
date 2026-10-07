@@ -63,6 +63,7 @@ export function ExceptionsCard({ group, applicationId, roles, onAdd }) {
           <ExceptionsPanel
             applicationId={applicationId}
             groupId={group.id}
+            groupRole={group.default_role_key}
             roles={roles}
             canChange
             total={total}

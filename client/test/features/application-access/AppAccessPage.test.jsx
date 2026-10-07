@@ -410,10 +410,11 @@ describe("AppAccessPage", () => {
     await user.click(
       screen.getByRole("button", { name: /Actions for Dummy Staff on exima/ }),
     );
-    await user.click(screen.getByRole("button", { name: "Remove" }));
+    await user.click(screen.getByRole("button", { name: "Remove Exception" }));
     const removeDialog = await screen.findByRole("dialog", {
-      name: "Remove exception",
+      name: "Remove Exception",
     });
+    expect(within(removeDialog).getByText(/loses the ADMIN exception and gets STAFF from the group again/)).toBeVisible();
     await user.click(
       within(removeDialog).getByRole("button", { name: "Remove" }),
     );
@@ -488,6 +489,31 @@ describe("AppAccessPage", () => {
     expect(within(card).getByText("3")).toBeVisible();
     expect(within(card).getByText("1 Blocked")).toBeVisible();
     expect(within(card).queryByText(/, 1 blocked/)).not.toBeInTheDocument();
+  });
+
+  it("offers only Unblock for a plain block, and Unblock with Remove Exception for a blocked exception", async () => {
+    globalThis.fetch = createFetchRouter(
+      routes(detail({ groups: [baselineGroup({ exception_count: 2, blocked_count: 2 })] }), [], {
+        "rule-1": [
+          exception({ id: "ent-9", person_id: "person-9", full_name: "Plain Block", email: "plain@millennia21.id", role: "STAFF", is_active: false }),
+          exception({ id: "ent-8", person_id: "person-8", full_name: "Blocked Admin", email: "admin@millennia21.id", role: "ADMIN", is_active: false }),
+        ],
+      }),
+    );
+    const { user } = renderPage();
+    await openExceptions(user);
+    await screen.findByText("Plain Block");
+
+    await user.click(screen.getByRole("button", { name: /Actions for Plain Block on exima/ }));
+    expect(screen.getByRole("button", { name: "Unblock" })).toHaveAttribute("title", "Back to STAFF from the group");
+    expect(screen.queryByRole("button", { name: /^Remove/ })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: /Actions for Blocked Admin on exima/ }));
+    expect(screen.getByRole("button", { name: "Unblock" })).toHaveAttribute("title", "Back as ADMIN");
+    await user.click(screen.getByRole("button", { name: "Remove Exception" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove Exception" });
+    expect(within(dialog).getByText(/loses the ADMIN exception and gets STAFF from the group again. The block is lifted./)).toBeVisible();
   });
 
   it("unblocks a blocked exception and changes the role of an active one", async () => {

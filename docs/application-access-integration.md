@@ -74,6 +74,17 @@ Kode: Hub di `backend/src/lib/hub-access-gate.ts` (`userHasHubPermission`) dan `
 
 Orang yang aksesnya datang dari group bisa diblokir tanpa mengganti role mereka: di kartu Exceptions pilih Add Exception, ubah "Add As" menjadi Blocked, centang orangnya, lalu Block Access. Central menyimpan satu baris entitlement tidak aktif dengan role yang diberikan group, dan baris tidak aktif selalu menang atas group, jadi lookup mengembalikan tidak ada akses. Orang itu tampil di daftar exception dengan status Blocked dan lencana merah "Blocked" di ringkasan. Unblock mengembalikannya ke akses group (atau ke role exception-nya), dan Remove menghapus barisnya. Hanya orang yang tercakup group yang bisa diblokir.
 
+### Aksi pada baris exception
+
+| Baris | Unblock | Remove |
+| --- | --- | --- |
+| Exception aktif | tidak ada | Remove Exception: orang kembali ke role group |
+| Exception yang diblokir (role berbeda dari group) | Exception aktif lagi dengan role-nya | Remove Exception: exception hilang, blokir hilang, orang kembali ke role group |
+| Blokir murni dari group (role sama dengan group) | Baris dihapus, orang kembali ke akses group | tidak ditampilkan, hasilnya sama dengan Unblock |
+| Akses lama yang tidak tercakup group ("Other Access") | tidak ada | Remove Access: orang kehilangan akses, tidak ada yang menggantikan |
+
+Jadi Remove tidak pernah memutus akses orang yang masih tercakup group. Untuk memblokir lagi gunakan Block Access (pada exception aktif) atau Add Exception dengan pilihan Blocked. Memberi akses kepada orang yang tidak tercakup group mana pun dilakukan dengan memperluas scope sebuah group.
+
 ## Menghapus role
 
 Role bisa dihapus dari tab Roles (Delete, Super Admin saja) hanya bila tidak pernah dirujuk: tidak ada orang yang pernah memegangnya (termasuk yang aksesnya sudah dicabut) dan tidak ada group yang memberikannya (termasuk yang dimatikan). Selain itu Central menolak dengan hitungannya, dan jalannya adalah memindahkan orang lewat Change Role atau group lewat Edit Group, atau cukup menonaktifkan role itu. Urutan role dirapatkan kembali setelah hapus dan penghapusan tercatat di audit log.

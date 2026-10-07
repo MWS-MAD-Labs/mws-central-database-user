@@ -12,7 +12,7 @@ import { ChangeRoleDialog } from "./ChangeRoleDialog.jsx";
 import { RoleName } from "./RoleName.jsx";
 
 // Paged exceptions of one group, or of "other" (access no group covers).
-export function ExceptionsPanel({ applicationId, groupId, roles, canChange, total, emptyText }) {
+export function ExceptionsPanel({ applicationId, groupId, groupRole, roles, canChange, total, emptyText }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [search, setSearch] = useState("");
@@ -45,9 +45,9 @@ export function ExceptionsPanel({ applicationId, groupId, roles, canChange, tota
   });
   const unblockMutation = useMutation({
     mutationFn: (row) => applicationAccessApi.unblock(row.id),
-    onSuccess: () => {
+    onSuccess: (result) => {
       invalidate();
-      showSuccessToast("Access unblocked.");
+      showSuccessToast(result?.restored === "GROUP_ACCESS" ? "Back on group access." : "Access unblocked.");
     },
     onError: (error) => showErrorToast(error, "Could not unblock this access."),
   });
@@ -64,8 +64,10 @@ export function ExceptionsPanel({ applicationId, groupId, roles, canChange, tota
 
   async function remove(row) {
     const confirmed = await confirm({
-      title: "Remove exception",
-      description: `${row.full_name} falls back to the role of their group on ${applicationId}.`,
+      title: groupRole ? "Remove Exception" : "Remove Access",
+      description: groupRole
+        ? `${row.full_name} loses the ${row.role} exception and gets ${groupRole} from the group again.${row.is_active ? "" : " The block is lifted."}`
+        : `${row.full_name} loses this access to ${applicationId}. No group covers them, so they will have no access.`,
       confirmLabel: "Remove",
     });
     if (confirmed) removeMutation.mutate(row.id);
@@ -163,6 +165,7 @@ export function ExceptionsPanel({ applicationId, groupId, roles, canChange, tota
                     ) : null}
                     {!row.is_active && canChange ? (
                       <ActionsMenuItem
+                        title={groupRole && row.role === groupRole ? `Back to ${groupRole} from the group` : `Back as ${row.role}`}
                         onClick={() => {
                           closeMenu();
                           unblockMutation.mutate(row);
@@ -171,14 +174,17 @@ export function ExceptionsPanel({ applicationId, groupId, roles, canChange, tota
                         Unblock
                       </ActionsMenuItem>
                     ) : null}
-                    <ActionsMenuItem
-                      onClick={() => {
-                        closeMenu();
-                        remove(row);
-                      }}
-                    >
-                      Remove
-                    </ActionsMenuItem>
+                    {/* A plain block gives the same result as Unblock, so it has no Remove. */}
+                    {!row.is_active && groupRole && row.role === groupRole ? null : (
+                      <ActionsMenuItem
+                        onClick={() => {
+                          closeMenu();
+                          remove(row);
+                        }}
+                      >
+                        {groupRole ? "Remove Exception" : "Remove"}
+                      </ActionsMenuItem>
+                    )}
                     {row.is_active ? (
                       <ActionsMenuItem
                         tone="danger"
