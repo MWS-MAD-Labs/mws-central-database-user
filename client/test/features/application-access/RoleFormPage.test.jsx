@@ -172,6 +172,27 @@ describe('RoleFormPage', () => {
     registry = { ...registry, permissions: registry.permissions.slice(0, 0) }
   })
 
+  it('shortens what needs a permission when many do, and searches a long list', async () => {
+    registry = {
+      ...registry,
+      permissions: [
+        { key: 'inv.read', description: 'Opens the inventory tab', requires: [], source: 'MANIFEST', deprecated: false, role_count: 0 },
+        ...['a', 'b', 'c'].map((letter) => ({ key: `inv.${letter}`, description: null, requires: ['inv.read'], source: 'MANIFEST', deprecated: false, role_count: 0 })),
+        ...Array.from({ length: 10 }, (_, index) => ({ key: `other.item${index}`, description: null, requires: [], source: 'MANIFEST', deprecated: false, role_count: 0 })),
+      ],
+    }
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage('/application-access/apps/exima/roles/new')
+    await screen.findByText('Add Role to exima')
+    for (const letter of ['a', 'b', 'c']) await user.click(await screen.findByLabelText(new RegExp(`^inv\\.${letter}`)))
+    expect(screen.getByText('Needed by 3 permissions')).toBeVisible()
+
+    await user.type(screen.getByPlaceholderText('Search permissions'), 'other.item1')
+    expect(screen.queryByLabelText(/^other\.item2/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/^other\.item1/)).toBeVisible()
+    registry = { ...registry, permissions: registry.permissions.slice(0, 0) }
+  })
+
   it('says when the role belongs to another application', async () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage('/application-access/apps/hub/roles/role-staff')

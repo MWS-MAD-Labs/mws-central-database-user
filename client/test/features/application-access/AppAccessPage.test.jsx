@@ -709,6 +709,42 @@ describe("AppAccessPage", () => {
       expect(screen.getByText(/publishes these from its code/)).toBeVisible();
     });
 
+    it("keeps many needs as a count that opens the list, and shows what needs a permission", async () => {
+      const many = registry({
+        permissions: [
+          { key: "inv.manage", description: null, requires: ["inv.read", "inv.list", "inv.view"], source: "MANIFEST", deprecated: false, role_count: 0 },
+          { key: "inv.read", description: null, requires: [], source: "MANIFEST", deprecated: false, role_count: 0 },
+        ],
+      });
+      globalThis.fetch = createFetchRouter(routes(detail(), permissionRoutes(many)));
+      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=permissions");
+      const manage = (await screen.findByText("inv.manage", { selector: "td" })).closest("tr");
+      expect(within(manage).queryByText("inv.list")).not.toBeInTheDocument();
+      await user.click(within(manage).getByRole("button", { name: /3 permissions/ }));
+      expect(await screen.findByText("inv.list")).toBeVisible();
+      // inv.read is needed by inv.manage, shown as the single name.
+      const read = screen.getByText("inv.read", { selector: "td" }).closest("tr");
+      expect(within(read).getByText("inv.manage")).toBeVisible();
+    });
+
+    it("searches and pages through many permissions", async () => {
+      const permissions = Array.from({ length: 23 }, (_, index) => ({
+        key: `area.item${String(index).padStart(2, "0")}`,
+        description: index === 22 ? "Prints the report" : null,
+        requires: [],
+        source: "MANIFEST",
+        deprecated: false,
+        role_count: 0,
+      }));
+      globalThis.fetch = createFetchRouter(routes(detail(), permissionRoutes(registry({ permissions }))));
+      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=permissions");
+      expect(await screen.findByText("area.item00")).toBeVisible();
+      expect(screen.queryByText("area.item10")).not.toBeInTheDocument();
+      await user.type(screen.getByPlaceholderText("Search permissions"), "report");
+      expect(await screen.findByText("area.item22")).toBeVisible();
+      await waitFor(() => expect(screen.queryByText("area.item00")).not.toBeInTheDocument());
+    });
+
     it("says when the permissions were added by hand", async () => {
       globalThis.fetch = createFetchRouter(
         routes(detail(), permissionRoutes(registry({ has_manifest: false, last_synced_at: null }))),
@@ -784,7 +820,23 @@ describe("AppAccessPage", () => {
       ]);
       renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
       const admin = (await screen.findByText("ADMIN")).closest("tr");
-      expect(within(admin).getByText("Missing store.read")).toBeVisible();
+      expect(within(admin).getByText("Missing")).toBeVisible();
+      expect(within(admin).getByText("store.read")).toBeVisible();
+    });
+
+    it("keeps a long list of missing permissions as a count that opens the list", async () => {
+      const incomplete = roles.map((role) =>
+        role.key === "ADMIN" ? { ...role, missing_permissions: ["a.read", "b.read", "c.read"] } : role,
+      );
+      globalThis.fetch = createFetchRouter([
+        ...routes(detail(), orderRoutes).filter((item) => item.path !== "/api/admin/application-roles"),
+        { path: "/api/admin/application-roles", response: () => jsonResponse({ data: incomplete }) },
+      ]);
+      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      const admin = (await screen.findByText("ADMIN")).closest("tr");
+      expect(within(admin).queryByText("a.read")).not.toBeInTheDocument();
+      await user.click(within(admin).getByRole("button", { name: /3 permissions/ }));
+      expect(await screen.findByText("c.read")).toBeVisible();
     });
 
     it("shows who each role is for", async () => {

@@ -7,9 +7,19 @@ import { CheckboxField, TextInput } from "../../../components/ui/FormControls.js
 // publishes its own permissions, then new ones come from its code, not from here.
 export function PermissionChecklist({ options, value, onChange, canRegister, onRegister, registering }) {
   const [draft, setDraft] = useState("");
+  const [filter, setFilter] = useState("");
   const keys = options.filter((option) => !option.deprecated).map((option) => option.key);
   const all = keys.length > 0 && keys.every((key) => value.includes(key));
 
+  // A long list gets a search box. What is already ticked stays ticked when it is filtered out.
+  const searchable = options.length > 12;
+  const needle = filter.trim().toLowerCase();
+  const shown =
+    searchable && needle
+      ? options.filter(
+          (option) => option.key.toLowerCase().includes(needle) || (option.description || "").toLowerCase().includes(needle),
+        )
+      : options;
   const requiresOf = new Map(options.map((option) => [option.key, option.requires || []]));
   // Everything a permission needs, directly or through the ones it needs.
   function needed(key, seen = new Set()) {
@@ -39,6 +49,14 @@ export function PermissionChecklist({ options, value, onChange, canRegister, onR
 
   return (
     <div className="space-y-3">
+      {searchable ? (
+        <TextInput
+          value={filter}
+          placeholder="Search permissions"
+          aria-label="Search permissions"
+          onChange={(event) => setFilter(event.target.value)}
+        />
+      ) : null}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
         <CheckboxField
           checked={all}
@@ -52,7 +70,7 @@ export function PermissionChecklist({ options, value, onChange, canRegister, onR
             )
           }
         />
-        {options.map((option) => {
+        {shown.map((option) => {
           const holders = value.includes(option.key) ? neededBy(option.key) : [];
           return (
             <CheckboxField
@@ -60,9 +78,12 @@ export function PermissionChecklist({ options, value, onChange, canRegister, onR
               checked={value.includes(option.key)}
               disabled={holders.length > 0}
               label={option.key}
+              title={holders.length > 2 ? `Needed by ${holders.join(", ")}` : undefined}
               description={
                 holders.length > 0
-                  ? `Needed by ${holders.join(", ")}`
+                  ? holders.length <= 2
+                    ? `Needed by ${holders.join(", ")}`
+                    : `Needed by ${holders.length} permissions`
                   : option.deprecated
                     ? "Dropped by the application. Replace it with a current one."
                     : option.description || undefined

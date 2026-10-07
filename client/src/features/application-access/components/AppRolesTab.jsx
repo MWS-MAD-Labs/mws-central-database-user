@@ -18,6 +18,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { NameList } from "./NameList.jsx";
 import { PermissionPopover } from "./PermissionPopover.jsx";
 import { Tip } from "./Tip.jsx";
 
@@ -171,8 +172,14 @@ export function AppRolesTab({ applicationId, roles }) {
                 <td className={`${denseCellClass} text-center`}>
                   <PermissionPopover permissions={role.permissions} compact />
                   {role.missing_permissions?.length > 0 ? (
-                    <span className="mt-1 block text-xs font-semibold text-[#a43c41]">
-                      Missing {role.missing_permissions.join(", ")}
+                    <span className="mt-1 flex items-center justify-center gap-1 text-xs font-semibold text-[#a43c41]">
+                      Missing
+                      <NameList
+                        names={role.missing_permissions}
+                        noun="permissions"
+                        title={`${role.key} is missing`}
+                        danger
+                      />
                     </span>
                   ) : null}
                 </td>

@@ -8,6 +8,7 @@ import {
 import { UNKNOWN_LEGACY_UNIT_NAME } from "../utils/legacyUnit.js";
 import { ListPopover } from "../../../components/ui/ListPopover.jsx";
 import { PermissionPopover } from "./PermissionPopover.jsx";
+import { NameList } from "./NameList.jsx";
 import { RoleName } from "./RoleName.jsx";
 
 export function AudienceIcon({ audience, size = 18 }) {
@@ -17,37 +18,6 @@ export function AudienceIcon({ audience, size = 18 }) {
 
 const labelClass =
   "text-[11px] font-semibold uppercase tracking-wide text-(--mws-muted)";
-
-// A list of names: "All" when empty, the name itself for one, a clickable count for more.
-function NameList({ names, noun, title, plain }) {
-  if (names.length === 0)
-    return (
-      <span className="text-sm font-semibold text-(--mws-charcoal)">
-        {plain ?? "All"}
-      </span>
-    );
-  if (names.length === 1) {
-    return (
-      <span
-        className="block truncate text-sm font-semibold text-(--mws-charcoal)"
-        title={names[0]}
-      >
-        {names[0]}
-      </span>
-    );
-  }
-  return (
-    <ListPopover
-      label={`${names.length} ${noun}`}
-      count={names.length}
-      dialogLabel={title}
-      icon={false}
-      mono={false}
-      groups={[{ items: names }]}
-      className="[&>button]:text-sm [&>button]:text-(--mws-charcoal)"
-    />
-  );
-}
 
 // Units, positions and levels as small label over value pairs.
 export function ScopeGrid({ group, label = "Who this group covers" }) {
