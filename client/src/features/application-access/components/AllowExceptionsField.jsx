@@ -11,7 +11,7 @@ export function AllowExceptionsField({ checked, onChange }) {
       <span>
         <span className="block font-semibold">Allow Exceptions</span>
         <span className="block text-xs text-(--mws-muted)">
-          For roles such as class leader. You pick the students after the group is saved.
+          Check this box if the students requires a specific role.
         </span>
       </span>
     </label>
