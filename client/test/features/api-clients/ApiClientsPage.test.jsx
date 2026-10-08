@@ -388,6 +388,39 @@ describe('ApiClientsPage application profiles', () => {
       expect(screen.queryByRole('button', { name: 'Edit Legacy Scopes' })).not.toBeInTheDocument()
     })
 
+    it('lets the same client be rotated again after a rotation finished, without reloading', async () => {
+      const rotations = []
+      const { user } = renderPage(
+        [
+          {
+            path: '/api/admin/api-clients/rotate/client-1',
+            method: 'PATCH',
+            response: ({ options }) => {
+              rotations.push(JSON.parse(options.body))
+              return jsonResponse({ data: { ...managed, new_token: `mws_token_${rotations.length}`, new_token_prefix: `mws_new${rotations.length}` } })
+            },
+          },
+        ],
+        { clients: [managed] },
+      )
+
+      await screen.findAllByText('MWS Hub')
+      for (const round of [1, 2]) {
+        await user.click(screen.getByRole('button', { name: 'Actions for MWS Hub' }))
+        const rotate = await screen.findByRole('button', { name: 'Rotate Credentials' })
+        expect(rotate).toBeEnabled()
+        await user.click(rotate)
+        const dialog = await screen.findByRole('dialog', { name: 'Rotate Credentials' })
+        await user.click(within(dialog).getByRole('button', { name: 'Rotate' }))
+        await user.click(await screen.findByRole('button', { name: 'Start Rotation' }))
+        await screen.findByRole('dialog', { name: 'Rotated Credentials' })
+        await waitFor(() => expect(rotations).toHaveLength(round))
+        await user.click(screen.getByRole('button', { name: 'Close Dialog' }))
+        await user.click(await screen.findByRole('button', { name: 'Close Anyway' }))
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Rotated Credentials' })).not.toBeInTheDocument())
+      }
+    })
+
     it('offers legacy scope editing only for legacy clients and no old-token action', async () => {
       const { user } = renderPage([], { clients: [legacy] })
 

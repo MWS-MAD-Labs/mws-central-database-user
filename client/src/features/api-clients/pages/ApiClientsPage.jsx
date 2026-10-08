@@ -19,6 +19,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { LiveIndicator } from "../../../components/ui/LiveIndicator.jsx";
 import { cleanPayload, trimmedOrUndefined } from "../../../lib/form.js";
 import { formatDateTime, formatStatus } from "../../../lib/format.js";
+import { isPendingFor } from "../../../lib/mutationState.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { apiClientsApi } from "../api/apiClientsApi.js";
 import { InternalApiPanel } from "../components/InternalApiPanel.jsx";
@@ -309,8 +310,8 @@ export function ApiClientsPage() {
                         onRevokeCredential={(credential) => handleRevokeCredential(client, credential)}
                         onRevoke={() => handleRevoke(client)}
                         isBusy={
-                          rotateMutation.variables?.id === client.id ||
-                          revokeMutation.variables === client.id
+                          isPendingFor(rotateMutation, (variables) => variables?.id === client.id) ||
+                          isPendingFor(revokeMutation, client.id)
                         }
                       />
                     </td>
