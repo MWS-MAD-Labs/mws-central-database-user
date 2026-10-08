@@ -721,6 +721,65 @@ describe("PATCH /api/admin/api-clients/rotate/:id", () => {
     expect(auditEntry?.admin_id).toBeDefined();
   });
 
+  it("keeps the old token of a legacy client valid for the grace that was asked for", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const { client, token: oldToken } = await ApiClientTest.createWithToken({
+      name: "TEST_CLIENT_ROTATE_LEGACY_GRACE",
+      scopeNames: [READ_SCOPE],
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/api-clients/rotate/${client.id}`,
+      { grace_hours: 24 },
+      accessToken,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+
+    const retiring = body.data.credentials.find((item: { status: string }) => item.status === "RETIRING");
+    expect(retiring).toBeDefined();
+    const hoursLeft = (new Date(retiring.expires_at).getTime() - Date.now()) / 3_600_000;
+    expect(hoursLeft).toBeGreaterThan(23.9);
+    expect(hoursLeft).toBeLessThan(24.1);
+
+    const lookup = (token: string) =>
+      TestRequest.get("/api/internal/employees/lookup?email=anyone@millennia21.id", undefined, {
+        Authorization: `Bearer ${token}`,
+      });
+    // Both tokens work until the old one retires (404 = authenticated, no such employee).
+    expect((await lookup(oldToken)).status).toBe(404);
+    expect((await lookup(body.data.token)).status).toBe(404);
+
+    // Once the time is up only the new token works.
+    await prismaClient.apiClientCredential.update({
+      where: { id: retiring.id },
+      data: { expires_at: new Date(Date.now() - 1000) },
+    });
+    expect((await lookup(oldToken)).status).toBe(401);
+    expect((await lookup(body.data.token)).status).toBe(404);
+  });
+
+  it("cuts a legacy client off at once for an emergency rotation, and when no grace is named", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const lookup = (token: string) =>
+      TestRequest.get("/api/internal/employees/lookup?email=anyone@millennia21.id", undefined, {
+        Authorization: `Bearer ${token}`,
+      });
+
+    for (const [name, payload] of [
+      ["TEST_CLIENT_ROTATE_LEGACY_EMERGENCY", { immediate: true, grace_hours: 0 }],
+      ["TEST_CLIENT_ROTATE_LEGACY_DEFAULT", {}],
+    ] as const) {
+      const { client, token: oldToken } = await ApiClientTest.createWithToken({ name, scopeNames: [READ_SCOPE] });
+      const response = await TestRequest.patch(`/api/admin/api-clients/rotate/${client.id}`, payload, accessToken);
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.data.credentials.some((item: { status: string }) => item.status === "RETIRING")).toBe(false);
+      expect((await lookup(oldToken)).status).toBe(401);
+      expect((await lookup(body.data.token)).status).toBe(404);
+    }
+  });
+
   it("should reject if requester is not SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       masterData.unit.id,

@@ -295,96 +295,62 @@ export class ApiClientService {
 
     const generatedToken = generateApiToken();
 
-    if (existingClient.profile_id && existingClient.profile?.code !== "unmapped") {
-      const now = new Date();
-      const immediate = rotateRequest.immediate ?? false;
-      const graceHours = immediate ? 0 : (rotateRequest.grace_hours ?? 24);
-      const retiringAt = new Date(now.getTime() + graceHours * 60 * 60 * 1000);
-      const client = await prismaClient.$transaction(async (tx) => {
-        await tx.apiClient.update({
-          where: { id: existingClient.id },
-          data: {
-            token_prefix: generatedToken.token_prefix,
-            token_hash: generatedToken.token_hash,
-          },
-        });
-        await tx.apiClientCredential.updateMany({
-          where: {
-            client_id: existingClient.id,
-            status: immediate
-              ? { in: [ApiCredentialStatus.ACTIVE, ApiCredentialStatus.RETIRING] }
-              : ApiCredentialStatus.ACTIVE,
-          },
-          data: immediate
-            ? { status: ApiCredentialStatus.REVOKED, revoked_at: now, expires_at: now }
-            : { status: ApiCredentialStatus.RETIRING, expires_at: retiringAt },
-        });
+    const managed = Boolean(existingClient.profile_id && existingClient.profile?.code !== "unmapped");
+    const now = new Date();
+    const immediate = rotateRequest.immediate ?? false;
+    // A managed client gets 24 hours unless told otherwise. A legacy client is cut off at once when
+    // the request names no grace, so a caller that sends nothing keeps the behaviour it had; a
+    // request that names a grace (the admin screen always does) is honored for both.
+    const graceHours = immediate ? 0 : (rotateRequest.grace_hours ?? (managed ? 24 : 0));
+    const retiringAt = new Date(now.getTime() + graceHours * 60 * 60 * 1000);
+    const revokeNow = immediate || graceHours === 0;
+
+    const client = await prismaClient.$transaction(async (tx) => {
+      // A client from before credential rows keeps its token on the client itself. Give that token a
+      // row first, so it can retire with a grace like any other.
+      const hasRow = await tx.apiClientCredential.findUnique({
+        where: { token_prefix: existingClient.token_prefix },
+        select: { id: true },
+      });
+      if (!hasRow) {
         await tx.apiClientCredential.create({
           data: {
             client_id: existingClient.id,
-            token_prefix: generatedToken.token_prefix,
-            token_hash: generatedToken.token_hash,
+            token_prefix: existingClient.token_prefix,
+            token_hash: existingClient.token_hash,
           },
         });
-        const fetchedClient = await tx.apiClient.findUniqueOrThrow({
-          where: { id: existingClient.id },
-          include: CLIENT_INCLUDE,
-        });
-        await AuditService.record(
-          {
-            action: AuditAction.API_TOKEN_ROTATE,
-            source: AuditSource.UI,
-            entity_type: "ApiClient",
-            entity_id: fetchedClient.id,
-            admin_id: admin.id,
-            new_values: {
-              api_client_id: fetchedClient.id,
-              token_prefix: generatedToken.token_prefix,
-              immediate,
-              grace_hours: graceHours,
-            },
-            ip_address: context.ip_address,
-            user_agent: context.user_agent,
-          },
-          tx,
-        );
-        return fetchedClient;
-      });
-      return { ...toApiClientResponse(client), token: generatedToken.token };
-    }
-
-    const client = await prismaClient.$transaction(async (tx) => {
-      await tx.apiClientCredential.updateMany({
-        where: {
-          client_id: existingClient.id,
-          status: { in: [ApiCredentialStatus.ACTIVE, ApiCredentialStatus.RETIRING] },
-        },
-        data: {
-          status: ApiCredentialStatus.REVOKED,
-          revoked_at: new Date(),
-          expires_at: new Date(),
-        },
-      });
+      }
       await tx.apiClient.update({
-        where: { id: rotateRequest.id },
+        where: { id: existingClient.id },
         data: {
           token_prefix: generatedToken.token_prefix,
           token_hash: generatedToken.token_hash,
-          credentials: {
-            create: {
-              token_prefix: generatedToken.token_prefix,
-              token_hash: generatedToken.token_hash,
-            },
-          },
         },
       });
-
+      await tx.apiClientCredential.updateMany({
+        where: {
+          client_id: existingClient.id,
+          status: revokeNow
+            ? { in: [ApiCredentialStatus.ACTIVE, ApiCredentialStatus.RETIRING] }
+            : ApiCredentialStatus.ACTIVE,
+        },
+        data: revokeNow
+          ? { status: ApiCredentialStatus.REVOKED, revoked_at: now, expires_at: now }
+          : { status: ApiCredentialStatus.RETIRING, expires_at: retiringAt },
+      });
+      await tx.apiClientCredential.create({
+        data: {
+          client_id: existingClient.id,
+          token_prefix: generatedToken.token_prefix,
+          token_hash: generatedToken.token_hash,
+        },
+      });
       // fetched separately - write + nested include races on the pg client
       const fetchedClient = await tx.apiClient.findUniqueOrThrow({
-        where: { id: rotateRequest.id },
+        where: { id: existingClient.id },
         include: CLIENT_INCLUDE,
       });
-
       await AuditService.record(
         {
           action: AuditAction.API_TOKEN_ROTATE,
@@ -395,21 +361,19 @@ export class ApiClientService {
           new_values: {
             api_client_id: fetchedClient.id,
             name: fetchedClient.name,
-            token_prefix: fetchedClient.token_prefix,
+            token_prefix: generatedToken.token_prefix,
+            immediate: revokeNow,
+            grace_hours: graceHours,
           },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
         tx,
       );
-
       return fetchedClient;
     });
 
-    return {
-      ...toApiClientResponse(client),
-      token: generatedToken.token,
-    };
+    return { ...toApiClientResponse(client), token: generatedToken.token };
   }
 
   static async updateScopes(
