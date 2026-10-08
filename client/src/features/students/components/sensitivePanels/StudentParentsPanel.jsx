@@ -18,6 +18,7 @@ import { enumOptions, formatStatus } from '../../../../lib/format.js'
 import { parentTypes, studentSensitiveApi } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame, SensitiveDataReveal } from './panelPrimitives.jsx'
 import { invalidateStudentRelation } from './panelHelpers.js'
+import { isPendingFor } from "../../../../lib/mutationState.js";
 
 export function StudentParentsPanel({ studentId, canWrite, revealed = true, onReveal, onHide }) {
   const queryClient = useQueryClient()
@@ -131,7 +132,7 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
                       type="button"
                       variant="ghost"
                       size="sm"
-                      disabled={!canWrite || restoreMutation.variables === parent.id}
+                      disabled={!canWrite || isPendingFor(restoreMutation, parent.id)}
                       onClick={() => restoreMutation.mutate(parent.id)}
                     >
                       <RotateCcw size={15} />
@@ -152,7 +153,7 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
                         type="button"
                         variant="ghost"
                         size="sm"
-                        disabled={!canWrite || deleteMutation.variables === parent.id}
+                        disabled={!canWrite || isPendingFor(deleteMutation, parent.id)}
                         onClick={() => deleteMutation.mutate(parent.id)}
                       >
                         <Trash2 size={15} />

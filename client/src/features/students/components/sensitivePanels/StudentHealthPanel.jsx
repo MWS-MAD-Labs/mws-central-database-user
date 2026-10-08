@@ -24,6 +24,7 @@ import {
   studentSensitiveApi,
 } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame, SensitiveDataReveal, SummaryCard } from './panelPrimitives.jsx'
+import { isPendingFor } from "../../../../lib/mutationState.js";
 
 const studentHealthPiiScope = (studentId) => `student-health:${studentId}`
 
@@ -232,7 +233,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
                       variant="ghost"
                       size="sm"
                        disabled={!canWrite}
-                       loading={restoreNoteMutation.variables === note.id}
+                       loading={isPendingFor(restoreNoteMutation, note.id)}
                       onClick={() => restoreNoteMutation.mutate(note.id)}
                     >
                       <RotateCcw size={15} />
@@ -243,7 +244,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
                       <Button type="button" variant="ghost" size="sm" disabled={!canWrite} onClick={() => setNoteDialog({ mode: 'edit', record: note })}>
                         Edit
                       </Button>
-                       <Button type="button" variant="ghost" size="sm" disabled={!canWrite} loading={deleteNoteMutation.variables === note.id} onClick={() => deleteNoteMutation.mutate(note.id)}>
+                       <Button type="button" variant="ghost" size="sm" disabled={!canWrite} loading={isPendingFor(deleteNoteMutation, note.id)} onClick={() => deleteNoteMutation.mutate(note.id)}>
                         <Trash2 size={15} />
                       </Button>
                     </>

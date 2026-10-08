@@ -471,7 +471,7 @@ export function StudentsPage() {
           isLoading={studentsQuery.isLoading}
           isTrash={isTrash}
           canRestore={canRestore}
-          restoringId={restoreMutation.variables}
+          restoringId={restoreMutation.isPending ? restoreMutation.variables : undefined}
           onRestore={handleRestore}
           canSelect={canBulkManage}
           selectedIds={selectedStudentIds}

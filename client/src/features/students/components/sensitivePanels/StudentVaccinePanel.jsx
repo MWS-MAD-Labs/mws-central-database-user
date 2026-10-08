@@ -19,6 +19,7 @@ import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../../lib/p
 import { studentSensitiveApi, vaccineTypes } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame, SensitiveDataReveal } from './panelPrimitives.jsx'
 import { invalidateStudentRelation } from './panelHelpers.js'
+import { isPendingFor } from "../../../../lib/mutationState.js";
 
 const studentVaccinePiiScope = (studentId) => `student-vaccine:${studentId}`
 
@@ -153,7 +154,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      disabled={!canWrite || restoreMutation.variables === record.id}
+                      disabled={!canWrite || isPendingFor(restoreMutation, record.id)}
                       onClick={() => restoreMutation.mutate(record.id)}
                     >
                       <RotateCcw size={15} />
@@ -174,7 +175,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        disabled={!canWrite || deleteMutation.variables === record.id}
+                        disabled={!canWrite || isPendingFor(deleteMutation, record.id)}
                         onClick={() => deleteMutation.mutate(record.id)}
                       >
                         <Trash2 size={15} />

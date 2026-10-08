@@ -20,6 +20,7 @@ import { MAX_ATTACHMENT_SIZE_BYTES, formatFileSize, validateFileSize } from '../
 import { showErrorToast } from '../../../../lib/toast.js'
 import { consentStatuses, consentTypes, studentSensitiveApi } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame } from './panelPrimitives.jsx'
+import { isPendingFor } from "../../../../lib/mutationState.js";
 
 export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
@@ -111,7 +112,7 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
               onEdit={() => setDialog({ mode: 'edit', record: consent })}
               onDelete={() => handleDelete(consent)}
               onRestore={() => restoreMutation.mutate(consent.id)}
-              isRestoring={restoreMutation.variables === consent.id}
+              isRestoring={isPendingFor(restoreMutation, consent.id)}
             />
           ))}
         </div>
@@ -342,7 +343,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
                     type="button"
                     variant="ghost"
                     size="sm"
-                    disabled={!canWrite || restoreMutation.variables === attachment.id}
+                    disabled={!canWrite || isPendingFor(restoreMutation, attachment.id)}
                     onClick={() => restoreMutation.mutate(attachment.id)}
                   >
                     <RotateCcw size={15} />
@@ -352,7 +353,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
                     type="button"
                     variant="ghost"
                     size="sm"
-                    disabled={!canWrite || deleteMutation.variables === attachment.id}
+                    disabled={!canWrite || isPendingFor(deleteMutation, attachment.id)}
                     onClick={() => deleteMutation.mutate(attachment.id)}
                   >
                     <Trash2 size={15} />
