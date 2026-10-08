@@ -209,7 +209,7 @@ export function AppShell() {
     <div className="min-h-svh overflow-x-hidden bg-[#fffafa] text-(--mws-charcoal)">
       <QueryLoadingBar />
       <FloatingRefreshButton />
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-(--mws-line) bg-white/95 px-4 backdrop-blur md:hidden">
+      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-(--mws-line) bg-white/95 pl-4 pr-12 backdrop-blur md:hidden">
         <button
           type="button"
           aria-label="Open Navigation"

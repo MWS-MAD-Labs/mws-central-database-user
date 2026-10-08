@@ -50,6 +50,14 @@ function scopedAdmin(overrides = {}) {
 }
 
 describe('AppShell', () => {
+  it('leaves room in the mobile header so the refresh button does not sit on the title', async () => {
+    renderShell({ id: 'admin-1', type: 'admin', role: 'SUPER_ADMIN', full_name: 'Sam Admin', email: 'sam@example.test' })
+    await screen.findByText('Sam Admin')
+    const header = document.querySelector('header')
+    expect(header).toHaveClass('pr-12')
+    expect(screen.getByRole('button', { name: 'Refresh all data' })).toHaveClass('right-2', 'top-3')
+  })
+
   it('shows super-admin navigation, profile identity, and closes the mobile menu after navigation', async () => {
     const { user, router } = renderShell({
       id: 'admin-1',
