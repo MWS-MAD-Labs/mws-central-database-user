@@ -69,10 +69,10 @@ export function ApiClientsPage() {
 
   const rotateMutation = useMutation({
     mutationFn: apiClientsApi.rotate,
-    onSuccess: (client) => {
+    onSuccess: (client, variables) => {
       queryClient.invalidateQueries({ queryKey: ["api-clients"] });
       setRotateDialogFor(null);
-      setTokenDialog({ title: "Rotated Credentials", client });
+      setTokenDialog({ title: "Rotated Credentials", client, rotation: variables.mode });
     },
   });
 
@@ -365,6 +365,7 @@ export function ApiClientsPage() {
         <TokenDialog
           title={tokenDialog.title}
           client={tokenDialog.client}
+          rotation={tokenDialog.rotation}
           onClose={() => setTokenDialog(null)}
         />
       ) : null}

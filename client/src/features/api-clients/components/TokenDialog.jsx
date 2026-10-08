@@ -3,9 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
-import { formatDateTime, formatStatus } from "../../../lib/format.js";
+import { formatStatus } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { maskToken } from "../utils/maskToken.js";
+import { oldTokenNotice } from "../utils/oldTokenNotice.js";
 import { scopeName } from "../utils/scopes.js";
 
 const CLOSE_DELAY_MS = 700;
@@ -13,7 +14,7 @@ const CLOSE_DELAY_MS = 700;
 // The token is shown once and never in full on the screen: the dialog shows its start and end, and
 // one big button copies it and then closes the dialog. If the browser blocks the clipboard the dialog
 // stays and the token is offered in a field that can be selected, otherwise it would be lost.
-export function TokenDialog({ title, client, onClose }) {
+export function TokenDialog({ title, client, rotation, onClose }) {
   const newToken = client.new_token || client.token || client.credential?.token;
   const [copied, setCopied] = useState(false);
   const [blocked, setBlocked] = useState(false);
@@ -30,11 +31,7 @@ export function TokenDialog({ title, client, onClose }) {
   }, [blocked]);
 
   const activeCredential = client.credentials?.find((credential) => credential.status === "ACTIVE");
-  const retiringDeadline =
-    client.retiring_deadline ||
-    client.retiring_at ||
-    client.current_credential?.retires_at ||
-    client.credentials?.find((credential) => credential.status === "RETIRING")?.expires_at;
+  const notice = oldTokenNotice(client, rotation);
   const scopes = (client.effective_scopes || client.scopes || []).map(scopeName).map(formatStatus).join(", ");
 
   async function copyToken() {
@@ -120,10 +117,18 @@ export function TokenDialog({ title, client, onClose }) {
           </div>
         ) : null}
 
-        {retiringDeadline ? (
-          <p className="rounded-xl bg-[#fff8e8] p-3 text-sm text-[#745716]">
-            Current credential retires at <strong>{formatDateTime(retiringDeadline)}</strong>.
-          </p>
+        {notice ? (
+          <div
+            role="note"
+            className={
+              notice.tone === "danger"
+                ? "rounded-xl border border-[#e3a2a5] bg-[#fff0f1] p-3"
+                : "rounded-xl border border-[#d8b45b] bg-[#fff8e8] p-3"
+            }
+          >
+            <p className={`text-sm font-semibold ${notice.tone === "danger" ? "text-[#a43c41]" : "text-[#745716]"}`}>{notice.title}</p>
+            <p className={`mt-1 text-sm ${notice.tone === "danger" ? "text-[#a43c41]" : "text-[#745716]"}`}>{notice.text}</p>
+          </div>
         ) : null}
 
         {confirmingClose ? (

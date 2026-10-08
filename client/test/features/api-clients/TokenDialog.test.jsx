@@ -15,9 +15,9 @@ function setClipboard(writeText) {
 }
 
 // userEvent.setup() inside renderWithProviders installs its own clipboard, so the test one goes in after it.
-function renderDialog(clipboard, onClose = mock(() => {}), overrides = {}) {
+function renderDialog(clipboard, onClose = mock(() => {}), overrides = {}, rotation) {
   const view = renderWithProviders(
-    <TokenDialog title="Rotated Credentials" client={{ ...client, ...overrides }} onClose={onClose} />,
+    <TokenDialog title="Rotated Credentials" client={{ ...client, ...overrides }} rotation={rotation} onClose={onClose} />,
   )
   setClipboard(clipboard)
   return { ...view, onClose }
@@ -80,5 +80,34 @@ describe('TokenDialog', () => {
     expect(screen.getByText('Token was not returned by the server.')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Close Dialog' }))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('says until when the old token is valid after a graceful rotation', () => {
+    const retiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString()
+    renderDialog(mock(async () => {}), undefined, {
+      credentials: [
+        { token_prefix: 'mws_new', status: 'ACTIVE' },
+        { token_prefix: 'mws_old', status: 'RETIRING', expires_at: retiresAt },
+      ],
+    }, 'graceful')
+    const note = screen.getByRole('note')
+    expect(note).toHaveTextContent('Old Token Still Works For A While')
+    expect(note).toHaveTextContent('mws_old')
+    expect(note).toHaveTextContent('After that only the new token works')
+  })
+
+  it('says the old token stopped after an emergency rotation', () => {
+    renderDialog(mock(async () => {}), undefined, {
+      credentials: [
+        { token_prefix: 'mws_new', status: 'ACTIVE' },
+        { token_prefix: 'mws_old', status: 'REVOKED', revoked_at: new Date().toISOString() },
+      ],
+    }, 'emergency')
+    expect(screen.getByRole('note')).toHaveTextContent('Old token mws_old stopped working just now')
+  })
+
+  it('shows no note for a new client', () => {
+    renderDialog(mock(async () => {}))
+    expect(screen.queryByRole('note')).toBeNull()
   })
 })

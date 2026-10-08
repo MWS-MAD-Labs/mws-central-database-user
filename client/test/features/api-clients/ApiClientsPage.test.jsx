@@ -413,8 +413,10 @@ describe('ApiClientsPage application profiles', () => {
         const dialog = await screen.findByRole('dialog', { name: 'Rotate Credentials' })
         await user.click(within(dialog).getByRole('button', { name: 'Rotate' }))
         await user.click(await screen.findByRole('button', { name: 'Start Rotation' }))
-        await screen.findByRole('dialog', { name: 'Rotated Credentials' })
+        const tokenDialog = await screen.findByRole('dialog', { name: 'Rotated Credentials' })
         await waitFor(() => expect(rotations).toHaveLength(round))
+        // The mode chosen in the rotate dialog reaches the dialog with the new token.
+        expect(within(tokenDialog).getByRole('note')).toHaveTextContent('mws_old')
         await user.click(screen.getByRole('button', { name: 'Close Dialog' }))
         await user.click(await screen.findByRole('button', { name: 'Close Anyway' }))
         await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Rotated Credentials' })).not.toBeInTheDocument())
