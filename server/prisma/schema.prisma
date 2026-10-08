@@ -1613,6 +1613,9 @@ model ApplicationAccessRule {
   default_role_key String
   organization_id  String
   is_active        Boolean             @default(true)
+  // A group of students can have exceptions (such as a class leader) only when this is on.
+  // Groups of employees always can.
+  allows_exceptions Boolean            @default(false)
   created_at       DateTime            @default(now())
   updated_at       DateTime            @updatedAt
 

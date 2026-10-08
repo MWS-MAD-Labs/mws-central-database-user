@@ -123,8 +123,10 @@ describe("application baseline access rules", () => {
       // Only students are covered, so the employee has nothing to block.
       await addRule(accessToken, { audience: "STUDENTS", default_role_key: "MEMBER" });
       const uncovered = await TestRequest.post(BULK, { person_ids: [person.id], application_id: appId, blocked: true }, accessToken);
-      expect(uncovered.status).toBe(400);
-      expect(JSON.stringify(await uncovered.json())).toContain("Set up a group");
+      // The call goes through, the employee fails: no group covers employees.
+      const uncoveredBody = JSON.stringify(await uncovered.json());
+      expect(uncoveredBody).toContain("FAILED");
+      expect(uncoveredBody).toContain("Set up a group");
 
       await addRule(accessToken);
       const first = await (await TestRequest.post(BULK, { person_ids: [person.id], application_id: appId, blocked: true }, accessToken)).json();
@@ -192,6 +194,105 @@ describe("application baseline access rules", () => {
       await addRule(accessToken);
       const response = await TestRequest.post(BULK, { person_ids: [person.id], application_id: appId }, accessToken);
       expect(response.status).toBe(400);
+    });
+  });
+
+  describe("exceptions for students", () => {
+    const studentGroup = (token: string, extra: Record<string, unknown> = {}) =>
+      addRule(token, { audience: "STUDENTS", default_role_key: "MEMBER", ...extra });
+    const grant = (token: string, personId: string, role: string) =>
+      TestRequest.post(ENTITLEMENTS, { person_id: personId, application_id: appId, role }, token);
+
+    it("refuses an exception while the group does not allow them", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const student = await StudentTest.create({ email: "test_exc_student_off@millennia21.id", status: StudentStatus.ACTIVE });
+      await studentGroup(accessToken);
+      const refused = await grant(accessToken, student.id, "ADMIN");
+      expect(refused.status).toBe(400);
+      expect((await refused.json()).errors).toContain("Exceptions are off for this group of students");
+    });
+
+    it("gives a student a role of their own when the group allows exceptions, and the lookup follows", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const student = await StudentTest.create({ email: "test_exc_student_on@millennia21.id", status: StudentStatus.ACTIVE });
+      const group = await ruleId(await studentGroup(accessToken, { allows_exceptions: true }));
+      expect((await (await lookup(student.id)).json()).data.role).toBe("MEMBER");
+
+      const granted = await grant(accessToken, student.id, "ADMIN");
+      expect(granted.status).toBe(200);
+      const found = (await (await lookup(student.id)).json()).data;
+      expect(found.role).toBe("ADMIN");
+      expect(found.is_default).toBeUndefined();
+
+      const same = await grant(accessToken, student.id, "MEMBER");
+      expect(same.status).toBe(400);
+
+      const listed = await (await TestRequest.get(`${ACCESS}/apps/${appId}/exceptions?group_id=${group}`, accessToken)).json();
+      expect(listed.data[0]).toMatchObject({ kind: "STUDENT", role: "ADMIN", full_name: expect.any(String) });
+    });
+
+    it("keeps a role that is not for students away from them", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const student = await StudentTest.create({ email: "test_exc_student_role@millennia21.id", status: StudentStatus.ACTIVE });
+      await prismaClient.applicationRole.create({
+        data: { application_id: appId, key: "TEACHER_ONLY", label: "Teacher only", permissions: ["a.read"], allows_students: false },
+      });
+      await studentGroup(accessToken, { allows_exceptions: true });
+      const refused = await grant(accessToken, student.id, "TEACHER_ONLY");
+      expect(refused.status).toBe(400);
+      expect((await refused.json()).errors).toContain('Role "TEACHER_ONLY" is not for students');
+    });
+
+    it("blocks a student, and lifts the block again", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const student = await StudentTest.create({ email: "test_exc_student_block@millennia21.id", status: StudentStatus.ACTIVE });
+      await studentGroup(accessToken, { allows_exceptions: true });
+      const BULK = "/api/admin/application-entitlements/bulk";
+      const blocked = await TestRequest.post(BULK, { person_ids: [student.id], application_id: appId, blocked: true }, accessToken);
+      expect(JSON.stringify(await blocked.json())).not.toContain("FAILED");
+      expect((await lookup(student.id)).status).toBe(404);
+
+      const row = await prismaClient.applicationEntitlement.findFirstOrThrow({ where: { application_id: appId, person_id: student.id } });
+      const lifted = await TestRequest.patch(`${ENTITLEMENTS}/unblock/${row.id}`, {}, accessToken);
+      expect((await lifted.json()).data.restored).toBe("GROUP_ACCESS");
+      expect((await (await lookup(student.id)).json()).data.role).toBe("MEMBER");
+    });
+
+    it("lists the students of the group to pick from, with their NIS, grade and class", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const student = await StudentTest.create({ email: "test_exc_student_pick@millennia21.id", status: StudentStatus.ACTIVE });
+      const group = await ruleId(await studentGroup(accessToken, { allows_exceptions: true }));
+      const response = await TestRequest.get(
+        `${ACCESS}/candidates?application_id=${appId}&coverage=GROUP&group_id=${group}&exclude_own_access=true`,
+        accessToken,
+      );
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      const found = body.data.find((item: { person_id: string }) => item.person_id === student.id);
+      expect(found).toMatchObject({ kind: "STUDENT", inherited_role: "MEMBER", own_access: null });
+      expect(found).toHaveProperty("nis");
+      expect(found).toHaveProperty("grade");
+    });
+
+    it("will not turn exceptions off while a student has one", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const student = await StudentTest.create({ email: "test_exc_student_flag@millennia21.id", status: StudentStatus.ACTIVE });
+      const group = await ruleId(await studentGroup(accessToken, { allows_exceptions: true }));
+      await grant(accessToken, student.id, "ADMIN");
+
+      const refused = await TestRequest.patch(`${RULES}/${group}`, { allows_exceptions: false }, accessToken);
+      expect(refused.status).toBe(400);
+      expect((await refused.json()).errors).toContain("has an exception in this group");
+
+      const row = await prismaClient.applicationEntitlement.findFirstOrThrow({ where: { application_id: appId, person_id: student.id } });
+      await TestRequest.delete(`${ENTITLEMENTS}/${row.id}`, accessToken);
+      expect((await TestRequest.patch(`${RULES}/${group}`, { allows_exceptions: false }, accessToken)).status).toBe(200);
+    });
+
+    it("reports allows_exceptions: true for a group of employees whatever was sent", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await addRule(accessToken, { allows_exceptions: false });
+      expect((await response.json()).data.allows_exceptions).toBe(true);
     });
   });
 

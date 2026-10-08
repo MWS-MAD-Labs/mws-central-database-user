@@ -18,7 +18,13 @@ export type GateRule = RuleFilter & {
   id: string;
   default_role_key: string;
   is_active: boolean;
+  // Exceptions inside the group. Employee groups always allow them, a group of students only when asked.
+  allows_exceptions?: boolean;
 };
+
+export function groupAllowsExceptions(rule: Pick<GateRule, "audience" | "allows_exceptions">): boolean {
+  return rule.audience !== ApplicationAudience.STUDENTS || Boolean(rule.allows_exceptions);
+}
 
 export type RuleSubject =
   | { kind: "EMPLOYEE"; unitId: string; positionId: string; levelId: string }
@@ -148,6 +154,7 @@ export async function loadActiveRules(applicationId: string): Promise<GateRule[]
     job_level_ids: rule.job_level_ids,
     default_role_key: rule.default_role_key,
     is_active: rule.is_active,
+    allows_exceptions: rule.allows_exceptions,
   }));
 }
 
@@ -167,9 +174,16 @@ export async function assertPersonException(
   role: string,
   rules: GateRule[],
 ): Promise<void> {
-  assertHasGroup(applicationId, rules);
   const subject = await loadRuleSubject(personId);
+  // Employees need an employee group. A student only needs the group that covers them.
+  if (subject?.kind !== "STUDENT") assertHasGroup(applicationId, rules);
   const inherited = subject ? inheritedRole(subject, rules) : undefined;
+  if (inherited && subject?.kind === "STUDENT" && !groupAllowsExceptions(inherited)) {
+    throw new ResponseError(
+      400,
+      "Exceptions are off for this group of students. Turn them on in the group first.",
+    );
+  }
   if (!inherited) {
     const person = await prismaClient.person.findUnique({ where: { id: personId }, select: { full_name: true } });
     throw new ResponseError(

@@ -68,6 +68,7 @@ export type CreateApplicationAccessRuleRequest = {
   job_level_ids?: string[];
   default_role_key: string;
   is_active?: boolean;
+  allows_exceptions?: boolean;
 };
 
 export type UpdateApplicationAccessRuleRequest = {
@@ -77,6 +78,7 @@ export type UpdateApplicationAccessRuleRequest = {
   job_level_ids?: string[];
   default_role_key?: string;
   is_active?: boolean;
+  allows_exceptions?: boolean;
 };
 
 export type DeleteApplicationAccessRuleRequest = { id: string };
@@ -99,6 +101,8 @@ export type ListApplicationCandidatesRequest = {
   unit_id?: string;
   job_position_id?: string;
   job_level_id?: string;
+  grade_id?: string;
+  class_id?: string;
   unit_ids?: string[];
   job_position_ids?: string[];
   job_level_ids?: string[];
@@ -111,6 +115,11 @@ export type ListApplicationCandidatesRequest = {
 // An active employee with what the application's groups already give them.
 export type ApplicationCandidate = {
   person_id: string;
+  // Set for students, who have no employee id, job position or level.
+  kind?: "EMPLOYEE" | "STUDENT";
+  nis?: string | null;
+  grade?: string | null;
+  class_name?: string | null;
   employee_id: string;
   full_name: string;
   email: string;
@@ -133,6 +142,8 @@ export type ApplicationAccessRuleResponse = {
   default_role_key: string;
   organization_id: string;
   is_active: boolean;
+  // Whether exceptions can be made inside the group. Always true for employees.
+  allows_exceptions: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -150,6 +161,7 @@ export function toApplicationAccessRuleResponse(
     default_role_key: rule.default_role_key,
     organization_id: rule.organization_id,
     is_active: rule.is_active,
+    allows_exceptions: rule.audience === "STUDENTS" ? rule.allows_exceptions : true,
     created_at: rule.created_at.toISOString(),
     updated_at: rule.updated_at.toISOString(),
   };
@@ -172,6 +184,10 @@ export type CreateApplicationRequest = { application_id: string };
 export type ApplicationExceptionRow = {
   id: string;
   person_id: string;
+  kind: "EMPLOYEE" | "STUDENT";
+  nis: string | null;
+  grade: string | null;
+  class_name: string | null;
   full_name: string;
   email: string;
   unit: string | null;

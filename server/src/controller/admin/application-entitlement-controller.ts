@@ -291,6 +291,8 @@ export class ApplicationAccessController {
       unit_id: c.req.query("unit_id"),
       job_position_id: c.req.query("job_position_id"),
       job_level_id: c.req.query("job_level_id"),
+      grade_id: c.req.query("grade_id"),
+      class_id: c.req.query("class_id"),
       unit_ids: listQuery(c.req.query("unit_ids")),
       job_position_ids: listQuery(c.req.query("job_position_ids")),
       job_level_ids: listQuery(c.req.query("job_level_ids")),

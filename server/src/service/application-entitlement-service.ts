@@ -89,6 +89,7 @@ import {
   loadRuleSubject,
   ruleMatches,
   inheritedRole,
+  groupAllowsExceptions,
   parentRule,
   toRuleSubject,
   ruleSpecificity,
@@ -147,6 +148,8 @@ async function resolveRolePermissions(
   applicationId: string,
   role: string,
   permissions: string[] | undefined,
+  // Who the role is given to. ANY only checks that the role exists and is active.
+  audience: "EMPLOYEE" | "STUDENT" | "ANY" = "EMPLOYEE",
 ): Promise<string[]> {
   const entry = await prismaClient.applicationRole.findUnique({
     where: { application_id_key: { application_id: applicationId, key: role } },
@@ -157,9 +160,12 @@ async function resolveRolePermissions(
       `Role "${role}" is not an active role of ${applicationId}. Use a role from the registry, spelled exactly.`,
     );
   }
-  // Own access rows (exceptions) are for employees.
-  if (!entry.allows_employees) {
+  // Own access rows (exceptions) follow who the role is for.
+  if (audience === "EMPLOYEE" && !entry.allows_employees) {
     throw new ResponseError(400, `Role "${role}" is not for employees`);
+  }
+  if (audience === "STUDENT" && !entry.allows_students) {
+    throw new ResponseError(400, `Role "${role}" is not for students`);
   }
   if (permissions !== undefined) {
     const same =
@@ -170,6 +176,29 @@ async function resolveRolePermissions(
     }
   }
   return entry.permissions;
+}
+
+// An employee or a student that can have access rows of their own.
+async function findExceptionPerson(
+  personId: string,
+): Promise<{ id: string; full_name: string; kind: "EMPLOYEE" | "STUDENT" } | null> {
+  const person = await prismaClient.person.findFirst({
+    where: {
+      id: personId,
+      deleted_at: null,
+      OR: [
+        { person_type: PersonType.EMPLOYEE, employee: { status: EmployeeStatus.ACTIVE, deleted_at: null } },
+        { person_type: PersonType.STUDENT, student: { status: StudentStatus.ACTIVE, deleted_at: null } },
+      ],
+    },
+    select: { id: true, full_name: true, person_type: true },
+  });
+  if (!person) return null;
+  return {
+    id: person.id,
+    full_name: person.full_name,
+    kind: person.person_type === PersonType.STUDENT ? "STUDENT" : "EMPLOYEE",
+  };
 }
 
 async function resolveBaselineEntitlement(
@@ -239,8 +268,10 @@ export class ApplicationEntitlementService {
         is_active: true,
         person: {
           deleted_at: null,
-          person_type: PersonType.EMPLOYEE,
-          employee: { status: EmployeeStatus.ACTIVE, deleted_at: null },
+          OR: [
+            { person_type: PersonType.EMPLOYEE, employee: { status: EmployeeStatus.ACTIVE, deleted_at: null } },
+            { person_type: PersonType.STUDENT, student: { status: StudentStatus.ACTIVE, deleted_at: null } },
+          ],
         },
       },
       orderBy: { updated_at: "desc" },
@@ -284,23 +315,16 @@ export class ApplicationEntitlementService {
       request,
     );
 
-    const person = await prismaClient.person.findFirst({
-      where: {
-        id: grant.person_id,
-        deleted_at: null,
-        person_type: PersonType.EMPLOYEE,
-        employee: { status: EmployeeStatus.ACTIVE, deleted_at: null },
-      },
-      select: { id: true },
-    });
+    const person = await findExceptionPerson(grant.person_id);
     if (!person) {
-      throw new ResponseError(404, "Active employee person not found");
+      throw new ResponseError(404, "Active employee or student not found");
     }
 
     const rolePermissions = await resolveRolePermissions(
       grant.application_id,
       grant.role,
       grant.permissions,
+      person.kind,
     );
 
     await assertPersonException(
@@ -375,21 +399,19 @@ export class ApplicationEntitlementService {
     context: AuditRequestContext = {},
   ): Promise<ApplicationEntitlementResponse> {
     assertSuperAdmin(admin);
-    const person = await prismaClient.person.findFirst({
-      where: {
-        id: personId,
-        deleted_at: null,
-        person_type: PersonType.EMPLOYEE,
-        employee: { status: EmployeeStatus.ACTIVE, deleted_at: null },
-      },
-      select: { id: true, full_name: true },
-    });
-    if (!person) throw new ResponseError(404, "Active employee person not found");
+    const person = await findExceptionPerson(personId);
+    if (!person) throw new ResponseError(404, "Active employee or student not found");
 
     const rules = await loadActiveRules(applicationId);
-    assertHasGroup(applicationId, rules);
+    if (person.kind === "EMPLOYEE") assertHasGroup(applicationId, rules);
     const subject = await loadRuleSubject(personId);
     const inherited = subject ? inheritedRole(subject, rules) : undefined;
+    if (inherited && person.kind === "STUDENT" && !groupAllowsExceptions(inherited)) {
+      throw new ResponseError(
+        400,
+        "Exceptions are off for this group of students. Turn them on in the group first.",
+      );
+    }
     if (!inherited) {
       throw new ResponseError(
         400,
@@ -454,8 +476,11 @@ export class ApplicationEntitlementService {
     assertSuperAdmin(admin);
     const input = Validation.validate(ApplicationEntitlementValidation.BULK_GRANT, request);
     // Fail the whole call early on a bad role instead of once per person.
-    if (!input.blocked) await resolveRolePermissions(input.application_id, input.role as string, undefined);
-    assertHasGroup(input.application_id, await loadActiveRules(input.application_id));
+    if (!input.blocked) await resolveRolePermissions(input.application_id, input.role as string, undefined, "ANY");
+    const activeRules = await loadActiveRules(input.application_id);
+    if (activeRules.length === 0) {
+      throw new ResponseError(400, `Set up a group for ${input.application_id} first. It decides who can use the app.`);
+    }
 
     const items = [];
     for (const personId of input.person_ids) {
@@ -625,7 +650,12 @@ export class ApplicationEntitlementService {
       return { id: existing.id, restored: "GROUP_ACCESS" };
     }
 
-    const permissions = await resolveRolePermissions(existing.application_id, existing.role, undefined);
+    const permissions = await resolveRolePermissions(
+      existing.application_id,
+      existing.role,
+      undefined,
+      subject?.kind === "STUDENT" ? "STUDENT" : "EMPLOYEE",
+    );
     await assertPersonException(existing.application_id, existing.person_id, existing.role, rules);
     await prismaClient.$transaction(async (tx) => {
       const saved = await tx.applicationEntitlement.update({
@@ -1227,6 +1257,7 @@ function ruleAuditSnapshot(rule: {
   default_role_key: string;
   organization_id: string;
   is_active: boolean;
+  allows_exceptions: boolean;
 }) {
   return {
     application_id: rule.application_id,
@@ -1237,6 +1268,7 @@ function ruleAuditSnapshot(rule: {
     default_role_key: rule.default_role_key,
     organization_id: rule.organization_id,
     is_active: rule.is_active,
+    allows_exceptions: rule.allows_exceptions,
   };
 }
 
@@ -1248,6 +1280,7 @@ function toGateRule(rule: {
   job_level_ids: string[];
   default_role_key: string;
   is_active: boolean;
+  allows_exceptions?: boolean;
 }): GateRule {
   return {
     id: rule.id,
@@ -1257,7 +1290,30 @@ function toGateRule(rule: {
     job_level_ids: rule.job_level_ids,
     default_role_key: rule.default_role_key,
     is_active: rule.is_active,
+    allows_exceptions: rule.allows_exceptions,
   };
+}
+
+// Turning exceptions off must not strand students who already have one.
+async function assertNoStudentExceptions(applicationId: string, rule: GateRule) {
+  const [rules, rows] = await Promise.all([
+    loadActiveRules(applicationId),
+    prismaClient.applicationEntitlement.findMany({
+      where: { application_id: applicationId, person: { person_type: PersonType.STUDENT } },
+      select: { person_id: true },
+    }),
+  ]);
+  let inside = 0;
+  for (const row of rows) {
+    const subject = await loadRuleSubject(row.person_id);
+    if (subject && inheritedRole(subject, rules)?.id === rule.id) inside += 1;
+  }
+  if (inside > 0) {
+    throw new ResponseError(
+      400,
+      `${inside} ${inside === 1 ? "student has" : "students have"} an exception in this group. Remove ${inside === 1 ? "it" : "them"} first.`,
+    );
+  }
 }
 
 export class ApplicationOrganizationService {
@@ -1294,6 +1350,8 @@ export class ApplicationAccessRuleService {
       job_position_ids: validated.job_position_ids ?? [],
       job_level_ids: validated.job_level_ids ?? [],
       is_active: validated.is_active ?? true,
+      // Only a group of students needs the flag.
+      allows_exceptions: validated.audience === "STUDENTS" ? (validated.allows_exceptions ?? false) : false,
     };
     await assertRuleReferences(input);
     if (input.is_active) await assertNoOverlap(input.application_id, input);
@@ -1348,7 +1406,12 @@ export class ApplicationAccessRuleService {
       job_level_ids: input.job_level_ids ?? existing.job_level_ids,
       default_role_key: input.default_role_key ?? existing.default_role_key,
       is_active: input.is_active ?? existing.is_active,
+      allows_exceptions:
+        existing.audience === "STUDENTS" ? (input.allows_exceptions ?? existing.allows_exceptions) : false,
     };
+    if (existing.allows_exceptions && !next.allows_exceptions && existing.audience === "STUDENTS") {
+      await assertNoStudentExceptions(existing.application_id, toGateRule(existing));
+    }
     await assertRuleReferences(
       next,
       input.unit_ids !== undefined || input.job_position_ids !== undefined || input.job_level_ids !== undefined,
@@ -1374,6 +1437,7 @@ export class ApplicationAccessRuleService {
           job_level_ids: next.job_level_ids,
           default_role_key: next.default_role_key,
           is_active: next.is_active,
+          allows_exceptions: next.allows_exceptions,
         },
       });
       await AuditService.record(
@@ -1639,7 +1703,13 @@ export class ApplicationAccessService {
               full_name: true,
               email: true,
               student: {
-                select: { status: true, deleted_at: true, current_grade: { select: { unit_id: true } } },
+                select: {
+                  status: true,
+                  deleted_at: true,
+                  nis: true,
+                  current_grade: { select: { unit_id: true, name: true, unit: { select: { name: true } } } },
+                  current_class: { select: { name: true } },
+                },
               },
               employee: {
                 select: {
@@ -1668,6 +1738,7 @@ export class ApplicationAccessService {
       job_level_ids: rule.job_level_ids,
       default_role_key: rule.default_role_key,
       is_active: rule.is_active,
+      allows_exceptions: rule.allows_exceptions,
     }));
     const active = gateRules.filter((rule) => rule.is_active);
     const parents = entitlements.map((row) => {
@@ -1874,9 +1945,13 @@ export class ApplicationAccessService {
     const rows: ApplicationExceptionRow[] = matching.slice((page - 1) * size, page * size).map(({ row }) => ({
       id: row.id,
       person_id: row.person_id,
+      kind: row.person.person_type === PersonType.STUDENT ? "STUDENT" : "EMPLOYEE",
+      nis: row.person.student?.nis ?? null,
+      grade: row.person.student?.current_grade?.name ?? null,
+      class_name: row.person.student?.current_class?.name ?? null,
       full_name: row.person.full_name,
       email: row.person.email,
-      unit: row.person.employee?.unit.name ?? null,
+      unit: row.person.employee?.unit.name ?? row.person.student?.current_grade?.unit?.name ?? null,
       job_position: row.person.employee?.job_position.name ?? null,
       job_level: row.person.employee?.job_level.name ?? null,
       employment_type: row.person.employee?.employment_type ?? null,
@@ -1896,6 +1971,99 @@ export class ApplicationAccessService {
     };
   }
 
+  // The students of one group of students, to pick the ones who get an exception.
+  private static async studentCandidates(
+    filters: {
+      application_id: string;
+      exclude_own_access?: boolean;
+      unit_id?: string;
+      grade_id?: string;
+      class_id?: string;
+      search?: string;
+    },
+    group: GateRule,
+    rules: GateRule[],
+    page: number,
+    size: number,
+  ): Promise<Pageable<ApplicationCandidate>> {
+    if (!groupAllowsExceptions(group)) {
+      throw new ResponseError(400, "Exceptions are off for this group of students. Turn them on in the group first.");
+    }
+    const studentRules = rules.filter((rule) => rule.audience === ApplicationAudience.STUDENTS);
+    const fragment = (rule: GateRule): Prisma.StudentWhereInput =>
+      rule.unit_ids.length ? { current_grade: { unit_id: { in: rule.unit_ids } } } : {};
+    // Students of a narrower group belong to that group.
+    const narrower = studentRules.filter((rule) => rule.id !== group.id && parentRule(rule, rules)?.id === group.id);
+    const where: Prisma.StudentWhereInput = {
+      status: StudentStatus.ACTIVE,
+      deleted_at: null,
+      AND: [
+        fragment(group),
+        ...(narrower.length ? [{ NOT: { OR: narrower.map(fragment) } }] : []),
+        ...(filters.unit_id ? [{ current_grade: { unit_id: filters.unit_id } }] : []),
+        ...(filters.grade_id ? [{ current_grade_id: filters.grade_id }] : []),
+        ...(filters.class_id ? [{ current_class_id: filters.class_id }] : []),
+        ...(filters.exclude_own_access
+          ? [{ person: { application_entitlements: { none: { application_id: filters.application_id } } } }]
+          : []),
+        ...(filters.search
+          ? [
+              {
+                OR: [
+                  { person: { full_name: { contains: filters.search, mode: "insensitive" as const } } },
+                  { person: { email: { contains: filters.search, mode: "insensitive" as const } } },
+                  { nis: { contains: filters.search, mode: "insensitive" as const } },
+                ],
+              },
+            ]
+          : []),
+      ],
+    };
+    return paginate(page, size, {
+      count: () => prismaClient.student.count({ where }),
+      findMany: async () => {
+        const students = await prismaClient.student.findMany({
+          where,
+          include: {
+            person: { select: { id: true, full_name: true, email: true } },
+            current_grade: { select: { name: true, unit: { select: { name: true } } } },
+            current_class: { select: { name: true } },
+          },
+          orderBy: [{ person: { full_name: "asc" } }, { id: "asc" }],
+          skip: (page - 1) * size,
+          take: size,
+        });
+        const own = await prismaClient.applicationEntitlement.findMany({
+          where: {
+            application_id: filters.application_id,
+            person_id: { in: students.map((student) => student.person_id) },
+          },
+          select: { person_id: true, role: true, is_active: true },
+        });
+        return students.map((student) => {
+          const ownRow = own.find((row) => row.person_id === student.person_id);
+          return {
+            person_id: student.person_id,
+            kind: "STUDENT" as const,
+            nis: student.nis,
+            grade: student.current_grade.name,
+            class_name: student.current_class?.name ?? null,
+            employee_id: "",
+            full_name: student.person.full_name,
+            email: student.person.email,
+            unit: student.current_grade.unit?.name ?? "",
+            job_position: "",
+            job_level: "",
+            employment_type: "",
+            inherited_role: group.default_role_key,
+            inherited_group_id: group.id,
+            own_access: ownRow ? { role: ownRow.role, is_active: ownRow.is_active } : null,
+          };
+        });
+      },
+    });
+  }
+
   // Active employees to pick from, filterable by how the application's groups cover them.
   static async candidates(
     admin: AdminUser,
@@ -1908,6 +2076,10 @@ export class ApplicationAccessService {
     const coverage = filters.coverage ?? "ANY";
 
     const rules = await loadActiveRules(filters.application_id);
+    if (coverage === "GROUP") {
+      const studentGroup = rules.find((rule) => rule.id === filters.group_id && rule.audience === ApplicationAudience.STUDENTS);
+      if (studentGroup) return this.studentCandidates(filters, studentGroup, rules, page, size);
+    }
     const employeeRules = rules.filter((rule) => rule.audience !== ApplicationAudience.STUDENTS);
     const fragment = (rule: GateRule): Prisma.EmployeeWhereInput => ({
       ...(rule.unit_ids.length ? { unit_id: { in: rule.unit_ids } } : {}),

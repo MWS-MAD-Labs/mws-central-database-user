@@ -105,6 +105,8 @@ const accessRuleFields = {
   job_level_ids: idList("Job level"),
   default_role_key: roleKey,
   is_active: z.boolean().default(true),
+  // Only used by groups of students.
+  allows_exceptions: z.boolean().optional(),
 };
 
 const EMPLOYMENT_TYPES = Object.values(EmploymentType) as [EmploymentType, ...EmploymentType[]];
@@ -138,6 +140,9 @@ export class ApplicationAccessRuleValidation {
     unit_id: nonemptyId("Unit ID").optional(),
     job_position_id: nonemptyId("Job position ID").optional(),
     job_level_id: nonemptyId("Job level ID").optional(),
+    // For a group of students.
+    grade_id: nonemptyId("Grade ID").optional(),
+    class_id: nonemptyId("Class ID").optional(),
     // Several at once, for a scope. Empty or missing means no limit.
     unit_ids: z.array(nonemptyId("Unit ID")).max(100).optional(),
     job_position_ids: z.array(nonemptyId("Job position ID")).max(100).optional(),
@@ -177,6 +182,7 @@ export class ApplicationAccessRuleValidation {
     job_level_ids: idList("Job level").optional(),
     default_role_key: roleKey.optional(),
     is_active: z.boolean().optional(),
+    allows_exceptions: z.boolean().optional(),
   });
 
   static readonly DELETE = z.object({ id: nonemptyId("Rule ID") });
