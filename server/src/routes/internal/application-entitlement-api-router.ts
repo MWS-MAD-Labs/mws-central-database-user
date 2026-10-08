@@ -21,6 +21,12 @@ applicationEntitlementApiRouter.get(
 );
 
 applicationEntitlementApiRouter.get(
+  "/version",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.version(c),
+);
+
+applicationEntitlementApiRouter.get(
   "/applications",
   requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
   (c) => ApplicationEntitlementApiController.applications(c),

@@ -41,7 +41,14 @@ export class ApplicationEntitlementApiController {
       size,
       getAuditRequestContext(c),
     );
-    return c.json({ success: true, data: response.data, paging: response.paging });
+    return c.json({ success: true, data: response.data, paging: response.paging, key: response.key });
+  }
+
+  static async version(c: Context<{ Variables: ApiClientVariables }>) {
+    return c.json({
+      success: true,
+      data: await ApplicationEntitlementService.version(c.req.query("application_id") ?? ""),
+    });
   }
 
   static async applications(c: Context<{ Variables: ApiClientVariables }>) {

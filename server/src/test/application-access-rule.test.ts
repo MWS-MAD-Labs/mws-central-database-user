@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import { EmployeeStatus, StudentStatus } from "../generated/prisma/client";
 import { API_SCOPES } from "../constants/api-scopes";
 import { prismaClient } from "../lib/prisma";
+import { clearActiveSnapshotsForTest } from "../service/application-entitlement-service";
 import {
   AdminUserTest,
   ApiClientTest,
@@ -134,6 +135,50 @@ describe("application baseline access rules", () => {
       expect((byEmail.get(lead.email) as { role: string }).role).toBe("ADMIN");
       expect(byEmail.has(blocked.email)).toBe(false);
       expect(body.paging.total_item).toBe(body.data.length);
+    });
+
+    it("gives a key that moves only when what a satellite keeps moves", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const person = await createEmployee("test_key_person@millennia21.id");
+      await addRule(accessToken);
+      const { token, client } = await ApiClientTest.createWithToken({
+        scopeNames: [API_SCOPES.APPLICATION_ENTITLEMENTS_READ],
+      });
+      apiClientIds.push(client.id);
+      const keyNow = async () => {
+        clearActiveSnapshotsForTest();
+        const response = await TestRequest.get(
+          `/api/internal/application-entitlements/version?application_id=${appId}`,
+          undefined,
+          { Authorization: `Bearer ${token}` },
+        );
+        expect(response.status).toBe(200);
+        return (await response.json()).data as { key: string; total: number };
+      };
+
+      const first = await keyNow();
+      expect(first.key).toHaveLength(12);
+      expect(first.total).toBeGreaterThanOrEqual(1);
+      expect((await keyNow()).key).toBe(first.key);
+
+      // Something the satellite does not keep.
+      await prismaClient.person.update({ where: { id: person.id }, data: { nick_name: "Other Nick" } });
+      expect((await keyNow()).key).toBe(first.key);
+
+      // A name does move it, and so does a new person.
+      await prismaClient.person.update({ where: { id: person.id }, data: { full_name: "Renamed Person" } });
+      const renamed = await keyNow();
+      expect(renamed.key).not.toBe(first.key);
+      await createEmployee("test_key_second@millennia21.id");
+      expect((await keyNow()).key).not.toBe(renamed.key);
+
+      // The list carries the same key.
+      const list = await (await TestRequest.get(
+        `/api/internal/application-entitlements?application_id=${appId}`,
+        undefined,
+        { Authorization: `Bearer ${token}` },
+      )).json();
+      expect(list.key).toBe((await keyNow()).key);
     });
 
     it("pages the answer and refuses a missing application", async () => {

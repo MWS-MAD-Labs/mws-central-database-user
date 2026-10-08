@@ -117,6 +117,14 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     purpose: "Lists the people with access to an MWS application and the role each one has, so the app can keep its own list in step.",
   },
   {
+    method: "GET",
+    path: "/api/internal/application-entitlements/version?application_id=exima",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Has the list of people changed",
+    group: "Application Access",
+    purpose: "Gives a short key that changes only when the people, names, emails or roles of an application change, so an app syncs only when it must.",
+  },
+  {
     method: "PUT",
     path: "/api/internal/application-permissions/exima",
     scope: API_SCOPES.APPLICATION_PERMISSIONS_WRITE,

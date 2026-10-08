@@ -1,4 +1,4 @@
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import {
   AdminRole,
   AuditAction,
@@ -117,6 +117,14 @@ function auditSnapshot(entitlement: ApplicationEntitlement) {
     version: entitlement.version,
     is_active: entitlement.is_active,
   };
+}
+
+const ACTIVE_SNAPSHOT_MS = 60_000;
+type ActiveSnapshot = { items: ApplicationEntitlementListItem[]; key: string };
+const activeSnapshots = new Map<string, { at: number; snapshot: ActiveSnapshot }>();
+
+export function clearActiveSnapshotsForTest() {
+  activeSnapshots.clear();
 }
 
 function generateOrganizationId(applicationId: string): string {
@@ -713,14 +721,35 @@ export class ApplicationEntitlementService {
 
   // Everyone who can use an application right now, for a satellite app that keeps its own
   // list of people. Own access rows win over groups, a blocked row keeps the person out.
-  static async listActive(
-    client: ApiClientVariables,
-    applicationId: string,
-    page = 1,
-    size = 100,
-    context: AuditRequestContext = {},
-  ): Promise<Pageable<ApplicationEntitlementListItem>> {
-    if (!applicationId) throw new ResponseError(400, "Query parameter 'application_id' is required");
+  // The result is kept for a minute, so a satellite checking for changes does not make
+  // Central work out the whole list again each time.
+  private static async activeSnapshot(applicationId: string): Promise<ActiveSnapshot> {
+    const cached = activeSnapshots.get(applicationId);
+    if (cached && Date.now() - cached.at < ACTIVE_SNAPSHOT_MS) return cached.snapshot;
+    const items = await ApplicationEntitlementService.computeActive(applicationId);
+    // The key moves only when something the satellite keeps about a person moves.
+    const key = createHash("sha256")
+      .update(
+        JSON.stringify(
+          items.map((item) => [
+            item.person_id,
+            item.person.full_name,
+            item.person.email,
+            item.role,
+            [...item.permissions].sort(),
+            item.version,
+            item.organization_id,
+          ]),
+        ),
+      )
+      .digest("hex")
+      .slice(0, 12);
+    const snapshot = { items, key };
+    activeSnapshots.set(applicationId, { at: Date.now(), snapshot });
+    return snapshot;
+  }
+
+  private static async computeActive(applicationId: string): Promise<ApplicationEntitlementListItem[]> {
     const [rules, ruleRows, explicit, roles] = await Promise.all([
       loadActiveRules(applicationId),
       prismaClient.applicationAccessRule.findMany({ where: { application_id: applicationId, is_active: true } }),
@@ -783,6 +812,24 @@ export class ApplicationEntitlementService {
         person: base,
       });
     }
+    return items;
+  }
+
+  static async version(applicationId: string): Promise<{ key: string; total: number }> {
+    if (!applicationId) throw new ResponseError(400, "Query parameter 'application_id' is required");
+    const { items, key } = await ApplicationEntitlementService.activeSnapshot(applicationId);
+    return { key, total: items.length };
+  }
+
+  static async listActive(
+    client: ApiClientVariables,
+    applicationId: string,
+    page = 1,
+    size = 100,
+    context: AuditRequestContext = {},
+  ): Promise<Pageable<ApplicationEntitlementListItem> & { key: string }> {
+    if (!applicationId) throw new ResponseError(400, "Query parameter 'application_id' is required");
+    const { items, key } = await ApplicationEntitlementService.activeSnapshot(applicationId);
 
     await AuditService.record({
       action: AuditAction.API_ACCESS,
@@ -796,6 +843,7 @@ export class ApplicationEntitlementService {
 
     const start = (page - 1) * size;
     return {
+      key,
       data: items.slice(start, start + size),
       paging: { size, current_page: page, total_page: Math.ceil(items.length / size), total_item: items.length },
     };
