@@ -1,12 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  Copy,
-  KeyRound,
-  Plus,
-  ShieldCheck,
-} from "lucide-react";
-import { useRef, useState } from "react";
+import { AlertTriangle, KeyRound, Plus } from "lucide-react";
+import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
@@ -29,6 +23,7 @@ import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { apiClientsApi } from "../api/apiClientsApi.js";
 import { InternalApiPanel } from "../components/InternalApiPanel.jsx";
 import { ApplicationProfilesPanel } from "../components/ApplicationProfilesPanel.jsx";
+import { TokenDialog } from "../components/TokenDialog.jsx";
 import { ScopeGroupList, ScopeGroupPills } from "../components/ScopeGroupPills.jsx";
 import { usePagedList } from "../hooks/usePagedList.js";
 import { PURPOSE_LABELS, scopeName } from "../utils/scopes.js";
@@ -610,94 +605,6 @@ function EditScopesDialog({ client, scopeNames, isSubmitting, onClose, onSubmit 
           ))}
         </div>
       </form>
-    </CrudDialog>
-  );
-}
-
-function TokenDialog({ title, client, onClose }) {
-  const [copied, setCopied] = useState(false);
-  const tokenRef = useRef(null);
-  const newToken = client.new_token || client.token || client.credential?.token;
-  const currentToken = client.current_token || client.retiring_token;
-  const activeCredential = client.credentials?.find(
-    (credential) => credential.status === "ACTIVE",
-  );
-  const retiringDeadline =
-    client.retiring_deadline ||
-    client.retiring_at ||
-    client.current_credential?.retires_at ||
-    client.credentials?.find((credential) => credential.status === "RETIRING")?.expires_at;
-
-  async function copyToken() {
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(newToken);
-        setCopied(true);
-        showSuccessToast("Token copied.");
-        return;
-      } catch {
-        // Fall back to manual selection.
-      }
-    }
-
-    tokenRef.current?.focus();
-    tokenRef.current?.select();
-    setCopied(false);
-    showErrorToast(
-      "Clipboard is blocked in this browser. Press Ctrl+C after selecting the token.",
-    );
-  }
-
-  return (
-    <CrudDialog
-      title={title}
-      description={client.profile?.name || client.name}
-      onClose={onClose}
-      footer={
-        <>
-          <Button type="button" variant="ghost" className="cursor-pointer" onClick={copyToken} disabled={!newToken}>
-            <Copy size={16} />
-            {copied ? "Copied" : "Copy"}
-          </Button>
-          <Button type="button" onClick={onClose}>
-            Done
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <div className="flex min-w-0 items-center gap-3 rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3">
-          <ShieldCheck size={18} className="text-(--mws-burgundy)" />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-(--mws-charcoal)">
-              {client.new_token_prefix || activeCredential?.token_prefix || client.token_prefix || "New Credential"}
-            </p>
-            <p className="break-words text-xs text-(--mws-muted)">
-              {getEffectiveScopes(client).map(scopeName).map(formatStatus).join(", ")}
-            </p>
-          </div>
-        </div>
-        <div>
-          <p className="mb-2 font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">New Token - Shown Once</p>
-          <textarea
-          ref={tokenRef}
-          readOnly
-          value={newToken || "Token was not returned by the server."}
-          className="min-h-28 w-full rounded-xl border border-(--mws-line) bg-white px-3 py-2 font-mono text-sm text-(--mws-charcoal) outline-none"
-          />
-        </div>
-        {currentToken ? (
-          <div>
-            <p className="mb-2 font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">Current Token - Retiring</p>
-            <textarea readOnly value={currentToken} className="min-h-24 w-full rounded-xl border border-[#d8b45b] bg-[#fff8e8] px-3 py-2 font-mono text-sm text-(--mws-charcoal) outline-none" />
-          </div>
-        ) : null}
-        {retiringDeadline ? (
-          <p className="rounded-xl bg-[#fff8e8] p-3 text-sm text-[#745716]">
-            Current credential retires at <strong>{formatDateTime(retiringDeadline)}</strong>.
-          </p>
-        ) : null}
-      </div>
     </CrudDialog>
   );
 }

@@ -1,0 +1,83 @@
+import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { TokenDialog } from '../../../src/features/api-clients/components/TokenDialog.jsx'
+import { renderWithProviders } from '../../helpers/render.jsx'
+
+const client = {
+  name: 'Unmapped legacy integration',
+  new_token: 'mws_47d0b31fa20c-secret-token',
+  new_token_prefix: 'mws_47d0b31fa20c',
+  effective_scopes: ['employees:read'],
+}
+
+function setClipboard(writeText) {
+  Object.defineProperty(navigator, 'clipboard', { value: writeText ? { writeText } : undefined, configurable: true })
+}
+
+// userEvent.setup() inside renderWithProviders installs its own clipboard, so the test one goes in after it.
+function renderDialog(clipboard, onClose = mock(() => {}), overrides = {}) {
+  const view = renderWithProviders(
+    <TokenDialog title="Rotated Credentials" client={{ ...client, ...overrides }} onClose={onClose} />,
+  )
+  setClipboard(clipboard)
+  return { ...view, onClose }
+}
+
+afterEach(() => setClipboard(undefined))
+
+describe('TokenDialog', () => {
+  it('shows the token as one button, not as text that can be selected, and has no Copy or Done button', () => {
+    renderDialog(mock(async () => {}))
+    const token = screen.getByRole('button', { name: 'Copy token' })
+    expect(token).toHaveTextContent('mws_47d0b31fa20c-secret-token')
+    expect(token.style.userSelect).toBe('none')
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Copy$/ })).toBeNull()
+    expect(screen.getByText('Shown Once')).toBeVisible()
+  })
+
+  it('copies on one click and closes by itself', async () => {
+    const writeText = mock(async () => {})
+    const { onClose } = renderDialog(writeText)
+    fireEvent.click(screen.getByRole('button', { name: 'Copy token' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('mws_47d0b31fa20c-secret-token'))
+    expect(await screen.findByText('Copied')).toBeVisible()
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1), { timeout: 2000 })
+  })
+
+  it('stays open and offers a field to copy by hand when the clipboard is blocked', async () => {
+    const { onClose } = renderDialog(mock(async () => { throw new Error('denied') }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy token' }))
+    const field = await screen.findByRole('textbox', { name: 'Token to copy by hand' })
+    expect(field).toHaveValue('mws_47d0b31fa20c-secret-token')
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('stays open when there is no clipboard at all', async () => {
+    const { onClose } = renderDialog(undefined)
+    fireEvent.click(screen.getByRole('button', { name: 'Copy token' }))
+    expect(await screen.findByRole('textbox', { name: 'Token to copy by hand' })).toBeVisible()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('asks before closing a token that was not copied, and keeps it open on request', () => {
+    const { onClose } = renderDialog(mock(async () => {}))
+    fireEvent.click(screen.getByRole('button', { name: 'Close Dialog' }))
+    expect(screen.getByText('This token will not be shown again.')).toBeVisible()
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Keep Open' }))
+    expect(screen.queryByText('This token will not be shown again.')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Close Dialog' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close Anyway' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes without asking when there is no token to lose', () => {
+    const { onClose } = renderDialog(undefined, undefined, { new_token: undefined })
+    expect(screen.getByText('Token was not returned by the server.')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Close Dialog' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
