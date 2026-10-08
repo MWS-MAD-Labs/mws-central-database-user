@@ -5,13 +5,14 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { formatDateTime, formatStatus } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import { maskToken } from "../utils/maskToken.js";
 import { scopeName } from "../utils/scopes.js";
 
 const CLOSE_DELAY_MS = 700;
 
-// The token is shown once, so it is a button: one click copies it and the dialog closes by itself.
-// It cannot be selected. If the browser blocks the clipboard the dialog stays and the token is
-// offered in a field that can be selected, otherwise it would be lost.
+// The token is shown once and never in full on the screen: the dialog shows its start and end, and
+// one big button copies it and then closes the dialog. If the browser blocks the clipboard the dialog
+// stays and the token is offered in a field that can be selected, otherwise it would be lost.
 export function TokenDialog({ title, client, onClose }) {
   const newToken = client.new_token || client.token || client.credential?.token;
   const [copied, setCopied] = useState(false);
@@ -75,28 +76,29 @@ export function TokenDialog({ title, client, onClose }) {
             <StatusBadge tone="amber">Shown Once</StatusBadge>
           </div>
           {newToken ? (
-            <button
-              type="button"
-              onClick={copyToken}
-              onCopy={(event) => event.preventDefault()}
-              onContextMenu={(event) => event.preventDefault()}
-              aria-label={copied ? "Token copied" : "Copy token"}
-              className="group flex w-full cursor-pointer items-center gap-3 rounded-xl border border-(--mws-line) bg-white px-3 py-3 text-left transition-colors hover:border-(--mws-burgundy) hover:bg-(--mws-soft) focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--mws-burgundy)"
-              style={{ userSelect: "none", WebkitUserSelect: "none" }}
-            >
-              <code className="min-w-0 flex-1 break-all font-mono text-sm text-(--mws-charcoal)">{newToken}</code>
-              <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-(--mws-muted) group-hover:text-(--mws-burgundy)">
-                {copied ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}
-                {copied ? "Copied" : "Copy"}
-              </span>
-            </button>
+            <div className="space-y-3">
+              <p
+                role="img"
+                aria-label="Token hidden, copy it with the button"
+                className="rounded-xl border border-(--mws-line) bg-(--mws-soft) px-3 py-3 text-center font-mono text-sm tracking-wide text-(--mws-charcoal)"
+                style={{ userSelect: "none", WebkitUserSelect: "none" }}
+                onCopy={(event) => event.preventDefault()}
+                onContextMenu={(event) => event.preventDefault()}
+              >
+                {maskToken(newToken)}
+              </p>
+              <Button type="button" className="h-12 w-full text-base" onClick={copyToken}>
+                {copied ? <Check size={18} /> : <Copy size={18} />}
+                {copied ? "Copied" : "Copy Token"}
+              </Button>
+            </div>
           ) : (
             <p className="rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3 text-sm text-(--mws-muted)">
               Token was not returned by the server.
             </p>
           )}
           {newToken && !blocked ? (
-            <p className="mt-2 text-xs text-(--mws-muted)">Click the token to copy it. This window closes once it is copied.</p>
+            <p className="mt-2 text-xs text-(--mws-muted)">Copy it now. It is not shown again.</p>
           ) : null}
         </div>
 

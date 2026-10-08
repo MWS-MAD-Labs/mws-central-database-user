@@ -26,29 +26,30 @@ function renderDialog(clipboard, onClose = mock(() => {}), overrides = {}) {
 afterEach(() => setClipboard(undefined))
 
 describe('TokenDialog', () => {
-  it('shows the token as one button, not as text that can be selected, and has no Copy or Done button', () => {
+  it('never shows the whole token: its start and end, and one big button', () => {
     renderDialog(mock(async () => {}))
-    const token = screen.getByRole('button', { name: 'Copy token' })
-    expect(token).toHaveTextContent('mws_47d0b31fa20c-secret-token')
-    expect(token.style.userSelect).toBe('none')
+    const hidden = screen.getByRole('img', { name: 'Token hidden, copy it with the button' })
+    expect(hidden).toHaveTextContent('mws_47d0b3••••••••••••oken')
+    expect(hidden.style.userSelect).toBe('none')
+    expect(screen.queryByText('mws_47d0b31fa20c-secret-token')).toBeNull()
     expect(screen.queryByRole('textbox')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Done' })).toBeNull()
-    expect(screen.queryByRole('button', { name: /^Copy$/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Copy Token' })).toBeVisible()
     expect(screen.getByText('Shown Once')).toBeVisible()
   })
 
   it('copies on one click and closes by itself', async () => {
     const writeText = mock(async () => {})
     const { onClose } = renderDialog(writeText)
-    fireEvent.click(screen.getByRole('button', { name: 'Copy token' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy Token' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('mws_47d0b31fa20c-secret-token'))
-    expect(await screen.findByText('Copied')).toBeVisible()
+    expect(await screen.findByRole('button', { name: 'Copied' })).toBeVisible()
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1), { timeout: 2000 })
   })
 
   it('stays open and offers a field to copy by hand when the clipboard is blocked', async () => {
     const { onClose } = renderDialog(mock(async () => { throw new Error('denied') }))
-    fireEvent.click(screen.getByRole('button', { name: 'Copy token' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy Token' }))
     const field = await screen.findByRole('textbox', { name: 'Token to copy by hand' })
     expect(field).toHaveValue('mws_47d0b31fa20c-secret-token')
     await new Promise((resolve) => setTimeout(resolve, 900))
@@ -57,7 +58,7 @@ describe('TokenDialog', () => {
 
   it('stays open when there is no clipboard at all', async () => {
     const { onClose } = renderDialog(undefined)
-    fireEvent.click(screen.getByRole('button', { name: 'Copy token' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy Token' }))
     expect(await screen.findByRole('textbox', { name: 'Token to copy by hand' })).toBeVisible()
     expect(onClose).not.toHaveBeenCalled()
   })
