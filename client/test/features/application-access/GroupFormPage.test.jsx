@@ -308,6 +308,32 @@ describe('GroupFormPage', () => {
     expect(within(screen.getByLabelText('Scope Steps')).queryByText('Job Positions')).not.toBeInTheDocument()
   })
 
+  it('offers Allow Exceptions only for students and sends the choice', async () => {
+    const fetchMock = createFetchRouter(routes([
+      { path: '/api/admin/application-access-rules', method: 'POST', response: () => jsonResponse({ data: { id: 'rule-4' } }) },
+    ]))
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await screen.findByText('Add Group to exima')
+    expect(screen.queryByLabelText(/Allow Exceptions/)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
+    await user.click(screen.getByRole('option', { name: 'All Active Students' }))
+    const allow = await screen.findByLabelText(/Allow Exceptions/)
+    expect(allow).not.toBeChecked()
+    expect(screen.getByText(/For roles such as class leader/)).toBeVisible()
+    await user.click(allow)
+    await user.click(screen.getByRole('button', { name: 'Select a role' }))
+    await user.click(screen.getByRole('option', { name: /STAFF/ }))
+    await next(user, 1)
+    await user.click(screen.getByRole('button', { name: 'Add Group' }))
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url, options]) =>
+        url === '/api/admin/application-access-rules' && options.method === 'POST')
+      expect(JSON.parse(call[1].body)).toMatchObject({ audience: 'STUDENTS', allows_exceptions: true, default_role_key: 'STAFF' })
+    })
+  })
+
   it('offers only the units that have students when the audience is students', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()

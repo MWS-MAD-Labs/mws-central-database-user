@@ -109,4 +109,36 @@ describe('GroupAccessEditPage', () => {
     expect(await screen.findByText(/covers employees and students together/)).toBeVisible()
     rule = original
   })
+
+  it('shows Allow Exceptions for a group of students only and saves it', async () => {
+    const original = rule
+    rule = { ...rule, audience: 'STUDENTS', allows_exceptions: false }
+    const fetchMock = createFetchRouter(routes([
+      { path: '/api/admin/application-access-rules/rule-1', method: 'PATCH', response: () => jsonResponse({ data: rule }) },
+    ]))
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    const allow = await screen.findByLabelText(/Allow Exceptions/)
+    expect(allow).not.toBeChecked()
+    await user.click(allow)
+    // Walk the scope steps until the review is reached and Save opens up.
+    for (let step = 0; step < 4 && screen.getByRole('button', { name: 'Save' }).disabled; step += 1) {
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+    }
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url, options]) =>
+        url.endsWith('/application-access-rules/rule-1') && options.method === 'PATCH')
+      expect(call).toBeDefined()
+      expect(JSON.parse(call[1].body).allows_exceptions).toBe(true)
+    })
+    rule = original
+  })
+
+  it('has no Allow Exceptions for a group of employees', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage()
+    await screen.findByLabelText('Group access is on')
+    expect(screen.queryByLabelText(/Allow Exceptions/)).not.toBeInTheDocument()
+  })
 })

@@ -12,7 +12,7 @@ import { ChangeRoleDialog } from "./ChangeRoleDialog.jsx";
 import { RoleName } from "./RoleName.jsx";
 
 // Paged exceptions of one group, or of "other" (access no group covers).
-export function ExceptionsPanel({ applicationId, groupId, groupRole, roles, canChange, total, emptyText }) {
+export function ExceptionsPanel({ applicationId, groupId, groupRole, students = false, roles, canChange, total, emptyText }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [search, setSearch] = useState("");
@@ -100,8 +100,17 @@ export function ExceptionsPanel({ applicationId, groupId, groupRole, roles, canC
         head={
           <>
             <th className="px-4 py-2.5">Person</th>
-            <th className="px-4 py-2.5">Unit</th>
-            <th className="px-4 py-2.5">Job Position</th>
+            {students ? (
+              <>
+                <th className="px-4 py-2.5">Grade</th>
+                <th className="px-4 py-2.5">Class</th>
+              </>
+            ) : (
+              <>
+                <th className="px-4 py-2.5">Unit</th>
+                <th className="px-4 py-2.5">Job Position</th>
+              </>
+            )}
             <th className="px-4 py-2.5">Role</th>
             <th className="px-4 py-2.5">Status</th>
             <th className="px-4 py-2.5 text-right">Actions</th>
@@ -137,8 +146,17 @@ export function ExceptionsPanel({ applicationId, groupId, groupRole, roles, canC
               <span className="block truncate font-semibold text-(--mws-charcoal)">{row.full_name}</span>
               <span className="block truncate text-xs text-(--mws-muted)">{row.email}</span>
             </td>
-            <td className={denseCellClass}>{row.unit || "-"}</td>
-            <td className={denseCellClass}>{row.job_position || "-"}</td>
+            {students ? (
+              <>
+                <td className={denseCellClass}>{row.grade || "-"}</td>
+                <td className={denseCellClass}>{row.class_name || "-"}</td>
+              </>
+            ) : (
+              <>
+                <td className={denseCellClass}>{row.unit || "-"}</td>
+                <td className={denseCellClass}>{row.job_position || "-"}</td>
+              </>
+            )}
             <td className={denseCellClass}>
               <span title={row.permissions.join(", ")}>
                 <RoleName>{row.role}</RoleName>

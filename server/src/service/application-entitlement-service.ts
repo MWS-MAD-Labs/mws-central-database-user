@@ -534,10 +534,12 @@ export class ApplicationEntitlementService {
         await loadActiveRules(existing.application_id),
       );
     }
+    const holder = await findExceptionPerson(existing.person_id);
     const nextPermissions = await resolveRolePermissions(
       existing.application_id,
       nextRole,
       update.permissions,
+      holder?.kind ?? "EMPLOYEE",
     );
 
     const entitlement = await prismaClient.$transaction(async (tx) => {

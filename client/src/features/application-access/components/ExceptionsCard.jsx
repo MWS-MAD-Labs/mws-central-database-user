@@ -8,7 +8,8 @@ export function ExceptionsCard({ group, applicationId, roles, onAdd }) {
   const [open, setOpen] = useState(false);
   const total = group.exception_count;
   const blockedCount = group.blocked_count > 0 ? group.blocked_count : 0;
-  const cannotAdd = !group.is_active || group.audience === "STUDENTS";
+  const studentsOff = group.audience === "STUDENTS" && !group.allows_exceptions;
+  const cannotAdd = !group.is_active || studentsOff;
 
   return (
     <section
@@ -46,8 +47,8 @@ export function ExceptionsCard({ group, applicationId, roles, onAdd }) {
           aria-label={`Add Exception to ${group.default_role_key} Group`}
           disabled={cannotAdd}
           title={
-            group.audience === "STUDENTS"
-              ? "Exceptions are for employees"
+            studentsOff
+              ? "Turn on Allow Exceptions in the group first"
               : !group.is_active
                 ? "Turn the group on first"
                 : "Add Exception"
@@ -64,6 +65,7 @@ export function ExceptionsCard({ group, applicationId, roles, onAdd }) {
             applicationId={applicationId}
             groupId={group.id}
             groupRole={group.default_role_key}
+            students={group.audience === "STUDENTS"}
             roles={roles}
             canChange
             total={total}

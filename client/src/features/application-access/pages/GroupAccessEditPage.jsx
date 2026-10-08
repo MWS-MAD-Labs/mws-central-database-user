@@ -23,6 +23,7 @@ import { OrganizationNote } from "../components/OrganizationNote.jsx";
 import { isRealUnit } from "../utils/legacyUnit.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { useScopeCatalog } from "../hooks/useScopeCatalog.js";
+import { AllowExceptionsField } from "../components/AllowExceptionsField.jsx";
 import { useRoleAvailability } from "../hooks/useRoleAvailability.js";
 
 export function GroupAccessEditPage() {
@@ -56,6 +57,7 @@ function GroupAccessForm({ rule }) {
   const state = useGroupFilterState(rule, rule.audience === "STUDENTS" ? null : rules);
   const [roleKey, setRoleKey] = useState(rule.default_role_key);
   const [isActive, setIsActive] = useState(rule.is_active);
+  const [allowsExceptions, setAllowsExceptions] = useState(Boolean(rule.allows_exceptions));
   const [attempted, setAttempted] = useState(false);
   const [scopeReviewed, setScopeReviewed] = useState(false);
 
@@ -82,6 +84,7 @@ function GroupAccessForm({ rule }) {
         ...groupFilterPayload(state, rule.audience, knownUnitIds),
         default_role_key: chosenRole,
         is_active: isActive,
+        ...(rule.audience === "STUDENTS" ? { allows_exceptions: allowsExceptions } : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["application-access"] });
@@ -159,6 +162,9 @@ function GroupAccessForm({ rule }) {
                 />
                 Group access is on
               </label>
+              {rule.audience === "STUDENTS" ? (
+                <AllowExceptionsField checked={allowsExceptions} onChange={setAllowsExceptions} />
+              ) : null}
               <OrganizationNote applicationId={rule.application_id} />
             </div>
             <div className="flex gap-2">

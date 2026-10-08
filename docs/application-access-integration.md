@@ -70,6 +70,17 @@ Saat membuat role baru, pastikan setiap permission-nya sudah dikenal aplikasi pe
 
 Kode: Hub di `backend/src/lib/hub-access-gate.ts` (`userHasHubPermission`) dan `lib/admin-access.ts` (`isHubAdmin`). Daily Check-in memakai `PERMISSION_SET`.
 
+## Exception untuk murid
+
+Group karyawan selalu boleh punya exception. Group murid hanya bila "Allow Exceptions" dicentang di form group, untuk kebutuhan seperti ketua kelas yang butuh role lain dari murid lainnya.
+
+- Murid yang aktif dan tercakup group itu bisa diberi role lain lewat Add Exception, atau diblokir lewat pilihan Blocked. Daftar pilihannya memuat NIS, grade, dan kelas, dengan filter grade dan kelas tahun berjalan.
+- Role exception murid harus yang "untuk murid" (kotak Students di role) dan berbeda dari role group.
+- "Allow Exceptions" tidak bisa dimatikan selagi ada murid yang punya exception di group itu. Hapus exception-nya dulu.
+- Lookup untuk murid memakai aturan yang sama dengan karyawan: baris exception menang atas group, baris tidak aktif berarti ditolak.
+
+Intern tidak termasuk Application Access. Intern adalah catatan tersendiri tanpa Person, jadi tidak tercakup group dan tidak bisa diberi exception atau login Hub.
+
 ## Memblokir satu orang
 
 Orang yang aksesnya datang dari group bisa diblokir tanpa mengganti role mereka: di kartu Exceptions pilih Add Exception, ubah "Add As" menjadi Blocked, centang orangnya, lalu Block Access. Central menyimpan satu baris entitlement tidak aktif dengan role yang diberikan group, dan baris tidak aktif selalu menang atas group, jadi lookup mengembalikan tidak ada akses. Orang itu tampil di daftar exception dengan status Blocked dan lencana merah "Blocked" di ringkasan. Unblock mengembalikannya ke akses group (atau ke role exception-nya), dan Remove menghapus barisnya. Hanya orang yang tercakup group yang bisa diblokir.

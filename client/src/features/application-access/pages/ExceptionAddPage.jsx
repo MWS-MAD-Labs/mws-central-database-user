@@ -13,6 +13,7 @@ import { enumOptions, formatStatus } from "../../../lib/format.js";
 import { showBulkFailureToast, showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
+import { loadStudentFormOptions } from "../../students/api/studentFormOptions.js";
 import { employmentTypes } from "../../employees/api/employeesApi.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
@@ -32,7 +33,7 @@ export function ExceptionAddPage() {
   const [roleKey, setRoleKey] = useState("");
   // Blocked shuts the people out instead of giving them another role.
   const [blocked, setBlocked] = useState(false);
-  const emptyFilters = { search: "", employment_type: "", unit_id: "", job_position_id: "", job_level_id: "" };
+  const emptyFilters = { search: "", employment_type: "", unit_id: "", job_position_id: "", job_level_id: "", grade_id: "", class_id: "" };
   const [params, setParams] = useState({ page: 1, size: 10, ...emptyFilters });
   const [selected, setSelected] = useState(() => new Map());
   const [attempted, setAttempted] = useState(false);
@@ -43,8 +44,16 @@ export function ExceptionAddPage() {
   }).data;
   const formOptions = useQuery({ queryKey: ["employee-form-options"], queryFn: loadEmployeeFormOptions }).data || {};
   const group = detail?.groups.find((item) => item.id === ruleId);
+  const isStudents = group?.audience === "STUDENTS";
+  const studentOptions =
+    useQuery({ queryKey: ["student-form-options"], queryFn: loadStudentFormOptions, enabled: isStudents }).data || {};
+  // Classes of the year that is running, the ones a class leader belongs to.
+  const activeYearId = (studentOptions.academicYears || []).find((year) => year.status === "ACTIVE")?.id;
+  const classChoices = (studentOptions.classes || []).filter(
+    (item) => !activeYearId || (item.academic_year?.id ?? item.academic_year_id) === activeYearId,
+  );
   const roles = (useApplicationRoles().data || []).filter(
-    (role) => role.application_id === applicationId && role.is_active,
+    (role) => role.application_id === applicationId && role.is_active && (isStudents ? role.allows_students : role.allows_employees !== false),
   );
   const selectedRole = roles.find((role) => role.key === roleKey);
 
@@ -60,6 +69,8 @@ export function ExceptionAddPage() {
         unit_id: params.unit_id || undefined,
         job_position_id: params.job_position_id || undefined,
         job_level_id: params.job_level_id || undefined,
+        grade_id: params.grade_id || undefined,
+        class_id: params.class_id || undefined,
         search: params.search || undefined,
         page: params.page,
         size: params.size,
@@ -163,7 +174,9 @@ export function ExceptionAddPage() {
         description={
           blocked
             ? "Check the people who should lose access even though their group gives it."
-            : "Check the people who should get another role than their group."
+            : isStudents
+              ? "Check the students who should get another role than their group, such as a class leader."
+              : "Check the people who should get another role than their group."
         }
         actions={
           <Button asChild variant="secondary">
@@ -182,14 +195,31 @@ export function ExceptionAddPage() {
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <section className="min-w-0 space-y-3 rounded-2xl border border-(--mws-line) bg-white p-5">
             {attempted && selected.size === 0 ? (
-              <p className="text-sm font-semibold text-[#a43c41]">Pick at least one employee.</p>
+              <p className="text-sm font-semibold text-[#a43c41]">Pick at least one {isStudents ? "student" : "employee"}.</p>
             ) : null}
             <DebouncedSearchInput
               value={params.search}
               onChange={(search) => setParams((current) => ({ ...current, page: 1, search }))}
-              placeholder="Search employees"
+              placeholder={isStudents ? "Search name or NIS" : "Search employees"}
             />
             <div className="flex min-w-0 flex-wrap items-end gap-3">
+              {isStudents ? (
+                <>
+                  <FilterSelect
+                    label="Grade"
+                    value={params.grade_id}
+                    onChange={(value) => setFilter({ grade_id: value })}
+                    options={[{ value: "", label: "All Grades" }, ...(studentOptions.grades || []).map((item) => ({ value: item.id, label: item.name }))]}
+                  />
+                  <FilterSelect
+                    label="Class"
+                    value={params.class_id}
+                    onChange={(value) => setFilter({ class_id: value })}
+                    options={[{ value: "", label: "All Classes" }, ...classChoices.map((item) => ({ value: item.id, label: item.name }))]}
+                  />
+                </>
+              ) : (
+                <>
               <FilterSelect
                 label="Unit"
                 value={params.unit_id}
@@ -214,8 +244,10 @@ export function ExceptionAddPage() {
                 onChange={(value) => setFilter({ employment_type: value })}
                 options={[{ value: "", label: "All Employment Types" }, ...enumOptions(employmentTypes)]}
               />
+                </>
+              )}
               <FilterResetButton
-                visible={Boolean(params.unit_id || params.job_position_id || params.job_level_id || params.employment_type || params.search)}
+                visible={Boolean(params.unit_id || params.job_position_id || params.job_level_id || params.employment_type || params.grade_id || params.class_id || params.search)}
                 onReset={() => setParams((current) => ({ ...current, page: 1, ...emptyFilters }))}
               />
             </div>
@@ -235,17 +267,27 @@ export function ExceptionAddPage() {
                     />
                   </th>
                   <th className="px-4 py-2.5">Name</th>
-                  <th className="px-4 py-2.5">Unit</th>
-                  <th className="px-4 py-2.5">Job Position</th>
-                  <th className="px-4 py-2.5">Job Level</th>
-                  <th className="px-4 py-2.5">Employment Type</th>
+                  {isStudents ? (
+                    <>
+                      <th className="px-4 py-2.5">NIS</th>
+                      <th className="px-4 py-2.5">Grade</th>
+                      <th className="px-4 py-2.5">Class</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="px-4 py-2.5">Unit</th>
+                      <th className="px-4 py-2.5">Job Position</th>
+                      <th className="px-4 py-2.5">Job Level</th>
+                      <th className="px-4 py-2.5">Employment Type</th>
+                    </>
+                  )}
                   <th className="px-4 py-2.5">Current Role</th>
                 </>
               }
               footer={
                 <PaginationBar
                   paging={paging}
-                  itemLabel="employees"
+                  itemLabel={isStudents ? "students" : "employees"}
                   isLoading={candidatesQuery.isFetching}
                   onPrevious={() => setParams((current) => ({ ...current, page: Math.max(current.page - 1, 1) }))}
                   onNext={() => setParams((current) => ({ ...current, page: current.page + 1 }))}
@@ -256,8 +298,8 @@ export function ExceptionAddPage() {
             >
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-(--mws-muted)">
-                    {candidatesQuery.isLoading ? "Loading employees..." : "No one in this group is waiting for an exception."}
+                  <td colSpan={isStudents ? 6 : 7} className="px-4 py-8 text-center text-sm text-(--mws-muted)">
+                    {candidatesQuery.isLoading ? (isStudents ? "Loading students..." : "Loading employees...") : "No one in this group is waiting for an exception."}
                   </td>
                 </tr>
               ) : null}
@@ -277,10 +319,20 @@ export function ExceptionAddPage() {
                     <span className="block truncate font-semibold text-(--mws-charcoal)">{item.full_name}</span>
                     <span className="block truncate text-xs text-(--mws-muted)">{item.email}</span>
                   </td>
-                  <td className={denseCellClass}>{item.unit || "-"}</td>
-                  <td className={denseCellClass}>{item.job_position || "-"}</td>
-                  <td className={denseCellClass}>{item.job_level || "-"}</td>
-                  <td className={denseCellClass}>{item.employment_type ? formatStatus(item.employment_type) : "-"}</td>
+                  {isStudents ? (
+                    <>
+                      <td className={denseCellClass}>{item.nis || "-"}</td>
+                      <td className={denseCellClass}>{item.grade || "-"}</td>
+                      <td className={denseCellClass}>{item.class_name || "-"}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className={denseCellClass}>{item.unit || "-"}</td>
+                      <td className={denseCellClass}>{item.job_position || "-"}</td>
+                      <td className={denseCellClass}>{item.job_level || "-"}</td>
+                      <td className={denseCellClass}>{item.employment_type ? formatStatus(item.employment_type) : "-"}</td>
+                    </>
+                  )}
                   <td className={denseCellClass}>
                     {item.inherited_role ?? "-"}
                     {item.disabled ? (

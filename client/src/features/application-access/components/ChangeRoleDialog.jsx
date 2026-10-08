@@ -11,7 +11,12 @@ import { PermissionPopover } from "./PermissionPopover.jsx";
 // Another role for one exception. The server refuses the role its group already gives.
 export function ChangeRoleDialog({ applicationId, exception, roles, onClose, onDone }) {
   const [roleKey, setRoleKey] = useState(exception.role);
-  const options = roles.filter((role) => role.application_id === applicationId && role.is_active);
+  const options = roles.filter(
+    (role) =>
+      role.application_id === applicationId &&
+      role.is_active &&
+      (exception.kind === "STUDENT" ? role.allows_students : role.allows_employees !== false),
+  );
   const selectedRole = options.find((role) => role.key === roleKey);
 
   const mutation = useMutation({

@@ -231,6 +231,19 @@ describe("application baseline access rules", () => {
       expect(listed.data[0]).toMatchObject({ kind: "STUDENT", role: "ADMIN", full_name: expect.any(String) });
     });
 
+    it("changes the role of a student who has an exception", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const student = await StudentTest.create({ email: "test_exc_student_change@millennia21.id", status: StudentStatus.ACTIVE });
+      await prismaClient.applicationRole.create({
+        data: { application_id: appId, key: "LEADER", label: "Leader", permissions: ["b.read"], allows_students: true },
+      });
+      await studentGroup(accessToken, { allows_exceptions: true });
+      const granted = (await (await grant(accessToken, student.id, "ADMIN")).json()).data;
+      const changed = await TestRequest.patch(`${ENTITLEMENTS}/${granted.id}`, { role: "LEADER" }, accessToken);
+      expect(changed.status).toBe(200);
+      expect((await (await lookup(student.id)).json()).data.role).toBe("LEADER");
+    });
+
     it("keeps a role that is not for students away from them", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const student = await StudentTest.create({ email: "test_exc_student_role@millennia21.id", status: StudentStatus.ACTIVE });

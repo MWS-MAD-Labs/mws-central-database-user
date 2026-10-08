@@ -17,6 +17,7 @@ import { OrganizationNote } from "../components/OrganizationNote.jsx";
 import { isRealUnit } from "../utils/legacyUnit.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { useScopeCatalog } from "../hooks/useScopeCatalog.js";
+import { AllowExceptionsField } from "../components/AllowExceptionsField.jsx";
 import { useRoleAvailability } from "../hooks/useRoleAvailability.js";
 import {
   audienceLabels,
@@ -33,6 +34,7 @@ export function GroupFormPage() {
   const queryClient = useQueryClient();
   const back = `/application-access/apps/${applicationId}`;
   const [audience, setAudience] = useState("EMPLOYEES");
+  const [allowsExceptions, setAllowsExceptions] = useState(false);
   const [roleKey, setRoleKey] = useState("");
   const [attempted, setAttempted] = useState(false);
   const [scopeReviewed, setScopeReviewed] = useState(false);
@@ -63,6 +65,7 @@ export function GroupFormPage() {
         audience,
         ...groupFilterPayload(scope, audience, knownUnitIds),
         default_role_key: chosenRole,
+        ...(audience === "STUDENTS" ? { allows_exceptions: allowsExceptions } : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["application-access"] });
@@ -156,6 +159,9 @@ export function GroupFormPage() {
                 </p>
               ) : null}
               {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} /> : null}
+              {audience === "STUDENTS" ? (
+                <AllowExceptionsField checked={allowsExceptions} onChange={setAllowsExceptions} />
+              ) : null}
               <OrganizationNote applicationId={applicationId} />
             </div>
             <div className="flex gap-2">

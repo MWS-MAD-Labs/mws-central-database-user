@@ -480,6 +480,22 @@ describe("AppAccessPage", () => {
     });
   });
 
+  it("lets a group of students take exceptions only when it allows them", async () => {
+    globalThis.fetch = createFetchRouter(
+      routes(detail({
+        groups: [
+          baselineGroup({ id: "rule-off", audience: "STUDENTS", default_role_key: "STAFF", allows_exceptions: false }),
+          baselineGroup({ id: "rule-on", audience: "STUDENTS", default_role_key: "ADMIN", allows_exceptions: true }),
+        ],
+      })),
+    );
+    renderPage();
+    const off = await screen.findByRole("button", { name: "Add Exception to STAFF Group" });
+    expect(off).toBeDisabled();
+    expect(off).toHaveAttribute("title", "Turn on Allow Exceptions in the group first");
+    expect(screen.getByRole("button", { name: "Add Exception to ADMIN Group" })).toBeEnabled();
+  });
+
   it("shows the exceptions of a group as a count with a red Blocked badge", async () => {
     globalThis.fetch = createFetchRouter(
       routes(detail({ groups: [baselineGroup({ exception_count: 3, blocked_count: 1 })] })),

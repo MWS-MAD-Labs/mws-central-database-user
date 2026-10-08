@@ -131,6 +131,68 @@ describe('ExceptionAddPage', () => {
     })
   })
 
+  describe('for a group of students', () => {
+    const studentGroup = { ...group, id: 'rule-s', audience: 'STUDENTS', unit_ids: [], units: [], allows_exceptions: true, default_role_key: 'STAFF' }
+    const studentRoles = [
+      { ...roles[0], key: 'LEADER', label: 'Leader', allows_students: true, allows_employees: false },
+      { ...roles[1], allows_students: true, allows_employees: true },
+      { id: 'role-teacher', application_id: 'exima', key: 'TEACHER_ONLY', label: 'Teacher only', permissions: [], is_active: true, active_entitlement_count: 0, allows_students: false, allows_employees: true },
+    ]
+    const students = [
+      { person_id: 'stu-1', kind: 'STUDENT', nis: '24001', grade: 'Grade 5', class_name: 'Grade 5A', employee_id: '', full_name: 'Citra Student', email: 'citra@millennia21.id', unit: 'Elementary', job_position: '', job_level: '', employment_type: '', inherited_role: 'STAFF', inherited_group_id: 'rule-s', own_access: null },
+    ]
+    const studentRoutes = (extra = []) => [
+      ...extra,
+      { path: '/api/admin/application-access/apps/exima', method: 'GET', response: () => jsonResponse({ data: { application_id: 'exima', organization_id: 'org_exima_a1b2c3', groups: [studentGroup], other_count: 0 } }) },
+      { path: '/api/admin/application-roles', response: () => jsonResponse({ data: studentRoles }) },
+      { path: /^\/api\/admin\/grades/, response: () => jsonResponse({ data: [{ id: 'g5', name: 'Grade 5', level: 5 }], paging: { current_page: 1, total_page: 1, total_item: 1, size: 100 } }) },
+      { path: /^\/api\/admin\/academic-years/, response: () => jsonResponse({ data: [{ id: 'y1', name: '2026/2027', status: 'ACTIVE' }], paging: { current_page: 1, total_page: 1, total_item: 1, size: 100 } }) },
+      { path: /^\/api\/admin\/classes/, response: () => jsonResponse({ data: [{ id: 'c5a', name: 'Grade 5A', academic_year: { id: 'y1', name: '2026/2027' }, grade: { id: 'g5', name: 'Grade 5' } }, { id: 'c4a', name: 'Grade 4A OLD', academic_year: { id: 'y0', name: '2025/2026' }, grade: { id: 'g4', name: 'Grade 4' } }], paging: { current_page: 1, total_page: 1, total_item: 2, size: 100 } }) },
+      { path: /^\/api\/admin\/application-access\/candidates\?/, method: 'GET', response: () => jsonResponse({ data: students, paging: { current_page: 1, total_page: 1, total_item: 1, size: 10 } }) },
+    ]
+
+    it('lists the students with NIS, grade and class, offers only roles for students and sends the grant', async () => {
+      const fetchMock = createFetchRouter(studentRoutes([
+        { path: '/api/admin/application-entitlements/bulk', method: 'POST', response: () => jsonResponse({ data: { total_count: 1, success_count: 1, failed_count: 0, items: [] } }) },
+      ]))
+      globalThis.fetch = fetchMock
+      const { user } = renderPage({ role: 'SUPER_ADMIN' }, 'rule-s')
+
+      expect(await screen.findByText('Citra Student')).toBeVisible()
+      const table = screen.getByRole('table')
+      for (const heading of ['NIS', 'Grade', 'Class']) expect(within(table).getByRole('columnheader', { name: heading })).toBeVisible()
+      expect(within(table).queryByRole('columnheader', { name: 'Job Position' })).not.toBeInTheDocument()
+      expect(within(table).getByText('24001')).toBeVisible()
+      expect(screen.getByPlaceholderText('Search name or NIS')).toBeVisible()
+
+      await user.click(screen.getByRole('button', { name: 'Select a role' }))
+      expect(await screen.findByRole('option', { name: /LEADER/ })).toBeVisible()
+      expect(screen.queryByRole('option', { name: /TEACHER_ONLY/ })).not.toBeInTheDocument()
+      await user.click(screen.getByRole('option', { name: /LEADER/ }))
+      await user.click(screen.getByLabelText('Select Citra Student'))
+      await user.click(screen.getByRole('button', { name: 'Add Exception' }))
+      await waitFor(() => {
+        const call = fetchMock.mock.calls.find(([url, options]) => url === '/api/admin/application-entitlements/bulk' && options.method === 'POST')
+        expect(JSON.parse(call[1].body)).toEqual({ person_ids: ['stu-1'], application_id: 'exima', role: 'LEADER' })
+      })
+    })
+
+    it('filters by grade and by the classes of the running year', async () => {
+      const fetchMock = createFetchRouter(studentRoutes())
+      globalThis.fetch = fetchMock
+      const { user } = renderPage({ role: 'SUPER_ADMIN' }, 'rule-s')
+      await screen.findByText('Citra Student')
+
+      await user.click(screen.getByRole('button', { name: 'All Classes' }))
+      expect(await screen.findByRole('option', { name: /Grade 5A/ })).toBeVisible()
+      expect(screen.queryByRole('option', { name: /Grade 4A OLD/ })).not.toBeInTheDocument()
+      await user.click(screen.getByRole('option', { name: /Grade 5A/ }))
+      await waitFor(() => {
+        expect(fetchMock.mock.calls.some(([url]) => String(url).includes('class_id=c5a'))).toBe(true)
+      })
+    })
+  })
+
   it('shows the people as a table with their details and the roles highest first', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
