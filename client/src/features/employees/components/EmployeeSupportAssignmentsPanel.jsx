@@ -7,6 +7,7 @@ import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { formatDate, formatStatus } from '../../../lib/format.js'
 import { studentSensitiveApi } from '../../students/api/studentSensitiveApi.js'
 import { employeesApi } from '../api/employeesApi.js'
+import { isPendingFor } from "../../../lib/mutationState.js";
 
 export function SupportAssignmentsPanel({
   memberId,
@@ -158,7 +159,7 @@ export function SupportAssignmentsPanel({
                           title="End assignment"
                           aria-label="End assignment"
                           disabled={!canWrite}
-                          loading={endMutation.variables?.assignmentId === assignment.id}
+                          loading={isPendingFor(endMutation, (variables) => variables?.assignmentId === assignment.id)}
                           onClick={() => handleEnd(assignment)}
                         >
                           <Ban size={15} />
@@ -172,7 +173,7 @@ export function SupportAssignmentsPanel({
                           title="Reactivate assignment (undo an accidental End)"
                           aria-label="Reactivate assignment"
                           disabled={!canWrite}
-                          loading={reactivateMutation.variables?.assignmentId === assignment.id}
+                          loading={isPendingFor(reactivateMutation, (variables) => variables?.assignmentId === assignment.id)}
                           onClick={() => handleReactivate(assignment)}
                         >
                           <RotateCcw size={15} />
@@ -186,7 +187,7 @@ export function SupportAssignmentsPanel({
                         title="Drop assignment (undo a mistake)"
                         aria-label="Drop assignment"
                         disabled={!canWrite}
-                        loading={dropMutation.variables?.assignmentId === assignment.id}
+                        loading={isPendingFor(dropMutation, (variables) => variables?.assignmentId === assignment.id)}
                         onClick={() => handleDrop(assignment)}
                       >
                         <Trash2 size={15} />

@@ -619,7 +619,7 @@ export function EmployeesPage() {
             isLoading={employeesQuery.isLoading}
             isTrash={isTrash}
             canRestore={canRestore}
-            restoringId={restoreMutation.variables}
+            restoringId={restoreMutation.isPending ? restoreMutation.variables : undefined}
             onRestore={handleRestore}
             canSelect={canSelectEmployees}
             selectedIds={selectedEmployeeIds}

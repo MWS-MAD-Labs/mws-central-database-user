@@ -294,7 +294,7 @@ export function InternsPage() {
           isLoading={internsQuery.isLoading}
           isTrash={isTrash}
           canRestore={canRestore}
-          restoringId={restoreMutation.variables}
+          restoringId={restoreMutation.isPending ? restoreMutation.variables : undefined}
           onRestore={handleRestore}
           canSelect={user?.role === "SUPER_ADMIN"}
           selectedIds={selectedIds}

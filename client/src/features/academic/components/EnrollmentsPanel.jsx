@@ -586,7 +586,7 @@ export function EnrollmentsPanel() {
                         isTrash={isTrash}
                         canWrite={canWrite}
                         canDelete={canDelete}
-                        restoringId={restoreMutation.variables?.id}
+                        restoringId={restoreMutation.isPending ? restoreMutation.variables?.id : undefined}
                         onTransfer={() =>
                           setDialog({ mode: "transfer", record: enrollment })
                         }
