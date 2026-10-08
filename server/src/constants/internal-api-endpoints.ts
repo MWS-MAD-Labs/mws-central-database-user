@@ -109,6 +109,14 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     purpose: "Checks whether a person currently has access to an MWS application.",
   },
   {
+    method: "GET",
+    path: "/api/internal/application-entitlements?application_id=exima&page=1&size=100",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Everyone who may use an application",
+    group: "Application Access",
+    purpose: "Lists the people with access to an MWS application and the role each one has, so the app can keep its own list in step.",
+  },
+  {
     method: "PUT",
     path: "/api/internal/application-permissions/exima",
     scope: API_SCOPES.APPLICATION_PERMISSIONS_WRITE,

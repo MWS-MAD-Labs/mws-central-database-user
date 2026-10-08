@@ -93,6 +93,7 @@ import {
   parentRule,
   toRuleSubject,
   ruleSpecificity,
+  SUBJECT_SELECT,
   type GateRule,
   type RuleFilter,
 } from "./application-access-gate";
@@ -708,6 +709,96 @@ export class ApplicationEntitlementService {
       );
     });
     return true;
+  }
+
+  // Everyone who can use an application right now, for a satellite app that keeps its own
+  // list of people. Own access rows win over groups, a blocked row keeps the person out.
+  static async listActive(
+    client: ApiClientVariables,
+    applicationId: string,
+    page = 1,
+    size = 100,
+    context: AuditRequestContext = {},
+  ): Promise<Pageable<ApplicationEntitlementListItem>> {
+    if (!applicationId) throw new ResponseError(400, "Query parameter 'application_id' is required");
+    const [rules, ruleRows, explicit, roles] = await Promise.all([
+      loadActiveRules(applicationId),
+      prismaClient.applicationAccessRule.findMany({ where: { application_id: applicationId, is_active: true } }),
+      prismaClient.applicationEntitlement.findMany({ where: { application_id: applicationId } }),
+      prismaClient.applicationRole.findMany({ where: { application_id: applicationId } }),
+    ]);
+    const ruleRowById = new Map(ruleRows.map((row) => [row.id, row]));
+    const roleByKey = new Map(roles.map((role) => [role.key, role]));
+    const explicitByPerson = new Map(explicit.map((row) => [row.person_id, row]));
+
+    const wantsEmployees = rules.some((rule) => rule.audience !== ApplicationAudience.STUDENTS);
+    const wantsStudents = rules.some((rule) => rule.audience !== ApplicationAudience.EMPLOYEES);
+    const people = await prismaClient.person.findMany({
+      where: {
+        deleted_at: null,
+        OR: [
+          ...(wantsEmployees || explicit.length > 0
+            ? [{ person_type: PersonType.EMPLOYEE, employee: { status: EmployeeStatus.ACTIVE, deleted_at: null } }]
+            : []),
+          ...(wantsStudents || explicit.length > 0
+            ? [{ person_type: PersonType.STUDENT, student: { status: StudentStatus.ACTIVE, deleted_at: null } }]
+            : []),
+        ],
+      },
+      select: {
+        id: true,
+        full_name: true,
+        email: true,
+        ...SUBJECT_SELECT,
+      },
+      orderBy: [{ full_name: "asc" }, { id: "asc" }],
+    });
+
+    const items: ApplicationEntitlementListItem[] = [];
+    for (const person of people) {
+      const own = explicitByPerson.get(person.id);
+      const base = { full_name: person.full_name, email: person.email, unit: null };
+      if (own) {
+        if (own.is_active) items.push({ ...toApplicationEntitlementResponse(own), person: base });
+        continue;
+      }
+      const subject = toRuleSubject(person);
+      const rule = subject ? inheritedRole(subject, rules) : undefined;
+      const role = rule ? roleByKey.get(rule.default_role_key) : undefined;
+      if (!rule || !role || !role.is_active) continue;
+      const groupRule = ruleRowById.get(rule.id);
+      const changedAt = groupRule && role.updated_at < groupRule.updated_at ? groupRule.updated_at : role.updated_at;
+      items.push({
+        id: `group:${rule.id}`,
+        person_id: person.id,
+        application_id: applicationId,
+        organization_id: groupRule?.organization_id ?? "",
+        role: role.key,
+        permissions: role.permissions,
+        version: Math.floor(changedAt.getTime() / 1000),
+        is_active: true,
+        granted_at: (groupRule?.created_at ?? role.created_at).toISOString(),
+        updated_at: changedAt.toISOString(),
+        is_default: true,
+        person: base,
+      });
+    }
+
+    await AuditService.record({
+      action: AuditAction.API_ACCESS,
+      source: AuditSource.API,
+      api_client_id: client.clientId,
+      entity_type: "ApplicationEntitlement",
+      new_values: { requested_application_id: applicationId, listed: items.length },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
+    const start = (page - 1) * size;
+    return {
+      data: items.slice(start, start + size),
+      paging: { size, current_page: page, total_page: Math.ceil(items.length / size), total_item: items.length },
+    };
   }
 
   static async list(

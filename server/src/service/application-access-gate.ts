@@ -40,7 +40,7 @@ export function ruleSpecificity(rule: RuleFilter): number {
   );
 }
 
-const SUBJECT_SELECT = {
+export const SUBJECT_SELECT = {
   person_type: true,
   employee: {
     select: { status: true, deleted_at: true, unit_id: true, job_position_id: true, job_level_id: true },

@@ -91,6 +91,72 @@ describe("application baseline access rules", () => {
     return (await response.json()).data.id as string;
   }
 
+  describe("listing everyone with access", () => {
+    async function listAll(query = "") {
+      const { token, client } = await ApiClientTest.createWithToken({
+        scopeNames: [API_SCOPES.APPLICATION_ENTITLEMENTS_READ],
+      });
+      apiClientIds.push(client.id);
+      return TestRequest.get(
+        `/api/internal/application-entitlements?application_id=${appId}${query}`,
+        undefined,
+        { Authorization: `Bearer ${token}` },
+      );
+    }
+
+    it("lists group members and people with their own role, and leaves out the blocked", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const member = await createEmployee("test_list_member@millennia21.id");
+      const lead = await createEmployee("test_list_lead@millennia21.id");
+      const blocked = await createEmployee("test_list_blocked@millennia21.id");
+      expect((await addRule(accessToken)).status).toBe(200);
+      await TestRequest.post(
+        "/api/admin/application-entitlements/bulk",
+        { person_ids: [blocked.id], application_id: appId, blocked: true },
+        accessToken,
+      );
+      await prismaClient.applicationEntitlement.create({
+        data: {
+          person_id: lead.id,
+          application_id: appId,
+          organization_id: "org-test",
+          role: "ADMIN",
+          permissions: ["store.use", "app.admin"],
+        },
+      });
+
+      const response = await listAll();
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      const byEmail = new Map(body.data.map((row: { person: { email: string } }) => [row.person.email, row]));
+      expect((byEmail.get(member.email) as { role: string }).role).toBe("STAFF");
+      expect((byEmail.get(member.email) as { id: string }).id.startsWith("group:")).toBe(true);
+      expect((byEmail.get(lead.email) as { role: string }).role).toBe("ADMIN");
+      expect(byEmail.has(blocked.email)).toBe(false);
+      expect(body.paging.total_item).toBe(body.data.length);
+    });
+
+    it("pages the answer and refuses a missing application", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await createEmployee("test_list_page_a@millennia21.id");
+      await createEmployee("test_list_page_b@millennia21.id");
+      await addRule(accessToken);
+      const first = await (await listAll("&size=1&page=1")).json();
+      expect(first.data.length).toBe(1);
+      expect(first.paging.total_item).toBeGreaterThanOrEqual(2);
+      expect(first.paging.total_page).toBeGreaterThanOrEqual(2);
+
+      const { token, client } = await ApiClientTest.createWithToken({
+        scopeNames: [API_SCOPES.APPLICATION_ENTITLEMENTS_READ],
+      });
+      apiClientIds.push(client.id);
+      const missing = await TestRequest.get("/api/internal/application-entitlements", undefined, {
+        Authorization: `Bearer ${token}`,
+      });
+      expect(missing.status).toBe(400);
+    });
+  });
+
   describe("blocking a person the group covers", () => {
     const BULK = "/api/admin/application-entitlements/bulk";
 

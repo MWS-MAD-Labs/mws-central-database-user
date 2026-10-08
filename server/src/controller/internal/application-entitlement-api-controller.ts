@@ -28,6 +28,22 @@ export class ApplicationEntitlementApiController {
     return c.json({ success: true, data: response });
   }
 
+  static async list(c: Context<{ Variables: ApiClientVariables }>) {
+    const page = Number(c.req.query("page") || 1);
+    const size = Number(c.req.query("size") || 100);
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(size) || size < 1 || size > 200) {
+      throw new ResponseError(400, "'page' must be 1 or more and 'size' between 1 and 200");
+    }
+    const response = await ApplicationEntitlementService.listActive(
+      { clientId: c.var.clientId, clientName: c.var.clientName, scopes: c.var.scopes },
+      c.req.query("application_id") ?? "",
+      page,
+      size,
+      getAuditRequestContext(c),
+    );
+    return c.json({ success: true, data: response.data, paging: response.paging });
+  }
+
   static async applications(c: Context<{ Variables: ApiClientVariables }>) {
     return c.json({ success: true, data: await ApplicationAccessService.applicationIds() });
   }
