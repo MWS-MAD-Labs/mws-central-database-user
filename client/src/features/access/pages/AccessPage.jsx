@@ -55,6 +55,7 @@ import {
 import { auditLogsApi } from "../../audit/api/auditLogsApi.js";
 import { AuditDiffTable } from "../../audit/pages/AuditLogsPage.jsx";
 import { adminRoles, adminUsersApi, workingDaysApi } from "../api/accessApi.js";
+import { isPendingFor } from "../../../lib/mutationState.js";
 
 const tabs = [
   { id: "admins", label: "Admin Users" },
@@ -945,7 +946,7 @@ function AdminUsersPanel() {
                             ) : (
                               <ActionsMenuItem
                                 disabled={
-                                  reactivateMutation.variables?.id === admin.id
+                                  isPendingFor(reactivateMutation, (variables) => variables?.id === admin.id)
                                 }
                                 onClick={() => {
                                   closeMenu();
@@ -1139,7 +1140,7 @@ function WorkingDaysPanel() {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      disabled={deleteMutation.variables === day.id}
+                      disabled={isPendingFor(deleteMutation, day.id)}
                       onClick={() => handleDelete(day)}
                     >
                       <Trash2 size={15} />
