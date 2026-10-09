@@ -99,8 +99,18 @@ describe('AppSetupPage', () => {
 
   it('shows that it is waiting for the application to send permissions', async () => {
     renderPage([setupRoute(makeSetup({ connection: { client_id: 'c1', created: true, last_used_at: null } }))])
-    expect(await screen.findByText('Waiting for the application to call Central.')).toBeVisible()
+    expect(await screen.findByText('Waiting for the application. Deploy it with the .env values and its permission sync.')).toBeVisible()
     expect(screen.getByRole('link', { name: 'Rotate Token' })).toBeVisible()
+    // Tells what to do next instead of leaving the person guessing.
+    expect(screen.getByText('Do This Next')).toBeVisible()
+    expect(screen.getByText('Deploy it, or run it locally with those values.')).toBeVisible()
+    expect(screen.queryByText(/Still nothing after 10 minutes/)).toBeNull()
+  })
+
+  it('adds a troubleshooting note when nothing called Central for ten minutes', async () => {
+    const old = new Date(Date.now() - 11 * 60 * 1000).toISOString()
+    renderPage([setupRoute(makeSetup({ connection: { client_id: 'c1', created: true, created_at: old, last_used_at: null } }))])
+    expect(await screen.findByText(/Still nothing after 10 minutes/)).toBeVisible()
   })
 
   it('offers an Admin role with every permission once permissions arrived', async () => {

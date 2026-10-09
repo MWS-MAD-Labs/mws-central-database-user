@@ -35,13 +35,13 @@ export function buildSteps(setup, now = Date.now()) {
         ? `Connected, last call ${timeAgo(setup.connection.last_used_at, now)}.`
         : "Connected."
       : setup.connection.created
-        ? "Waiting for the application to call Central."
-        : "Create the connection to get the values for the application's .env file.",
+        ? "Waiting for the application. Deploy it with the .env values and its permission sync."
+        : "Create the connection to get the .env values for the application.",
     permissions: done.permissions
       ? `${setup.permissions.count} permission${setup.permissions.count === 1 ? "" : "s"} received${
           setup.permissions.synced_at ? `, ${timeAgo(setup.permissions.synced_at, now)}` : ""
         }.`
-      : "Waiting for the application to send its permission list. Deploy it with the new .env values.",
+      : "Arrives with the first sync from the application.",
     roles: done.roles
       ? `${setup.roles.active_count} role${setup.roles.active_count === 1 ? "" : "s"}.`
       : "A role is a named set of permissions, like Admin or Staff.",

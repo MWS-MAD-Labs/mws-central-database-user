@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Plus } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
@@ -14,6 +15,7 @@ import { formatDateTime } from "../../../lib/format.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { CopyableId } from "../components/CopyableId.jsx";
+import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
 
 // Every application with how much access it has. Roles and groups are managed inside each one.
 export function ApplicationAccessPage() {
@@ -22,6 +24,7 @@ export function ApplicationAccessPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(10);
+  const [removingId, setRemovingId] = useState(null);
 
   const query = useQuery({
     queryKey: ["application-access", "applications", { search, page, size }],
@@ -130,6 +133,30 @@ export function ApplicationAccessPage() {
                 {row.updated_at ? formatDateTime(row.updated_at) : "-"}
               </td>
               <td className={`${denseCellClass} text-right`}>
+                <div className="inline-flex items-center gap-1">
+                <ActionsMenu label={`Actions for ${row.application_id}`}>
+                  {(closeMenu) => (
+                    <>
+                      <ActionsMenuItem
+                        onClick={() => {
+                          closeMenu();
+                          navigate(`/application-access/apps/${row.application_id}/setup`);
+                        }}
+                      >
+                        Setup Steps
+                      </ActionsMenuItem>
+                      <ActionsMenuItem
+                        tone="danger"
+                        onClick={() => {
+                          closeMenu();
+                          setRemovingId(row.application_id);
+                        }}
+                      >
+                        Delete Application
+                      </ActionsMenuItem>
+                    </>
+                  )}
+                </ActionsMenu>
                 <button
                   type="button"
                   aria-label={`Manage ${row.application_id}`}
@@ -139,11 +166,20 @@ export function ApplicationAccessPage() {
                 >
                   <ArrowRight size={16} />
                 </button>
+                </div>
               </td>
             </tr>
           ))}
         </DenseTable>
       )}
+
+      {removingId ? (
+        <RemoveApplicationDialog
+          applicationId={removingId}
+          onClose={() => setRemovingId(null)}
+          onRemoved={() => setRemovingId(null)}
+        />
+      ) : null}
 
       <PageHint id="application-access-source-of-truth">
         Open an application to manage it. Add its roles first, then a group: the group says who can use the app and

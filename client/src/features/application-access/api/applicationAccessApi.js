@@ -40,6 +40,17 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  // What stops this application from being removed, and what would go with it.
+  async getRemoval(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/removal`)
+    return response.data
+  },
+
+  async removeApplication(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}`, { method: 'DELETE' })
+    return response.data
+  },
+
   async publish(applicationId) {
     const response = await apiRequest(`${ACCESS}/apps/${applicationId}/publish`, { method: 'POST', body: {} })
     return response.data

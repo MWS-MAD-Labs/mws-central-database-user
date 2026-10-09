@@ -43,7 +43,7 @@ describe('buildSteps', () => {
   it('waits for the application after the connection is created', () => {
     const steps = buildSteps(setup({ connection: { created: true, last_used_at: null } }), NOW)
     expect(steps[1].status).toBe('current')
-    expect(steps[1].note).toBe('Waiting for the application to call Central.')
+    expect(steps[1].note).toBe('Waiting for the application. Deploy it with the .env values and its permission sync.')
   })
 
   it('counts the connection as done once the application called Central', () => {

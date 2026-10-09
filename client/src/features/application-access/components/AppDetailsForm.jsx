@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { AppCardPreview } from "./AppCardPreview.jsx";
 import { NextStepsCard } from "./NextStepsCard.jsx";
-import { Field, SelectInput, TextAreaInput, TextInput } from "../../../components/ui/FormControls.jsx";
+import { Field, SearchableSelect, TextAreaInput, TextInput } from "../../../components/ui/FormControls.jsx";
 
 // Lowercase, spaces become underscores, anything else odd is dropped.
 const cleanId = (value) => value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_-]/g, "");
@@ -79,14 +79,12 @@ export function AppDetailsForm({ initial, idLocked = false, layout = "dialog", s
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Category" hint="Where the Hub groups the card.">
-            <SelectInput aria-label="Category" value={values.category} onChange={set("category")}>
-              <option value="">Utilities (default)</option>
-              {CATEGORIES.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </SelectInput>
+            <SearchableSelect
+              value={values.category || "utilities"}
+              onChange={(value) => setValues((current) => ({ ...current, category: value }))}
+              options={CATEGORIES}
+              placeholder="Select a category"
+            />
           </Field>
           <Field label="Icon" hint="An icon name from the Hub, like AppWindow. Leave it empty for the default.">
             <TextInput aria-label="Icon" value={values.icon} onChange={set("icon")} />

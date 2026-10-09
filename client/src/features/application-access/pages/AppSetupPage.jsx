@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, Circle, Loader2, Lock } from "lucide-react";
-import { useState } from "react";
-import { Link, useParams } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
+import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -13,10 +14,13 @@ import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { AppDetailsForm } from "../components/AppDetailsForm.jsx";
 import { ConnectDialog } from "../components/ConnectDialog.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
+import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
+import { SetupGuideDialog } from "../components/SetupGuideDialog.jsx";
 import { buildSteps, stepsDone } from "../utils/setupSteps.js";
 
 const BACK = "/application-access";
 const POLL_MS = 5000;
+const STALLED_MS = 10 * 60 * 1000;
 const TITLES = {
   about: "About",
   connect: "Connect",
@@ -31,7 +35,16 @@ export function AppSetupPage() {
   const { applicationId } = useParams();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const navigate = useNavigate();
   const [connection, setConnection] = useState(null);
+  const [removing, setRemoving] = useState(false);
+  const [guide, setGuide] = useState(false);
+  // Ticks so the ten minute note can appear without a reload.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const setupQuery = useQuery({
     queryKey: ["application-access", "setup", applicationId],
@@ -109,53 +122,48 @@ export function AppSetupPage() {
   const base = `/application-access/apps/${applicationId}`;
   const publishing = isPendingFor(publishMutation, () => true);
 
+  // One main button, on the step that is next. Everything else is a quiet text button.
   function actions(step) {
     if (step.status === "locked") return null;
+    const current = step.status === "current";
+    const quiet = (to, label) => (
+      <Button asChild variant="ghost" size="sm">
+        <Link to={to}>{label}</Link>
+      </Button>
+    );
     switch (step.id) {
-      case "about":
-        return (
-          <Button type="button" variant="secondary" onClick={() => setEditing(true)}>
-            Edit Details
-          </Button>
-        );
       case "connect":
         return setup.connection.created ? (
-          <Button asChild variant="secondary">
-            <Link to="/api-clients">Rotate Token</Link>
-          </Button>
+          quiet("/api-clients", "Rotate Token")
         ) : (
           <Button type="button" loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
             Create Connection
           </Button>
         );
       case "permissions":
-        return (
-          <Button asChild variant="secondary">
-            <Link to={`${base}?tab=permissions`}>View Permissions</Link>
-          </Button>
-        );
+        return step.done ? quiet(`${base}?tab=permissions`, "View Permissions") : null;
       case "roles":
         return (
           <>
-            {!step.done && setup.permissions.count > 0 ? (
+            {current && setup.permissions.count > 0 ? (
               <Button type="button" loading={adminRoleMutation.isPending} onClick={() => adminRoleMutation.mutate()}>
                 Create Admin Role
               </Button>
             ) : null}
-            <Button asChild variant="secondary">
-              <Link to={`${base}/roles/new`}>Add Role</Link>
-            </Button>
+            {quiet(`${base}/roles/new`, "Add Role")}
           </>
         );
       case "groups":
-        return (
-          <Button asChild variant={step.done ? "secondary" : "primary"}>
+        return current ? (
+          <Button asChild>
             <Link to={`${base}/groups/new`}>Add Group</Link>
           </Button>
+        ) : (
+          quiet(`${base}/groups/new`, "Add Group")
         );
       case "hub":
         return step.done ? (
-          <Button type="button" variant="secondary" loading={publishing} onClick={() => publishMutation.mutate(false)}>
+          <Button type="button" variant="ghost" size="sm" loading={publishing} onClick={() => publishMutation.mutate(false)}>
             Hide From Hub
           </Button>
         ) : (
@@ -167,6 +175,10 @@ export function AppSetupPage() {
         return null;
     }
   }
+
+  const waiting = setup.connection.created && steps[1].status === "current";
+  const stalled =
+    waiting && setup.connection.created_at && now - new Date(setup.connection.created_at).getTime() > STALLED_MS;
 
   return (
     <div className="min-w-0 space-y-5">
@@ -181,9 +193,37 @@ export function AppSetupPage() {
                 Back
               </Link>
             </Button>
-            <Button asChild variant="secondary">
-              <Link to={base}>Open Application</Link>
-            </Button>
+            <ActionsMenu label="More actions">
+              {(closeMenu) => (
+                <>
+                  <ActionsMenuItem
+                    onClick={() => {
+                      closeMenu();
+                      navigate(base);
+                    }}
+                  >
+                    Open Application
+                  </ActionsMenuItem>
+                  <ActionsMenuItem
+                    onClick={() => {
+                      closeMenu();
+                      setEditing(true);
+                    }}
+                  >
+                    Edit Details
+                  </ActionsMenuItem>
+                  <ActionsMenuItem
+                    tone="danger"
+                    onClick={() => {
+                      closeMenu();
+                      setRemoving(true);
+                    }}
+                  >
+                    Delete Application
+                  </ActionsMenuItem>
+                </>
+              )}
+            </ActionsMenu>
           </>
         }
       />
@@ -225,11 +265,39 @@ export function AppSetupPage() {
                 {step.note}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">{actions(step)}</div>
+            <div className="flex flex-wrap items-center gap-2">{actions(step)}</div>
+            {step.id === "connect" && waiting ? (
+              <div className="w-full rounded-xl border border-(--mws-line) bg-(--mws-soft) p-4">
+                <p className="font-display text-sm font-bold text-(--mws-charcoal)">Do This Next</p>
+                <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-(--mws-charcoal)">
+                  <li>Put the .env values you copied in the application.</li>
+                  <li>Make sure the application sends its permissions when it starts.</li>
+                  <li>Deploy it, or run it locally with those values.</li>
+                </ol>
+                <p className="mt-2 text-xs text-(--mws-muted)">This page checks every few seconds and updates by itself.</p>
+                {stalled ? (
+                  <p role="note" className="mt-3 rounded-lg border border-[#f3d7a3] bg-[#fff8e8] px-3 py-2 text-xs text-[#805b18]">
+                    Still nothing after 10 minutes. Check that the application is deployed, that the token and base URL in its .env are
+                    the ones from the connection, and that it calls Central on start.
+                  </p>
+                ) : null}
+                <Button type="button" variant="ghost" size="sm" className="mt-2" onClick={() => setGuide(true)}>
+                  Show Setup Guide
+                </Button>
+              </div>
+            ) : null}
           </li>
         ))}
       </ol>
 
+      {guide ? <SetupGuideDialog applicationId={applicationId} onClose={() => setGuide(false)} /> : null}
+      {removing ? (
+        <RemoveApplicationDialog
+          applicationId={applicationId}
+          onClose={() => setRemoving(false)}
+          onRemoved={() => navigate(BACK)}
+        />
+      ) : null}
       {connection ? <ConnectDialog connection={connection} onClose={() => setConnection(null)} /> : null}
       {editing ? (
         <CrudDialog title="Edit Details" onClose={() => setEditing(false)}>
