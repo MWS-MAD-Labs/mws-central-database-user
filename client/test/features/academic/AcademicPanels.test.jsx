@@ -218,7 +218,7 @@ describe('ClassesPanel', () => {
     const dialog = screen.getByRole('dialog', { name: 'New Class' })
     // Save stays disabled until name, grade, and academic year are all set.
     expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled()
-    await user.type(within(dialog).getByRole('textbox'), 'grade 2a')
+    await user.type(within(dialog).getAllByRole('textbox')[0], 'grade 2a')
     await user.click(within(dialog).getByRole('button', { name: 'Select Grade' }))
     await user.click(screen.getByRole('option', { name: 'Grade 2' }))
     await user.click(within(dialog).getByRole('button', { name: 'Select Year' }))

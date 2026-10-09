@@ -5,9 +5,11 @@ import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
   CheckboxField,
   Field,
+  NumberInput,
   SearchableSelect,
   TextInput,
 } from '../../../components/ui/FormControls.jsx'
+import { LIMITS } from '../../../lib/limits.js'
 import { capitalizeWords, cleanPayload, trimmedOrUndefined } from '../../../lib/form.js'
 import { gradesApi } from '../../academic/api/academicApi.js'
 import { unitsApi } from '../api/masterDataApi.js'
@@ -128,6 +130,13 @@ export function MasterDataDialog({
   ) {
     missing.push('Maximum active holders must be at least 1.')
   }
+  if (
+    resource.positionCapacity &&
+    values.capacityScope &&
+    Number(values.maxActiveHolders) > LIMITS.JOB_POSITION_HOLDERS_MAX
+  ) {
+    missing.push(`Maximum active holders can be at most ${LIMITS.JOB_POSITION_HOLDERS_MAX}.`)
+  }
   const title =
     dialog.mode === 'create'
       ? `New ${resource.singular}`
@@ -197,9 +206,14 @@ export function MasterDataDialog({
       }
     >
       <form id="master-data-form" className="space-y-4" onSubmit={handleSubmit} noValidate>
-        <Field label={`${resource.singular} Name`} error={nameError}>
+        <Field
+          label={`${resource.singular} Name`}
+          error={nameError}
+          hint={`${values.name.length}/${LIMITS.MASTER_NAME_MAX}`}
+        >
           <TextInput
             invalid={Boolean(nameError)}
+            maxLength={LIMITS.MASTER_NAME_MAX}
             value={values.name}
             placeholder={`Enter ${resource.singular.toLowerCase()} name`}
             onChange={(event) =>
@@ -302,21 +316,17 @@ export function MasterDataDialog({
               <Field
                 label="Maximum Active Holders"
                 hint={
-                  values.capacityScope === 'PER_UNIT'
+                  (values.capacityScope === 'PER_UNIT'
                     ? 'Applied separately in each unit.'
-                    : 'Applied across all units combined.'
+                    : 'Applied across all units combined.') + ` Up to ${LIMITS.JOB_POSITION_HOLDERS_MAX}.`
                 }
               >
-                <TextInput
-                  type="number"
-                  min="1"
-                  step="1"
+                <NumberInput
+                  min={1}
+                  max={LIMITS.JOB_POSITION_HOLDERS_MAX}
                   value={values.maxActiveHolders}
-                  onChange={(event) =>
-                    setValues((current) => ({
-                      ...current,
-                      maxActiveHolders: event.target.value,
-                    }))
+                  onChange={(maxActiveHolders) =>
+                    setValues((current) => ({ ...current, maxActiveHolders }))
                   }
                 />
               </Field>

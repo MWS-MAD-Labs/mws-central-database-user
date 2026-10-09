@@ -19,16 +19,19 @@ export function AppCardPreview({ values }) {
   return (
     <div className="space-y-3 rounded-2xl border border-(--mws-line) bg-white p-5">
       <p className="font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">Preview</p>
-      <div className="rounded-xl border border-(--mws-line) bg-(--mws-soft) p-4">
+      <div className="min-w-0 overflow-hidden rounded-xl border border-(--mws-line) bg-(--mws-soft) p-4">
         <div className="flex items-start gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-(--mws-burgundy) shadow-sm">
             <Icon size={20} aria-hidden="true" />
           </span>
-          <div className="min-w-0">
-            <p className={`wrap-break-word font-display text-sm font-bold ${name ? "text-(--mws-charcoal)" : "text-(--mws-muted)"}`}>
+          <div className="min-w-0 flex-1">
+            <p
+              title={name || undefined}
+              className={`truncate font-display text-sm font-bold ${name ? "text-(--mws-charcoal)" : "text-(--mws-muted)"}`}
+            >
               {name || "Application name"}
             </p>
-            <p className="mt-0.5 text-xs leading-5 text-(--mws-muted)">
+            <p title={description || undefined} className="mt-0.5 line-clamp-2 break-all text-xs leading-5 text-(--mws-muted)">
               {description || "A short line about what people use it for."}
             </p>
           </div>

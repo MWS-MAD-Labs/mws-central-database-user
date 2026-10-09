@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CheckboxField, Field, SearchableSelect, TextAreaInput, TextInput } from "../../../components/ui/FormControls.jsx";
 import { cn } from "../../../lib/cn.js";
+import { LIMITS } from "../../../lib/limits.js";
 import { DEFAULT_SCOPES } from "../utils/connectionScopes.js";
 import { descriptionProblem, nameProblem, slugifyApplicationId, tidyText } from "../utils/applicationId.js";
 import { ENVIRONMENTS, addressProblem, environmentOfScheme, joinAddress, readAddressInput, splitAddress } from "../utils/applicationUrl.js";
@@ -19,7 +20,6 @@ const CATEGORIES = [
   { value: "utilities", label: "Utilities" },
 ];
 
-const DESCRIPTION_MAX = 300;
 
 // What the Hub card shows and where it sends people. Used to add an application and to edit it later.
 // On the page layout the id is made from the name. In the dialog the id is the one the application has.
@@ -129,7 +129,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
               value={nameShown}
               disabled={hub}
               readOnly={hub}
-              maxLength={80}
+              maxLength={60}
               autoComplete="off"
               onChange={set("name")}
               onBlur={tidyOnBlur("name")}
@@ -155,12 +155,13 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       <Section title="Hub Card">
         <Field
           label="Description"
-          hint={`One sentence about what people use it for. ${tidyText(values.description).length}/${DESCRIPTION_MAX}`}
+          hint={`A short line about what it is for. ${tidyText(values.description).length}/${LIMITS.APPLICATION_DESCRIPTION_MAX}`}
           error={shown("description")}
         >
           <TextAreaInput
             aria-label="Description"
             rows={2}
+            maxLength={LIMITS.APPLICATION_DESCRIPTION_MAX}
             value={values.description}
             autoComplete="off"
             onChange={set("description")}

@@ -1,3 +1,5 @@
+import { LIMITS } from '../../../lib/limits.js'
+
 // The id of an application is made from its name: "MWS Hub" becomes "mws-hub". Same rule as the server.
 export function slugifyApplicationId(name) {
   const slug = name
@@ -31,7 +33,7 @@ export function nameProblem(value) {
 
 export function descriptionProblem(value) {
   const text = tidyText(value)
-  if (text.length > 300) return 'Description is too long.'
+  if (text.length > LIMITS.APPLICATION_DESCRIPTION_MAX) return `Description can have up to ${LIMITS.APPLICATION_DESCRIPTION_MAX} characters.`
   // eslint-disable-next-line no-control-regex
   if (/[<>\u0000-\u001f]/.test(text)) return 'Leave out < and > from the description.'
   return null

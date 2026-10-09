@@ -5,8 +5,8 @@ import {
   CheckboxField,
   DateField,
   Field,
+  NumberInput,
   SearchableSelect,
-  TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import {
   cleanPayload,
@@ -15,6 +15,8 @@ import {
   optionalNumber,
 } from "../../../lib/form.js";
 import { formatDate, formatStatus } from "../../../lib/format.js";
+import { LIMITS } from "../../../lib/limits.js";
+import { yearProblem, isValidYear } from "../utils/yearRange.js";
 import { academicYearStatuses } from "../api/academicApi.js";
 import { parseAcademicYearStartYear } from "../utils/Pattern.js";
 
@@ -71,7 +73,8 @@ export function AcademicYearDialog({
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const errors = hasAttemptedSubmit ? computeAcademicYearErrors(values) : {};
 
-  const startYearNumber = optionalNumber(values.startYear);
+  // Only a real year makes a name, so a half typed one does not show a made up name.
+  const startYearNumber = isValidYear(values.startYear) ? optionalNumber(values.startYear) : null;
   const computedName = startYearNumber
     ? `${startYearNumber}/${startYearNumber + 1}`
     : "";
@@ -201,19 +204,19 @@ export function AcademicYearDialog({
                 : `Academic year name will be: ${computedName || "..."}`
           }
         >
-          <TextInput
+          <NumberInput
             invalid={Boolean(errors.startYear)}
-            type="number"
+            min={LIMITS.ACADEMIC_YEAR_MIN}
+            max={LIMITS.ACADEMIC_YEAR_MAX}
             value={values.startYear}
-            onChange={(event) => {
-              const nextStartYear = event.target.value;
+            onChange={(nextStartYear) => {
               setValues((current) => {
                 if (startDateTouched) {
                   return { ...current, startYear: nextStartYear };
                 }
-                const nextStartDate = computeDefaultStartDate(
-                  optionalNumber(nextStartYear),
-                );
+                const nextStartDate = isValidYear(nextStartYear)
+                  ? computeDefaultStartDate(optionalNumber(nextStartYear))
+                  : "";
                 return {
                   ...current,
                   startYear: nextStartYear,
@@ -262,6 +265,7 @@ export function AcademicYearDialog({
         </Field>
         <Field
           label="End Date"
+          error={errors.end_date}
           hint={
             endDateMismatch
               ? `Should fall within ${startYearNumber + 1} to match ${computedName}.`
@@ -331,7 +335,13 @@ function enumOptions(values) {
 
 function computeAcademicYearErrors(values) {
   const errors = {};
-  if (!values.startYear) errors.startYear = "Start year is required.";
+  const yearError = yearProblem(values.startYear, "Start year");
+  if (yearError) errors.startYear = yearError;
   if (!values.start_date) errors.start_date = "Start date is required.";
+  const dateYear = (value) => Number(value.slice(0, 4));
+  const outOfRange = (value) => dateYear(value) < LIMITS.ACADEMIC_YEAR_MIN || dateYear(value) > LIMITS.ACADEMIC_YEAR_MAX + 1;
+  const dateMessage = `Use a date in ${LIMITS.ACADEMIC_YEAR_MIN} to ${LIMITS.ACADEMIC_YEAR_MAX + 1}.`;
+  if (values.start_date && outOfRange(values.start_date)) errors.start_date = dateMessage;
+  if (values.end_date && outOfRange(values.end_date)) errors.end_date = dateMessage;
   return errors;
 }

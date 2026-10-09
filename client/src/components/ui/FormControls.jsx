@@ -5,6 +5,7 @@ export {
   TextAreaInput,
   TextInput,
 } from "./formControls/TextControls.jsx";
+export { NumberInput } from "./formControls/NumberInput.jsx";
 export { DateField } from "./formControls/DateField.jsx";
 export { FilterSelect, SearchableSelect } from "./formControls/SearchableSelect.jsx";
 export {
