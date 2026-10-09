@@ -16,7 +16,7 @@ const optionalUrl = (label: string) =>
     .string()
     .trim()
     .max(300, `${label} is too long`)
-    .refine((value) => /^https?:\/\/\S+$/i.test(value), `${label} must start with http:// or https://`)
+    .refine((value) => value === "" || /^https?:\/\/\S+$/i.test(value), `${label} must start with http:// or https://`)
     .optional()
     .nullable();
 
