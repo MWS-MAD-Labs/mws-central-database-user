@@ -8,9 +8,9 @@ export const LIMITS = {
   APPLICATION_DESCRIPTION_MAX: 50,
   CLASS_CAPACITY_MAX: 100,
   JOB_POSITION_HOLDERS_MAX: 200,
-  GRADE_LEVEL_MIN: -2,
+  GRADE_LEVEL_MIN: -5,
   GRADE_LEVEL_MAX: 20,
-  GRADE_AGE_MIN: 2,
+  GRADE_AGE_MIN: 3,
   GRADE_AGE_MAX: 30,
   // Academic years: the year the name starts with, and the years the dates may fall in.
   ACADEMIC_YEAR_MIN: 2000,

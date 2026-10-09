@@ -42,6 +42,8 @@ describe("input limits", () => {
   it("limits grade name, level and typical age", () => {
     const ok = { name: "Grade 1", level: 1, typical_age: 7 };
     expect(accepts(GradeValidation.CREATE, ok)).toBe(true);
+    // The grades the school really has: Pre-K is level -3 and starts at age 3.
+    expect(accepts(GradeValidation.CREATE, { name: "Kindergarten Pre-K", level: -3, typical_age: 3 })).toBe(true);
     expect(accepts(GradeValidation.CREATE, { ...ok, name: "a".repeat(LIMITS.GRADE_NAME_MAX + 1) })).toBe(false);
     expect(accepts(GradeValidation.CREATE, { ...ok, level: LIMITS.GRADE_LEVEL_MAX + 1 })).toBe(false);
     expect(accepts(GradeValidation.CREATE, { ...ok, level: LIMITS.GRADE_LEVEL_MIN - 1 })).toBe(false);
