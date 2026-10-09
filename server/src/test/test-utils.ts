@@ -605,6 +605,12 @@ export class MasterDataTest {
 }
 
 export class ApiClientTest {
+  // The suites on managed clients and profiles are about those rules, not about Application Access,
+  // which would take the built-in profiles over.
+  static async detachApplications() {
+    await prismaClient.application.deleteMany({ where: { application_id: { in: ["hub", "exima", "daily-checkin"] } } });
+  }
+
   static async delete() {
     await prismaClient.apiClient.deleteMany({
       where: { name: { startsWith: "TEST_" } },

@@ -292,6 +292,17 @@ export class ApplicationAccessController {
     });
   }
 
+  static async rotateConnection(c: Context<{ Variables: AdminVariables }>) {
+    const request = (await c.req.json().catch(() => ({}))) as { immediate?: boolean; grace_hours?: number };
+    const response = await ApplicationOnboardingService.rotate(
+      c.var.admin,
+      requireApplicationId(c),
+      request,
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
   static async removal(c: Context<{ Variables: AdminVariables }>) {
     return c.json({ data: await ApplicationOnboardingService.removalPlan(c.var.admin, requireApplicationId(c)) });
   }

@@ -105,7 +105,6 @@ async function findConnectionClient(applicationId: string) {
     where: {
       profile: { code: applicationId },
       environment: getIntegrationEnvironment(),
-      purpose: CONNECT_PURPOSE,
       is_active: true,
     },
     orderBy: { created_at: "asc" },
@@ -205,7 +204,7 @@ export class ApplicationOnboardingService {
       is_hub: applicationId === hubApplicationId(),
       data_access: {
         scope_names: (profile?.scopes ?? []).map((item) => item.scope.name).sort(),
-        editable: Boolean(profile && !profile.is_system),
+        editable: Boolean(profile),
       },
     };
   }
@@ -258,6 +257,7 @@ export class ApplicationOnboardingService {
       admin,
       { profile_code: applicationId, purpose: CONNECT_PURPOSE },
       context,
+      { viaApplication: true },
     );
 
     return {
@@ -283,10 +283,23 @@ export class ApplicationOnboardingService {
     await findApplication(applicationId);
     const profile = await prismaClient.applicationIntegrationProfile.findUnique({ where: { code: applicationId } });
     if (!profile) throw new ResponseError(404, "This application has no connection yet");
-    if (profile.is_system) throw new ResponseError(400, "The connection of this application is managed by the system");
     const names = withRequiredScopes(scopeNames);
-    await ApplicationIntegrationProfileService.update(admin, { id: profile.id, scope_names: names });
+    await ApplicationIntegrationProfileService.update(admin, { id: profile.id, scope_names: names }, {}, { viaApplication: true });
     return { scope_names: names.sort(), editable: true };
+  }
+
+  // Replaces the token of the connection of this application. The old one follows the grace of the mode.
+  static async rotate(
+    admin: AdminUser,
+    applicationId: string,
+    request: { immediate?: boolean; grace_hours?: number },
+    context: AuditRequestContext = {},
+  ): Promise<ApiClientCreatedResponse> {
+    assertSuperAdmin(admin);
+    await findApplication(applicationId);
+    const client = await findConnectionClient(applicationId);
+    if (!client) throw new ResponseError(404, "This application has no connection yet");
+    return ApiClientService.rotate(admin, { id: client.id, ...request }, context);
   }
 
   static async publish(
@@ -382,7 +395,7 @@ export class ApplicationOnboardingService {
       select: { id: true, name: true, is_active: true },
     });
     for (const client of clients) {
-      if (client.is_active) await ApiClientService.revoke(admin, { id: client.id }, context);
+      if (client.is_active) await ApiClientService.revoke(admin, { id: client.id }, context, { viaApplication: true });
       // Frees the name, so adding the application again can make a new connection.
       await prismaClient.apiClient.update({
         where: { id: client.id },

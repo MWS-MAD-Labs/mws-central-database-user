@@ -27,6 +27,7 @@ describe("application integration profiles", () => {
   beforeEach(async () => {
     await AdminUserTest.delete();
     await ApiClientTest.delete();
+    await ApiClientTest.detachApplications();
     await MasterDataTest.delete();
     masterData = await MasterDataTest.create();
     await syncApiScopes();
@@ -1038,6 +1039,7 @@ describe("managed application profiles", () => {
   beforeEach(async () => {
     await AdminUserTest.delete();
     await cleanupProfiles();
+    await ApiClientTest.detachApplications();
     await MasterDataTest.delete();
     masterData = await MasterDataTest.create();
     await syncApiScopes();

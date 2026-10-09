@@ -36,11 +36,31 @@ const CLIENT_INCLUDE = {
   profile: { include: { scopes: { include: { scope: true } } } },
 } as const;
 
+// Set by Application Access when it works on the connection of its own application.
+export type ViaApplication = { viaApplication?: boolean };
+
+async function applicationOfProfile(code: string | null | undefined) {
+  if (!code) return null;
+  return prismaClient.application.findUnique({ where: { application_id: code }, select: { name: true } });
+}
+
+// A connection an application in Application Access depends on is removed with the application.
+async function assertNotAnApplicationConnection(code: string | null | undefined) {
+  const app = await applicationOfProfile(code);
+  if (app) {
+    throw new ResponseError(
+      400,
+      `This is the connection of ${app.name}. Rotate its token, or delete the application in Application Access`,
+    );
+  }
+}
+
 export class ApiClientService {
   static async create(
     admin: AdminUser,
     request: CreateApiClientRequest,
     context: AuditRequestContext = {},
+    options: ViaApplication = {},
   ): Promise<ApiClientCreatedResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -68,6 +88,9 @@ export class ApiClientService {
     }
     if (profile && profile.status !== IntegrationProfileStatus.ACTIVE) {
       throw new ResponseError(400, "Application integration profile is not active");
+    }
+    if (profile && !options.viaApplication && (await applicationOfProfile(profile.code))) {
+      throw new ResponseError(400, `${profile.name} is an application. Add its connection in Application Access`);
     }
 
     const name = managed
@@ -192,6 +215,7 @@ export class ApiClientService {
     admin: AdminUser,
     request: RevokeApiClientRequest,
     context: AuditRequestContext = {},
+    options: ViaApplication = {},
   ): Promise<ApiClientResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -207,6 +231,7 @@ export class ApiClientService {
 
     const existingClient = await prismaClient.apiClient.findUnique({
       where: { id: revokeRequest.id },
+      include: { profile: { select: { code: true } } },
     });
     if (!existingClient) {
       throw new ResponseError(404, "API client not found");
@@ -214,6 +239,7 @@ export class ApiClientService {
     if (!existingClient.is_active) {
       throw new ResponseError(400, "API client is already revoked");
     }
+    if (!options.viaApplication) await assertNotAnApplicationConnection(existingClient.profile?.code);
 
     const client = await prismaClient.$transaction(async (tx) => {
       await tx.apiClient.update({
@@ -488,8 +514,10 @@ export class ApiClientService {
     const value = Validation.validate(ApiClientValidation.REVOKE_CREDENTIAL, request);
     const credential = await prismaClient.apiClientCredential.findFirst({
       where: { id: value.credential_id, client_id: value.id },
+      include: { client: { select: { profile: { select: { code: true } } } } },
     });
     if (!credential) throw new ResponseError(404, "API client credential not found");
+    await assertNotAnApplicationConnection(credential.client.profile?.code);
 
     const client = await prismaClient.$transaction(async (tx) => {
       await tx.apiClientCredential.update({

@@ -33,6 +33,7 @@ applicationAccessRouter.get("/apps/:applicationId/role-options", (c) => Applicat
 applicationAccessRouter.get("/apps/:applicationId/details", (c) => ApplicationAccessController.getApplication(c));
 applicationAccessRouter.patch("/apps/:applicationId/details", (c) => ApplicationAccessController.updateApplication(c));
 applicationAccessRouter.patch("/apps/:applicationId/connection-scopes", (c) => ApplicationAccessController.updateConnectionScopes(c));
+applicationAccessRouter.post("/apps/:applicationId/rotate", (c) => ApplicationAccessController.rotateConnection(c));
 applicationAccessRouter.get("/apps/:applicationId/removal", (c) => ApplicationAccessController.removal(c));
 applicationAccessRouter.delete("/apps/:applicationId", (c) => ApplicationAccessController.removeApplication(c));
 applicationAccessRouter.get("/apps/:applicationId/setup", (c) => ApplicationAccessController.setup(c));

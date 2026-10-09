@@ -99,6 +99,16 @@ async function resolveScopeIds(
   return scopes.map((scope) => scope.id);
 }
 
+// Set by Application Access when it changes the connection of its own application.
+type ViaApplication = { viaApplication?: boolean };
+
+async function assertNotAnApplication(code: string) {
+  const app = await prismaClient.application.findUnique({ where: { application_id: code }, select: { name: true } });
+  if (app) {
+    throw new ResponseError(400, `${app.name} is an application. Change its data access in Application Access`);
+  }
+}
+
 export class ApplicationIntegrationProfileService {
   static async list(admin: AdminUser) {
     assertSuperAdmin(admin, "view");
@@ -139,6 +149,7 @@ export class ApplicationIntegrationProfileService {
       ApplicationIntegrationProfileValidation.CREATE,
       request,
     );
+    await assertNotAnApplication(createRequest.code);
 
     let createdId: string;
     try {
@@ -190,6 +201,7 @@ export class ApplicationIntegrationProfileService {
     admin: AdminUser,
     request: UpdateApplicationIntegrationProfileRequest,
     context: AuditRequestContext = {},
+    options: ViaApplication = {},
   ) {
     assertSuperAdmin(admin, "update");
     const updateRequest = Validation.validate(
@@ -204,6 +216,13 @@ export class ApplicationIntegrationProfileService {
       });
       if (!existing) {
         throw new ResponseError(404, "Application integration profile not found");
+      }
+
+      if (!options.viaApplication) {
+        const app = await tx.application.findUnique({ where: { application_id: existing.code }, select: { name: true } });
+        if (app) {
+          throw new ResponseError(400, `${app.name} is an application. Change its data access in Application Access`);
+        }
       }
 
       if (existing.code === "unmapped") {

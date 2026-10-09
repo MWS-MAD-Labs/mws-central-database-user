@@ -295,12 +295,26 @@ describe("application onboarding", () => {
       expect(setup.data_access.scope_names).toContain(API_SCOPES.CLASSES_READ);
     });
 
-    it("leaves a system profile alone", async () => {
+    it("also changes the data access of a system profile that belongs to the application", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       await create(accessToken);
       await prismaClient.applicationIntegrationProfile.create({ data: { code: appId, name: "System", is_system: true } });
       const patched = await TestRequest.patch(`${ACCESS}/apps/${appId}/connection-scopes`, { scope_names: [API_SCOPES.CLASSES_READ] }, accessToken);
-      expect(patched.status).toBe(400);
+      expect(patched.status).toBe(200);
+    });
+
+    it("keeps the profile endpoints away from an application's profile", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken, { connect: true });
+      const profile = await prismaClient.applicationIntegrationProfile.findUniqueOrThrow({ where: { code: appId } });
+      const update = await TestRequest.patch(`/api/admin/application-integration-profiles/${profile.id}`, { scope_names: [API_SCOPES.CLASSES_READ] }, accessToken);
+      expect(update.status).toBe(400);
+      const createSame = await TestRequest.post(
+        "/api/admin/application-integration-profiles",
+        { code: appId, name: "Again", scope_names: [API_SCOPES.CLASSES_READ] },
+        accessToken,
+      );
+      expect(createSame.status).toBe(400);
     });
   });
 
@@ -345,6 +359,59 @@ describe("application onboarding", () => {
       expect(mine.application).toEqual({ application_id: appId, name: "TEST_Onboard" });
       const other = profiles.find((profile: { code: string }) => profile.code === "hub");
       if (other) expect(other).toHaveProperty("application");
+    });
+  });
+
+  describe("the connection belongs to Application Access", () => {
+    it("cannot be revoked or made again from the API clients endpoints", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken, { connect: true });
+      const client = await prismaClient.apiClient.findFirstOrThrow({ where: { profile: { code: appId } }, include: { credentials: true } });
+
+      const revoke = await TestRequest.patch(`/api/admin/api-clients/revoke/${client.id}`, {}, accessToken);
+      expect(revoke.status).toBe(400);
+      expect(JSON.stringify(await revoke.json())).toContain("Application Access");
+      const credential = await TestRequest.patch(
+        `/api/admin/api-clients/${client.id}/credentials/${client.credentials[0]!.id}/revoke`,
+        {},
+        accessToken,
+      );
+      expect(credential.status).toBe(400);
+      expect((await prismaClient.apiClient.findUniqueOrThrow({ where: { id: client.id } })).is_active).toBe(true);
+
+      const again = await TestRequest.post("/api/admin/api-clients", { profile_code: appId, purpose: "backend" }, accessToken);
+      expect(again.status).toBe(400);
+    });
+
+    it("still gets rotated through the application, and goes away with it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const { data } = await (await create(accessToken, { connect: true })).json();
+      const rotated = await TestRequest.post(`${ACCESS}/apps/${appId}/rotate`, { immediate: true }, accessToken);
+      expect(rotated.status).toBe(200);
+      const next = (await rotated.json()).data.token as string;
+      expect(next).not.toBe(data.connection.token);
+      // Emergency rotation stops the old token at once.
+      expect((await TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${data.connection.token}` })).status).toBe(401);
+      expect((await TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${next}` })).status).toBe(200);
+    });
+
+    it("counts a connection of any purpose as the application's connection", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken);
+      const profile = await prismaClient.applicationIntegrationProfile.create({ data: { code: appId, name: "Older", is_system: true } });
+      await prismaClient.apiClient.create({
+        data: {
+          name: "TEST_OLD_BACKEND",
+          token_prefix: `test_${randomBytes(4).toString("hex")}`,
+          token_hash: "x",
+          profile_id: profile.id,
+          environment: "DEVELOPMENT",
+          purpose: "backend",
+        },
+      });
+      const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+      expect(setup.connection.created).toBe(true);
+      expect((await TestRequest.post(`${ACCESS}/apps/${appId}/connect`, {}, accessToken)).status).toBe(400);
     });
   });
 
