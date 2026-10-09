@@ -674,7 +674,7 @@ describe("POST /api/admin/classes", () => {
     const response = await TestRequest.post(
       "/api/admin/classes",
       {
-        name: "TEST_DbAdminCreatedNoEmployeeDomain",
+        name: "TEST_DbAdminNoEmpDomain",
         grade_id: gradeOneId, // Grade 1 -> Elementary, same unit as this admin
         academic_year_id: academicYearId,
       },

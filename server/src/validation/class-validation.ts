@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LIMITS } from "../constants/limits";
 import { ClassStatus, ClassTeacherRole } from "../generated/prisma/client";
 import { CLASS_SORT_FIELDS } from "../model/class-model";
 
@@ -14,7 +15,7 @@ const CLASS_TEACHER_ROLE_VALUES = Object.keys(ClassTeacherRole) as [
 
 export class ClassValidation {
   static readonly CREATE = z.object({
-    name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+    name: z.string().min(1, "Name is required").max(LIMITS.CLASS_NAME_MAX, `Name can have up to ${LIMITS.CLASS_NAME_MAX} characters`),
     grade_id: z.string().min(1, "Grade ID is required"),
     academic_year_id: z.string().min(1, "Academic Year ID is required"),
     status: z
@@ -26,6 +27,7 @@ export class ClassValidation {
       .number()
       .int("Capacity must be a whole number")
       .positive("Capacity must be greater than zero")
+      .max(LIMITS.CLASS_CAPACITY_MAX, `Capacity can be at most ${LIMITS.CLASS_CAPACITY_MAX}`)
       .optional(),
     additional_grade_ids: z
       .array(z.string().min(1, "Grade ID is required"))
@@ -38,7 +40,7 @@ export class ClassValidation {
     name: z
       .string()
       .min(1, "Name is required")
-      .max(100, "Name is too long")
+      .max(LIMITS.CLASS_NAME_MAX, `Name can have up to ${LIMITS.CLASS_NAME_MAX} characters`)
       .optional(),
     grade_id: z.string().min(1, "Grade ID is required").optional(),
     academic_year_id: z
@@ -54,6 +56,7 @@ export class ClassValidation {
       .number()
       .int("Capacity must be a whole number")
       .positive("Capacity must be greater than zero")
+      .max(LIMITS.CLASS_CAPACITY_MAX, `Capacity can be at most ${LIMITS.CLASS_CAPACITY_MAX}`)
       .nullable()
       .optional(),
     additional_grade_ids: z

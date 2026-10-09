@@ -392,6 +392,8 @@ describe("application onboarding", () => {
       expect(await bad({ name: "Bad <b>Name</b>" })).toBe(400);
       expect(await bad({ name: "X" })).toBe(400);
       expect(await bad({ description: "hello <script>" })).toBe(400);
+      // The card has room for 50 characters of description.
+      expect(await bad({ description: "a".repeat(51) })).toBe(400);
       expect(await bad({ icon: "App Window" })).toBe(400);
       expect(await bad({ icon: "../x" })).toBe(400);
       // The Hub only draws the icons it knows, so a made up name is refused.

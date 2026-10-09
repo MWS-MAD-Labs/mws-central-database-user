@@ -1,9 +1,15 @@
 import { z } from "zod";
+import { LIMITS } from "../constants/limits";
 import { JOB_POSITION_SORT_FIELDS } from "../model/job-position-model";
 
 const CAPACITY_FIELDS = {
   capacity_scope: z.enum(["PER_UNIT", "GLOBAL"]).nullish(),
-  max_active_holders: z.number().int().positive().nullish(),
+  max_active_holders: z
+    .number()
+    .int()
+    .positive()
+    .max(LIMITS.JOB_POSITION_HOLDERS_MAX, `At most ${LIMITS.JOB_POSITION_HOLDERS_MAX} holders`)
+    .nullish(),
 };
 
 function capacityPairIsValid(data: {
@@ -15,7 +21,7 @@ function capacityPairIsValid(data: {
 
 export class JobPositionValidation {
   static readonly CREATE = z.object({
-    name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+    name: z.string().min(1, "Name is required").max(LIMITS.MASTER_NAME_MAX, `Name can have up to ${LIMITS.MASTER_NAME_MAX} characters`),
     is_teaching_position: z.boolean().optional(),
     unit_ids: z.array(z.string().min(1)).optional(),
     ...CAPACITY_FIELDS,
@@ -28,7 +34,7 @@ export class JobPositionValidation {
     name: z
       .string()
       .min(1, "Name is required")
-      .max(100, "Name is too long")
+      .max(LIMITS.MASTER_NAME_MAX, `Name can have up to ${LIMITS.MASTER_NAME_MAX} characters`)
       .optional(),
     is_teaching_position: z.boolean().optional(),
     unit_ids: z.array(z.string().min(1)).optional(),

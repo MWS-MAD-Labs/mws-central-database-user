@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { LIMITS } from "../constants/limits";
 import { JOB_LEVEL_SORT_FIELDS } from "../model/job-level-model";
 
 export class JobLevelValidation {
   static readonly CREATE = z.object({
-    name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+    name: z.string().min(1, "Name is required").max(LIMITS.MASTER_NAME_MAX, `Name can have up to ${LIMITS.MASTER_NAME_MAX} characters`),
     is_teaching_role: z.boolean().optional(),
     unit_ids: z.array(z.string().min(1)).optional(),
   });
@@ -13,7 +14,7 @@ export class JobLevelValidation {
     name: z
       .string()
       .min(1, "Name is required")
-      .max(100, "Name is too long")
+      .max(LIMITS.MASTER_NAME_MAX, `Name can have up to ${LIMITS.MASTER_NAME_MAX} characters`)
       .optional(),
     is_teaching_role: z.boolean().optional(),
     unit_ids: z.array(z.string().min(1)).optional(),

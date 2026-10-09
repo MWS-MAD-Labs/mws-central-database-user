@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ApplicationAudience, EmploymentType } from "../generated/prisma/client";
+import { LIMITS } from "../constants/limits";
 import { isHubIcon } from "../constants/hub-icons";
 import { addressProblem } from "../utils/application-id";
 
@@ -53,7 +54,7 @@ const applicationDetails = {
     .pipe(
       z
         .string()
-        .max(300, "Description is too long")
+        .max(LIMITS.APPLICATION_DESCRIPTION_MAX, `Description can have up to ${LIMITS.APPLICATION_DESCRIPTION_MAX} characters`)
         .refine((value) => !/[<>\u0000-\u001f]/.test(value), "Description cannot have < or > or control characters"),
     )
     .optional()

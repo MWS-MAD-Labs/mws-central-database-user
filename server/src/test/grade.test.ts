@@ -347,10 +347,10 @@ describe("PATCH /api/admin/grades/:id", () => {
   it("should reject changing to an already-used level", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const taken = await prismaClient.grade.create({
-      data: { name: "TEST_LevelTakenA", level: 23 },
+      data: { name: "TEST_LevelTakenA", level: 15 },
     });
     const other = await prismaClient.grade.create({
-      data: { name: "TEST_LevelTakenB", level: 24 },
+      data: { name: "TEST_LevelTakenB", level: 16 },
     });
 
     const response = await TestRequest.patch(
@@ -368,7 +368,7 @@ describe("PATCH /api/admin/grades/:id", () => {
   it("should allow re-saving with the same name and level (no-op)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const grade = await prismaClient.grade.create({
-      data: { name: "TEST_SameName", level: 25 },
+      data: { name: "TEST_SameName", level: 17 },
     });
 
     const response = await TestRequest.patch(
