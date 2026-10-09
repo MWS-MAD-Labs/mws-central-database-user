@@ -29,6 +29,7 @@ function makeSetup(overrides = {}) {
     can_publish: false,
     missing: ['permissions', 'roles', 'groups'],
     is_hub: false,
+    removal: { can_remove: false, retire_available: true },
     data_access: { scope_names: ['application_entitlements:read', 'application_permissions:write'], editable: true },
     ...overrides,
   }
@@ -211,7 +212,7 @@ describe('AppSetupPage', () => {
           requests.push('setup')
           return removed
             ? jsonResponse({ errors: 'Application demo not found' }, 404)
-            : jsonResponse({ data: makeSetup() })
+            : jsonResponse({ data: makeSetup({ removal: { can_remove: true, retire_available: false } }) })
         },
       },
       {
@@ -378,5 +379,45 @@ describe('AppSetupPage', () => {
     await user.click(await screen.findByRole('button', { name: 'More actions' }))
     expect(await screen.findByRole('button', { name: 'How Removing Works' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Retire Application' })).toBeNull()
+  })
+  describe('the menu offers only what applies', () => {
+    const openMenu = async (user) => user.click(await screen.findByRole('button', { name: 'More actions' }))
+    const names = () => screen.getAllByRole('button').map((button) => button.textContent)
+
+    it('offers Retire alone while the application cannot be deleted yet', async () => {
+      const { user } = renderPage([setupRoute(makeSetup())])
+      await openMenu(user)
+      expect(await screen.findByRole('button', { name: 'Retire Application' })).toBeVisible()
+      expect(screen.queryByRole('button', { name: 'Delete Application' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Restore Application' })).toBeNull()
+    })
+
+    it('shows Delete next to Retire once it can be deleted, in warning and danger colours', async () => {
+      const { user } = renderPage([setupRoute(makeSetup({ removal: { can_remove: true, retire_available: false } }))])
+      await openMenu(user)
+      const retire = await screen.findByRole('button', { name: 'Retire Application' })
+      const remove = screen.getByRole('button', { name: 'Delete Application' })
+      expect(retire.className).toContain('text-[#8a6419]')
+      expect(remove.className).toContain('text-[#9f3d41]')
+      expect(names()).toContain('Delete Application')
+    })
+
+    it('offers Restore and Delete for a retired application, and no Retire', async () => {
+      const { user } = renderPage([
+        setupRoute(makeSetup({ application: { ...APP, retired_at: new Date().toISOString() }, removal: { can_remove: true, retire_available: false } })),
+      ])
+      await openMenu(user)
+      expect(await screen.findByRole('button', { name: 'Restore Application' })).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Delete Application' })).toBeVisible()
+      expect(screen.queryByRole('button', { name: 'Retire Application' })).toBeNull()
+    })
+
+    it('offers neither Retire nor Delete for the Hub', async () => {
+      const { user } = renderPage([setupRoute(makeSetup({ is_hub: true, removal: { can_remove: false, retire_available: false } }))])
+      await openMenu(user)
+      expect(await screen.findByRole('button', { name: 'How Removing Works' })).toBeVisible()
+      expect(screen.queryByRole('button', { name: 'Retire Application' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Delete Application' })).toBeNull()
+    })
   })
 })

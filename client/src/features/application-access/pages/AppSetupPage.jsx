@@ -268,25 +268,6 @@ export function AppSetupPage() {
                       Change Data Access
                     </ActionsMenuItem>
                   ) : null}
-                  {setup.is_hub ? null : retired ? (
-                    <ActionsMenuItem
-                      onClick={() => {
-                        closeMenu();
-                        restoreMutation.mutate();
-                      }}
-                    >
-                      Restore Application
-                    </ActionsMenuItem>
-                  ) : (
-                    <ActionsMenuItem
-                      onClick={() => {
-                        closeMenu();
-                        retire();
-                      }}
-                    >
-                      Retire Application
-                    </ActionsMenuItem>
-                  )}
                   <ActionsMenuItem
                     onClick={() => {
                       closeMenu();
@@ -295,15 +276,43 @@ export function AppSetupPage() {
                   >
                     How Removing Works
                   </ActionsMenuItem>
-                  <ActionsMenuItem
-                    tone="danger"
-                    onClick={() => {
-                      closeMenu();
-                      setRemoving(true);
-                    }}
-                  >
-                    Delete Application
-                  </ActionsMenuItem>
+                  {setup.is_hub ? null : (
+                    <>
+                      <div className="my-1 border-t border-(--mws-line)" />
+                      {retired ? (
+                        <ActionsMenuItem
+                          tone="success"
+                          onClick={() => {
+                            closeMenu();
+                            restoreMutation.mutate();
+                          }}
+                        >
+                          Restore Application
+                        </ActionsMenuItem>
+                      ) : (
+                        <ActionsMenuItem
+                          tone="warning"
+                          onClick={() => {
+                            closeMenu();
+                            retire();
+                          }}
+                        >
+                          Retire Application
+                        </ActionsMenuItem>
+                      )}
+                      {retired || setup.removal.can_remove ? (
+                        <ActionsMenuItem
+                          tone="danger"
+                          onClick={() => {
+                            closeMenu();
+                            setRemoving(true);
+                          }}
+                        >
+                          Delete Application
+                        </ActionsMenuItem>
+                      ) : null}
+                    </>
+                  )}
                 </>
               )}
             </ActionsMenu>

@@ -106,6 +106,11 @@ export function ApplicationAccessPage() {
             <tr key={row.application_id} className={denseRowClass}>
               <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>
                 {row.application_id}
+                {row.is_hub ? (
+                  <StatusBadge tone="neutral" className="ml-2">
+                    Hub
+                  </StatusBadge>
+                ) : null}
                 {row.retired ? (
                   <StatusBadge tone="red" className="ml-2">
                     Retired
@@ -150,15 +155,17 @@ export function ApplicationAccessPage() {
                       >
                         Setup Steps
                       </ActionsMenuItem>
-                      <ActionsMenuItem
-                        tone="danger"
-                        onClick={() => {
-                          closeMenu();
-                          setRemovingId(row.application_id);
-                        }}
-                      >
-                        Delete Application
-                      </ActionsMenuItem>
+                      {row.is_hub ? null : (
+                        <ActionsMenuItem
+                          tone="danger"
+                          onClick={() => {
+                            closeMenu();
+                            setRemovingId(row.application_id);
+                          }}
+                        >
+                          Delete Application
+                        </ActionsMenuItem>
+                      )}
                     </>
                   )}
                 </ActionsMenu>

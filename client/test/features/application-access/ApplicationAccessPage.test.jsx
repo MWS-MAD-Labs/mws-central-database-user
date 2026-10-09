@@ -19,6 +19,7 @@ const applications = [
   },
   {
     application_id: 'hub',
+    is_hub: true,
     organization_id: null,
     role_count: 0,
     active_group_count: 0,
@@ -102,6 +103,21 @@ describe('ApplicationAccessPage', () => {
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([url]) => url.includes('search=exi'))).toBe(true)
     })
+  })
+
+  it('marks the Hub and gives it no Delete in its menu, while other rows keep Delete', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    const hubRow = (await screen.findByRole('button', { name: 'Actions for hub' })).closest('tr')
+    expect(within(hubRow).getByText('Hub')).toBeVisible()
+    await user.click(within(hubRow).getByRole('button', { name: 'Actions for hub' }))
+    expect(await screen.findByRole('button', { name: 'Setup Steps' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Delete Application' })).toBeNull()
+    await user.keyboard('{Escape}')
+    await user.click(document.body)
+    const eximaRow = screen.getByRole('button', { name: 'Actions for exima' }).closest('tr')
+    await user.click(within(eximaRow).getByRole('button', { name: 'Actions for exima' }))
+    expect(await screen.findByRole('button', { name: 'Delete Application' })).toBeVisible()
   })
 
   it('opens the page of an application from Manage', async () => {

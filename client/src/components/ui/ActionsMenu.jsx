@@ -111,7 +111,9 @@ export function ActionsMenuItem({
           ? 'text-[#9f3d41] hover:bg-[#fff5f5]'
           : tone === 'success'
             ? 'text-[#476b43] hover:bg-[#edf4eb]'
-            : 'text-(--mws-charcoal) hover:bg-(--mws-soft)',
+            : tone === 'warning'
+              ? 'text-[#8a6419] hover:bg-[#fff4d8]'
+              : 'text-(--mws-charcoal) hover:bg-(--mws-soft)',
       ].join(' ')}
     >
       <span>{children}</span>
