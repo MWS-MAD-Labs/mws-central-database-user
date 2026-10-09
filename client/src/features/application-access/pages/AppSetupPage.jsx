@@ -7,6 +7,7 @@ import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { isPendingFor } from "../../../lib/mutationState.js";
@@ -18,6 +19,7 @@ import { DataAccessDialog } from "../components/DataAccessDialog.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
 import { oldTokenNotice } from "../../api-clients/utils/oldTokenNotice.js";
 import { RotateTokenFlow } from "../../api-clients/components/RotateTokenFlow.jsx";
+import { RemovalGuideDialog } from "../components/RemovalGuideDialog.jsx";
 import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
 import { SetupGuideDialog } from "../components/SetupGuideDialog.jsx";
 import { buildSteps, stepsDone } from "../utils/setupSteps.js";
@@ -42,7 +44,9 @@ export function AppSetupPage() {
   const navigate = useNavigate();
   const [connection, setConnection] = useState(null);
   const [removing, setRemoving] = useState(false);
+  const confirm = useConfirm();
   const [guide, setGuide] = useState(false);
+  const [removalGuide, setRemovalGuide] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [dataAccess, setDataAccess] = useState(false);
   // Ticks so the ten minute note can appear without a reload.
@@ -59,7 +63,7 @@ export function AppSetupPage() {
     // Only while the application is expected to call Central, otherwise nothing changes by itself.
     refetchInterval: (query) => {
       const data = query.state.data;
-      if (!data) return false;
+      if (!data || data.application.retired_at) return false;
       return data.connection.created && data.permissions.count === 0 ? POLL_MS : false;
     },
   });
@@ -100,6 +104,22 @@ export function AppSetupPage() {
     },
     onError: (error) => showErrorToast(error, "Could not create the Admin role."),
   });
+  const retireMutation = useMutation({
+    mutationFn: () => applicationAccessApi.retireApplication(applicationId),
+    onSuccess: () => {
+      refresh();
+      showSuccessToast("Application retired.");
+    },
+    onError: (error) => showErrorToast(error, "Could not retire this application."),
+  });
+  const restoreMutation = useMutation({
+    mutationFn: () => applicationAccessApi.restoreApplication(applicationId),
+    onSuccess: () => {
+      refresh();
+      showSuccessToast("Application restored. Create a new connection to use it again.");
+    },
+    onError: (error) => showErrorToast(error, "Could not restore this application."),
+  });
   const publishMutation = useMutation({
     mutationFn: (publish) => (publish ? applicationAccessApi.publish(applicationId) : applicationAccessApi.unpublish(applicationId)),
     onSuccess: (_data, publish) => {
@@ -129,8 +149,20 @@ export function AppSetupPage() {
   const publishing = isPendingFor(publishMutation, () => true);
 
   // One main button, on the step that is next. Everything else is a quiet text button.
+  const retired = Boolean(setup.application.retired_at);
+
+  async function retire() {
+    const confirmed = await confirm({
+      title: "Retire Application",
+      description: `${setup.application.name} will stop working: its token is revoked, it disappears from the Hub and nobody has access. Nothing is deleted, and you can restore it later.`,
+      confirmLabel: "Retire",
+      tone: "danger",
+    });
+    if (confirmed) retireMutation.mutate();
+  }
+
   function actions(step) {
-    if (step.status === "locked") return null;
+    if (retired || step.status === "locked") return null;
     const current = step.status === "current";
     const quiet = (to, label, icon) => (
       <TextAction asChild icon={icon}>
@@ -236,6 +268,33 @@ export function AppSetupPage() {
                       Change Data Access
                     </ActionsMenuItem>
                   ) : null}
+                  {setup.is_hub ? null : retired ? (
+                    <ActionsMenuItem
+                      onClick={() => {
+                        closeMenu();
+                        restoreMutation.mutate();
+                      }}
+                    >
+                      Restore Application
+                    </ActionsMenuItem>
+                  ) : (
+                    <ActionsMenuItem
+                      onClick={() => {
+                        closeMenu();
+                        retire();
+                      }}
+                    >
+                      Retire Application
+                    </ActionsMenuItem>
+                  )}
+                  <ActionsMenuItem
+                    onClick={() => {
+                      closeMenu();
+                      setRemovalGuide(true);
+                    }}
+                  >
+                    How Removing Works
+                  </ActionsMenuItem>
                   <ActionsMenuItem
                     tone="danger"
                     onClick={() => {
@@ -251,6 +310,21 @@ export function AppSetupPage() {
           </>
         }
       />
+
+      {retired ? (
+        <div role="note" className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#e3a2a5] bg-[#fff0f1] px-5 py-3 text-sm text-[#a43c41]">
+          <span className="font-semibold">Retired</span>
+          <span>Its token is revoked, it is hidden from the Hub and nobody has access. Nothing was deleted.</span>
+          <span className="ml-auto flex gap-2">
+            <Button type="button" variant="secondary" size="sm" loading={restoreMutation.isPending} onClick={() => restoreMutation.mutate()}>
+              Restore
+            </Button>
+            <Button type="button" variant="danger" size="sm" onClick={() => setRemoving(true)}>
+              Delete
+            </Button>
+          </span>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-(--mws-line) bg-white px-5 py-3 text-sm">
         <span className="font-semibold text-(--mws-charcoal)">Organization ID</span>
@@ -341,6 +415,7 @@ export function AppSetupPage() {
           onClose={() => setDataAccess(false)}
         />
       ) : null}
+      {removalGuide ? <RemovalGuideDialog onClose={() => setRemovalGuide(false)} /> : null}
       {guide ? <SetupGuideDialog applicationId={applicationId} onClose={() => setGuide(false)} /> : null}
       {removing ? (
         <RemoveApplicationDialog

@@ -55,6 +55,17 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  // Stops the application and keeps its data. Restore turns it back on.
+  async retireApplication(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/retire`, { method: 'POST', body: {} })
+    return response.data
+  },
+
+  async restoreApplication(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/restore`, { method: 'POST', body: {} })
+    return response.data
+  },
+
   async removeApplication(applicationId) {
     const response = await apiRequest(`${ACCESS}/apps/${applicationId}`, { method: 'DELETE' })
     return response.data

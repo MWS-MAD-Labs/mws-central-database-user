@@ -106,6 +106,11 @@ export function ApplicationAccessPage() {
             <tr key={row.application_id} className={denseRowClass}>
               <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>
                 {row.application_id}
+                {row.retired ? (
+                  <StatusBadge tone="red" className="ml-2">
+                    Retired
+                  </StatusBadge>
+                ) : null}
                 {row.published ? (
                   <StatusBadge tone="green" className="ml-2">
                     In Hub

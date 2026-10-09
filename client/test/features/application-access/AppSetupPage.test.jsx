@@ -229,10 +229,12 @@ describe('AppSetupPage', () => {
     ])
     const { user } = renderWithProviders(
       <AuthContext.Provider value={{ user: { role: 'SUPER_ADMIN' } }}>
-        <Routes>
-          <Route path="/application-access/apps/:applicationId/setup" element={<AppSetupPage />} />
-          <Route path="/application-access" element={<div>List page</div>} />
-        </Routes>
+        <ConfirmProvider>
+          <Routes>
+            <Route path="/application-access/apps/:applicationId/setup" element={<AppSetupPage />} />
+            <Route path="/application-access" element={<div>List page</div>} />
+          </Routes>
+        </ConfirmProvider>
       </AuthContext.Provider>,
       { route: '/application-access/apps/demo/setup' },
     )
@@ -332,5 +334,49 @@ describe('AppSetupPage', () => {
     renderPage([setupRoute(makeSetup())])
     const back = await screen.findByRole('link', { name: 'Back' })
     expect(back).toHaveAttribute('href', '/application-access/apps/demo')
+  })
+  it('shows a retired application with Restore and Delete, and no step actions', async () => {
+    const restores = []
+    const { user } = renderPage([
+      setupRoute(makeSetup({ application: { ...APP, retired_at: new Date().toISOString() }, connection: { client_id: null, created: false, created_at: null, last_used_at: null } })),
+      {
+        path: '/api/admin/application-access/apps/demo/restore',
+        method: 'POST',
+        response: () => {
+          restores.push('demo')
+          return jsonResponse({ data: { ...APP, retired_at: null } })
+        },
+      },
+    ])
+    expect(await screen.findByText(/Its token is revoked, it is hidden from the Hub/)).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Create Connection' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Restore' }))
+    await waitFor(() => expect(restores).toEqual(['demo']))
+  })
+
+  it('retires from the menu after a confirmation, and the Hub has no Retire', async () => {
+    const retired = []
+    const { user } = renderPage([
+      setupRoute(makeSetup()),
+      {
+        path: '/api/admin/application-access/apps/demo/retire',
+        method: 'POST',
+        response: () => {
+          retired.push('demo')
+          return jsonResponse({ data: { ...APP, retired_at: new Date().toISOString() } })
+        },
+      },
+    ])
+    await user.click(await screen.findByRole('button', { name: 'More actions' }))
+    await user.click(await screen.findByRole('button', { name: 'Retire Application' }))
+    await user.click(await screen.findByRole('button', { name: 'Retire' }))
+    await waitFor(() => expect(retired).toEqual(['demo']))
+  })
+
+  it('has no Retire in the menu for the Hub', async () => {
+    const { user } = renderPage([setupRoute(makeSetup({ is_hub: true }))])
+    await user.click(await screen.findByRole('button', { name: 'More actions' }))
+    expect(await screen.findByRole('button', { name: 'How Removing Works' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Retire Application' })).toBeNull()
   })
 })

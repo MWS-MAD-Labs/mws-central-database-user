@@ -29,7 +29,7 @@ describe('RemoveApplicationDialog', () => {
           }),
       },
     ])
-    expect(await screen.findByText('This application is still in use, so it cannot be deleted.')).toBeVisible()
+    expect(await screen.findByText('This application is still in use, so it cannot be deleted yet.')).toBeVisible()
     expect(screen.getByText('3 people have access to it. Remove that access first.')).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Delete Application' })).toBeNull()
   })
@@ -64,5 +64,95 @@ describe('RemoveApplicationDialog', () => {
     await user.click(button)
     await waitFor(() => expect(onRemoved).toHaveBeenCalled())
     expect(calls).toEqual(['delete'])
+  })
+  it('offers Retire when it is blocked, and retires it', async () => {
+    const retired = []
+    const onClose = mock()
+    const { user } = renderDialog(
+      [
+        {
+          path: REMOVAL,
+          response: () =>
+            jsonResponse({
+              data: {
+                can_remove: false,
+                blockers: ['It is showing in the Hub.'],
+                retire_available: true,
+                retired: false,
+                is_hub: false,
+                will_delete: { roles: 1, groups: 1, permissions: 1, clients: 1, people: 2 },
+              },
+            }),
+        },
+        {
+          path: '/api/admin/application-access/apps/demo/retire',
+          method: 'POST',
+          response: () => {
+            retired.push('demo')
+            return jsonResponse({ data: { retired_at: new Date().toISOString() } })
+          },
+        },
+      ],
+      { onClose },
+    )
+    expect(await screen.findByText('Retire it first')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Retire Application' }))
+    await waitFor(() => expect(retired).toEqual(['demo']))
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+
+  it('has no Retire for the Hub and says why', async () => {
+    renderDialog([
+      {
+        path: REMOVAL,
+        response: () =>
+          jsonResponse({
+            data: {
+              can_remove: false,
+              blockers: ["This is the Hub's own application. Removing it would lock everyone out of the Hub."],
+              retire_available: false,
+              retired: false,
+              is_hub: true,
+              will_delete: { roles: 0, groups: 0, permissions: 0, clients: 0, people: 0 },
+            },
+          }),
+      },
+    ])
+    expect(await screen.findByText('This is the Hub itself, so it cannot be retired or deleted.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Retire Application' })).toBeNull()
+  })
+
+  it('lets a retired application be deleted and counts the people who lose access', async () => {
+    renderDialog([
+      {
+        path: REMOVAL,
+        response: () =>
+          jsonResponse({
+            data: {
+              can_remove: true,
+              blockers: [],
+              retire_available: false,
+              retired: true,
+              is_hub: false,
+              will_delete: { roles: 1, groups: 1, permissions: 0, clients: 1, people: 3 },
+            },
+          }),
+      },
+    ])
+    expect(await screen.findByText(/This application is retired\./)).toBeVisible()
+    expect(screen.getByText('3 people lose access')).toBeVisible()
+  })
+
+  it('opens the guide on how removing works', async () => {
+    const { user } = renderDialog([
+      {
+        path: REMOVAL,
+        response: () =>
+          jsonResponse({ data: { can_remove: true, blockers: [], retire_available: false, retired: false, is_hub: false, will_delete: { roles: 0, groups: 0, permissions: 0, clients: 0, people: 0 } } }),
+      },
+    ])
+    await user.click(await screen.findByRole('button', { name: 'How removing works' }))
+    expect(await screen.findByText('1. Retire')).toBeVisible()
+    expect(screen.getByText('The Hub itself')).toBeVisible()
   })
 })
