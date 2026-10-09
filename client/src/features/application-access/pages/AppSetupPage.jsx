@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Circle, Loader2, Lock } from "lucide-react";
+import { ArrowLeft, BookOpen, Check, Circle, Eye, EyeOff, Loader2, Lock, Pencil, Plus, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
@@ -10,6 +10,7 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { isPendingFor } from "../../../lib/mutationState.js";
+import { useBack } from "../hooks/useBack.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { AppDetailsForm } from "../components/AppDetailsForm.jsx";
@@ -40,6 +41,7 @@ export function AppSetupPage() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const navigate = useNavigate();
+  const back = useBack(BACK);
   const [connection, setConnection] = useState(null);
   const [removing, setRemoving] = useState(false);
   const [guide, setGuide] = useState(false);
@@ -132,22 +134,30 @@ export function AppSetupPage() {
   function actions(step) {
     if (step.status === "locked") return null;
     const current = step.status === "current";
-    const quiet = (to, label) => (
-      <TextAction asChild>
+    const quiet = (to, label, icon) => (
+      <TextAction asChild icon={icon}>
         <Link to={to}>{label}</Link>
       </TextAction>
     );
     switch (step.id) {
+      case "about":
+        return (
+          <TextAction icon={Pencil} onClick={() => setEditing(true)}>
+            Edit Details
+          </TextAction>
+        );
       case "connect":
         return setup.connection.created ? (
-          <TextAction onClick={() => setRotating(true)}>Rotate Token</TextAction>
+          <TextAction icon={RotateCw} onClick={() => setRotating(true)}>
+            Rotate Token
+          </TextAction>
         ) : (
           <Button type="button" loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
             Create Connection
           </Button>
         );
       case "permissions":
-        return step.done ? quiet(`${base}?tab=permissions`, "View Permissions") : null;
+        return step.done ? quiet(`${base}?tab=permissions`, "View Permissions", Eye) : null;
       case "roles":
         return (
           <>
@@ -156,7 +166,7 @@ export function AppSetupPage() {
                 Create Admin Role
               </Button>
             ) : null}
-            {quiet(`${base}/roles/new`, "Add Role")}
+            {quiet(`${base}/roles/new`, "Add Role", Plus)}
           </>
         );
       case "groups":
@@ -165,11 +175,11 @@ export function AppSetupPage() {
             <Link to={`${base}/groups/new`}>Add Group</Link>
           </Button>
         ) : (
-          quiet(`${base}/groups/new`, "Add Group")
+          quiet(`${base}/groups/new`, "Add Group", Plus)
         );
       case "hub":
         return step.done ? (
-          <TextAction loading={publishing} onClick={() => publishMutation.mutate(false)}>
+          <TextAction icon={EyeOff} loading={publishing} onClick={() => publishMutation.mutate(false)}>
             Hide From Hub
           </TextAction>
         ) : (
@@ -193,11 +203,9 @@ export function AppSetupPage() {
         description={`${finished} of ${steps.length} steps done. You can leave and come back, this page reads the progress from the data.`}
         actions={
           <>
-            <Button asChild variant="secondary">
-              <Link to={BACK}>
-                <ArrowLeft size={16} />
-                Back
-              </Link>
+            <Button type="button" variant="secondary" onClick={back}>
+              <ArrowLeft size={16} />
+              Back
             </Button>
             <ActionsMenu label="More actions">
               {(closeMenu) => (
@@ -300,7 +308,7 @@ export function AppSetupPage() {
                     the ones from the connection, and that it calls Central on start.
                   </p>
                 ) : null}
-                <TextAction className="mt-3" onClick={() => setGuide(true)}>
+                <TextAction className="mt-3" icon={BookOpen} onClick={() => setGuide(true)}>
                   Show Setup Guide
                 </TextAction>
               </div>
@@ -346,6 +354,7 @@ export function AppSetupPage() {
         <CrudDialog title="Edit Details" onClose={() => setEditing(false)}>
           <AppDetailsForm
             idLocked
+            isHub={setup.is_hub}
             initial={setup.application}
             submitLabel="Save"
             submitting={updateMutation.isPending}

@@ -21,7 +21,8 @@ export function buildSteps(setup, now = Date.now()) {
   const app = setup.application;
   const connected = Boolean(setup.connection.last_used_at) || setup.permissions.count > 0;
   const done = {
-    about: Boolean(app.launch_url),
+    // The Hub itself has no launch address.
+    about: Boolean(app.launch_url) || Boolean(setup.is_hub),
     connect: connected,
     permissions: setup.permissions.count > 0,
     roles: setup.roles.active_count > 0,

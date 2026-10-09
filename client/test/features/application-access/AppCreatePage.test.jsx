@@ -85,6 +85,56 @@ describe('AppCreatePage', () => {
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
   })
 
+  it('switches the environment when the pasted address is the only one, and says so', async () => {
+    globalThis.fetch = createFetchRouter([SCOPES])
+    const { user } = renderPage()
+    await user.click(screen.getByRole('radio', { name: 'Local' }))
+    await user.click(screen.getByLabelText('Launch URL'))
+    await user.paste('  HTTPS://Exima.MWS.web.id/auth')
+    expect(screen.getByLabelText('Launch URL')).toHaveValue('exima.mws.web.id/auth')
+    expect(screen.getByRole('radio', { name: 'Production' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByText(/Environment set to Production because the address started with https/)).toBeVisible()
+  })
+
+  it('refuses a pasted scheme that clashes with the environment when the other address is filled', async () => {
+    const fetchMock = createFetchRouter([SCOPES])
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await user.type(screen.getByLabelText('Name'), 'Demo')
+    await user.type(screen.getByLabelText('Launch URL'), 'demo.example.com/auth')
+    await user.click(screen.getByLabelText('Logout URL'))
+    await user.paste('http://demo.example.com/out')
+    // The environment stays, so the first address does not change by itself.
+    expect(screen.getByRole('radio', { name: 'Production' })).toHaveAttribute('aria-checked', 'true')
+    await user.click(screen.getByRole('button', { name: 'Add Application' }))
+    expect(await screen.findByText(/starts with http:\/\/ but the Environment is Production/)).toBeVisible()
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+  })
+
+  it('marks the Hub itself: id hub, no card or addresses, and sends is_hub', async () => {
+    const fetchMock = createFetchRouter([
+      SCOPES,
+      {
+        path: '/api/admin/application-access/applications',
+        method: 'POST',
+        response: () => jsonResponse({ data: { application_id: 'hub', connection: { token: 'mws_a.b', env: [{ key: 'HUB_SSO_APP_ID', value: 'hub' }] } } }),
+      },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await user.type(screen.getByLabelText('Name'), 'MWS Hub')
+    expect(screen.getByLabelText('Application ID')).toHaveValue('mws-hub')
+    await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
+    expect(screen.getByLabelText('Application ID')).toHaveValue('hub')
+    expect(screen.queryByLabelText('Launch URL')).toBeNull()
+    expect(screen.queryByText('Hub Card')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Add Application' }))
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
+      expect(JSON.parse(call[1].body)).toEqual({ name: 'MWS Hub', is_hub: true, connect: true, scope_names: ['employees:read'] })
+    })
+  })
+
   it('tidies extra spaces when leaving the name', async () => {
     globalThis.fetch = createFetchRouter([SCOPES])
     const { user } = renderPage()

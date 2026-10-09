@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
-import { Field, SearchableSelect, TextAreaInput, TextInput } from "../../../components/ui/FormControls.jsx";
+import { CheckboxField, Field, SearchableSelect, TextAreaInput, TextInput } from "../../../components/ui/FormControls.jsx";
 import { cn } from "../../../lib/cn.js";
 import { DEFAULT_SCOPES } from "../utils/connectionScopes.js";
 import { descriptionProblem, iconProblem, nameProblem, slugifyApplicationId, tidyText } from "../utils/applicationId.js";
-import { ENVIRONMENTS, addressProblem, joinAddress, readAddressInput, splitAddress } from "../utils/applicationUrl.js";
+import { ENVIRONMENTS, addressProblem, environmentOfScheme, joinAddress, readAddressInput, splitAddress } from "../utils/applicationUrl.js";
 import { AppCardPreview } from "./AppCardPreview.jsx";
 import { NextStepsCard } from "./NextStepsCard.jsx";
 import { ScopePicker } from "./ScopePicker.jsx";
@@ -21,7 +21,7 @@ const DESCRIPTION_MAX = 300;
 
 // What the Hub card shows and where it sends people. Used to add an application and to edit it later.
 // On the page layout the id is made from the name. In the dialog the id is the one the application has.
-export function AppDetailsForm({ initial, idLocked = false, layout = "dialog", submitLabel, submitting, onSubmit, onCancel }) {
+export function AppDetailsForm({ initial, idLocked = false, isHub = false, layout = "dialog", submitLabel, submitting, onSubmit, onCancel }) {
   const launch = splitAddress(initial?.launch_url);
   const logout = splitAddress(initial?.logout_url, launch.environment);
   const [values, setValues] = useState({
@@ -35,29 +35,58 @@ export function AppDetailsForm({ initial, idLocked = false, layout = "dialog", s
   const [logoutRest, setLogoutRest] = useState(logout.rest);
   const [attempted, setAttempted] = useState(false);
   const [scopeNames, setScopeNames] = useState(DEFAULT_SCOPES);
+  const [hubChosen, setHubChosen] = useState(false);
+  // What a pasted address started with, so a clash with the environment can be said out loud.
+  const [pasted, setPasted] = useState({ launch: null, logout: null });
+  const [notes, setNotes] = useState({ launch: null, logout: null });
+  const hub = isHub || hubChosen;
   const set = (key) => (event) => setValues((current) => ({ ...current, [key]: event.target.value }));
   const tidyOnBlur = (key) => () => setValues((current) => ({ ...current, [key]: tidyText(current[key]) }));
 
-  const applicationId = idLocked ? initial.application_id : slugifyApplicationId(values.name);
+  const applicationId = idLocked ? initial.application_id : hub ? "hub" : slugifyApplicationId(values.name);
   // The Hub itself has no launch address.
-  const needsLaunch = applicationId !== "hub";
+  const needsLaunch = !hub;
+
+  // A pasted scheme that differs from the environment is a clash, unless the environment changed with it.
+  const clash = (key) => {
+    const scheme = pasted[key];
+    if (!scheme || environmentOfScheme(scheme) === environment) return undefined;
+    const label = ENVIRONMENTS.find((item) => item.id === environment)?.label;
+    return `This address starts with ${scheme}:// but the Environment is ${label}. Change the Environment, or use a ${environment === "local" ? "http" : "https"} address.`;
+  };
 
   const errors = {
     name: nameProblem(values.name) ?? undefined,
     description: descriptionProblem(values.description) ?? undefined,
     icon: iconProblem(values.icon) ?? undefined,
-    launch_url: addressProblem(environment, launchRest, { required: needsLaunch }) ?? undefined,
-    logout_url: addressProblem(environment, logoutRest) ?? undefined,
+    launch_url: hub ? undefined : (clash("launch") ?? addressProblem(environment, launchRest, { required: needsLaunch }) ?? undefined),
+    logout_url: hub ? undefined : (clash("logout") ?? addressProblem(environment, logoutRest) ?? undefined),
   };
   const valid = !Object.values(errors).some(Boolean);
   const shown = (key) => (attempted ? errors[key] : undefined);
 
-  // Typing an address: a pasted scheme is taken off and sets the environment for both addresses.
-  function typeAddress(setter) {
+  // Typing or pasting an address. A scheme in the text is taken off. It sets the environment when the other
+  // address is empty, otherwise it is left as a clash for the person to settle.
+  function typeAddress(key, setter, otherRest) {
     return (event) => {
       const next = readAddressInput(event.target.value, environment);
-      if (next.environment !== environment) setEnvironment(next.environment);
       setter(next.rest);
+      setNotes((current) => ({ ...current, [key]: null }));
+      if (!next.scheme) {
+        setPasted((current) => ({ ...current, [key]: null }));
+        return;
+      }
+      const target = environmentOfScheme(next.scheme);
+      if (target === environment) {
+        setPasted((current) => ({ ...current, [key]: null }));
+      } else if (!otherRest.trim()) {
+        setEnvironment(target);
+        setPasted((current) => ({ ...current, [key]: null }));
+        const label = ENVIRONMENTS.find((item) => item.id === target)?.label;
+        setNotes((current) => ({ ...current, [key]: `Environment set to ${label} because the address started with ${next.scheme}://.` }));
+      } else {
+        setPasted((current) => ({ ...current, [key]: next.scheme }));
+      }
     };
   }
 
@@ -65,6 +94,14 @@ export function AppDetailsForm({ initial, idLocked = false, layout = "dialog", s
     event.preventDefault();
     setAttempted(true);
     if (!valid) return;
+    if (hub) {
+      onSubmit({
+        ...(idLocked ? { application_id: applicationId } : {}),
+        name: tidyText(values.name),
+        ...(layout === "page" ? { is_hub: true, connect: true, scope_names: scopeNames } : {}),
+      });
+      return;
+    }
     onSubmit({
       ...(idLocked ? { application_id: applicationId } : {}),
       name: tidyText(values.name),
@@ -99,7 +136,16 @@ export function AppDetailsForm({ initial, idLocked = false, layout = "dialog", s
             <TextInput aria-label="Application ID" value={applicationId} disabled readOnly />
           </Field>
         </div>
+        {layout === "page" ? (
+          <CheckboxField
+            label="This is the Hub itself"
+            description="The Hub is not listed in the Hub, so it has no card or launch address."
+            checked={hubChosen}
+            onChange={(event) => setHubChosen(event.target.checked)}
+          />
+        ) : null}
       </Section>
+      {hub ? null : (<>
       <Section title="Hub Card">
         <Field
           label="Description"
@@ -171,8 +217,8 @@ export function AppDetailsForm({ initial, idLocked = false, layout = "dialog", s
         <Field
           label="Launch URL"
           required={needsLaunch}
-          hint="Where the Hub sends people, usually the sign-in address of the application."
           error={shown("launch_url")}
+          hint={notes.launch ?? "Where the Hub sends people, usually the sign-in address of the application."}
         >
           <AddressInput
             label="Launch URL"
@@ -180,13 +226,13 @@ export function AppDetailsForm({ initial, idLocked = false, layout = "dialog", s
             value={launchRest}
             placeholder="exima.mws.web.id/auth/sso"
             invalid={Boolean(shown("launch_url"))}
-            onChange={typeAddress(setLaunchRest)}
+            onChange={typeAddress("launch", setLaunchRest, logoutRest)}
             onBlur={() => setLaunchRest((current) => current.trim())}
           />
         </Field>
         <Field
           label="Logout URL"
-          hint="Optional. Opened in the background so signing out of the Hub signs out of this application too."
+          hint={notes.logout ?? "Optional. Opened in the background so signing out of the Hub signs out of this application too."}
           error={shown("logout_url")}
         >
           <AddressInput
@@ -195,11 +241,12 @@ export function AppDetailsForm({ initial, idLocked = false, layout = "dialog", s
             value={logoutRest}
             placeholder="exima.mws.web.id/auth/logout"
             invalid={Boolean(shown("logout_url"))}
-            onChange={typeAddress(setLogoutRest)}
+            onChange={typeAddress("logout", setLogoutRest, launchRest)}
             onBlur={() => setLogoutRest((current) => current.trim())}
           />
         </Field>
       </Section>
+      </>)}
       {layout === "page" ? (
         <Section title="Data Access">
           <p className="text-xs leading-5 text-(--mws-muted)">
@@ -230,8 +277,8 @@ export function AppDetailsForm({ initial, idLocked = false, layout = "dialog", s
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5">{fields}</section>
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
-            <AppCardPreview values={preview} />
-            <NextStepsCard />
+            {hub ? null : <AppCardPreview values={preview} />}
+            <NextStepsCard hub={hub} />
             {buttons}
           </aside>
         </div>

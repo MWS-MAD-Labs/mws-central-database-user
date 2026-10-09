@@ -15,12 +15,23 @@ export function splitAddress(url, fallback = 'production') {
   return { environment: match[1].toLowerCase() === 'http' ? 'local' : 'production', rest: url.trim().slice(match[0].length) }
 }
 
-// What was typed, with a pasted scheme taken off. A scheme in the text decides the environment.
+// What was typed, tidied. Leading spaces go, a pasted http:// or https:// (any case, even twice) is taken off
+// and reported as `scheme`, a leading // goes, and the host is written in lower case.
 export function readAddressInput(value, environment) {
-  const match = value.match(SCHEME)
-  if (!match) return { environment, rest: value }
-  return { environment: match[1].toLowerCase() === 'http' ? 'local' : 'production', rest: value.slice(match[0].length) }
+  let text = value.replace(/^\s+/, '')
+  let scheme = null
+  for (let match = text.match(SCHEME); match; match = text.match(SCHEME)) {
+    scheme = scheme ?? match[1].toLowerCase()
+    text = text.slice(match[0].length).replace(/^\s+/, '')
+  }
+  text = text.replace(/^\/\/+/, '')
+  const end = text.search(/[/?#]/)
+  const host = end === -1 ? text : text.slice(0, end)
+  text = host.toLowerCase() + (end === -1 ? '' : text.slice(end))
+  return { environment, rest: text, scheme }
 }
+
+export const environmentOfScheme = (scheme) => (scheme === 'http' ? 'local' : 'production')
 
 export function joinAddress(environment, rest) {
   const text = rest.trim()

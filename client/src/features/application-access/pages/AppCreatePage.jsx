@@ -1,11 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import { useBack } from "../hooks/useBack.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { AppDetailsForm } from "../components/AppDetailsForm.jsx";
@@ -17,6 +18,7 @@ const BACK = "/application-access";
 export function AppCreatePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const back = useBack(BACK);
   const queryClient = useQueryClient();
   const [created, setCreated] = useState(null);
 
@@ -47,12 +49,10 @@ export function AppCreatePage() {
         title="Add Application"
         description="Tell the Hub how to show this application and pick what it may read from Central. Its .env values come right after."
         actions={
-          <Button asChild variant="secondary">
-            <Link to={BACK}>
+          <Button type="button" variant="secondary" onClick={back}>
               <ArrowLeft size={16} />
               Back
-            </Link>
-          </Button>
+            </Button>
         }
       />
       <AppDetailsForm

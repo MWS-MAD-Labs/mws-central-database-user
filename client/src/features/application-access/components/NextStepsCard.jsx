@@ -7,12 +7,12 @@ const STEPS = [
 ];
 
 // What comes after this form, so nobody is left wondering.
-export function NextStepsCard() {
+export function NextStepsCard({ hub = false }) {
   return (
     <div className="rounded-2xl border border-(--mws-line) bg-white p-5">
       <p className="font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">What Happens Next</p>
       <ol className="mt-3 space-y-3">
-        {STEPS.map(([title, text], index) => (
+        {STEPS.filter(([title]) => !(hub && title === "Show in Hub")).map(([title, text], index) => (
           <li key={title} className="flex gap-3">
             <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-(--mws-soft) text-xs font-bold text-(--mws-burgundy)">
               {index + 1}
