@@ -13,6 +13,7 @@ import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { AppDetailsForm } from "../components/AppDetailsForm.jsx";
 import { ConnectDialog } from "../components/ConnectDialog.jsx";
+import { DataAccessDialog } from "../components/DataAccessDialog.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
 import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
 import { SetupGuideDialog } from "../components/SetupGuideDialog.jsx";
@@ -39,6 +40,7 @@ export function AppSetupPage() {
   const [connection, setConnection] = useState(null);
   const [removing, setRemoving] = useState(false);
   const [guide, setGuide] = useState(false);
+  const [dataAccess, setDataAccess] = useState(false);
   // Ticks so the ten minute note can appear without a reload.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -212,6 +214,16 @@ export function AppSetupPage() {
                   >
                     Edit Details
                   </ActionsMenuItem>
+                  {setup.data_access.editable ? (
+                    <ActionsMenuItem
+                      onClick={() => {
+                        closeMenu();
+                        setDataAccess(true);
+                      }}
+                    >
+                      Change Data Access
+                    </ActionsMenuItem>
+                  ) : null}
                   <ActionsMenuItem
                     tone="danger"
                     onClick={() => {
@@ -290,6 +302,13 @@ export function AppSetupPage() {
         ))}
       </ol>
 
+      {dataAccess ? (
+        <DataAccessDialog
+          applicationId={applicationId}
+          current={setup.data_access.scope_names}
+          onClose={() => setDataAccess(false)}
+        />
+      ) : null}
       {guide ? <SetupGuideDialog applicationId={applicationId} onClose={() => setGuide(false)} /> : null}
       {removing ? (
         <RemoveApplicationDialog

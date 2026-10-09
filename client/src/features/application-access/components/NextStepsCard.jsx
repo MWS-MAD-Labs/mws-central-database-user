@@ -1,5 +1,5 @@
 const STEPS = [
-  ["Connect", "Get the .env values for the application."],
+  ["Deploy", "Copy the .env values into the application and deploy it."],
   ["Permissions", "The application sends its permission list."],
   ["Roles", "Group permissions into roles."],
   ["Groups", "Say who gets which role."],
@@ -15,7 +15,7 @@ export function NextStepsCard() {
         {STEPS.map(([title, text], index) => (
           <li key={title} className="flex gap-3">
             <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-(--mws-soft) text-xs font-bold text-(--mws-burgundy)">
-              {index + 2}
+              {index + 1}
             </span>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-(--mws-charcoal)">{title}</p>

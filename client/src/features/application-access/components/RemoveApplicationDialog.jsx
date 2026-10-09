@@ -12,17 +12,28 @@ const count = (value, word) => `${value} ${word}${value === 1 ? "" : "s"}`;
 export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
   const queryClient = useQueryClient();
   const [typed, setTyped] = useState("");
+  const [done, setDone] = useState(false);
   const query = useQuery({
     queryKey: ["application-access", "removal", applicationId],
     queryFn: () => applicationAccessApi.getRemoval(applicationId),
     gcTime: 0,
+    enabled: !done,
   });
   const mutation = useMutation({
     mutationFn: () => applicationAccessApi.removeApplication(applicationId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["application-access"] });
+      setDone(true);
       showSuccessToast("Application removed.");
       onRemoved();
+      // After the page is left, drop what belonged to this application. Refetching it would
+      // get a 404 and show a second toast.
+      setTimeout(() => {
+        for (const kind of ["setup", "removal", "app"]) {
+          queryClient.removeQueries({ queryKey: ["application-access", kind, applicationId] });
+        }
+        queryClient.invalidateQueries({ queryKey: ["application-access", "applications"] });
+        queryClient.invalidateQueries({ queryKey: ["application-access", "organizations"] });
+      }, 0);
     },
     onError: (error) => showErrorToast(error, "Could not remove this application."),
   });

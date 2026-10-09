@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { ScopePicker } from "./ScopePicker.jsx";
+import { DEFAULT_SCOPES } from "../utils/connectionScopes.js";
 import { AppCardPreview } from "./AppCardPreview.jsx";
 import { NextStepsCard } from "./NextStepsCard.jsx";
 import { Field, SearchableSelect, TextAreaInput, TextInput } from "../../../components/ui/FormControls.jsx";
@@ -23,6 +25,7 @@ const EMPTY = { application_id: "", name: "", description: "", icon: "", categor
 export function AppDetailsForm({ initial, idLocked = false, layout = "dialog", submitLabel, submitting, onSubmit, onCancel }) {
   const [values, setValues] = useState({ ...EMPTY, ...stripNulls(initial) });
   const [attempted, setAttempted] = useState(false);
+  const [scopeNames, setScopeNames] = useState(DEFAULT_SCOPES);
   const set = (key) => (event) => setValues((current) => ({ ...current, [key]: event.target.value }));
 
   const errors = {
@@ -30,7 +33,11 @@ export function AppDetailsForm({ initial, idLocked = false, layout = "dialog", s
       ? undefined
       : "Use lowercase letters, numbers, hyphens or underscores, starting with a letter.",
     name: values.name.trim() ? undefined : "Name is required.",
-    launch_url: URL_PATTERN.test(values.launch_url.trim()) ? undefined : "Start with http:// or https://.",
+    // The Hub itself has no launch address.
+    launch_url:
+      values.application_id.trim() === "hub" || URL_PATTERN.test(values.launch_url.trim())
+        ? undefined
+        : "Start with http:// or https://.",
     logout_url: !values.logout_url.trim() || URL_PATTERN.test(values.logout_url.trim()) ? undefined : "Start with http:// or https://.",
   };
   const valid = !Object.values(errors).some(Boolean);
@@ -48,6 +55,8 @@ export function AppDetailsForm({ initial, idLocked = false, layout = "dialog", s
       category: values.category.trim(),
       launch_url: values.launch_url.trim(),
       logout_url: values.logout_url.trim(),
+      // On the page layout the connection is made together with the application.
+      ...(layout === "page" ? { connect: true, scope_names: scopeNames } : {}),
     });
   }
 
@@ -108,6 +117,14 @@ export function AppDetailsForm({ initial, idLocked = false, layout = "dialog", s
           <TextInput aria-label="Logout URL" placeholder="https://exima.mws.web.id/auth/logout" value={values.logout_url} onChange={set("logout_url")} />
         </Field>
       </Section>
+      {layout === "page" ? (
+        <Section title="Data Access">
+          <p className="text-xs leading-5 text-(--mws-muted)">
+            Pick what the application may read from Central. You get its token and .env values as soon as you add it.
+          </p>
+          <ScopePicker value={scopeNames} onChange={setScopeNames} />
+        </Section>
+      ) : null}
     </div>
   );
 

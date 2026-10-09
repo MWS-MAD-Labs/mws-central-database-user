@@ -50,8 +50,10 @@ export function buildSteps(setup, now = Date.now()) {
       : "A group says who gets which role.",
     hub: app.published ? "Showing in the Hub for people a group covers." : "Make the application appear in the Hub.",
   };
-  const firstOpen = STEP_IDS.find((id) => !done[id]);
-  return STEP_IDS.map((id) => ({
+  // The Hub itself is not listed in the Hub.
+  const ids = setup.is_hub ? STEP_IDS.filter((id) => id !== "hub") : STEP_IDS;
+  const firstOpen = ids.find((id) => !done[id]);
+  return ids.map((id) => ({
     id,
     done: done[id],
     status: done[id] ? "done" : id === firstOpen ? "current" : "locked",

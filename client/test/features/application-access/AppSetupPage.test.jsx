@@ -27,6 +27,8 @@ function makeSetup(overrides = {}) {
     groups: { active_count: 0 },
     can_publish: false,
     missing: ['permissions', 'roles', 'groups'],
+    is_hub: false,
+    data_access: { scope_names: ['application_entitlements:read', 'application_permissions:write'], editable: true },
     ...overrides,
   }
 }
@@ -195,5 +197,87 @@ describe('AppSetupPage', () => {
     await waitFor(() => expect(calls).toEqual(['publish', 'unpublish']))
     // The button is usable again after the first action finished.
     expect(await screen.findByRole('button', { name: 'Show In Hub' })).toBeEnabled()
+  })
+  it('removes the application without a second error toast from the page it leaves', async () => {
+    let removed = false
+    const requests = []
+    globalThis.fetch = createFetchRouter([
+      {
+        path: '/api/admin/application-access/apps/demo/setup',
+        response: () => {
+          requests.push('setup')
+          return removed
+            ? jsonResponse({ errors: 'Application demo not found' }, 404)
+            : jsonResponse({ data: makeSetup() })
+        },
+      },
+      {
+        path: '/api/admin/application-access/apps/demo/removal',
+        response: () => jsonResponse({ data: { can_remove: true, blockers: [], will_delete: { roles: 0, groups: 0, permissions: 0, clients: 0 } } }),
+      },
+      {
+        path: '/api/admin/application-access/apps/demo',
+        method: 'DELETE',
+        response: () => {
+          removed = true
+          return jsonResponse({ data: true })
+        },
+      },
+    ])
+    const { user } = renderWithProviders(
+      <AuthContext.Provider value={{ user: { role: 'SUPER_ADMIN' } }}>
+        <Routes>
+          <Route path="/application-access/apps/:applicationId/setup" element={<AppSetupPage />} />
+          <Route path="/application-access" element={<div>List page</div>} />
+        </Routes>
+      </AuthContext.Provider>,
+      { route: '/application-access/apps/demo/setup' },
+    )
+    await user.click(await screen.findByRole('button', { name: 'More actions' }))
+    await user.click(await screen.findByRole('button', { name: 'Delete Application' }))
+    await user.type(await screen.findByLabelText('Type demo to confirm'), 'demo')
+    const before = requests.length
+    await user.click(screen.getAllByRole('button', { name: 'Delete Application' }).at(-1))
+    expect(await screen.findByText('List page')).toBeVisible()
+    // Nothing asked for the removed application again.
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(requests.length).toBe(before)
+  })
+  it('has no Show in Hub step for the Hub itself', async () => {
+    renderPage([setupRoute(makeSetup({ is_hub: true }))])
+    expect(await screen.findByText('1 of 5 steps done.', { exact: false })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: /Show in Hub/ })).toBeNull()
+  })
+
+  it('changes the data access from the menu', async () => {
+    const saved = []
+    const { user } = renderPage([
+      setupRoute(makeSetup()),
+      {
+        path: '/api/admin/application-integration-profiles/scopes',
+        response: () =>
+          jsonResponse({
+            data: [
+              { name: 'application_permissions:write', description: '', is_sensitive: false },
+              { name: 'application_entitlements:read', description: '', is_sensitive: false },
+              { name: 'students:read', description: '', is_sensitive: false },
+            ],
+          }),
+      },
+      {
+        path: '/api/admin/application-access/apps/demo/connection-scopes',
+        method: 'PATCH',
+        response: ({ options }) => {
+          saved.push(JSON.parse(options.body))
+          return jsonResponse({ data: { scope_names: [], editable: true } })
+        },
+      },
+    ])
+    await user.click(await screen.findByRole('button', { name: 'More actions' }))
+    await user.click(await screen.findByRole('button', { name: 'Change Data Access' }))
+    await user.click(await screen.findByRole('checkbox', { name: /View student profiles/ }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0].scope_names.sort()).toEqual(['application_entitlements:read', 'application_permissions:write', 'students:read'])
   })
 })

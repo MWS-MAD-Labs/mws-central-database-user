@@ -129,12 +129,12 @@ export function AppAccessPage() {
         }
       />
 
-      {setupQuery.data && !setupQuery.data.application.published ? (
+      {setupQuery.data && stepsDone(buildSteps(setupQuery.data)) < buildSteps(setupQuery.data).length ? (
         <div role="note" className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#d8b45b] bg-[#fff8e8] px-5 py-3 text-sm text-[#745716]">
           <span className="font-semibold">
-            Finish setup ({stepsDone(buildSteps(setupQuery.data))} of 6)
+            Finish setup ({stepsDone(buildSteps(setupQuery.data))} of {buildSteps(setupQuery.data).length})
           </span>
-          <span>This application does not show in the Hub yet.</span>
+          <span>{setupQuery.data.is_hub ? "Some setup steps are still open." : "This application does not show in the Hub yet."}</span>
           <Button asChild variant="secondary" size="sm" className="ml-auto">
             <Link to={`/application-access/apps/${applicationId}/setup`}>Continue Setup</Link>
           </Button>

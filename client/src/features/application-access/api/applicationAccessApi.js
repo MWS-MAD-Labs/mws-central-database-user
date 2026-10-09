@@ -40,6 +40,15 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  // Changes what the connection of this application may read.
+  async updateConnectionScopes(applicationId, scopeNames) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/connection-scopes`, {
+      method: 'PATCH',
+      body: { scope_names: scopeNames },
+    })
+    return response.data
+  },
+
   // What stops this application from being removed, and what would go with it.
   async getRemoval(applicationId) {
     const response = await apiRequest(`${ACCESS}/apps/${applicationId}/removal`)
