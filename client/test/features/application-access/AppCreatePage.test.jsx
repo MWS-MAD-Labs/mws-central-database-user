@@ -52,6 +52,16 @@ describe('AppCreatePage', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('shows a preview of the Hub card that follows what is typed', async () => {
+    globalThis.fetch = createFetchRouter([])
+    const { user } = renderPage()
+    expect(screen.getByText('Application name')).toBeVisible()
+    await user.type(screen.getByLabelText('Name'), 'Demo App')
+    await user.type(screen.getByLabelText('Launch URL'), 'https://demo.example.com')
+    expect(screen.getByText('Demo App')).toBeVisible()
+    expect(screen.getByText('Opens https://demo.example.com')).toBeVisible()
+  })
+
   it('creates the application with its details and opens the setup steps', async () => {
     const fetchMock = createFetchRouter([
       {

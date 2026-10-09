@@ -50,14 +50,13 @@ export function AppCreatePage() {
           </Button>
         }
       />
-      <div className="max-w-2xl rounded-2xl border border-(--mws-line) bg-white p-5">
-        <AppDetailsForm
-          submitLabel="Add Application"
-          submitting={mutation.isPending}
-          onSubmit={(payload) => mutation.mutate(payload)}
-          onCancel={() => navigate(BACK)}
-        />
-      </div>
+      <AppDetailsForm
+        layout="page"
+        submitLabel="Add Application"
+        submitting={mutation.isPending}
+        onSubmit={(payload) => mutation.mutate(payload)}
+        onCancel={() => navigate(BACK)}
+      />
     </div>
   );
 }
