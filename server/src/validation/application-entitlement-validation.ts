@@ -189,6 +189,8 @@ export class ApplicationValidation {
       // Used by the controller, which makes the connection right after the application.
       connect: z.boolean().optional(),
       scope_names: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
+      // The Hub itself: its id is fixed and it has no card or address.
+      is_hub: z.boolean().optional(),
     })
     .refine((value) => value.application_id || value.name, { message: "Name is required", path: ["name"] });
 

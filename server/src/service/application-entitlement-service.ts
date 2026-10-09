@@ -12,6 +12,7 @@ import {
   type AdminUser,
   type ApplicationEntitlement,
 } from "../generated/prisma/client";
+import { hubApplicationId } from "../constants/hub-application";
 import { slugifyApplicationId } from "../utils/application-id";
 import { ResponseError } from "../error/response-error";
 import { prismaClient } from "../lib/prisma";
@@ -1808,10 +1809,13 @@ export class ApplicationAccessService {
   ): Promise<ApplicationSummary> {
     assertSuperAdmin(admin);
     const parsed = Validation.validate(ApplicationValidation.CREATE, request);
-    const applicationId = parsed.application_id ?? slugifyApplicationId(parsed.name ?? "");
+    const applicationId = parsed.is_hub ? hubApplicationId() : (parsed.application_id ?? slugifyApplicationId(parsed.name ?? ""));
     if (!applicationId) throw new ResponseError(400, "Name must have at least one letter or number");
     if (applicationId === "me") throw new ResponseError(400, "This name makes a reserved id. Pick another name");
-    const input = { ...parsed, application_id: applicationId };
+    // The Hub has no card and no address.
+    const input = parsed.is_hub
+      ? { ...parsed, application_id: applicationId, description: null, icon: null, category: null, launch_url: null, logout_url: null }
+      : { ...parsed, application_id: applicationId };
     const [organization, roles, rules, entitlements, existing] = await Promise.all([
       prismaClient.applicationOrganization.count({ where: { application_id: input.application_id } }),
       prismaClient.applicationRole.count({ where: { application_id: input.application_id } }),
@@ -1820,7 +1824,7 @@ export class ApplicationAccessService {
       prismaClient.application.count({ where: { application_id: input.application_id } }),
     ]);
     if (organization + roles + rules + entitlements + existing > 0) {
-      throw new ResponseError(400, `An application with the id ${input.application_id} already exists`);
+      throw new ResponseError(400, parsed.is_hub ? "The Hub is already added" : `An application with the id ${input.application_id} already exists`);
     }
     await resolveOrganizationId(input.application_id);
     const organizationRow = await prismaClient.applicationOrganization.findUniqueOrThrow({

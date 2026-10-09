@@ -518,6 +518,30 @@ describe("application onboarding", () => {
     });
   });
 
+  describe("adding the Hub itself", () => {
+    it("takes the Hub id whatever the name is, drops the card and address, and can be added once", async () => {
+      process.env.HUB_APPLICATION_ID = appId;
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        const response = await TestRequest.post(
+          `${ACCESS}/applications`,
+          { name: "TEST MWS Hub", is_hub: true, launch_url: "https://ignored.example.com", category: "operations", description: "x" },
+          accessToken,
+        );
+        expect(response.status).toBe(200);
+        const { data } = await response.json();
+        expect(data.application_id).toBe(appId);
+        const row = await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } });
+        expect(row).toMatchObject({ name: "TEST MWS Hub", launch_url: null, category: null, description: null });
+        const again = await TestRequest.post(`${ACCESS}/applications`, { name: "Other Hub", is_hub: true }, accessToken);
+        expect(again.status).toBe(400);
+        expect(JSON.stringify(await again.json())).toContain("already added");
+      } finally {
+        delete process.env.HUB_APPLICATION_ID;
+      }
+    });
+  });
+
   describe("the Hub itself", () => {
     it("has no show in Hub step and cannot be published or removed", async () => {
       process.env.HUB_APPLICATION_ID = appId;
