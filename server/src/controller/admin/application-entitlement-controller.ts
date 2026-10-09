@@ -278,6 +278,15 @@ export class ApplicationAccessController {
     return c.json({ data: response });
   }
 
+  static async removal(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: await ApplicationOnboardingService.removalPlan(c.var.admin, requireApplicationId(c)) });
+  }
+
+  static async removeApplication(c: Context<{ Variables: AdminVariables }>) {
+    await ApplicationOnboardingService.remove(c.var.admin, requireApplicationId(c), getAuditRequestContext(c));
+    return c.json({ data: true });
+  }
+
   static async publish(c: Context<{ Variables: AdminVariables }>) {
     const response = await ApplicationOnboardingService.publish(
       c.var.admin,

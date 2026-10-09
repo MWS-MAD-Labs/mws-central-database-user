@@ -34,13 +34,21 @@ export type ApplicationDetail = {
 export type SetupStatus = {
   application: ApplicationDetail;
   organization_id: string;
-  connection: { client_id: string | null; created: boolean; last_used_at: string | null };
+  connection: { client_id: string | null; created: boolean; created_at: string | null; last_used_at: string | null };
   permissions: { count: number; synced_at: string | null };
   roles: { active_count: number };
   groups: { active_count: number };
   can_publish: boolean;
   missing: string[];
 };
+
+export type RemovalPlan = {
+  can_remove: boolean;
+  blockers: string[];
+  will_delete: { roles: number; groups: number; permissions: number; clients: number };
+};
+
+const RECENT_USE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type ConnectResponse = {
   client: ApiClientCreatedResponse;
@@ -173,6 +181,7 @@ export class ApplicationOnboardingService {
       connection: {
         client_id: client?.id ?? null,
         created: Boolean(client),
+        created_at: client ? client.created_at.toISOString() : null,
         last_used_at: lastUsed ? lastUsed.toISOString() : null,
       },
       permissions: { count: permissionCount, synced_at: latestPermission._max.synced_at?.toISOString() ?? null },
@@ -286,6 +295,81 @@ export class ApplicationOnboardingService {
       user_agent: context.user_agent,
     });
     return toDetail(after);
+  }
+
+  // What stops this application from being removed, and what would go with it.
+  static async removalPlan(admin: AdminUser, applicationId: string): Promise<RemovalPlan> {
+    assertSuperAdmin(admin);
+    const app = await findApplication(applicationId);
+    const [people, roles, groups, permissions, clients] = await Promise.all([
+      prismaClient.applicationEntitlement.count({ where: { application_id: applicationId } }),
+      prismaClient.applicationRole.count({ where: { application_id: applicationId } }),
+      prismaClient.applicationAccessRule.count({ where: { application_id: applicationId } }),
+      prismaClient.applicationPermission.count({ where: { application_id: applicationId } }),
+      prismaClient.apiClient.findMany({
+        where: { profile: { code: applicationId }, is_active: true },
+        include: { credentials: { select: { last_used_at: true } } },
+      }),
+    ]);
+    const since = Date.now() - RECENT_USE_MS;
+    const recentlyUsed = clients.some((client) =>
+      [client.last_used_at, ...client.credentials.map((credential) => credential.last_used_at)].some(
+        (date) => date && date.getTime() > since,
+      ),
+    );
+
+    const blockers: string[] = [];
+    if (app.published) blockers.push("It is showing in the Hub. Hide it from the Hub first.");
+    if (people > 0) {
+      blockers.push(`${people} ${people === 1 ? "person has" : "people have"} access to it. Remove that access first.`);
+    }
+    if (recentlyUsed) blockers.push("Its token was used in the last 30 days, so the application is still running.");
+    return {
+      can_remove: blockers.length === 0,
+      blockers,
+      will_delete: { roles, groups, permissions, clients: clients.length },
+    };
+  }
+
+  // Deletes the application and what only belongs to it. Its API clients are revoked, not deleted, so the audit trail stays.
+  static async remove(admin: AdminUser, applicationId: string, context: AuditRequestContext = {}): Promise<void> {
+    const plan = await this.removalPlan(admin, applicationId);
+    if (!plan.can_remove) throw new ResponseError(400, plan.blockers.join(" "));
+    const app = await findApplication(applicationId);
+
+    const clients = await prismaClient.apiClient.findMany({
+      where: { profile: { code: applicationId } },
+      select: { id: true, name: true, is_active: true },
+    });
+    for (const client of clients) {
+      if (client.is_active) await ApiClientService.revoke(admin, { id: client.id }, context);
+      // Frees the name, so adding the application again can make a new connection.
+      await prismaClient.apiClient.update({
+        where: { id: client.id },
+        data: { name: `${client.name} (removed ${new Date().toISOString()})` },
+      });
+    }
+
+    await prismaClient.$transaction(async (tx) => {
+      await tx.applicationAccessRule.deleteMany({ where: { application_id: applicationId } });
+      await tx.applicationRole.deleteMany({ where: { application_id: applicationId } });
+      await tx.applicationPermission.deleteMany({ where: { application_id: applicationId } });
+      await tx.applicationOrganization.deleteMany({ where: { application_id: applicationId } });
+      await tx.application.delete({ where: { id: app.id } });
+      await AuditService.record(
+        {
+          action: AuditAction.APPLICATION_DELETE,
+          source: AuditSource.UI,
+          entity_type: "Application",
+          entity_id: app.id,
+          admin_id: admin.id,
+          old_values: { ...toDetail(app), ...plan.will_delete },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
   }
 
   // What the Hub reads: published applications only, nothing about people.

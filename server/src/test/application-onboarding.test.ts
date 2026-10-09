@@ -10,10 +10,11 @@ const RULES = "/api/admin/application-access-rules";
 
 describe("application onboarding", () => {
   let appId: string;
+  let master: Awaited<ReturnType<typeof MasterDataTest.create>>;
 
   beforeEach(async () => {
     appId = `test-onb-${randomBytes(4).toString("hex")}`;
-    await MasterDataTest.create();
+    master = await MasterDataTest.create();
   });
 
   afterEach(async () => {
@@ -85,7 +86,7 @@ describe("application onboarding", () => {
     const setup = async () => (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
 
     let status = await setup();
-    expect(status.connection).toEqual({ client_id: null, created: false, last_used_at: null });
+    expect(status.connection).toEqual({ client_id: null, created: false, created_at: null, last_used_at: null });
     expect(status.permissions.count).toBe(0);
     expect(status.can_publish).toBe(false);
     expect(status.missing).toEqual(["permissions", "roles", "groups"]);
@@ -223,5 +224,107 @@ describe("application onboarding", () => {
     } finally {
       await prismaClient.application.deleteMany({ where: { application_id: draft } });
     }
+  });
+
+  describe("removing an application", () => {
+    const removal = (accessToken: string) => TestRequest.get(`${ACCESS}/apps/${appId}/removal`, accessToken);
+    const remove = (accessToken: string) => TestRequest.delete(`${ACCESS}/apps/${appId}`, accessToken);
+
+    it("is Super Admin only", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken);
+      const { accessToken: dbAdmin } = await AdminUserTest.createDatabaseAdmin();
+      expect((await removal(dbAdmin)).status).toBe(403);
+      expect((await remove(dbAdmin)).status).toBe(403);
+    });
+
+    it("is refused while it shows in the Hub", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken);
+      await prismaClient.application.update({ where: { application_id: appId }, data: { published: true } });
+      const plan = (await (await removal(accessToken)).json()).data;
+      expect(plan.can_remove).toBe(false);
+      expect(plan.blockers.join(" ")).toContain("Hub");
+      expect((await remove(accessToken)).status).toBe(400);
+      expect(await prismaClient.application.count({ where: { application_id: appId } })).toBe(1);
+    });
+
+    it("is refused while people still have access, naming how many", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken);
+      const { EmployeeTest } = await import("./test-utils");
+      const person = await EmployeeTest.create({
+        email: "test_onb_person@millennia21.id",
+        unitId: master.unit.id,
+        jobPositionId: master.position.id,
+        jobLevelId: master.level.id,
+        buildingId: master.building.id,
+      });
+      await prismaClient.applicationRole.create({ data: { application_id: appId, key: "STAFF", label: "Staff", permissions: [] } });
+      const organization = await prismaClient.applicationOrganization.findUniqueOrThrow({ where: { application_id: appId } });
+      await prismaClient.applicationEntitlement.create({
+        data: { person_id: person.id, application_id: appId, organization_id: organization.organization_id, role: "STAFF" },
+      });
+      try {
+        const plan = (await (await removal(accessToken)).json()).data;
+        expect(plan.can_remove).toBe(false);
+        expect(plan.blockers.join(" ")).toContain("1 person has access");
+        expect((await remove(accessToken)).status).toBe(400);
+      } finally {
+        await prismaClient.applicationEntitlement.deleteMany({ where: { application_id: appId } });
+        await EmployeeTest.delete();
+      }
+    });
+
+    it("is refused while its token was used lately, and allowed once it is old", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken);
+      const { data } = await (await TestRequest.post(`${ACCESS}/apps/${appId}/connect`, {}, accessToken)).json();
+      await TestRequest.get(`/api/internal/applications`, undefined, { Authorization: `Bearer ${data.token}` });
+      const plan = (await (await removal(accessToken)).json()).data;
+      expect(plan.can_remove).toBe(false);
+      expect(plan.blockers.join(" ")).toContain("30 days");
+
+      const old = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
+      await prismaClient.apiClient.updateMany({ where: { profile: { code: appId } }, data: { last_used_at: old } });
+      await prismaClient.apiClientCredential.updateMany({ where: { client: { profile: { code: appId } } }, data: { last_used_at: old } });
+      expect((await (await removal(accessToken)).json()).data.can_remove).toBe(true);
+    });
+
+    it("removes what belongs to the application, revokes its client and can be added again", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken);
+      const { data } = await (await TestRequest.post(`${ACCESS}/apps/${appId}/connect`, {}, accessToken)).json();
+      await prismaClient.applicationPermission.create({ data: { application_id: appId, key: "app.use", source: "MANIFEST" } });
+      await TestRequest.post(ROLES, { application_id: appId, key: "STAFF", label: "Staff", permissions: ["app.use"], allows_employees: true }, accessToken);
+      await TestRequest.post(RULES, { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF" }, accessToken);
+      const old = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
+      await prismaClient.apiClient.updateMany({ where: { profile: { code: appId } }, data: { last_used_at: old } });
+      await prismaClient.apiClientCredential.updateMany({ where: { client: { profile: { code: appId } } }, data: { last_used_at: old } });
+
+      const plan = (await (await removal(accessToken)).json()).data;
+      expect(plan.will_delete).toEqual({ roles: 1, groups: 1, permissions: 1, clients: 1 });
+      expect((await remove(accessToken)).status).toBe(200);
+
+      expect(await prismaClient.application.count({ where: { application_id: appId } })).toBe(0);
+      expect(await prismaClient.applicationRole.count({ where: { application_id: appId } })).toBe(0);
+      expect(await prismaClient.applicationAccessRule.count({ where: { application_id: appId } })).toBe(0);
+      expect(await prismaClient.applicationPermission.count({ where: { application_id: appId } })).toBe(0);
+      expect(await prismaClient.applicationOrganization.count({ where: { application_id: appId } })).toBe(0);
+      const clients = await prismaClient.apiClient.findMany({ where: { profile: { code: appId } } });
+      expect(clients).toHaveLength(1);
+      expect(clients[0]!.is_active).toBe(false);
+      expect(await prismaClient.auditLog.count({ where: { action: "APPLICATION_DELETE", entity_type: "Application" } })).toBe(1);
+
+      // The old token no longer works and the list no longer has it.
+      const dead = await TestRequest.get(`/api/internal/applications`, undefined, { Authorization: `Bearer ${data.token}` });
+      expect(dead.status).toBe(401);
+      const list = (await (await TestRequest.get(`${ACCESS}/applications?search=${appId}`, accessToken)).json()).data;
+      expect(list).toHaveLength(0);
+
+      // Same id again, with a new connection.
+      expect((await create(accessToken)).status).toBe(200);
+      expect((await TestRequest.post(`${ACCESS}/apps/${appId}/connect`, {}, accessToken)).status).toBe(200);
+    });
   });
 });
