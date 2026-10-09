@@ -27,6 +27,23 @@ Authorization: Bearer {CENTRAL_DATA_API_TOKEN}
           <p className="mt-2 text-(--mws-muted)">Exima and Hub already do this on boot, and a new application can copy them.</p>
         </section>
         <section>
+          <h3 className="font-display font-bold">Test The Connection</h3>
+          <p className="mt-1 text-(--mws-muted)">
+            No application running yet? Run this in a terminal where the .env values are loaded. It sends one permission and
+            marks the connection and the permissions as received.
+          </p>
+          <pre className="mt-2 overflow-x-auto rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3 font-mono text-xs">
+{`curl -X PUT "$CENTRAL_DATA_API_BASE_URL/api/internal/application-permissions/me" \\
+  -H "Authorization: Bearer $CENTRAL_DATA_API_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"permissions":[{"key":"app.use","description":"Open the app"}]}'`}
+          </pre>
+          <p className="mt-2 text-(--mws-muted)">
+            On your machine the base URL is the local Central, for example http://localhost:3000. In production it is the
+            production Central.
+          </p>
+        </section>
+        <section>
           <h3 className="font-display font-bold">3. Deploy or run it</h3>
           <p className="mt-1 text-(--mws-muted)">
             The first call marks the connection as connected and the permissions as received. This page checks every few

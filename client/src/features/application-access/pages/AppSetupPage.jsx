@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
+import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
@@ -132,16 +133,14 @@ export function AppSetupPage() {
     if (step.status === "locked") return null;
     const current = step.status === "current";
     const quiet = (to, label) => (
-      <Button asChild variant="ghost" size="sm">
+      <TextAction asChild>
         <Link to={to}>{label}</Link>
-      </Button>
+      </TextAction>
     );
     switch (step.id) {
       case "connect":
         return setup.connection.created ? (
-          <Button type="button" variant="ghost" size="sm" onClick={() => setRotating(true)}>
-            Rotate Token
-          </Button>
+          <TextAction onClick={() => setRotating(true)}>Rotate Token</TextAction>
         ) : (
           <Button type="button" loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
             Create Connection
@@ -170,9 +169,9 @@ export function AppSetupPage() {
         );
       case "hub":
         return step.done ? (
-          <Button type="button" variant="ghost" size="sm" loading={publishing} onClick={() => publishMutation.mutate(false)}>
+          <TextAction loading={publishing} onClick={() => publishMutation.mutate(false)}>
             Hide From Hub
-          </Button>
+          </TextAction>
         ) : (
           <Button type="button" loading={publishing} disabled={!setup.can_publish || !setup.application.launch_url} onClick={() => publishMutation.mutate(true)}>
             Show In Hub
@@ -291,6 +290,9 @@ export function AppSetupPage() {
                   <li>Make sure the application sends its permissions when it starts.</li>
                   <li>Deploy it, or run it locally with those values.</li>
                 </ol>
+                <p className="mt-2 text-xs text-(--mws-muted)">
+                  Cannot run the application yet? The setup guide has one command that does the same from a terminal.
+                </p>
                 <p className="mt-2 text-xs text-(--mws-muted)">This page checks every few seconds and updates by itself.</p>
                 {stalled ? (
                   <p role="note" className="mt-3 rounded-lg border border-[#f3d7a3] bg-[#fff8e8] px-3 py-2 text-xs text-[#805b18]">
@@ -298,9 +300,9 @@ export function AppSetupPage() {
                     the ones from the connection, and that it calls Central on start.
                   </p>
                 ) : null}
-                <Button type="button" variant="ghost" size="sm" className="mt-2" onClick={() => setGuide(true)}>
+                <TextAction className="mt-3" onClick={() => setGuide(true)}>
                   Show Setup Guide
-                </Button>
+                </TextAction>
               </div>
             ) : null}
           </li>
