@@ -72,14 +72,12 @@ describe('AppCreatePage', () => {
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'Bad <b>')
     await user.type(screen.getByLabelText('Description'), 'hello <script>')
-    await user.type(screen.getByLabelText('Icon'), 'App Window')
     await user.type(screen.getByLabelText('Launch URL'), 'exa mple.com/auth')
     await user.click(screen.getByRole('radio', { name: 'Local' }))
     await user.type(screen.getByLabelText('Logout URL'), 'exima.mws.web.id/out')
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     expect(await screen.findByText(/Use letters, numbers, spaces and/)).toBeVisible()
     expect(screen.getByText('Leave out < and > from the description.')).toBeVisible()
-    expect(screen.getByText(/letters and numbers only/)).toBeVisible()
     expect(screen.getByText('No spaces allowed.')).toBeVisible()
     expect(screen.getByText('Local addresses use http. Pick Production for a public address.')).toBeVisible()
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
@@ -126,13 +124,49 @@ describe('AppCreatePage', () => {
     expect(screen.getByLabelText('Application ID')).toHaveValue('mws-hub')
     await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
     expect(screen.getByLabelText('Application ID')).toHaveValue('hub')
+    // The Hub is always called HUB, and neither the name nor the id can be changed.
+    expect(screen.getByLabelText('Name')).toHaveValue('HUB')
+    expect(screen.getByLabelText('Name')).toBeDisabled()
+    expect(screen.getByLabelText('Application ID')).toBeDisabled()
     expect(screen.queryByLabelText('Launch URL')).toBeNull()
     expect(screen.queryByText('Hub Card')).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
-      expect(JSON.parse(call[1].body)).toEqual({ name: 'MWS Hub', is_hub: true, connect: true, scope_names: ['employees:read'] })
+      expect(JSON.parse(call[1].body)).toEqual({ name: 'HUB', is_hub: true, connect: true, scope_names: ['employees:read'] })
     })
+  })
+
+  it('picks the icon from the list the Hub knows and shows it on the preview', async () => {
+    const fetchMock = createFetchRouter([
+      SCOPES,
+      {
+        path: '/api/admin/application-access/applications',
+        method: 'POST',
+        response: () => jsonResponse({ data: { application_id: 'demo' } }),
+      },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await user.type(screen.getByLabelText('Name'), 'Demo')
+    await user.type(screen.getByLabelText('Launch URL'), 'demo.example.com/auth')
+    await user.click(screen.getByRole('button', { name: 'Icon' }))
+    expect(screen.getByRole('option', { name: 'Wallet' })).toBeVisible()
+    await user.type(screen.getByLabelText('Search icons'), 'wall')
+    expect(screen.queryByRole('option', { name: 'Archive' })).toBeNull()
+    await user.click(screen.getByRole('option', { name: 'Wallet' }))
+    expect(screen.getByRole('button', { name: 'Icon' })).toHaveTextContent('Wallet')
+    await user.click(screen.getByRole('button', { name: 'Add Application' }))
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
+      expect(JSON.parse(call[1].body).icon).toBe('Wallet')
+    })
+  })
+
+  it('starts on the default icon', async () => {
+    globalThis.fetch = createFetchRouter([SCOPES])
+    renderPage()
+    expect(screen.getByRole('button', { name: 'Icon' })).toHaveTextContent('Default (AppWindow)')
   })
 
   it('tidies extra spaces when leaving the name', async () => {

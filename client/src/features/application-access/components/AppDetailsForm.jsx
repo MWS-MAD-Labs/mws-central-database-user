@@ -3,9 +3,11 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { CheckboxField, Field, SearchableSelect, TextAreaInput, TextInput } from "../../../components/ui/FormControls.jsx";
 import { cn } from "../../../lib/cn.js";
 import { DEFAULT_SCOPES } from "../utils/connectionScopes.js";
-import { descriptionProblem, iconProblem, nameProblem, slugifyApplicationId, tidyText } from "../utils/applicationId.js";
+import { descriptionProblem, nameProblem, slugifyApplicationId, tidyText } from "../utils/applicationId.js";
 import { ENVIRONMENTS, addressProblem, environmentOfScheme, joinAddress, readAddressInput, splitAddress } from "../utils/applicationUrl.js";
+import { HUB_ICON_NAMES } from "../utils/hubIcons.js";
 import { AppCardPreview } from "./AppCardPreview.jsx";
+import { IconPicker } from "./IconPicker.jsx";
 import { NextStepsCard } from "./NextStepsCard.jsx";
 import { ScopePicker } from "./ScopePicker.jsx";
 
@@ -27,7 +29,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const [values, setValues] = useState({
     name: initial?.name ?? "",
     description: initial?.description ?? "",
-    icon: initial?.icon ?? "",
+    // An icon the Hub does not know falls back to the default, so it is not carried over.
+    icon: HUB_ICON_NAMES.includes(initial?.icon) ? initial.icon : "",
     category: initial?.category ?? "",
   });
   const [environment, setEnvironment] = useState(initial?.launch_url ? launch.environment : logout.environment);
@@ -44,6 +47,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const tidyOnBlur = (key) => () => setValues((current) => ({ ...current, [key]: tidyText(current[key]) }));
 
   const applicationId = idLocked ? initial.application_id : hub ? "hub" : slugifyApplicationId(values.name);
+  // The Hub is always called HUB.
+  const nameShown = hub ? "HUB" : values.name;
   // The Hub itself has no launch address.
   const needsLaunch = !hub;
 
@@ -56,9 +61,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   };
 
   const errors = {
-    name: nameProblem(values.name) ?? undefined,
+    name: hub ? undefined : (nameProblem(values.name) ?? undefined),
     description: descriptionProblem(values.description) ?? undefined,
-    icon: iconProblem(values.icon) ?? undefined,
     launch_url: hub ? undefined : (clash("launch") ?? addressProblem(environment, launchRest, { required: needsLaunch }) ?? undefined),
     logout_url: hub ? undefined : (clash("logout") ?? addressProblem(environment, logoutRest) ?? undefined),
   };
@@ -97,7 +101,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     if (hub) {
       onSubmit({
         ...(idLocked ? { application_id: applicationId } : {}),
-        name: tidyText(values.name),
+        name: "HUB",
         ...(layout === "page" ? { is_hub: true, connect: true, scope_names: scopeNames } : {}),
       });
       return;
@@ -122,7 +126,9 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
           <Field label="Name" required hint="Shown on the Hub card." error={shown("name")}>
             <TextInput
               aria-label="Name"
-              value={values.name}
+              value={nameShown}
+              disabled={hub}
+              readOnly={hub}
               maxLength={80}
               autoComplete="off"
               onChange={set("name")}
@@ -170,19 +176,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
               placeholder="Select a category"
             />
           </Field>
-          <Field
-            label="Icon"
-            hint="An icon name from the Hub, like AppWindow. Leave it empty for the default."
-            error={shown("icon")}
-          >
-            <TextInput
-              aria-label="Icon"
-              value={values.icon}
-              maxLength={40}
-              autoComplete="off"
-              onChange={set("icon")}
-              onBlur={() => setValues((current) => ({ ...current, icon: current.icon.trim() }))}
-            />
+          <Field label="Icon" hint="The picture on the Hub card.">
+            <IconPicker value={values.icon} onChange={(icon) => setValues((current) => ({ ...current, icon }))} />
           </Field>
         </div>
       </Section>

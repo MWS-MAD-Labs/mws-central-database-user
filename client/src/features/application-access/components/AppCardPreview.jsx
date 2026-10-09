@@ -1,8 +1,5 @@
-import { AppWindow, BookOpen, Banknote, BarChart3, Briefcase, GraduationCap, Users, Wrench } from "lucide-react";
+import { DEFAULT_ICON, HUB_ICONS } from "../utils/hubIcons.js";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
-
-// Icons the preview can draw. Any other name falls back to the default, like the Hub does.
-const ICONS = { AppWindow, BookOpen, Banknote, BarChart3, Briefcase, GraduationCap, Users, Wrench };
 
 const CATEGORY_LABELS = {
   reporting: "Reporting",
@@ -14,7 +11,7 @@ const CATEGORY_LABELS = {
 
 // A small stand-in for the card the Hub will show, so the form has something to look at.
 export function AppCardPreview({ values }) {
-  const Icon = ICONS[values.icon?.trim()] || AppWindow;
+  const Icon = HUB_ICONS[values.icon?.trim()] || HUB_ICONS[DEFAULT_ICON];
   const name = values.name?.trim();
   const description = values.description?.trim();
   const launch = values.launch_url?.trim();

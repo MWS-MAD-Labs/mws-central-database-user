@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { screen, waitFor, within } from '@testing-library/react'
-import { Link, Route, Routes } from 'react-router'
+import { Route, Routes } from 'react-router'
 import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { AppSetupPage } from '../../../src/features/application-access/pages/AppSetupPage.jsx'
@@ -328,41 +328,9 @@ describe('AppSetupPage', () => {
     expect(await screen.findByText('1 of 5 steps done.', { exact: false })).toBeVisible()
   })
 
-  it('goes back to the page it came from, or to the list when opened directly', async () => {
-    globalThis.fetch = createFetchRouter([setupRoute(makeSetup())])
-    const { user } = renderWithProviders(
-      <AuthContext.Provider value={{ user: { role: 'SUPER_ADMIN' } }}>
-        <ConfirmProvider>
-          <Routes>
-            <Route path="/application-access" element={<div>List page</div>} />
-            <Route path="/application-access/apps/demo" element={<div>App page</div>} />
-            <Route path="/application-access/apps/:applicationId/setup" element={<AppSetupPage />} />
-          </Routes>
-        </ConfirmProvider>
-      </AuthContext.Provider>,
-      { route: '/application-access/apps/demo/setup' },
-    )
-    // Opened directly: nothing before it, so Back goes to the list.
-    await user.click(await screen.findByRole('button', { name: 'Back' }))
-    expect(await screen.findByText('List page')).toBeVisible()
-  })
-  it('goes back to the application page when the setup was opened from there', async () => {
-    globalThis.fetch = createFetchRouter([setupRoute(makeSetup())])
-    const { user } = renderWithProviders(
-      <AuthContext.Provider value={{ user: { role: 'SUPER_ADMIN' } }}>
-        <ConfirmProvider>
-          <Routes>
-            <Route path="/application-access" element={<div>List page</div>} />
-            <Route path="/application-access/apps/demo" element={<Link to="/application-access/apps/demo/setup">Continue Setup</Link>} />
-            <Route path="/application-access/apps/:applicationId/setup" element={<AppSetupPage />} />
-          </Routes>
-        </ConfirmProvider>
-      </AuthContext.Provider>,
-      { route: '/application-access/apps/demo' },
-    )
-    await user.click(await screen.findByRole('link', { name: 'Continue Setup' }))
-    await user.click(await screen.findByRole('button', { name: 'Back' }))
-    expect(await screen.findByRole('link', { name: 'Continue Setup' })).toBeVisible()
-    expect(screen.queryByText('List page')).toBeNull()
+  it('goes back one level to the application page, however the setup was opened', async () => {
+    renderPage([setupRoute(makeSetup())])
+    const back = await screen.findByRole('link', { name: 'Back' })
+    expect(back).toHaveAttribute('href', '/application-access/apps/demo')
   })
 })

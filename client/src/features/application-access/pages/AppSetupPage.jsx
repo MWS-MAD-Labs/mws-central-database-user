@@ -10,7 +10,6 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { isPendingFor } from "../../../lib/mutationState.js";
-import { useBack } from "../hooks/useBack.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { AppDetailsForm } from "../components/AppDetailsForm.jsx";
@@ -41,7 +40,6 @@ export function AppSetupPage() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const navigate = useNavigate();
-  const back = useBack(BACK);
   const [connection, setConnection] = useState(null);
   const [removing, setRemoving] = useState(false);
   const [guide, setGuide] = useState(false);
@@ -203,9 +201,11 @@ export function AppSetupPage() {
         description={`${finished} of ${steps.length} steps done. You can leave and come back, this page reads the progress from the data.`}
         actions={
           <>
-            <Button type="button" variant="secondary" onClick={back}>
-              <ArrowLeft size={16} />
-              Back
+            <Button asChild variant="secondary">
+              <Link to={`/application-access/apps/${applicationId}`}>
+                <ArrowLeft size={16} />
+                Back
+              </Link>
             </Button>
             <ActionsMenu label="More actions">
               {(closeMenu) => (

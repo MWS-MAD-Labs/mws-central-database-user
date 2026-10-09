@@ -9,7 +9,6 @@ import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
-import { useBack } from "../hooks/useBack.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { AppPermissionsTab } from "../components/AppPermissionsTab.jsx";
@@ -33,7 +32,6 @@ export function AppAccessPage() {
   const { user } = useAuth();
   const { applicationId } = useParams();
   const navigate = useNavigate();
-  const back = useBack(BACK);
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -110,9 +108,11 @@ export function AppAccessPage() {
         description="Roles are defined here. Group access says who can use this application and with which role, and exceptions give someone inside a group a different role."
         actions={
           <>
-            <Button type="button" variant="secondary" onClick={back}>
-              <ArrowLeft size={16} />
-              Back
+            <Button asChild variant="secondary">
+              <Link to={BACK}>
+                <ArrowLeft size={16} />
+                Back
+              </Link>
             </Button>
             {activeTab === "access" ? (
               <Button
