@@ -139,7 +139,17 @@ export class ApplicationValidation {
     size: z.number().int().min(1).max(100).default(10),
   });
 
-  static readonly CREATE = z.object({ application_id: applicationId, ...applicationDetails });
+  static readonly CREATE = z.object({
+    application_id: applicationId,
+    ...applicationDetails,
+    // Used by the controller, which makes the connection right after the application.
+    connect: z.boolean().optional(),
+    scope_names: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
+  });
+
+  static readonly CONNECTION_SCOPES = z.object({
+    scope_names: z.array(z.string().trim().min(1).max(100)).max(50),
+  });
 
   static readonly UPDATE = z.object({
     application_id: applicationId,

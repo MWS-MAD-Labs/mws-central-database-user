@@ -226,6 +226,104 @@ describe("application onboarding", () => {
     }
   });
 
+  describe("one step from adding to the token", () => {
+    it("makes the connection with the chosen data access and hands over the token", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await create(accessToken, { connect: true, scope_names: [API_SCOPES.STUDENTS_READ] });
+      expect(response.status).toBe(200);
+      const { data } = await response.json();
+      expect(data.connection.token).toMatch(/^[\w-]+\.[\w-]+$/);
+      expect(data.connection.env.map((item: { key: string }) => item.key)).toEqual([
+        "HUB_SSO_APP_ID",
+        "CENTRAL_DATA_API_BASE_URL",
+        "CENTRAL_DATA_API_TOKEN",
+        "CENTRAL_ORGANIZATION_ID",
+      ]);
+
+      const profile = await prismaClient.applicationIntegrationProfile.findUniqueOrThrow({
+        where: { code: appId },
+        include: { scopes: { include: { scope: true } } },
+      });
+      expect(profile.scopes.map((item) => item.scope.name).sort()).toEqual(
+        [API_SCOPES.APPLICATION_ENTITLEMENTS_READ, API_SCOPES.APPLICATION_PERMISSIONS_WRITE, API_SCOPES.STUDENTS_READ].sort(),
+      );
+
+      const headers = { Authorization: `Bearer ${data.connection.token}` };
+      expect((await TestRequest.get("/api/internal/applications", undefined, headers)).status).toBe(200);
+      expect((await TestRequest.get("/api/internal/students?page=1&size=1", undefined, headers)).status).toBe(200);
+      // Employees were not asked for.
+      expect((await TestRequest.get("/api/internal/employees?page=1&size=1", undefined, headers)).status).toBe(403);
+    });
+
+    it("gives employees only when nothing else is chosen, and makes no connection when not asked", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const first = await (await create(accessToken, { connect: true })).json();
+      const profile = await prismaClient.applicationIntegrationProfile.findUniqueOrThrow({
+        where: { code: appId },
+        include: { scopes: { include: { scope: true } } },
+      });
+      expect(profile.scopes.map((item) => item.scope.name)).toContain(API_SCOPES.EMPLOYEES_READ);
+      expect(first.data.connection.token).toBeTruthy();
+
+      await prismaClient.applicationIntegrationProfile.deleteMany({ where: { code: appId } });
+      await prismaClient.application.deleteMany({ where: { application_id: appId } });
+      await prismaClient.applicationOrganization.deleteMany({ where: { application_id: appId } });
+      const bare = await (await create(accessToken)).json();
+      expect(bare.data.connection).toBeNull();
+    });
+
+    it("rejects a scope that does not exist", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await create(accessToken, { connect: true, scope_names: ["nope:read"] });
+      expect(response.status).toBe(400);
+    });
+
+    it("changes the data access later, keeping the two required scopes", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken, { connect: true });
+      const patched = await TestRequest.patch(`${ACCESS}/apps/${appId}/connection-scopes`, { scope_names: [API_SCOPES.CLASSES_READ] }, accessToken);
+      expect(patched.status).toBe(200);
+      const profile = await prismaClient.applicationIntegrationProfile.findUniqueOrThrow({
+        where: { code: appId },
+        include: { scopes: { include: { scope: true } } },
+      });
+      expect(profile.scopes.map((item) => item.scope.name).sort()).toEqual(
+        [API_SCOPES.APPLICATION_ENTITLEMENTS_READ, API_SCOPES.APPLICATION_PERMISSIONS_WRITE, API_SCOPES.CLASSES_READ].sort(),
+      );
+      const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+      expect(setup.data_access.editable).toBe(true);
+      expect(setup.data_access.scope_names).toContain(API_SCOPES.CLASSES_READ);
+    });
+
+    it("leaves a system profile alone", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken);
+      await prismaClient.applicationIntegrationProfile.create({ data: { code: appId, name: "System", is_system: true } });
+      const patched = await TestRequest.patch(`${ACCESS}/apps/${appId}/connection-scopes`, { scope_names: [API_SCOPES.CLASSES_READ] }, accessToken);
+      expect(patched.status).toBe(400);
+    });
+  });
+
+  describe("the Hub itself", () => {
+    it("has no show in Hub step and cannot be published or removed", async () => {
+      process.env.HUB_APPLICATION_ID = appId;
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        await create(accessToken);
+        const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+        expect(setup.is_hub).toBe(true);
+        expect(setup.can_publish).toBe(false);
+        expect((await TestRequest.post(`${ACCESS}/apps/${appId}/publish`, {}, accessToken)).status).toBe(400);
+        const plan = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/removal`, accessToken)).json()).data;
+        expect(plan.can_remove).toBe(false);
+        expect(plan.blockers.join(" ")).toContain("Hub's own application");
+        expect((await TestRequest.delete(`${ACCESS}/apps/${appId}`, accessToken)).status).toBe(400);
+      } finally {
+        delete process.env.HUB_APPLICATION_ID;
+      }
+    });
+  });
+
   describe("removing an application", () => {
     const removal = (accessToken: string) => TestRequest.get(`${ACCESS}/apps/${appId}/removal`, accessToken);
     const remove = (accessToken: string) => TestRequest.delete(`${ACCESS}/apps/${appId}`, accessToken);

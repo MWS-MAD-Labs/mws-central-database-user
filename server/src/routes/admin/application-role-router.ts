@@ -32,6 +32,7 @@ applicationAccessRouter.get("/scope-catalog", (c) => ApplicationAccessController
 applicationAccessRouter.get("/apps/:applicationId/role-options", (c) => ApplicationAccessController.roleOptions(c));
 applicationAccessRouter.get("/apps/:applicationId/details", (c) => ApplicationAccessController.getApplication(c));
 applicationAccessRouter.patch("/apps/:applicationId/details", (c) => ApplicationAccessController.updateApplication(c));
+applicationAccessRouter.patch("/apps/:applicationId/connection-scopes", (c) => ApplicationAccessController.updateConnectionScopes(c));
 applicationAccessRouter.get("/apps/:applicationId/removal", (c) => ApplicationAccessController.removal(c));
 applicationAccessRouter.delete("/apps/:applicationId", (c) => ApplicationAccessController.removeApplication(c));
 applicationAccessRouter.get("/apps/:applicationId/setup", (c) => ApplicationAccessController.setup(c));

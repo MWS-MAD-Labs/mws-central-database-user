@@ -190,7 +190,7 @@ export type ApplicationSummary = {
 
 export type ListApplicationsRequest = { search?: string; page?: number; size?: number };
 
-export type CreateApplicationRequest = { application_id: string } & ApplicationDetails;
+export type CreateApplicationRequest = { application_id: string; connect?: boolean; scope_names?: string[] } & ApplicationDetails;
 export type UpdateApplicationRequest = { application_id: string } & ApplicationDetails;
 
 export type ApplicationExceptionRow = {

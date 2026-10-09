@@ -1,6 +1,7 @@
 import { AdminRole, ApiCredentialStatus, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
 import type { AdminUser } from "../generated/prisma/client";
 import { API_SCOPES } from "../constants/api-scopes";
+import { hubApplicationId } from "../constants/hub-application";
 import { ResponseError } from "../error/response-error";
 import { prismaClient } from "../lib/prisma";
 import type { ApiClientCreatedResponse } from "../model/api-client-model";
@@ -10,15 +11,19 @@ import { ApplicationValidation } from "../validation/application-entitlement-val
 import { Validation } from "../validation/validation";
 import { getIntegrationEnvironment } from "../utils/integration-environment";
 import { ApiClientService } from "./api-client-service";
+import { ApplicationIntegrationProfileService } from "./application-integration-profile-service";
 import { AuditService } from "./audit-service";
 import { resolveOrganizationId } from "./application-entitlement-service";
 
 const CONNECT_PURPOSE = "app-connection";
-const CONNECT_SCOPES = [
+// Every connection can send permissions and check who may use the application.
+export const REQUIRED_CONNECT_SCOPES: string[] = [
   API_SCOPES.APPLICATION_PERMISSIONS_WRITE,
   API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
-  API_SCOPES.EMPLOYEES_READ,
 ];
+const DEFAULT_DATA_SCOPES: string[] = [API_SCOPES.EMPLOYEES_READ];
+
+const withRequiredScopes = (names?: string[]) => [...new Set([...REQUIRED_CONNECT_SCOPES, ...(names ?? DEFAULT_DATA_SCOPES)])];
 
 export type ApplicationDetail = {
   application_id: string;
@@ -40,6 +45,10 @@ export type SetupStatus = {
   groups: { active_count: number };
   can_publish: boolean;
   missing: string[];
+  // The Hub itself has no "show in Hub" step.
+  is_hub: boolean;
+  // Scopes of the connection profile. Only a profile made for this application can be changed.
+  data_access: { scope_names: string[]; editable: boolean };
 };
 
 export type RemovalPlan = {
@@ -146,8 +155,12 @@ export class ApplicationOnboardingService {
     assertSuperAdmin(admin);
     const app = await findApplication(applicationId);
     const organizationId = await resolveOrganizationId(applicationId);
-    const [client, permissionCount, latestPermission, roles, groups] = await Promise.all([
+    const [client, profile, permissionCount, latestPermission, roles, groups] = await Promise.all([
       findConnectionClient(applicationId),
+      prismaClient.applicationIntegrationProfile.findUnique({
+        where: { code: applicationId },
+        include: { scopes: { include: { scope: true } } },
+      }),
       prismaClient.applicationPermission.count({
         where: { application_id: applicationId, source: ApplicationPermissionSource.MANIFEST, deprecated_at: null },
       }),
@@ -187,8 +200,13 @@ export class ApplicationOnboardingService {
       permissions: { count: permissionCount, synced_at: latestPermission._max.synced_at?.toISOString() ?? null },
       roles: { active_count: roles },
       groups: { active_count: groups },
-      can_publish: missing.length === 0,
+      can_publish: missing.length === 0 && applicationId !== hubApplicationId(),
       missing,
+      is_hub: applicationId === hubApplicationId(),
+      data_access: {
+        scope_names: (profile?.scopes ?? []).map((item) => item.scope.name).sort(),
+        editable: Boolean(profile && !profile.is_system),
+      },
     };
   }
 
@@ -198,6 +216,7 @@ export class ApplicationOnboardingService {
     applicationId: string,
     publicUrl: string,
     context: AuditRequestContext = {},
+    scopeNames?: string[],
   ): Promise<ConnectResponse> {
     assertSuperAdmin(admin);
     const app = await findApplication(applicationId);
@@ -208,7 +227,9 @@ export class ApplicationOnboardingService {
     const organizationId = await resolveOrganizationId(applicationId);
     let profile = await prismaClient.applicationIntegrationProfile.findUnique({ where: { code: applicationId } });
     if (!profile) {
-      const scopes = await prismaClient.apiScope.findMany({ where: { name: { in: CONNECT_SCOPES } } });
+      const wanted = withRequiredScopes(scopeNames);
+      const scopes = await prismaClient.apiScope.findMany({ where: { name: { in: wanted }, is_active: true } });
+      if (scopes.length !== wanted.length) throw new ResponseError(400, "One or more scopes do not exist or are inactive");
       const created = await prismaClient.applicationIntegrationProfile.create({
         data: {
           code: applicationId,
@@ -251,11 +272,29 @@ export class ApplicationOnboardingService {
     };
   }
 
+  // Changes what a connection made for this application may read.
+  static async updateConnectionScopes(
+    admin: AdminUser,
+    applicationId: string,
+    request: { scope_names: string[] },
+  ): Promise<SetupStatus["data_access"]> {
+    assertSuperAdmin(admin);
+    const { scope_names: scopeNames } = Validation.validate(ApplicationValidation.CONNECTION_SCOPES, request);
+    await findApplication(applicationId);
+    const profile = await prismaClient.applicationIntegrationProfile.findUnique({ where: { code: applicationId } });
+    if (!profile) throw new ResponseError(404, "This application has no connection yet");
+    if (profile.is_system) throw new ResponseError(400, "The connection of this application is managed by the system");
+    const names = withRequiredScopes(scopeNames);
+    await ApplicationIntegrationProfileService.update(admin, { id: profile.id, scope_names: names });
+    return { scope_names: names.sort(), editable: true };
+  }
+
   static async publish(
     admin: AdminUser,
     applicationId: string,
     context: AuditRequestContext = {},
   ): Promise<ApplicationDetail> {
+    if (applicationId === hubApplicationId()) throw new ResponseError(400, "This is the Hub itself, it is not listed in the Hub");
     const status = await this.setup(admin, applicationId);
     if (!status.application.launch_url) status.missing.unshift("launch URL");
     if (status.missing.length > 0) {
@@ -319,6 +358,7 @@ export class ApplicationOnboardingService {
     );
 
     const blockers: string[] = [];
+    if (applicationId === hubApplicationId()) blockers.push("This is the Hub's own application. Removing it would lock everyone out of the Hub.");
     if (app.published) blockers.push("It is showing in the Hub. Hide it from the Hub first.");
     if (people > 0) {
       blockers.push(`${people} ${people === 1 ? "person has" : "people have"} access to it. Remove that access first.`);
