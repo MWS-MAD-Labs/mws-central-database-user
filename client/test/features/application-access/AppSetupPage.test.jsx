@@ -374,6 +374,12 @@ describe('AppSetupPage', () => {
     await waitFor(() => expect(retired).toEqual(['demo']))
   })
 
+  it('explains on the Hub itself why it has no Retire or Delete', async () => {
+    renderPage([setupRoute(makeSetup({ is_hub: true, removal: { can_remove: false, retire_available: false } }))])
+    expect(await screen.findByText('This is the Hub itself.')).toBeVisible()
+    expect(screen.getByText(/cannot be retired or deleted/)).toBeVisible()
+  })
+
   it('has no Retire in the menu for the Hub', async () => {
     const { user } = renderPage([setupRoute(makeSetup({ is_hub: true }))])
     await user.click(await screen.findByRole('button', { name: 'More actions' }))

@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Plus } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowRight, Lock, Plus } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
@@ -9,9 +9,11 @@ import { DenseTable, denseCellClass, denseRowClass } from "../../../components/u
 import { DebouncedSearchInput } from "../../../components/ui/FormControls.jsx";
 import { PageHint } from "../../../components/ui/PageHint.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { formatDateTime } from "../../../lib/format.js";
+import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { CopyableId } from "../components/CopyableId.jsx";
@@ -25,6 +27,35 @@ export function ApplicationAccessPage() {
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(10);
   const [removingId, setRemovingId] = useState(null);
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["application-access"] });
+  const retireMutation = useMutation({
+    mutationFn: (applicationId) => applicationAccessApi.retireApplication(applicationId),
+    onSuccess: () => {
+      refresh();
+      showSuccessToast("Application retired.");
+    },
+    onError: (error) => showErrorToast(error, "Could not retire this application."),
+  });
+  const restoreMutation = useMutation({
+    mutationFn: (applicationId) => applicationAccessApi.restoreApplication(applicationId),
+    onSuccess: () => {
+      refresh();
+      showSuccessToast("Application restored. Create a new connection to use it again.");
+    },
+    onError: (error) => showErrorToast(error, "Could not restore this application."),
+  });
+
+  async function retire(row) {
+    const confirmed = await confirm({
+      title: "Retire Application",
+      description: `${row.name} will stop working: its token is revoked, it disappears from the Hub and nobody has access. Nothing is deleted, and you can restore it later.`,
+      confirmLabel: "Retire",
+      tone: "danger",
+    });
+    if (confirmed) retireMutation.mutate(row.application_id);
+  }
 
   const query = useQuery({
     queryKey: ["application-access", "applications", { search, page, size }],
@@ -103,13 +134,24 @@ export function ApplicationAccessPage() {
           }
         >
           {rows.map((row) => (
-            <tr key={row.application_id} className={denseRowClass}>
+            <tr
+              key={row.application_id}
+              className={
+                row.is_hub
+                  ? "border-t border-l-4 border-(--mws-line) border-l-(--mws-burgundy) bg-[#7E15180A] hover:bg-[#7E151812]"
+                  : denseRowClass
+              }
+            >
               <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>
                 {row.application_id}
                 {row.is_hub ? (
-                  <StatusBadge tone="neutral" className="ml-2">
-                    Hub
-                  </StatusBadge>
+                  <span
+                    title="The Hub itself. It cannot be retired or deleted."
+                    className="ml-2 inline-flex items-center gap-1 rounded-full bg-(--mws-burgundy) px-2 py-0.5 align-middle text-[11px] font-bold text-white"
+                  >
+                    <Lock size={11} aria-hidden="true" />
+                    Core
+                  </span>
                 ) : null}
                 {row.retired ? (
                   <StatusBadge tone="red" className="ml-2">
@@ -156,15 +198,41 @@ export function ApplicationAccessPage() {
                         Setup Steps
                       </ActionsMenuItem>
                       {row.is_hub ? null : (
-                        <ActionsMenuItem
-                          tone="danger"
-                          onClick={() => {
-                            closeMenu();
-                            setRemovingId(row.application_id);
-                          }}
-                        >
-                          Delete Application
-                        </ActionsMenuItem>
+                        <>
+                          <div className="my-1 border-t border-(--mws-line)" />
+                          {row.retired ? (
+                            <ActionsMenuItem
+                              tone="success"
+                              onClick={() => {
+                                closeMenu();
+                                restoreMutation.mutate(row.application_id);
+                              }}
+                            >
+                              Restore Application
+                            </ActionsMenuItem>
+                          ) : (
+                            <ActionsMenuItem
+                              tone="warning"
+                              onClick={() => {
+                                closeMenu();
+                                retire(row);
+                              }}
+                            >
+                              Retire Application
+                            </ActionsMenuItem>
+                          )}
+                          {row.can_remove ? (
+                            <ActionsMenuItem
+                              tone="danger"
+                              onClick={() => {
+                                closeMenu();
+                                setRemovingId(row.application_id);
+                              }}
+                            >
+                              Delete Application
+                            </ActionsMenuItem>
+                          ) : null}
+                        </>
                       )}
                     </>
                   )}

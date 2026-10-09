@@ -10,6 +10,10 @@ import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 const applications = [
   {
     application_id: 'exima',
+    name: 'Exima',
+    can_remove: false,
+    retire_available: true,
+    retired: false,
     organization_id: 'org_exima_a1b2c3',
     role_count: 3,
     active_group_count: 2,
@@ -19,7 +23,11 @@ const applications = [
   },
   {
     application_id: 'hub',
+    name: 'HUB',
     is_hub: true,
+    can_remove: false,
+    retire_available: false,
+    retired: false,
     organization_id: null,
     role_count: 0,
     active_group_count: 0,
@@ -109,7 +117,8 @@ describe('ApplicationAccessPage', () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
     const hubRow = (await screen.findByRole('button', { name: 'Actions for hub' })).closest('tr')
-    expect(within(hubRow).getByText('Hub')).toBeVisible()
+    expect(within(hubRow).getByText('Core')).toBeVisible()
+    expect(within(hubRow).getByTitle('The Hub itself. It cannot be retired or deleted.')).toBeVisible()
     await user.click(within(hubRow).getByRole('button', { name: 'Actions for hub' }))
     expect(await screen.findByRole('button', { name: 'Setup Steps' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Delete Application' })).toBeNull()
@@ -117,7 +126,41 @@ describe('ApplicationAccessPage', () => {
     await user.click(document.body)
     const eximaRow = screen.getByRole('button', { name: 'Actions for exima' }).closest('tr')
     await user.click(within(eximaRow).getByRole('button', { name: 'Actions for exima' }))
-    expect(await screen.findByRole('button', { name: 'Delete Application' })).toBeVisible()
+    expect(await screen.findByRole('button', { name: 'Retire Application' })).toBeVisible()
+  })
+
+  describe('the row menu offers what applies', () => {
+    async function menuFor(row) {
+      const rows = [{ ...applications[0], ...row }]
+      globalThis.fetch = createFetchRouter([
+        ...routes().slice(0, 0),
+        { path: /\/api\/admin\/application-access\/applications/, method: 'GET', response: () => jsonResponse({ data: rows, paging }) },
+        { path: '/api/admin/application-access/apps/exima/restore', method: 'POST', response: () => jsonResponse({ data: {} }) },
+      ])
+      const { user } = renderPage()
+      await user.click(await screen.findByRole('button', { name: 'Actions for exima' }))
+      return user
+    }
+
+    it('offers Retire alone while it cannot be deleted', async () => {
+      await menuFor({})
+      expect(await screen.findByRole('button', { name: 'Retire Application' })).toBeVisible()
+      expect(screen.queryByRole('button', { name: 'Delete Application' })).toBeNull()
+    })
+
+    it('offers Retire and Delete when it can be deleted', async () => {
+      await menuFor({ can_remove: true, retire_available: false })
+      expect(await screen.findByRole('button', { name: 'Retire Application' })).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Delete Application' })).toBeVisible()
+    })
+
+    it('offers Restore and Delete for a retired application, and restores it', async () => {
+      const user = await menuFor({ retired: true, can_remove: true, retire_available: false })
+      expect(screen.queryByRole('button', { name: 'Retire Application' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Delete Application' })).toBeVisible()
+      await user.click(await screen.findByRole('button', { name: 'Restore Application' }))
+      await waitFor(() => expect(globalThis.fetch.mock.calls.some(([url, options]) => String(url).endsWith('/restore') && options?.method === 'POST')).toBe(true))
+    })
   })
 
   it('opens the page of an application from Manage', async () => {

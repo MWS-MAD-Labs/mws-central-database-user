@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, Check, Circle, Eye, EyeOff, Loader2, Lock, Pencil, Plus, RotateCw } from "lucide-react";
+import { ArrowLeft, BookOpen, ShieldCheck, Check, Circle, Eye, EyeOff, Loader2, Lock, Pencil, Plus, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
@@ -319,6 +319,15 @@ export function AppSetupPage() {
           </>
         }
       />
+
+      {setup.is_hub ? (
+        <div role="note" className="flex items-center gap-3 rounded-2xl border border-[#d9a9ac] bg-[#7E15180D] px-5 py-3 text-sm text-(--mws-burgundy)">
+          <ShieldCheck size={18} aria-hidden="true" className="shrink-0" />
+          <span>
+            <span className="font-semibold">This is the Hub itself.</span> It is always on, so it cannot be retired or deleted.
+          </span>
+        </div>
+      ) : null}
 
       {retired ? (
         <div role="note" className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#e3a2a5] bg-[#fff0f1] px-5 py-3 text-sm text-[#a43c41]">

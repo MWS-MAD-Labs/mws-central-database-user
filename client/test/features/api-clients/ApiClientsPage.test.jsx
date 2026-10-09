@@ -121,6 +121,33 @@ describe('ApiClientsPage as a reference', () => {
     await waitFor(() => expect(revoked).toEqual(['legacy-1']))
   })
 
+  it('lets the rotation mode be chosen and says what happens', async () => {
+    const rotations = []
+    const { user } = renderPage(
+      [
+        {
+          path: '/api/admin/api-clients/rotate/legacy-1',
+          method: 'PATCH',
+          response: ({ options }) => {
+            rotations.push(JSON.parse(options.body))
+            return jsonResponse({ data: { ...legacyClient, token: 'mws_new.secret', credentials: [] } })
+          },
+        },
+      ],
+      { profiles: [owned], clients: [legacyClient] },
+    )
+    await user.click(await screen.findByRole('button', { name: /Actions for Old Reporting Tool/ }))
+    await user.click(await screen.findByRole('button', { name: 'Rotate Credentials' }))
+    expect(screen.getByRole('radio', { name: /Graceful Rotation/ })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByText('Recommended')).toBeVisible()
+    expect(screen.getByText(/keeps working for 24 hours/)).toBeVisible()
+    await user.click(screen.getByRole('radio', { name: /Emergency Immediate/ }))
+    expect(screen.getByText(/stops working at once/)).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Rotate' }))
+    await user.click(await screen.findByRole('button', { name: 'Rotate Immediately' }))
+    await waitFor(() => expect(rotations).toEqual([{ immediate: true, grace_hours: 0 }]))
+  })
+
   it('rotates a client token and shows the new one', async () => {
     const { user } = renderPage(
       [
