@@ -707,7 +707,7 @@ describe("application baseline access rules", () => {
       { person_id: second.id, application_id: appId, role: "ADMIN", organization_id: "typed-by-hand" },
       accessToken,
     )).json();
-    expect(one.data.organization_id).toMatch(new RegExp(`^org_${appId.replace(/-/g, "_")}_[0-9a-f]{6}$`));
+    expect(one.data.organization_id).toMatch(new RegExp(`^org_${appId.replace(/-/g, "_")}_[a-z2-7]{20}$`));
     // Whatever is typed is ignored, the application's own organization is used.
     expect(two.data.organization_id).toBe(one.data.organization_id);
 

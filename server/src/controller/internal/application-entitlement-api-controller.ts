@@ -1,3 +1,4 @@
+import { ApplicationOnboardingService } from "../../service/application-onboarding-service";
 import type { Context } from "hono";
 import { ResponseError } from "../../error/response-error";
 import { ApplicationPermissionService } from "../../service/application-permission-service";
@@ -53,6 +54,10 @@ export class ApplicationEntitlementApiController {
 
   static async applications(c: Context<{ Variables: ApiClientVariables }>) {
     return c.json({ success: true, data: await ApplicationAccessService.applicationIds() });
+  }
+
+  static async publishedApplications(c: Context<{ Variables: ApiClientVariables }>) {
+    return c.json({ success: true, data: await ApplicationOnboardingService.listPublished() });
   }
 
   static async syncPermissions(c: Context<{ Variables: ApiClientVariables }>) {

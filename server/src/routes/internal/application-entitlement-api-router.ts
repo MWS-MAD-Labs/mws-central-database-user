@@ -49,3 +49,11 @@ applicationPermissionApiRouter.get(
   requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
   (c) => ApplicationEntitlementApiController.registeredPermissions(c),
 );
+
+export const applicationCatalogApiRouter = new Hono<{ Variables: ApiClientVariables }>();
+
+applicationCatalogApiRouter.get(
+  "/",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.publishedApplications(c),
+);

@@ -11,6 +11,27 @@ const applicationId = z
     "Application ID must start with a lowercase letter and contain only lowercase letters, numbers, underscores, or hyphens",
   );
 
+const optionalUrl = (label: string) =>
+  z
+    .string()
+    .trim()
+    .max(300, `${label} is too long`)
+    .refine((value) => /^https?:\/\/\S+$/i.test(value), `${label} must start with http:// or https://`)
+    .optional()
+    .nullable();
+
+const optionalText = (max: number, label: string) =>
+  z.string().trim().max(max, `${label} is too long`).optional().nullable();
+
+const applicationDetails = {
+  name: z.string().trim().min(1, "Name is required").max(80, "Name is too long").optional(),
+  description: optionalText(300, "Description"),
+  icon: optionalText(40, "Icon"),
+  category: optionalText(60, "Category"),
+  launch_url: optionalUrl("Launch URL"),
+  logout_url: optionalUrl("Logout URL"),
+};
+
 const nonemptyId = (label: string) =>
   z.string().trim().min(1, `${label} is required`).max(128, `${label} is too long`);
 
@@ -118,7 +139,12 @@ export class ApplicationValidation {
     size: z.number().int().min(1).max(100).default(10),
   });
 
-  static readonly CREATE = z.object({ application_id: applicationId });
+  static readonly CREATE = z.object({ application_id: applicationId, ...applicationDetails });
+
+  static readonly UPDATE = z.object({
+    application_id: applicationId,
+    ...applicationDetails,
+  });
 
   static readonly EXCEPTIONS = z.object({
     // A group id, or "other" for access no group covers.

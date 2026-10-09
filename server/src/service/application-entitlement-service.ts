@@ -127,8 +127,14 @@ export function clearActiveSnapshotsForTest() {
   activeSnapshots.clear();
 }
 
+const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
+
+// 20 random base32 characters (100 bits). It rides in tokens, so it is long enough to not be guessed.
 function generateOrganizationId(applicationId: string): string {
-  return `org_${applicationId.replace(/-/g, "_")}_${randomBytes(3).toString("hex")}`;
+  const bytes = randomBytes(20);
+  let code = "";
+  for (let i = 0; i < 20; i++) code += BASE32[bytes[i]! % 32];
+  return `org_${applicationId.replace(/-/g, "_")}_${code}`;
 }
 
 // One organization per application, created the first time it is needed and
@@ -1700,12 +1706,13 @@ function remainingScope(
 export class ApplicationAccessService {
   // Ids of the applications set up in Application Access, for other services to check an id against.
   static async applicationIds(): Promise<string[]> {
-    const [roles, organizations, groups] = await Promise.all([
+    const [roles, organizations, groups, apps] = await Promise.all([
       prismaClient.applicationRole.findMany({ distinct: ["application_id"], select: { application_id: true } }),
       prismaClient.applicationOrganization.findMany({ select: { application_id: true } }),
       prismaClient.applicationAccessRule.findMany({ distinct: ["application_id"], select: { application_id: true } }),
+      prismaClient.application.findMany({ select: { application_id: true } }),
     ]);
-    return [...new Set([...roles, ...organizations, ...groups].map((row) => row.application_id))].sort();
+    return [...new Set([...roles, ...organizations, ...groups, ...apps].map((row) => row.application_id))].sort();
   }
 
   // One row per application with how much access it has, paged.
@@ -1718,7 +1725,7 @@ export class ApplicationAccessService {
     const page = filters.page ?? 1;
     const size = filters.size ?? 10;
 
-    const [roles, organizations, groups, exceptions, blocked, ruleDates, entitlementDates] = await Promise.all([
+    const [roles, organizations, groups, exceptions, blocked, ruleDates, entitlementDates, catalog] = await Promise.all([
       prismaClient.applicationRole.groupBy({
         by: ["application_id"],
         _count: { _all: true },
@@ -1742,8 +1749,10 @@ export class ApplicationAccessService {
       }),
       prismaClient.applicationAccessRule.groupBy({ by: ["application_id"], _max: { updated_at: true } }),
       prismaClient.applicationEntitlement.groupBy({ by: ["application_id"], _max: { updated_at: true } }),
+      prismaClient.application.findMany(),
     ]);
     const ids = new Set([
+      ...catalog.map((row) => row.application_id),
       ...roles.map((row) => row.application_id),
       ...organizations.map((row) => row.application_id),
       ...groups.map((row) => row.application_id),
@@ -1763,8 +1772,11 @@ export class ApplicationAccessService {
           organization?.updated_at,
         ].filter((date): date is Date => Boolean(date));
         const latest = dates.sort((left, right) => right.getTime() - left.getTime())[0];
+        const app = catalog.find((row) => row.application_id === applicationId);
         return {
           application_id: applicationId,
+          name: app?.name ?? applicationId,
+          published: app?.published ?? false,
           organization_id: organization?.organization_id ?? null,
           role_count: roles.find((row) => row.application_id === applicationId)?._count._all ?? 0,
           active_group_count: groups.find((row) => row.application_id === applicationId)?._count._all ?? 0,
@@ -1793,33 +1805,50 @@ export class ApplicationAccessService {
   ): Promise<ApplicationSummary> {
     assertSuperAdmin(admin);
     const input = Validation.validate(ApplicationValidation.CREATE, request);
-    const [organization, roles, rules, entitlements] = await Promise.all([
+    const [organization, roles, rules, entitlements, existing] = await Promise.all([
       prismaClient.applicationOrganization.count({ where: { application_id: input.application_id } }),
       prismaClient.applicationRole.count({ where: { application_id: input.application_id } }),
       prismaClient.applicationAccessRule.count({ where: { application_id: input.application_id } }),
       prismaClient.applicationEntitlement.count({ where: { application_id: input.application_id } }),
+      prismaClient.application.count({ where: { application_id: input.application_id } }),
     ]);
-    if (organization + roles + rules + entitlements > 0) {
+    if (organization + roles + rules + entitlements + existing > 0) {
       throw new ResponseError(400, `Application ${input.application_id} already exists`);
     }
     await resolveOrganizationId(input.application_id);
     const organizationRow = await prismaClient.applicationOrganization.findUniqueOrThrow({
       where: { application_id: input.application_id },
     });
-    const organizationId = organizationRow.organization_id;
+    const app = await prismaClient.application.create({
+      data: {
+        application_id: input.application_id,
+        name: input.name ?? input.application_id,
+        description: input.description || null,
+        icon: input.icon || null,
+        category: input.category || null,
+        launch_url: input.launch_url || null,
+        logout_url: input.logout_url || null,
+      },
+    });
     await AuditService.record({
       action: AuditAction.APPLICATION_CREATE,
       source: AuditSource.UI,
       entity_type: "ApplicationOrganization",
       entity_id: organizationRow.id,
       admin_id: admin.id,
-      new_values: { application_id: input.application_id, organization_id: organizationId },
+      new_values: {
+        application_id: input.application_id,
+        organization_id: organizationRow.organization_id,
+        name: app.name,
+      },
       ip_address: context.ip_address,
       user_agent: context.user_agent,
     });
     return {
       application_id: input.application_id,
-      organization_id: organizationId,
+      name: app.name,
+      published: false,
+      organization_id: organizationRow.organization_id,
       role_count: 0,
       active_group_count: 0,
       exception_count: 0,

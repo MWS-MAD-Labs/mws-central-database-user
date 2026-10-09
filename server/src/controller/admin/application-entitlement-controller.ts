@@ -1,7 +1,9 @@
+import { ApplicationOnboardingService } from "../../service/application-onboarding-service";
 import type { Context } from "hono";
 import type {
   BulkGrantApplicationEntitlementRequest,
   CreateApplicationRequest,
+  UpdateApplicationRequest,
   CreateApplicationRoleRequest,
   CreateApplicationAccessRuleRequest,
   UpdateApplicationAccessRuleRequest,
@@ -26,6 +28,12 @@ import { getAuditRequestContext } from "../../utils/audit-request-context";
 function listQuery(value: string | undefined): string[] | undefined {
   const items = value?.split(",").map((item) => item.trim()).filter(Boolean);
   return items?.length ? items : undefined;
+}
+
+function requireApplicationId(c: Context<{ Variables: AdminVariables }>): string {
+  const applicationId = c.req.param("applicationId");
+  if (!applicationId) throw new ResponseError(400, "Application ID is required");
+  return applicationId;
 }
 
 export class ApplicationEntitlementController {
@@ -226,6 +234,53 @@ export class ApplicationAccessController {
     const response = await ApplicationAccessService.createApplication(
       c.var.admin,
       request,
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
+  static async getApplication(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: await ApplicationOnboardingService.get(c.var.admin, requireApplicationId(c)) });
+  }
+
+  static async updateApplication(c: Context<{ Variables: AdminVariables }>) {
+    const request = (await c.req.json()) as UpdateApplicationRequest;
+    const response = await ApplicationOnboardingService.update(
+      c.var.admin,
+      { ...request, application_id: requireApplicationId(c) },
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
+  static async setup(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: await ApplicationOnboardingService.setup(c.var.admin, requireApplicationId(c)) });
+  }
+
+  static async connect(c: Context<{ Variables: AdminVariables }>) {
+    const publicUrl = process.env.CENTRAL_API_PUBLIC_URL?.trim() || new URL(c.req.url).origin;
+    const response = await ApplicationOnboardingService.connect(
+      c.var.admin,
+      requireApplicationId(c),
+      publicUrl,
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
+  static async publish(c: Context<{ Variables: AdminVariables }>) {
+    const response = await ApplicationOnboardingService.publish(
+      c.var.admin,
+      requireApplicationId(c),
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
+  static async unpublish(c: Context<{ Variables: AdminVariables }>) {
+    const response = await ApplicationOnboardingService.unpublish(
+      c.var.admin,
+      requireApplicationId(c),
       getAuditRequestContext(c),
     );
     return c.json({ data: response });

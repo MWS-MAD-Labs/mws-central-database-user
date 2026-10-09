@@ -1635,6 +1635,23 @@ model ApplicationOrganization {
   @@map("application_organizations")
 }
 
+// What an application looks like in the Hub, and whether the Hub may show it.
+model Application {
+  id             String   @id @default(cuid())
+  application_id String   @unique
+  name           String
+  description    String?
+  icon           String?
+  category       String?
+  launch_url     String?
+  logout_url     String?
+  published      Boolean  @default(false)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@map("applications")
+}
+
 // Allowed roles per application. Entitlement roles must match a row here exactly.
 model ApplicationRole {
   id             String   @id @default(cuid())

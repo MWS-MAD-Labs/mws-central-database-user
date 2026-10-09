@@ -167,8 +167,19 @@ export function toApplicationAccessRuleResponse(
   };
 }
 
+export type ApplicationDetails = {
+  name?: string;
+  description?: string | null;
+  icon?: string | null;
+  category?: string | null;
+  launch_url?: string | null;
+  logout_url?: string | null;
+};
+
 export type ApplicationSummary = {
   application_id: string;
+  name: string;
+  published: boolean;
   organization_id: string | null;
   role_count: number;
   active_group_count: number;
@@ -179,7 +190,8 @@ export type ApplicationSummary = {
 
 export type ListApplicationsRequest = { search?: string; page?: number; size?: number };
 
-export type CreateApplicationRequest = { application_id: string };
+export type CreateApplicationRequest = { application_id: string } & ApplicationDetails;
+export type UpdateApplicationRequest = { application_id: string } & ApplicationDetails;
 
 export type ApplicationExceptionRow = {
   id: string;

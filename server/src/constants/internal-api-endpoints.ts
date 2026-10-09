@@ -102,6 +102,14 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
+    path: "/api/internal/applications",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Applications shown in the Hub",
+    group: "Application Access",
+    purpose: "Lists the applications published for the Hub, with the name, icon and launch address of each. No people are included.",
+  },
+  {
+    method: "GET",
     path: "/api/internal/application-entitlements/lookup?person_id={person_id}&application_id=exima",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
     title: "Who may use an application",
