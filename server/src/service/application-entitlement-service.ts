@@ -12,6 +12,7 @@ import {
   type AdminUser,
   type ApplicationEntitlement,
 } from "../generated/prisma/client";
+import { slugifyApplicationId } from "../utils/application-id";
 import { ResponseError } from "../error/response-error";
 import { prismaClient } from "../lib/prisma";
 import type { AuditRequestContext } from "../model/audit-log-model";
@@ -1804,7 +1805,11 @@ export class ApplicationAccessService {
     context: AuditRequestContext = {},
   ): Promise<ApplicationSummary> {
     assertSuperAdmin(admin);
-    const input = Validation.validate(ApplicationValidation.CREATE, request);
+    const parsed = Validation.validate(ApplicationValidation.CREATE, request);
+    const applicationId = parsed.application_id ?? slugifyApplicationId(parsed.name ?? "");
+    if (!applicationId) throw new ResponseError(400, "Name must have at least one letter or number");
+    if (applicationId === "me") throw new ResponseError(400, "This name makes a reserved id. Pick another name");
+    const input = { ...parsed, application_id: applicationId };
     const [organization, roles, rules, entitlements, existing] = await Promise.all([
       prismaClient.applicationOrganization.count({ where: { application_id: input.application_id } }),
       prismaClient.applicationRole.count({ where: { application_id: input.application_id } }),
@@ -1813,7 +1818,7 @@ export class ApplicationAccessService {
       prismaClient.application.count({ where: { application_id: input.application_id } }),
     ]);
     if (organization + roles + rules + entitlements + existing > 0) {
-      throw new ResponseError(400, `Application ${input.application_id} already exists`);
+      throw new ResponseError(400, `An application with the id ${input.application_id} already exists`);
     }
     await resolveOrganizationId(input.application_id);
     const organizationRow = await prismaClient.applicationOrganization.findUniqueOrThrow({

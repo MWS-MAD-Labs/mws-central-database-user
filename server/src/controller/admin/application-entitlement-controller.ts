@@ -298,6 +298,7 @@ export class ApplicationAccessController {
       c.var.admin,
       requireApplicationId(c),
       request,
+      publicBaseUrl(c),
       getAuditRequestContext(c),
     );
     return c.json({ data: response });

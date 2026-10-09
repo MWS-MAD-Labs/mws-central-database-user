@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ApplicationAudience, EmploymentType } from "../generated/prisma/client";
+import { addressProblem } from "../utils/application-id";
 
 const applicationId = z
   .string()
@@ -13,23 +14,62 @@ const applicationId = z
   // "me" means the application of the token in the internal API.
   .refine((value) => value !== "me", "Application ID \"me\" is reserved");
 
+const tidy = (value: string) => value.replace(/\s+/g, " ").trim();
+
+// An address as typed in the form: no spaces, http only for local ones, a sane length.
 const optionalUrl = (label: string) =>
   z
     .string()
     .trim()
     .max(300, `${label} is too long`)
-    .refine((value) => value === "" || /^https?:\/\/\S+$/i.test(value), `${label} must start with http:// or https://`)
+    .superRefine((value, ctx) => {
+      const problem = value === "" ? null : addressProblem(value);
+      if (problem) ctx.addIssue({ code: "custom", message: `${label}: ${problem}` });
+    })
     .optional()
     .nullable();
 
-const optionalText = (max: number, label: string) =>
-  z.string().trim().max(max, `${label} is too long`).optional().nullable();
+const CATEGORIES = ["reporting", "students", "workplace", "operations", "utilities"] as const;
 
 const applicationDetails = {
-  name: z.string().trim().min(1, "Name is required").max(80, "Name is too long").optional(),
-  description: optionalText(300, "Description"),
-  icon: optionalText(40, "Icon"),
-  category: optionalText(60, "Category"),
+  name: z
+    .string()
+    .transform(tidy)
+    .pipe(
+      z
+        .string()
+        .min(2, "Name needs at least 2 characters")
+        .max(60, "Name is too long")
+        .regex(
+          /^[\p{L}\p{N}][\p{L}\p{N} _.&()'-]*$/u,
+          "Name may only have letters, numbers, spaces and & . ( ) ' _ -",
+        ),
+    )
+    .optional(),
+  description: z
+    .string()
+    .transform(tidy)
+    .pipe(
+      z
+        .string()
+        .max(300, "Description is too long")
+        .refine((value) => !/[<>\u0000-\u001f]/.test(value), "Description cannot have < or > or control characters"),
+    )
+    .optional()
+    .nullable(),
+  icon: z
+    .string()
+    .trim()
+    .max(40, "Icon is too long")
+    .refine((value) => value === "" || /^[A-Za-z][A-Za-z0-9]*$/.test(value), "Icon may only have letters and numbers")
+    .optional()
+    .nullable(),
+  category: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || (CATEGORIES as readonly string[]).includes(value), "Pick a category from the list")
+    .optional()
+    .nullable(),
   launch_url: optionalUrl("Launch URL"),
   logout_url: optionalUrl("Logout URL"),
 };
@@ -141,13 +181,16 @@ export class ApplicationValidation {
     size: z.number().int().min(1).max(100).default(10),
   });
 
-  static readonly CREATE = z.object({
-    application_id: applicationId,
-    ...applicationDetails,
-    // Used by the controller, which makes the connection right after the application.
-    connect: z.boolean().optional(),
-    scope_names: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
-  });
+  // The id comes from the name when it is not given.
+  static readonly CREATE = z
+    .object({
+      application_id: applicationId.optional(),
+      ...applicationDetails,
+      // Used by the controller, which makes the connection right after the application.
+      connect: z.boolean().optional(),
+      scope_names: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
+    })
+    .refine((value) => value.application_id || value.name, { message: "Name is required", path: ["name"] });
 
   static readonly CONNECTION_SCOPES = z.object({
     scope_names: z.array(z.string().trim().min(1).max(100)).max(50),

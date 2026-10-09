@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { randomBytes } from "crypto";
 import { API_SCOPES } from "../constants/api-scopes";
 import { prismaClient } from "../lib/prisma";
+import { slugifyApplicationId } from "../utils/application-id";
 import { AdminUserTest, ApiClientTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const ACCESS = "/api/admin/application-access";
@@ -41,7 +42,7 @@ describe("application onboarding", () => {
 
   it("creates an application with its details and a long random organization id", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const response = await create(accessToken, { description: "Test app", icon: "Cash", category: "Finance" });
+    const response = await create(accessToken, { description: "Test app", icon: "Cash", category: "operations" });
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.data.name).toBe("TEST_Onboard");
@@ -49,7 +50,7 @@ describe("application onboarding", () => {
     expect(body.data.organization_id).toMatch(new RegExp(`^org_${appId.replace(/-/g, "_")}_[a-z2-7]{20}$`));
 
     const row = await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } });
-    expect(row).toMatchObject({ description: "Test app", icon: "Cash", category: "Finance", published: false });
+    expect(row).toMatchObject({ description: "Test app", icon: "Cash", category: "operations", published: false });
 
     expect((await create(accessToken)).status).toBe(400);
     const badUrl = await TestRequest.post(
@@ -318,6 +319,60 @@ describe("application onboarding", () => {
     });
   });
 
+  describe("the id and what is typed", () => {
+    it("makes the id from the name", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const name = `TEST Onb ${appId.slice(-4)}`;
+      const response = await TestRequest.post(`${ACCESS}/applications`, { name, launch_url: "https://onb.example.com/auth" }, accessToken);
+      expect(response.status).toBe(200);
+      const { data } = await response.json();
+      const expected = slugifyApplicationId(name);
+      expect(data.application_id).toBe(expected);
+      expect(expected).toMatch(/^test-onb-/);
+      await prismaClient.applicationOrganization.deleteMany({ where: { application_id: expected } });
+      await prismaClient.application.deleteMany({ where: { application_id: expected } });
+      await prismaClient.auditLog.deleteMany({ where: { entity_type: { in: ["Application", "ApplicationOrganization"] } } });
+    });
+
+    it("refuses a name whose id is taken, or a reserved id, or no usable letters", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken);
+      const twin = await TestRequest.post(`${ACCESS}/applications`, { name: appId.replace(/-/g, " ") }, accessToken);
+      expect(twin.status).toBe(400);
+      expect(JSON.stringify(await twin.json())).toContain("already exists");
+      expect((await TestRequest.post(`${ACCESS}/applications`, { name: "Me" }, accessToken)).status).toBe(400);
+      expect((await TestRequest.post(`${ACCESS}/applications`, { name: "---" }, accessToken)).status).toBe(400);
+    });
+
+    it("keeps symbols out of the name, description, icon and category", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const bad = async (extra: Record<string, unknown>) => (await create(accessToken, extra)).status;
+      expect(await bad({ name: "Bad <b>Name</b>" })).toBe(400);
+      expect(await bad({ name: "X" })).toBe(400);
+      expect(await bad({ description: "hello <script>" })).toBe(400);
+      expect(await bad({ icon: "App Window" })).toBe(400);
+      expect(await bad({ icon: "../x" })).toBe(400);
+      expect(await bad({ category: "Finance" })).toBe(400);
+      // Extra spaces are tidied, not refused.
+      const ok = await create(accessToken, { name: "  TEST   Spaced  Name ", description: "a   b\n c" });
+      expect(ok.status).toBe(200);
+      const row = await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } });
+      expect(row.name).toBe("TEST Spaced Name");
+      expect(row.description).toBe("a b c");
+    });
+
+    it("checks addresses: no spaces, no credentials, http only for local ones", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const status = async (launch_url: string) => (await create(accessToken, { launch_url })).status;
+      expect(await status("https://exa mple.com/auth")).toBe(400);
+      expect(await status("https://user:pass@example.com/auth")).toBe(400);
+      expect(await status("javascript:alert(1)")).toBe(400);
+      expect(await status("http://example.com/auth")).toBe(400);
+      expect(await status("https://example.com/<x>")).toBe(400);
+      expect(await status("http://localhost:3000/auth/sso")).toBe(200);
+    });
+  });
+
   describe("calling without naming the application", () => {
     it("lets the application use me for its own permissions and entitlements", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
@@ -388,7 +443,13 @@ describe("application onboarding", () => {
       const { data } = await (await create(accessToken, { connect: true })).json();
       const rotated = await TestRequest.post(`${ACCESS}/apps/${appId}/rotate`, { immediate: true }, accessToken);
       expect(rotated.status).toBe(200);
-      const next = (await rotated.json()).data.token as string;
+      const body = (await rotated.json()).data;
+      const next = body.token as string;
+      // The whole .env comes back with the new token.
+      const env = Object.fromEntries(body.env.map((item: { key: string; value: string }) => [item.key, item.value]));
+      expect(env).toMatchObject({ HUB_SSO_APP_ID: appId, CENTRAL_DATA_API_TOKEN: next });
+      expect(env.CENTRAL_DATA_API_BASE_URL).toMatch(/^https?:\/\//);
+      expect(env.CENTRAL_ORGANIZATION_ID).toMatch(/^org_/);
       expect(next).not.toBe(data.connection.token);
       // Emergency rotation stops the old token at once.
       expect((await TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${data.connection.token}` })).status).toBe(401);

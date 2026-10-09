@@ -111,6 +111,16 @@ async function findConnectionClient(applicationId: string) {
   });
 }
 
+// The four lines an application needs in its .env.
+function envValues(applicationId: string, organizationId: string, publicUrl: string, token: string) {
+  return [
+    { key: "HUB_SSO_APP_ID", value: applicationId },
+    { key: "CENTRAL_DATA_API_BASE_URL", value: publicUrl },
+    { key: "CENTRAL_DATA_API_TOKEN", value: token },
+    { key: "CENTRAL_ORGANIZATION_ID", value: organizationId },
+  ];
+}
+
 export class ApplicationOnboardingService {
   static async get(admin: AdminUser, applicationId: string): Promise<ApplicationDetail> {
     assertSuperAdmin(admin);
@@ -260,16 +270,7 @@ export class ApplicationOnboardingService {
       { viaApplication: true },
     );
 
-    return {
-      client,
-      token: client.token,
-      env: [
-        { key: "HUB_SSO_APP_ID", value: applicationId },
-        { key: "CENTRAL_DATA_API_BASE_URL", value: publicUrl },
-        { key: "CENTRAL_DATA_API_TOKEN", value: client.token },
-        { key: "CENTRAL_ORGANIZATION_ID", value: organizationId },
-      ],
-    };
+    return { client, token: client.token, env: envValues(applicationId, organizationId, publicUrl, client.token) };
   }
 
   // Changes what a connection made for this application may read.
@@ -293,13 +294,17 @@ export class ApplicationOnboardingService {
     admin: AdminUser,
     applicationId: string,
     request: { immediate?: boolean; grace_hours?: number },
+    publicUrl: string,
     context: AuditRequestContext = {},
-  ): Promise<ApiClientCreatedResponse> {
+  ): Promise<ApiClientCreatedResponse & { env: { key: string; value: string }[] }> {
     assertSuperAdmin(admin);
     await findApplication(applicationId);
     const client = await findConnectionClient(applicationId);
     if (!client) throw new ResponseError(404, "This application has no connection yet");
-    return ApiClientService.rotate(admin, { id: client.id, ...request }, context);
+    const rotated = await ApiClientService.rotate(admin, { id: client.id, ...request }, context);
+    // The new token comes with the other three values, so the whole .env can be pasted again.
+    const organizationId = await resolveOrganizationId(applicationId);
+    return { ...rotated, env: envValues(applicationId, organizationId, publicUrl, rotated.token) };
   }
 
   static async publish(
