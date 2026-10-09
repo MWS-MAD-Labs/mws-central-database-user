@@ -304,6 +304,50 @@ describe("application onboarding", () => {
     });
   });
 
+  describe("calling without naming the application", () => {
+    it("lets the application use me for its own permissions and entitlements", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const { data } = await (await create(accessToken, { connect: true })).json();
+      const headers = { Authorization: `Bearer ${data.connection.token}`, "Content-Type": "application/json" };
+
+      const put = await TestRequest.put("/api/internal/application-permissions/me", { permissions: [{ key: "app.use" }] }, undefined, headers);
+      expect(put.status).toBe(200);
+      expect((await put.json()).data.application_id).toBe(appId);
+
+      const registered = await (await TestRequest.get("/api/internal/application-permissions/me", undefined, headers)).json();
+      expect(registered.data.map((item: { key: string }) => item.key)).toEqual(["app.use"]);
+      expect((await TestRequest.get("/api/internal/application-permissions/me/usage", undefined, headers)).status).toBe(200);
+
+      // The version and list calls fall back to the same application.
+      expect((await TestRequest.get("/api/internal/application-entitlements/version", undefined, headers)).status).toBe(200);
+      expect((await TestRequest.get("/api/internal/application-entitlements?page=1&size=1", undefined, headers)).status).toBe(200);
+      expect((await TestRequest.get("/api/internal/application-entitlements/version?application_id=me", undefined, headers)).status).toBe(200);
+
+      // Another application is still refused.
+      const other = await TestRequest.get("/api/internal/application-permissions/someone-else", undefined, headers);
+      expect(other.status).toBe(403);
+    });
+
+    it("asks a client with no application to name one, and keeps me reserved", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [API_SCOPES.APPLICATION_ENTITLEMENTS_READ] });
+      const headers = { Authorization: `Bearer ${token}` };
+      expect((await TestRequest.get("/api/internal/application-permissions/me", undefined, headers)).status).toBe(400);
+      expect((await TestRequest.get("/api/internal/application-entitlements/version", undefined, headers)).status).toBe(400);
+      expect((await create(accessToken, { application_id: "me" })).status).toBe(400);
+    });
+
+    it("tells which application owns a profile", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken, { connect: true });
+      const profiles = (await (await TestRequest.get("/api/admin/application-integration-profiles", accessToken)).json()).data;
+      const mine = profiles.find((profile: { code: string }) => profile.code === appId);
+      expect(mine.application).toEqual({ application_id: appId, name: "TEST_Onboard" });
+      const other = profiles.find((profile: { code: string }) => profile.code === "hub");
+      if (other) expect(other).toHaveProperty("application");
+    });
+  });
+
   describe("the Hub itself", () => {
     it("has no show in Hub step and cannot be published or removed", async () => {
       process.env.HUB_APPLICATION_ID = appId;

@@ -144,6 +144,24 @@ async function assertOwnsApplication(clientId: string, applicationId: string) {
   }
 }
 
+// The application an API client was made for. Lets an application call without naming itself, as "me".
+export async function ownApplicationId(clientId: string): Promise<string> {
+  const owner = await prismaClient.apiClient.findUnique({
+    where: { id: clientId },
+    select: { profile: { select: { code: true } } },
+  });
+  const code = owner?.profile?.code;
+  if (!code) {
+    throw new ResponseError(400, "This API client is not made for an application, so name the application_id");
+  }
+  return code;
+}
+
+// "me" and an empty value both mean the application of the token.
+export async function resolveApplicationId(clientId: string, value: string | undefined): Promise<string> {
+  return !value || value === "me" ? ownApplicationId(clientId) : value;
+}
+
 export class ApplicationPermissionService {
   static async list(admin: AdminUser, request: { application_id?: string }): Promise<ApplicationPermissionList> {
     assertSuperAdmin(admin);

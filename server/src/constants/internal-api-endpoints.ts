@@ -8,6 +8,8 @@ export type InternalApiEndpointDoc = {
   title: string;
   group: "Students" | "Employees" | "Classes and Teachers" | "Application Access";
   purpose: string;
+  // A short extra line shown with the endpoint.
+  note?: string;
 };
 
 // Source for the Access page's internal API reference.
@@ -110,50 +112,56 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
-    path: "/api/internal/application-entitlements/lookup?person_id={person_id}&application_id=exima",
+    path: "/api/internal/application-entitlements/lookup?person_id={person_id}&application_id={application_id}",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
     title: "Who may use an application",
     group: "Application Access",
     purpose: "Checks whether a person currently has access to an MWS application.",
+    note: "Leave out application_id, or write me, to mean the application this token was made for.",
   },
   {
     method: "GET",
-    path: "/api/internal/application-entitlements?application_id=exima&page=1&size=100",
+    path: "/api/internal/application-entitlements?application_id={application_id}&page=1&size=100",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
     title: "Everyone who may use an application",
     group: "Application Access",
     purpose: "Lists the people with access to an MWS application and the role each one has, so the app can keep its own list in step.",
+    note: "Leave out application_id, or write me, to mean the application this token was made for.",
   },
   {
     method: "GET",
-    path: "/api/internal/application-entitlements/version?application_id=exima",
+    path: "/api/internal/application-entitlements/version?application_id={application_id}",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
     title: "Has the list of people changed",
     group: "Application Access",
     purpose: "Gives a short key that changes only when the people, names, emails or roles of an application change, so an app syncs only when it must.",
+    note: "Leave out application_id, or write me, to mean the application this token was made for.",
   },
   {
     method: "PUT",
-    path: "/api/internal/application-permissions/exima",
+    path: "/api/internal/application-permissions/{application_id}",
     scope: API_SCOPES.APPLICATION_PERMISSIONS_WRITE,
     title: "Publish application permissions",
     group: "Application Access",
     purpose: "An application sends the permissions its code understands, so roles can only use those.",
+    note: "Use me instead of the application ID to mean the application this token was made for.",
   },
   {
     method: "GET",
-    path: "/api/internal/application-permissions/exima",
+    path: "/api/internal/application-permissions/{application_id}",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
     title: "Registered application permissions",
     group: "Application Access",
     purpose: "Lists the permissions registered for an application, to check them against its code.",
+    note: "Use me instead of the application ID to mean the application this token was made for.",
   },
   {
     method: "GET",
-    path: "/api/internal/application-permissions/exima/usage",
+    path: "/api/internal/application-permissions/{application_id}/usage",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
     title: "Permissions roles carry",
     group: "Application Access",
     purpose: "Lists the permissions active roles of an application carry, to compare with the application's code.",
+    note: "Use me instead of the application ID to mean the application this token was made for.",
   },
 ];

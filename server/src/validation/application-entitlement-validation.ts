@@ -9,7 +9,9 @@ const applicationId = z
   .regex(
     /^[a-z][a-z0-9_-]*$/,
     "Application ID must start with a lowercase letter and contain only lowercase letters, numbers, underscores, or hyphens",
-  );
+  )
+  // "me" means the application of the token in the internal API.
+  .refine((value) => value !== "me", "Application ID \"me\" is reserved");
 
 const optionalUrl = (label: string) =>
   z

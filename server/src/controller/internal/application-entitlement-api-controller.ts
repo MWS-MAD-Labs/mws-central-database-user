@@ -1,7 +1,7 @@
 import { ApplicationOnboardingService } from "../../service/application-onboarding-service";
 import type { Context } from "hono";
 import { ResponseError } from "../../error/response-error";
-import { ApplicationPermissionService } from "../../service/application-permission-service";
+import { ApplicationPermissionService, resolveApplicationId } from "../../service/application-permission-service";
 import { ApplicationAccessService, ApplicationEntitlementService } from "../../service/application-entitlement-service";
 import type { ApiClientVariables } from "../../type/hono-context";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
@@ -9,13 +9,8 @@ import { getAuditRequestContext } from "../../utils/audit-request-context";
 export class ApplicationEntitlementApiController {
   static async lookup(c: Context<{ Variables: ApiClientVariables }>) {
     const personId = c.req.query("person_id");
-    const applicationId = c.req.query("application_id");
-    if (!personId || !applicationId) {
-      throw new ResponseError(
-        400,
-        "Query parameters 'person_id' and 'application_id' are required",
-      );
-    }
+    if (!personId) throw new ResponseError(400, "Query parameter 'person_id' is required");
+    const applicationId = await resolveApplicationId(c.var.clientId, c.req.query("application_id"));
 
     const response = await ApplicationEntitlementService.lookup(
       {
@@ -37,7 +32,7 @@ export class ApplicationEntitlementApiController {
     }
     const response = await ApplicationEntitlementService.listActive(
       { clientId: c.var.clientId, clientName: c.var.clientName, scopes: c.var.scopes },
-      c.req.query("application_id") ?? "",
+      await resolveApplicationId(c.var.clientId, c.req.query("application_id")),
       page,
       size,
       getAuditRequestContext(c),
@@ -48,7 +43,9 @@ export class ApplicationEntitlementApiController {
   static async version(c: Context<{ Variables: ApiClientVariables }>) {
     return c.json({
       success: true,
-      data: await ApplicationEntitlementService.version(c.req.query("application_id") ?? ""),
+      data: await ApplicationEntitlementService.version(
+        await resolveApplicationId(c.var.clientId, c.req.query("application_id")),
+      ),
     });
   }
 
@@ -68,7 +65,7 @@ export class ApplicationEntitlementApiController {
     const response = await ApplicationPermissionService.sync(
       { clientId: c.var.clientId },
       {
-        application_id: c.req.param("applicationId") ?? "",
+        application_id: await resolveApplicationId(c.var.clientId, c.req.param("applicationId")),
         permissions: body.permissions ?? [],
         confirm_removals: body.confirm_removals,
       },
@@ -80,14 +77,20 @@ export class ApplicationEntitlementApiController {
   static async permissionUsage(c: Context<{ Variables: ApiClientVariables }>) {
     return c.json({
       success: true,
-      data: await ApplicationPermissionService.usage({ clientId: c.var.clientId }, c.req.param("applicationId") ?? ""),
+      data: await ApplicationPermissionService.usage(
+        { clientId: c.var.clientId },
+        await resolveApplicationId(c.var.clientId, c.req.param("applicationId")),
+      ),
     });
   }
 
   static async registeredPermissions(c: Context<{ Variables: ApiClientVariables }>) {
     return c.json({
       success: true,
-      data: await ApplicationPermissionService.registered({ clientId: c.var.clientId }, c.req.param("applicationId") ?? ""),
+      data: await ApplicationPermissionService.registered(
+        { clientId: c.var.clientId },
+        await resolveApplicationId(c.var.clientId, c.req.param("applicationId")),
+      ),
     });
   }
 }

@@ -47,8 +47,12 @@ function assertSuperAdmin(admin: AdminUser, action: string): void {
   }
 }
 
-function toProfileResponse(profile: ProfileWithScopes) {
+type OwnerApplication = { application_id: string; name: string };
+
+function toProfileResponse(profile: ProfileWithScopes, application: OwnerApplication | null = null) {
   return {
+    // The application this profile belongs to, managed in Application Access.
+    application,
     id: profile.id,
     code: profile.code,
     name: profile.name,
@@ -103,7 +107,12 @@ export class ApplicationIntegrationProfileService {
       include: PROFILE_INCLUDE,
       orderBy: { name: "asc" },
     });
-    return profiles.map(toProfileResponse);
+    const owners = await prismaClient.application.findMany({
+      where: { application_id: { in: profiles.map((profile) => profile.code) } },
+      select: { application_id: true, name: true },
+    });
+    const byId = new Map(owners.map((owner) => [owner.application_id, owner]));
+    return profiles.map((profile) => toProfileResponse(profile, byId.get(profile.code) ?? null));
   }
 
   static async listScopes(admin: AdminUser) {
