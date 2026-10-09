@@ -13,11 +13,40 @@ export const applicationAccessApi = {
     return apiRequest(`${ACCESS}/applications${query ? `?${query}` : ''}`)
   },
 
-  async createApplication(applicationId) {
-    const response = await apiRequest(`${ACCESS}/applications`, {
-      method: 'POST',
-      body: { application_id: applicationId },
-    })
+  async createApplication(payload) {
+    const response = await apiRequest(`${ACCESS}/applications`, { method: 'POST', body: payload })
+    return response.data
+  },
+
+  async getDetails(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/details`)
+    return response.data
+  },
+
+  async updateDetails(applicationId, payload) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/details`, { method: 'PATCH', body: payload })
+    return response.data
+  },
+
+  // What is done and what is still missing, worked out from the data.
+  async getSetup(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/setup`)
+    return response.data
+  },
+
+  // Makes the API client of the application. The token comes back once.
+  async connect(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/connect`, { method: 'POST', body: {} })
+    return response.data
+  },
+
+  async publish(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/publish`, { method: 'POST', body: {} })
+    return response.data
+  },
+
+  async unpublish(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/unpublish`, { method: 'POST', body: {} })
     return response.data
   },
 

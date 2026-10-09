@@ -101,7 +101,14 @@ export function ApplicationAccessPage() {
         >
           {rows.map((row) => (
             <tr key={row.application_id} className={denseRowClass}>
-              <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>{row.application_id}</td>
+              <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>
+                {row.application_id}
+                {row.published ? (
+                  <StatusBadge tone="green" className="ml-2">
+                    In Hub
+                  </StatusBadge>
+                ) : null}
+              </td>
               <td className={`${denseCellClass} max-w-64`}>
                 {row.organization_id ? <CopyableId value={row.organization_id} /> : "-"}
               </td>

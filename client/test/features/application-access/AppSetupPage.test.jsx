@@ -1,0 +1,189 @@
+import { describe, expect, it } from 'bun:test'
+import { screen, waitFor } from '@testing-library/react'
+import { Route, Routes } from 'react-router'
+import { AuthContext } from '../../../src/features/auth/context/authContext.js'
+import { AppSetupPage } from '../../../src/features/application-access/pages/AppSetupPage.jsx'
+import { renderWithProviders } from '../../helpers/render.jsx'
+import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
+
+const APP = {
+  application_id: 'demo',
+  name: 'Demo App',
+  description: null,
+  icon: null,
+  category: null,
+  launch_url: 'https://demo.example.com/auth/sso',
+  logout_url: null,
+  published: false,
+}
+
+function makeSetup(overrides = {}) {
+  return {
+    application: APP,
+    organization_id: 'org_demo_abcdefghijklmnopqrst',
+    connection: { client_id: null, created: false, last_used_at: null },
+    permissions: { count: 0, synced_at: null },
+    roles: { active_count: 0 },
+    groups: { active_count: 0 },
+    can_publish: false,
+    missing: ['permissions', 'roles', 'groups'],
+    ...overrides,
+  }
+}
+
+function renderPage(routes, user = { role: 'SUPER_ADMIN' }) {
+  globalThis.fetch = createFetchRouter(routes)
+  return renderWithProviders(
+    <AuthContext.Provider value={{ user }}>
+      <Routes>
+        <Route path="/application-access/apps/:applicationId/setup" element={<AppSetupPage />} />
+      </Routes>
+    </AuthContext.Provider>,
+    { route: '/application-access/apps/demo/setup' },
+  )
+}
+
+const setupRoute = (setup) => ({
+  path: '/api/admin/application-access/apps/demo/setup',
+  response: () => jsonResponse({ data: setup }),
+})
+
+const stepOf = (name) => screen.getByRole('heading', { name: new RegExp(`^${name}`) }).closest('li')
+
+describe('AppSetupPage', () => {
+  it('refuses anyone who is not a Super Admin', async () => {
+    renderPage([], { role: 'DATABASE_ADMIN' })
+    expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
+  })
+
+  it('opens at Connect with the later steps locked', async () => {
+    renderPage([setupRoute(makeSetup())])
+    expect(await screen.findByText('1 of 6 steps done.', { exact: false })).toBeVisible()
+    expect(stepOf('About')).toHaveAttribute('data-status', 'done')
+    expect(stepOf('Connect')).toHaveAttribute('data-status', 'current')
+    for (const name of ['Permissions', 'Roles', 'Groups', 'Show in Hub']) {
+      expect(stepOf(name)).toHaveAttribute('data-status', 'locked')
+    }
+    expect(screen.getByRole('button', { name: 'Create Connection' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Show In Hub' })).toBeNull()
+  })
+
+  it('creates the connection and hands over the .env values behind a masked token', async () => {
+    const token = 'mws_47d0b31fa20c.0123456789abcdef0123456789abcdef'
+    const { user } = renderPage([
+      setupRoute(makeSetup()),
+      {
+        path: '/api/admin/application-access/apps/demo/connect',
+        method: 'POST',
+        response: () =>
+          jsonResponse({
+            data: {
+              token,
+              client: { token },
+              env: [
+                { key: 'HUB_SSO_APP_ID', value: 'demo' },
+                { key: 'CENTRAL_DATA_API_BASE_URL', value: 'https://db.example.com' },
+                { key: 'CENTRAL_DATA_API_TOKEN', value: token },
+                { key: 'CENTRAL_ORGANIZATION_ID', value: 'org_demo_abcdefghijklmnopqrst' },
+              ],
+            },
+          }),
+      },
+    ])
+    await user.click(await screen.findByRole('button', { name: 'Create Connection' }))
+    expect(await screen.findByText('Connection Created')).toBeVisible()
+    expect(screen.getByText(/HUB_SSO_APP_ID=demo/)).toBeVisible()
+    expect(screen.getByText(/CENTRAL_DATA_API_TOKEN=mws_47d0b3/)).toBeVisible()
+    expect(screen.queryByText(new RegExp(token.slice(-12)))).toBeNull()
+  })
+
+  it('shows that it is waiting for the application to send permissions', async () => {
+    renderPage([setupRoute(makeSetup({ connection: { client_id: 'c1', created: true, last_used_at: null } }))])
+    expect(await screen.findByText('Waiting for the application to call Central.')).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Rotate Token' })).toBeVisible()
+  })
+
+  it('offers an Admin role with every permission once permissions arrived', async () => {
+    const created = []
+    const { user } = renderPage([
+      setupRoute(
+        makeSetup({
+          connection: { client_id: 'c1', created: true, last_used_at: new Date().toISOString() },
+          permissions: { count: 2, synced_at: new Date().toISOString() },
+        }),
+      ),
+      {
+        path: '/api/admin/application-permissions?application_id=demo',
+        response: () =>
+          jsonResponse({
+            data: {
+              permissions: [
+                { key: 'app.use', deprecated: false },
+                { key: 'app.admin', deprecated: false },
+                { key: 'old.thing', deprecated: true },
+              ],
+            },
+          }),
+      },
+      {
+        path: '/api/admin/application-roles',
+        method: 'POST',
+        response: ({ options }) => {
+          created.push(JSON.parse(options.body))
+          return jsonResponse({ data: {} })
+        },
+      },
+    ])
+    await user.click(await screen.findByRole('button', { name: 'Create Admin Role' }))
+    await waitFor(() => expect(created).toHaveLength(1))
+    expect(created[0]).toEqual({
+      application_id: 'demo',
+      key: 'ADMIN',
+      label: 'Admin',
+      permissions: ['app.use', 'app.admin'],
+      allows_employees: true,
+    })
+  })
+
+  it('publishes once everything before it is done, and can hide it again', async () => {
+    const ready = makeSetup({
+      connection: { client_id: 'c1', created: true, last_used_at: new Date().toISOString() },
+      permissions: { count: 2, synced_at: new Date().toISOString() },
+      roles: { active_count: 1 },
+      groups: { active_count: 1 },
+      can_publish: true,
+      missing: [],
+    })
+    let published = false
+    const calls = []
+    const { user } = renderPage([
+      {
+        path: '/api/admin/application-access/apps/demo/setup',
+        response: () => jsonResponse({ data: { ...ready, application: { ...APP, published } } }),
+      },
+      {
+        path: '/api/admin/application-access/apps/demo/publish',
+        method: 'POST',
+        response: () => {
+          published = true
+          calls.push('publish')
+          return jsonResponse({ data: { ...APP, published: true } })
+        },
+      },
+      {
+        path: '/api/admin/application-access/apps/demo/unpublish',
+        method: 'POST',
+        response: () => {
+          published = false
+          calls.push('unpublish')
+          return jsonResponse({ data: { ...APP, published: false } })
+        },
+      },
+    ])
+    await user.click(await screen.findByRole('button', { name: 'Show In Hub' }))
+    await user.click(await screen.findByRole('button', { name: 'Hide From Hub' }))
+    await waitFor(() => expect(calls).toEqual(['publish', 'unpublish']))
+    // The button is usable again after the first action finished.
+    expect(await screen.findByRole('button', { name: 'Show In Hub' })).toBeEnabled()
+  })
+})

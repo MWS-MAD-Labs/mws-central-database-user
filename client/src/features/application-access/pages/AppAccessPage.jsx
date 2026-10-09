@@ -17,6 +17,7 @@ import { CopyableId } from "../components/CopyableId.jsx";
 import { ExceptionsPanel } from "../components/ExceptionsPanel.jsx";
 import { GroupCard } from "../components/GroupCard.jsx";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
+import { buildSteps, stepsDone } from "../utils/setupSteps.js";
 import { groupScopeSummary, groupTitle } from "../utils/groupSummary.js";
 
 const BACK = "/application-access";
@@ -43,6 +44,11 @@ export function AppAccessPage() {
   const detailQuery = useQuery({
     queryKey: ["application-access", "app", applicationId],
     queryFn: () => applicationAccessApi.getApplication(applicationId),
+  });
+  const setupQuery = useQuery({
+    queryKey: ["application-access", "setup", applicationId],
+    queryFn: () => applicationAccessApi.getSetup(applicationId),
+    enabled: user?.role === "SUPER_ADMIN",
   });
   const allRoles = useApplicationRoles().data || [];
   const roles = allRoles.filter((role) => role.application_id === applicationId);
@@ -122,6 +128,18 @@ export function AppAccessPage() {
           </>
         }
       />
+
+      {setupQuery.data && !setupQuery.data.application.published ? (
+        <div role="note" className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#d8b45b] bg-[#fff8e8] px-5 py-3 text-sm text-[#745716]">
+          <span className="font-semibold">
+            Finish setup ({stepsDone(buildSteps(setupQuery.data))} of 6)
+          </span>
+          <span>This application does not show in the Hub yet.</span>
+          <Button asChild variant="secondary" size="sm" className="ml-auto">
+            <Link to={`/application-access/apps/${applicationId}/setup`}>Continue Setup</Link>
+          </Button>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-(--mws-line) bg-white px-5 py-3 text-sm">
         <span className="font-semibold text-(--mws-charcoal)">Organization ID</span>

@@ -1,34 +1,28 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
-import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
-import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { AppDetailsForm } from "../components/AppDetailsForm.jsx";
 
 const BACK = "/application-access";
-// Lowercase, spaces become underscores, anything else odd is dropped.
-const cleanId = (value) => value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_-]/g, "");
-const ID_PATTERN = /^[a-z][a-z0-9_-]*$/;
 
+// Step 1 of the setup. The steps after it live on the setup page.
 export function AppCreatePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [applicationId, setApplicationId] = useState("");
-  const [attempted, setAttempted] = useState(false);
-  const valid = ID_PATTERN.test(applicationId.trim());
 
   const mutation = useMutation({
-    mutationFn: () => applicationAccessApi.createApplication(applicationId.trim()),
+    mutationFn: (payload) => applicationAccessApi.createApplication(payload),
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["application-access"] });
       showSuccessToast("Application added.");
-      navigate(`/application-access/apps/${created.application_id}?tab=roles`);
+      navigate(`/application-access/apps/${created.application_id}/setup`);
     },
     onError: (error) => showErrorToast(error, "Could not add this application."),
   });
@@ -42,18 +36,11 @@ export function AppCreatePage() {
     );
   }
 
-  function submit(event) {
-    event.preventDefault();
-    setAttempted(true);
-    if (!valid) return;
-    mutation.mutate();
-  }
-
   return (
     <div className="min-w-0">
       <PageHeader
         title="Add Application"
-        description="Give it an id, then add its roles and groups. Its Organization ID is created for you."
+        description="Step 1 of 6. Tell the Hub how to show this application. Next you connect it, add roles and a group, and publish it."
         actions={
           <Button asChild variant="secondary">
             <Link to={BACK}>
@@ -63,23 +50,14 @@ export function AppCreatePage() {
           </Button>
         }
       />
-      <form onSubmit={submit} noValidate className="max-w-xl space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
-        <Field
-          label="Application ID"
-          hint="Lowercase, starting with a letter. Spaces become underscores. For example exima."
-          error={attempted && !valid ? "Use lowercase letters, numbers, hyphens or underscores, starting with a letter." : undefined}
-        >
-          <TextInput value={applicationId} onChange={(event) => setApplicationId(cleanId(event.target.value))} />
-        </Field>
-        <div className="flex gap-2">
-          <Button asChild variant="secondary">
-            <Link to={BACK}>Cancel</Link>
-          </Button>
-          <Button type="submit" loading={mutation.isPending}>
-            Add Application
-          </Button>
-        </div>
-      </form>
+      <div className="max-w-2xl rounded-2xl border border-(--mws-line) bg-white p-5">
+        <AppDetailsForm
+          submitLabel="Add Application"
+          submitting={mutation.isPending}
+          onSubmit={(payload) => mutation.mutate(payload)}
+          onCancel={() => navigate(BACK)}
+        />
+      </div>
     </div>
   );
 }
