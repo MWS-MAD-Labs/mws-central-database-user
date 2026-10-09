@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { HelpCircle } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
@@ -79,6 +80,11 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
       onClose={onClose}
       panelClassName="max-w-lg"
     >
+      {plan ? (
+        <TextAction className="-mt-1 mb-3" icon={HelpCircle} onClick={() => setGuide(true)}>
+          How removing works
+        </TextAction>
+      ) : null}
       {query.isLoading ? (
         <p className="text-sm text-(--mws-muted)">Checking where it is used…</p>
       ) : query.isError ? (
@@ -118,9 +124,7 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
               onChange={(event) => setTyped(event.target.value)}
             />
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <TextAction onClick={() => setGuide(true)}>How removing works</TextAction>
-            <div className="flex gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancel
             </Button>
@@ -133,7 +137,6 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
             >
               Delete Application
             </Button>
-            </div>
           </div>
         </div>
       ) : (
@@ -155,18 +158,15 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
               </p>
             </div>
           ) : null}
-          <div className="flex items-center justify-between gap-2">
-            <TextAction onClick={() => setGuide(true)}>How removing works</TextAction>
-            <div className="flex gap-2">
-              <Button type="button" variant="secondary" onClick={onClose}>
-                Close
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Close
+            </Button>
+            {plan.retire_available ? (
+              <Button type="button" loading={retireMutation.isPending} onClick={() => retireMutation.mutate()}>
+                Retire Application
               </Button>
-              {plan.retire_available ? (
-                <Button type="button" loading={retireMutation.isPending} onClick={() => retireMutation.mutate()}>
-                  Retire Application
-                </Button>
-              ) : null}
-            </div>
+            ) : null}
           </div>
         </div>
       )}
