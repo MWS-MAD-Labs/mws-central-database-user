@@ -194,7 +194,7 @@ export type ApplicationSummary = {
 
 export type ListApplicationsRequest = { search?: string; page?: number; size?: number };
 
-export type CreateApplicationRequest = { application_id?: string; connect?: boolean; scope_names?: string[]; is_hub?: boolean } & ApplicationDetails;
+export type CreateApplicationRequest = { application_id?: string; connect?: boolean; scope_names?: string[]; is_hub?: boolean; env_settings?: { hub_access_mode: "off" | "warn" | "enforce"; hub_bypass_emails: string[] } } & ApplicationDetails;
 export type UpdateApplicationRequest = { application_id: string } & ApplicationDetails;
 
 export type ApplicationExceptionRow = {

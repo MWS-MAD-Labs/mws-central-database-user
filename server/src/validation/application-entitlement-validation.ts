@@ -176,7 +176,18 @@ const accessRuleFields = {
 
 const EMPLOYMENT_TYPES = Object.values(EmploymentType) as [EmploymentType, ...EmploymentType[]];
 
+// The Hub's sign-in settings: how strictly it checks, and who always gets in.
+const envSettings = z.object({
+  hub_access_mode: z.enum(["off", "warn", "enforce"], { message: "Pick off, warn or enforce" }),
+  hub_bypass_emails: z
+    .array(z.string().trim().toLowerCase().max(120, "Email is too long").pipe(z.email("Use a valid email")))
+    .max(10, "At most 10 emails")
+    .refine((emails) => new Set(emails).size === emails.length, "Each email only once"),
+});
+
 export class ApplicationValidation {
+  static readonly ENV_SETTINGS = envSettings;
+
   static readonly LIST = z.object({
     search: z.string().trim().max(100).optional(),
     page: z.number().int().min(1).default(1),
@@ -193,6 +204,7 @@ export class ApplicationValidation {
       scope_names: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
       // The Hub itself: its id is fixed and it has no card or address.
       is_hub: z.boolean().optional(),
+      env_settings: envSettings.optional(),
     })
     .refine((value) => value.application_id || value.name, { message: "Name is required", path: ["name"] });
 

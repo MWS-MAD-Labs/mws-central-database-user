@@ -1884,6 +1884,8 @@ export class ApplicationAccessService {
         category: input.category || null,
         launch_url: input.launch_url || null,
         logout_url: input.logout_url || null,
+        // Only the Hub has settings for its .env.
+        ...(parsed.is_hub && parsed.env_settings ? { env_settings: parsed.env_settings } : {}),
       },
     });
     if (!options.skipAudit) await AuditService.record({

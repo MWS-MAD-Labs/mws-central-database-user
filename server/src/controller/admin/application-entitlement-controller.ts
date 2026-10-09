@@ -299,6 +299,17 @@ export class ApplicationAccessController {
     return c.json({ data: response });
   }
 
+  static async updateEnvSettings(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({
+      data: await ApplicationOnboardingService.updateEnvSettings(
+        c.var.admin,
+        requireApplicationId(c),
+        await c.req.json(),
+        getAuditRequestContext(c),
+      ),
+    });
+  }
+
   static async retire(c: Context<{ Variables: AdminVariables }>) {
     return c.json({ data: await ApplicationOnboardingService.retire(c.var.admin, requireApplicationId(c), getAuditRequestContext(c)) });
   }

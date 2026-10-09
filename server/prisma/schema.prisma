@@ -1651,6 +1651,8 @@ model Application {
   published      Boolean  @default(false)
   // Stopped but kept: its connection is revoked, it is hidden from the Hub and it gives nobody access.
   retired_at     DateTime?
+  // Settings that go into the .env of the application, for now only the Hub's sign-in settings.
+  env_settings   Json?
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 

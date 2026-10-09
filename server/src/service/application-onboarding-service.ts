@@ -9,6 +9,7 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import type { ApplicationSummary, CreateApplicationRequest, UpdateApplicationRequest } from "../model/application-entitlement-model";
 import { ApplicationValidation } from "../validation/application-entitlement-validation";
 import { Validation } from "../validation/validation";
+import { buildEnvItems, resolveHubSettings, type EnvItem, type HubEnvSettings } from "../utils/application-env";
 import { evaluateRemoval, usedRecently } from "../utils/application-removal";
 import { getIntegrationEnvironment } from "../utils/integration-environment";
 import { ApiClientService } from "./api-client-service";
@@ -53,6 +54,8 @@ export type SetupStatus = {
   data_access: { scope_names: string[]; editable: boolean };
   // What the menu may offer: delete when it is allowed, otherwise retire.
   removal: { can_remove: boolean; retire_available: boolean };
+  // The Hub's sign-in settings that go into its .env. Null for other applications.
+  env_settings: HubEnvSettings | null;
 };
 
 export type RemovalPlan = {
@@ -68,7 +71,7 @@ export type RemovalPlan = {
 export type ConnectResponse = {
   client: ApiClientCreatedResponse;
   token: string;
-  env: { key: string; value: string }[];
+  env: EnvItem[];
 };
 
 function assertSuperAdmin(admin: AdminUser) {
@@ -119,14 +122,17 @@ async function findConnectionClient(applicationId: string) {
   });
 }
 
-// The four lines an application needs in its .env.
-function envValues(applicationId: string, organizationId: string, publicUrl: string, token: string) {
-  return [
-    { key: "HUB_SSO_APP_ID", value: applicationId },
-    { key: "CENTRAL_DATA_API_BASE_URL", value: publicUrl },
-    { key: "CENTRAL_DATA_API_TOKEN", value: token },
-    { key: "CENTRAL_ORGANIZATION_ID", value: organizationId },
-  ];
+// The .env of an application, made from what Central knows about it.
+function envFor(app: { application_id: string; env_settings: unknown }, organizationId: string, publicUrl: string, token: string, adminEmail?: string) {
+  const isHub = app.application_id === hubApplicationId();
+  return buildEnvItems({
+    applicationId: app.application_id,
+    organizationId,
+    publicUrl,
+    token,
+    isHub,
+    hubSettings: isHub ? resolveHubSettings(app.env_settings, adminEmail) : undefined,
+  });
 }
 
 export class ApplicationOnboardingService {
@@ -212,6 +218,7 @@ export class ApplicationOnboardingService {
     const plan = await this.removalPlan(admin, applicationId);
     return {
       removal: { can_remove: plan.can_remove, retire_available: plan.retire_available },
+      env_settings: applicationId === hubApplicationId() ? resolveHubSettings(app.env_settings, admin.email) : null,
       application: toDetail(app),
       organization_id: organizationId,
       connection: {
@@ -276,7 +283,7 @@ export class ApplicationOnboardingService {
       { viaApplication: true, skipAudit: options.skipAudit },
     );
 
-    return { client, token: client.token, env: envValues(applicationId, organizationId, publicUrl, client.token) };
+    return { client, token: client.token, env: envFor(app, organizationId, publicUrl, client.token, admin.email) };
   }
 
   // Changes what a connection made for this application may read.
@@ -295,6 +302,32 @@ export class ApplicationOnboardingService {
     return { scope_names: names.sort(), editable: true };
   }
 
+  // The Hub's sign-in settings. They reach its .env the next time the token is made or rotated.
+  static async updateEnvSettings(
+    admin: AdminUser,
+    applicationId: string,
+    request: unknown,
+    context: AuditRequestContext = {},
+  ): Promise<HubEnvSettings> {
+    assertSuperAdmin(admin);
+    const app = await findApplication(applicationId);
+    if (applicationId !== hubApplicationId()) throw new ResponseError(400, "Only the Hub has sign-in settings");
+    const settings = Validation.validate(ApplicationValidation.ENV_SETTINGS, request) as HubEnvSettings;
+    await prismaClient.application.update({ where: { id: app.id }, data: { env_settings: settings } });
+    await AuditService.record({
+      action: AuditAction.APPLICATION_ROLE_UPDATE,
+      source: AuditSource.UI,
+      entity_type: "Application",
+      entity_id: app.id,
+      admin_id: admin.id,
+      old_values: { env_settings: resolveHubSettings(app.env_settings, admin.email) },
+      new_values: { env_settings: settings },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+    return settings;
+  }
+
   // Replaces the token of the connection of this application. The old one follows the grace of the mode.
   static async rotate(
     admin: AdminUser,
@@ -302,15 +335,15 @@ export class ApplicationOnboardingService {
     request: { immediate?: boolean; grace_hours?: number },
     publicUrl: string,
     context: AuditRequestContext = {},
-  ): Promise<ApiClientCreatedResponse & { env: { key: string; value: string }[] }> {
+  ): Promise<ApiClientCreatedResponse & { env: EnvItem[] }> {
     assertSuperAdmin(admin);
-    await findApplication(applicationId);
+    const app = await findApplication(applicationId);
     const client = await findConnectionClient(applicationId);
     if (!client) throw new ResponseError(404, "This application has no connection yet");
     const rotated = await ApiClientService.rotate(admin, { id: client.id, ...request }, context);
     // The new token comes with the other three values, so the whole .env can be pasted again.
     const organizationId = await resolveOrganizationId(applicationId);
-    return { ...rotated, env: envValues(applicationId, organizationId, publicUrl, rotated.token) };
+    return { ...rotated, env: envFor(app, organizationId, publicUrl, rotated.token, admin.email) };
   }
 
   static async publish(

@@ -28,6 +28,8 @@ describe("application onboarding", () => {
     await prismaClient.applicationOrganization.deleteMany({ where: { application_id: appId } });
     await prismaClient.application.deleteMany({ where: { application_id: appId } });
     await ApiClientTest.delete();
+    // The Hub is always named HUB, so its client is not one of the TEST_ ones.
+    await prismaClient.apiClient.deleteMany({ where: { profile: { code: appId } } });
     await prismaClient.applicationIntegrationProfile.deleteMany({ where: { code: appId } });
     await AdminUserTest.delete();
     await MasterDataTest.delete();
@@ -603,6 +605,70 @@ describe("application onboarding", () => {
       } finally {
         delete process.env.HUB_APPLICATION_ID;
       }
+    });
+  });
+
+  describe("the Hub's .env and sign-in settings", () => {
+    const asHub = async <T>(run: (accessToken: string) => Promise<T>) => {
+      process.env.HUB_APPLICATION_ID = appId;
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        return await run(accessToken);
+      } finally {
+        delete process.env.HUB_APPLICATION_ID;
+      }
+    };
+
+    it("hands over the names the Hub reads, with warn and the creator as bypass by default", async () => {
+      await asHub(async (accessToken) => {
+        const response = await TestRequest.post(`${ACCESS}/applications`, { name: "HUB", is_hub: true, connect: true }, accessToken);
+        expect(response.status).toBe(200);
+        const { data } = await response.json();
+        const items = data.connection.env as { key: string; value: string; line: string; secret: boolean }[];
+        expect(items.map((item) => item.key)).toEqual([
+          "CENTRAL_API_BASE_URL",
+          "CENTRAL_API_TOKEN",
+          "HUB_CENTRAL_ACCESS_MODE",
+          "HUB_CENTRAL_ACCESS_APP_ID",
+          "HUB_CENTRAL_ACCESS_BYPASS_EMAILS",
+        ]);
+        const byKey = Object.fromEntries(items.map((item) => [item.key, item]));
+        expect(byKey.CENTRAL_API_BASE_URL.value).toMatch(/^https?:\/\/[^/]+\/api\/internal$/);
+        expect(byKey.CENTRAL_API_TOKEN.secret).toBe(true);
+        expect(byKey.CENTRAL_API_TOKEN.line).toBe(`CENTRAL_API_TOKEN="${data.connection.token}"`);
+        expect(byKey.HUB_CENTRAL_ACCESS_MODE.line).toBe('HUB_CENTRAL_ACCESS_MODE="warn"');
+        expect(byKey.HUB_CENTRAL_ACCESS_APP_ID.value).toBe(appId);
+        expect(byKey.HUB_CENTRAL_ACCESS_BYPASS_EMAILS.value).toMatch(/@/);
+      });
+    });
+
+    it("changes the settings, validates them, and uses them on the next rotation", async () => {
+      await asHub(async (accessToken) => {
+        await TestRequest.post(`${ACCESS}/applications`, { name: "HUB", is_hub: true, connect: true }, accessToken);
+        const patch = (body: unknown) => TestRequest.patch(`${ACCESS}/apps/${appId}/env-settings`, body, accessToken);
+        expect((await patch({ hub_access_mode: "loud", hub_bypass_emails: [] })).status).toBe(400);
+        expect((await patch({ hub_access_mode: "warn", hub_bypass_emails: ["not-an-email"] })).status).toBe(400);
+        expect((await patch({ hub_access_mode: "warn", hub_bypass_emails: ["a@millennia21.id", "A@millennia21.id"] })).status).toBe(400);
+        expect((await patch({ hub_access_mode: "warn", hub_bypass_emails: Array.from({ length: 11 }, (_, i) => `u${i}@millennia21.id`) })).status).toBe(400);
+
+        expect((await patch({ hub_access_mode: "enforce", hub_bypass_emails: ["Boss@Millennia21.id"] })).status).toBe(200);
+        const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+        expect(setup.env_settings).toEqual({ hub_access_mode: "enforce", hub_bypass_emails: ["boss@millennia21.id"] });
+
+        const rotated = (await (await TestRequest.post(`${ACCESS}/apps/${appId}/rotate`, { immediate: true }, accessToken)).json()).data;
+        const lines = rotated.env.map((item: { line: string }) => item.line);
+        expect(lines).toContain('HUB_CENTRAL_ACCESS_MODE="enforce"');
+        expect(lines).toContain('HUB_CENTRAL_ACCESS_BYPASS_EMAILS="boss@millennia21.id"');
+      });
+    });
+
+    it("has no sign-in settings for an ordinary application", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken);
+      const patch = await TestRequest.patch(`${ACCESS}/apps/${appId}/env-settings`, { hub_access_mode: "warn", hub_bypass_emails: [] }, accessToken);
+      expect(patch.status).toBe(400);
+      const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+      expect(setup.env_settings).toBeNull();
     });
   });
 

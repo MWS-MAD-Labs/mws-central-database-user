@@ -34,6 +34,7 @@ applicationAccessRouter.get("/apps/:applicationId/details", (c) => ApplicationAc
 applicationAccessRouter.patch("/apps/:applicationId/details", (c) => ApplicationAccessController.updateApplication(c));
 applicationAccessRouter.patch("/apps/:applicationId/connection-scopes", (c) => ApplicationAccessController.updateConnectionScopes(c));
 applicationAccessRouter.post("/apps/:applicationId/rotate", (c) => ApplicationAccessController.rotateConnection(c));
+applicationAccessRouter.patch("/apps/:applicationId/env-settings", (c) => ApplicationAccessController.updateEnvSettings(c));
 applicationAccessRouter.post("/apps/:applicationId/retire", (c) => ApplicationAccessController.retire(c));
 applicationAccessRouter.post("/apps/:applicationId/restore", (c) => ApplicationAccessController.restore(c));
 applicationAccessRouter.get("/apps/:applicationId/removal", (c) => ApplicationAccessController.removal(c));
