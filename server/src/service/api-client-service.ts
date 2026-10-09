@@ -37,7 +37,7 @@ const CLIENT_INCLUDE = {
 } as const;
 
 // Set by Application Access when it works on the connection of its own application.
-export type ViaApplication = { viaApplication?: boolean };
+export type ViaApplication = { viaApplication?: boolean; skipAudit?: boolean };
 
 async function applicationOfProfile(code: string | null | undefined) {
   if (!code) return null;
@@ -146,7 +146,7 @@ export class ApiClientService {
         include: CLIENT_INCLUDE,
       });
 
-      await AuditService.record(
+      if (!options.skipAudit) await AuditService.record(
         {
           action: AuditAction.API_TOKEN_CREATE,
           source: AuditSource.UI,
@@ -263,7 +263,7 @@ export class ApiClientService {
         include: CLIENT_INCLUDE,
       });
 
-      await AuditService.record(
+      if (!options.skipAudit) await AuditService.record(
         {
           action: AuditAction.API_TOKEN_REVOKE,
           source: AuditSource.UI,

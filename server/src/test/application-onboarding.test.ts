@@ -319,6 +319,48 @@ describe("application onboarding", () => {
     });
   });
 
+  describe("one audit entry for one flow", () => {
+    const flowActions = ["APPLICATION_CREATE", "API_TOKEN_CREATE", "CREATE_MASTER_DATA", "API_TOKEN_REVOKE", "APPLICATION_DELETE"] as const;
+    const entries = () =>
+      prismaClient.auditLog.findMany({ where: { action: { in: [...flowActions] } }, orderBy: { created_at: "asc" } });
+
+    it("writes one Application Create with the connection inside when an application is added", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const before = (await entries()).length;
+      await create(accessToken, { connect: true, scope_names: [API_SCOPES.STUDENTS_READ] });
+      const added = (await entries()).slice(before);
+      expect(added.map((entry) => entry.action)).toEqual(["APPLICATION_CREATE"]);
+      const values = added[0]!.new_values as Record<string, any>;
+      expect(values.name).toBe("TEST_Onboard");
+      expect(values.connection.profile_code).toBe(appId);
+      expect(values.connection.token_prefix).toMatch(/^[\w]+$/);
+      expect(values.connection.scopes).toContain(API_SCOPES.STUDENTS_READ);
+    });
+
+    it("writes one entry for an application added without a connection, and one for the connection made later", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const before = (await entries()).length;
+      await create(accessToken);
+      expect((await entries()).slice(before).map((entry) => entry.action)).toEqual(["APPLICATION_CREATE"]);
+      const mid = (await entries()).length;
+      await TestRequest.post(`${ACCESS}/apps/${appId}/connect`, {}, accessToken);
+      expect((await entries()).slice(mid).map((entry) => entry.action)).toEqual(["API_TOKEN_CREATE"]);
+    });
+
+    it("writes one Application Delete that lists the clients it revoked", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken, { connect: true });
+      const old = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
+      await prismaClient.apiClient.updateMany({ where: { profile: { code: appId } }, data: { last_used_at: old } });
+      await prismaClient.apiClientCredential.updateMany({ where: { client: { profile: { code: appId } } }, data: { last_used_at: old } });
+      const before = (await entries()).length;
+      expect((await TestRequest.delete(`${ACCESS}/apps/${appId}`, accessToken)).status).toBe(200);
+      const removed = (await entries()).slice(before);
+      expect(removed.map((entry) => entry.action)).toEqual(["APPLICATION_DELETE"]);
+      expect((removed[0]!.old_values as Record<string, any>).revoked_clients).toHaveLength(1);
+    });
+  });
+
   describe("the id and what is typed", () => {
     it("makes the id from the name", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();

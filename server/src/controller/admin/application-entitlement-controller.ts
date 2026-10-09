@@ -241,19 +241,14 @@ export class ApplicationAccessController {
 
   static async createApplication(c: Context<{ Variables: AdminVariables }>) {
     const request = (await c.req.json()) as CreateApplicationRequest;
-    const context = getAuditRequestContext(c);
-    const response = await ApplicationAccessService.createApplication(c.var.admin, request, context);
     // The token and .env come back with the application, so nothing is left to set up by hand.
-    const connection = request.connect
-      ? await ApplicationOnboardingService.connect(
-          c.var.admin,
-          response.application_id,
-          publicBaseUrl(c),
-          context,
-          request.scope_names,
-        )
-      : null;
-    return c.json({ data: { ...response, connection } });
+    const response = await ApplicationOnboardingService.create(
+      c.var.admin,
+      request,
+      publicBaseUrl(c),
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
   }
 
   static async getApplication(c: Context<{ Variables: AdminVariables }>) {

@@ -98,10 +98,12 @@ describe("application access per application", () => {
     expect((await TestRequest.post(`${ACCESS}/applications`, { application_id: "other-app" }, dbAdmin.accessToken)).status).toBe(403);
 
     const organization = await prismaClient.applicationOrganization.findUniqueOrThrow({ where: { application_id: fresh } });
+    const application = await prismaClient.application.findUniqueOrThrow({ where: { application_id: fresh } });
     expect(
-      await prismaClient.auditLog.findFirst({ where: { action: "APPLICATION_CREATE", entity_id: organization.id } }),
+      await prismaClient.auditLog.findFirst({ where: { action: "APPLICATION_CREATE", entity_id: application.id } }),
     ).not.toBeNull();
-    await prismaClient.auditLog.deleteMany({ where: { entity_id: organization.id } });
+    await prismaClient.auditLog.deleteMany({ where: { entity_id: application.id } });
+    await prismaClient.application.delete({ where: { id: application.id } });
     await prismaClient.applicationOrganization.delete({ where: { id: organization.id } });
   });
 

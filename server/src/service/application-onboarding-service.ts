@@ -6,14 +6,14 @@ import { ResponseError } from "../error/response-error";
 import { prismaClient } from "../lib/prisma";
 import type { ApiClientCreatedResponse } from "../model/api-client-model";
 import type { AuditRequestContext } from "../model/audit-log-model";
-import type { UpdateApplicationRequest } from "../model/application-entitlement-model";
+import type { ApplicationSummary, CreateApplicationRequest, UpdateApplicationRequest } from "../model/application-entitlement-model";
 import { ApplicationValidation } from "../validation/application-entitlement-validation";
 import { Validation } from "../validation/validation";
 import { getIntegrationEnvironment } from "../utils/integration-environment";
 import { ApiClientService } from "./api-client-service";
 import { ApplicationIntegrationProfileService } from "./application-integration-profile-service";
 import { AuditService } from "./audit-service";
-import { resolveOrganizationId } from "./application-entitlement-service";
+import { ApplicationAccessService, resolveOrganizationId } from "./application-entitlement-service";
 
 const CONNECT_PURPOSE = "app-connection";
 // Every connection can send permissions and check who may use the application.
@@ -226,6 +226,7 @@ export class ApplicationOnboardingService {
     publicUrl: string,
     context: AuditRequestContext = {},
     scopeNames?: string[],
+    options: { skipAudit?: boolean } = {},
   ): Promise<ConnectResponse> {
     assertSuperAdmin(admin);
     const app = await findApplication(applicationId);
@@ -249,16 +250,6 @@ export class ApplicationOnboardingService {
         },
       });
       profile = created;
-      await AuditService.record({
-        action: AuditAction.CREATE_MASTER_DATA,
-        source: AuditSource.UI,
-        entity_type: "ApplicationIntegrationProfile",
-        entity_id: created.id,
-        admin_id: admin.id,
-        new_values: { code: created.code, name: created.name },
-        ip_address: context.ip_address,
-        user_agent: context.user_agent,
-      });
     } else if (profile.status !== IntegrationProfileStatus.ACTIVE) {
       throw new ResponseError(400, "The integration profile of this application is not active");
     }
@@ -267,7 +258,7 @@ export class ApplicationOnboardingService {
       admin,
       { profile_code: applicationId, purpose: CONNECT_PURPOSE },
       context,
-      { viaApplication: true },
+      { viaApplication: true, skipAudit: options.skipAudit },
     );
 
     return { client, token: client.token, env: envValues(applicationId, organizationId, publicUrl, client.token) };
@@ -400,7 +391,7 @@ export class ApplicationOnboardingService {
       select: { id: true, name: true, is_active: true },
     });
     for (const client of clients) {
-      if (client.is_active) await ApiClientService.revoke(admin, { id: client.id }, context, { viaApplication: true });
+      if (client.is_active) await ApiClientService.revoke(admin, { id: client.id }, context, { viaApplication: true, skipAudit: true });
       // Frees the name, so adding the application again can make a new connection.
       await prismaClient.apiClient.update({
         where: { id: client.id },
@@ -421,13 +412,61 @@ export class ApplicationOnboardingService {
           entity_type: "Application",
           entity_id: app.id,
           admin_id: admin.id,
-          old_values: { ...toDetail(app), ...plan.will_delete },
+          old_values: { ...toDetail(app), ...plan.will_delete, revoked_clients: clients.filter((client) => client.is_active).map((client) => client.name) },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
         tx,
       );
     });
+  }
+
+  // Adds the application and, when asked, its connection, as one step with one audit entry.
+  static async create(
+    admin: AdminUser,
+    request: CreateApplicationRequest,
+    publicUrl: string,
+    context: AuditRequestContext = {},
+  ): Promise<ApplicationSummary & { connection: ConnectResponse | null }> {
+    assertSuperAdmin(admin);
+    const summary = await ApplicationAccessService.createApplication(admin, request, context, { skipAudit: true });
+    const app = await findApplication(summary.application_id);
+    let connection: ConnectResponse | null = null;
+    try {
+      if (request.connect) {
+        connection = await this.connect(admin, app.application_id, publicUrl, context, request.scope_names, { skipAudit: true });
+      }
+    } finally {
+      const profile = connection
+        ? await prismaClient.applicationIntegrationProfile.findUnique({
+            where: { code: app.application_id },
+            include: { scopes: { include: { scope: true } } },
+          })
+        : null;
+      await AuditService.record({
+        action: AuditAction.APPLICATION_CREATE,
+        source: AuditSource.UI,
+        entity_type: "Application",
+        entity_id: app.id,
+        admin_id: admin.id,
+        new_values: {
+          application_id: app.application_id,
+          name: app.name,
+          organization_id: summary.organization_id,
+          connection: connection
+            ? {
+                profile_code: app.application_id,
+                client_name: connection.client.name,
+                token_prefix: connection.token.split(".")[0] ?? null,
+                scopes: (profile?.scopes ?? []).map((item) => item.scope.name).sort(),
+              }
+            : null,
+        },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
+    }
+    return { ...summary, connection };
   }
 
   // What the Hub reads: published applications only, nothing about people.

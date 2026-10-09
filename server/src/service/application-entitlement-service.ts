@@ -1803,6 +1803,8 @@ export class ApplicationAccessService {
     admin: AdminUser,
     request: CreateApplicationRequest,
     context: AuditRequestContext = {},
+    // Application Access writes its own single audit entry when it makes the connection too.
+    options: { skipAudit?: boolean } = {},
   ): Promise<ApplicationSummary> {
     assertSuperAdmin(admin);
     const parsed = Validation.validate(ApplicationValidation.CREATE, request);
@@ -1835,7 +1837,7 @@ export class ApplicationAccessService {
         logout_url: input.logout_url || null,
       },
     });
-    await AuditService.record({
+    if (!options.skipAudit) await AuditService.record({
       action: AuditAction.APPLICATION_CREATE,
       source: AuditSource.UI,
       entity_type: "ApplicationOrganization",
