@@ -2,6 +2,8 @@
   "name": "mws-management",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
+    "sync:hub-icons": "bun run scripts/sync-hub-icons.ts",
+    "check:hub-icons": "bun run scripts/sync-hub-icons.ts --check",
     "seed:dev:employee": "bun run seed/dev-data-employee.ts",
     "seed:dev:employee:clean": "bun run seed/dev-data-employee.ts --clean",
     "seed:dev:academic": "bun run seed/dev-data-academic.ts",

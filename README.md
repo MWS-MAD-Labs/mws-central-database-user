@@ -328,6 +328,18 @@ and [`src/middleware/api-client-auth-middleware.ts`](server/src/middleware/api-c
 | `students:consent:read`          | Consent records       |
 | `students:support_contacts:read` | Support assignments   |
 
+## Application Access icons
+
+The icon of an application is picked from the icons the Hub can draw (`HUB_ICONS` in
+`mws-hub/frontend/src/data/hubCategories.ts`). The list lives in `server/src/constants/hub-icons.ts` and
+`client/src/features/application-access/utils/hubIcons.js`, both generated. After the Hub adds or removes an icon:
+
+```bash
+cd server
+bun run sync:hub-icons    # rewrites both files from the Hub repo (HUB_REPO_PATH, default ../../mws-hub)
+bun run check:hub-icons   # only compares, fails when they differ
+```
+
 ## Rate Limiting
 
 All routes are rate-limited via Redis (`rate-limiter-flexible`). Key is
