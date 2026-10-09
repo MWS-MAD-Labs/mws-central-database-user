@@ -18,8 +18,10 @@ export function ConnectDialog({
   description = "Put these lines in the .env of the application, then deploy it.",
   notice = null,
 }) {
-  const lines = connection.env.map((item) => `${item.key}=${item.value}`);
-  const text = lines.join("\n");
+  // The lines are written as they go in the .env, in quotes, with a blank line between groups.
+  const text = connection.env
+    .map((item, index) => (index > 0 && connection.env[index - 1].group !== item.group ? `\n${item.line}` : item.line))
+    .join("\n");
   const [copied, setCopied] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
@@ -69,9 +71,9 @@ export function ConnectDialog({
           onCopy={(event) => event.preventDefault()}
           onContextMenu={(event) => event.preventDefault()}
         >
-          {connection.env.map((item) => (
-            <p key={item.key}>
-              {item.key}={item.key === "CENTRAL_DATA_API_TOKEN" ? maskToken(item.value) : item.value}
+          {connection.env.map((item, index) => (
+            <p key={item.key} className={index > 0 && connection.env[index - 1].group !== item.group ? "mt-3" : undefined}>
+              {item.secret ? `${item.key}="${maskToken(item.value)}"` : item.line}
             </p>
           ))}
         </div>

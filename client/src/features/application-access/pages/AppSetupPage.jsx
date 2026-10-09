@@ -19,6 +19,7 @@ import { DataAccessDialog } from "../components/DataAccessDialog.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
 import { oldTokenNotice } from "../../api-clients/utils/oldTokenNotice.js";
 import { RotateTokenFlow } from "../../api-clients/components/RotateTokenFlow.jsx";
+import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
 import { RemovalGuideDialog } from "../components/RemovalGuideDialog.jsx";
 import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
 import { SetupGuideDialog } from "../components/SetupGuideDialog.jsx";
@@ -344,11 +345,22 @@ export function AppSetupPage() {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-(--mws-line) bg-white px-5 py-3 text-sm">
-        <span className="font-semibold text-(--mws-charcoal)">Organization ID</span>
-        <CopyableId value={setup.organization_id} />
-        <span className="text-(--mws-muted)">Already included in the values you copy when you create the connection.</span>
-      </div>
+      {setup.is_hub ? null : (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-(--mws-line) bg-white px-5 py-3 text-sm">
+          <span className="font-semibold text-(--mws-charcoal)">Organization ID</span>
+          <CopyableId value={setup.organization_id} />
+          <span className="text-(--mws-muted)">Already included in the values you copy when you create the connection.</span>
+        </div>
+      )}
+
+      {setup.is_hub && setup.env_settings ? (
+        <HubSettingsCard
+          key={JSON.stringify(setup.env_settings)}
+          settings={setup.env_settings}
+          applicationId={applicationId}
+          onSaved={refresh}
+        />
+      ) : null}
 
       <ol className="space-y-3">
         {steps.map((step, index) => (
@@ -434,7 +446,7 @@ export function AppSetupPage() {
         />
       ) : null}
       {removalGuide ? <RemovalGuideDialog onClose={() => setRemovalGuide(false)} /> : null}
-      {guide ? <SetupGuideDialog applicationId={applicationId} onClose={() => setGuide(false)} /> : null}
+      {guide ? <SetupGuideDialog applicationId={applicationId} isHub={setup.is_hub} onClose={() => setGuide(false)} /> : null}
       {removing ? (
         <RemoveApplicationDialog
           applicationId={applicationId}

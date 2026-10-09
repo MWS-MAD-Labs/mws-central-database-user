@@ -2,15 +2,20 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 
 // What the application itself has to do, for whoever builds it.
-export function SetupGuideDialog({ applicationId, onClose }) {
+export function SetupGuideDialog({ applicationId, isHub = false, onClose }) {
+  // The Hub reads other names than the applications, and its address already ends in /api/internal.
+  const base = isHub ? "CENTRAL_API_BASE_URL" : "CENTRAL_DATA_API_BASE_URL";
+  const token = isHub ? "CENTRAL_API_TOKEN" : "CENTRAL_DATA_API_TOKEN";
+  const path = isHub ? "/application-permissions/me" : "/api/internal/application-permissions/me";
   return (
     <CrudDialog title="Setup Guide" description={`What ${applicationId} needs to do to connect.`} onClose={onClose}>
       <div className="space-y-4 text-sm text-(--mws-charcoal)">
         <section>
           <h3 className="font-display font-bold">1. Environment</h3>
           <p className="mt-1 text-(--mws-muted)">
-            Put the four values from the connection in the application's .env: HUB_SSO_APP_ID, CENTRAL_DATA_API_BASE_URL,
-            CENTRAL_DATA_API_TOKEN and CENTRAL_ORGANIZATION_ID.
+            {isHub
+              ? "Put the lines from the connection in the Hub's .env: CENTRAL_API_BASE_URL, CENTRAL_API_TOKEN and the three HUB_CENTRAL_ACCESS settings."
+              : "Put the four values from the connection in the application's .env: HUB_SSO_APP_ID, CENTRAL_DATA_API_BASE_URL, CENTRAL_DATA_API_TOKEN and CENTRAL_ORGANIZATION_ID."}
           </p>
         </section>
         <section>
@@ -19,8 +24,8 @@ export function SetupGuideDialog({ applicationId, onClose }) {
             When it starts, the application sends the permissions its code understands. Roles can only use these. "me" means the application this token was made for, so no ID is needed.
           </p>
           <pre className="mt-2 overflow-x-auto rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3 font-mono text-xs">
-{`PUT {CENTRAL_DATA_API_BASE_URL}/api/internal/application-permissions/me
-Authorization: Bearer {CENTRAL_DATA_API_TOKEN}
+{`PUT {${base}}${path}
+Authorization: Bearer {${token}}
 
 { "permissions": [{ "key": "app.use", "description": "Open the app" }] }`}
           </pre>
@@ -33,8 +38,8 @@ Authorization: Bearer {CENTRAL_DATA_API_TOKEN}
             marks the connection and the permissions as received.
           </p>
           <pre className="mt-2 overflow-x-auto rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3 font-mono text-xs">
-{`curl -X PUT "$CENTRAL_DATA_API_BASE_URL/api/internal/application-permissions/me" \\
-  -H "Authorization: Bearer $CENTRAL_DATA_API_TOKEN" \\
+{`curl -X PUT "$${base}${path}" \\
+  -H "Authorization: Bearer $${token}" \\
   -H "Content-Type: application/json" \\
   -d '{"permissions":[{"key":"app.use","description":"Open the app"}]}'`}
           </pre>

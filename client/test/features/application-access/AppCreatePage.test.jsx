@@ -115,7 +115,7 @@ describe('AppCreatePage', () => {
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',
-        response: () => jsonResponse({ data: { application_id: 'hub', connection: { token: 'mws_a.b', env: [{ key: 'HUB_SSO_APP_ID', value: 'hub' }] } } }),
+        response: () => jsonResponse({ data: { application_id: 'hub', connection: { token: 'mws_a.b', env: [{ key: 'HUB_SSO_APP_ID', value: 'hub', secret: false, group: 0, line: 'HUB_SSO_APP_ID="hub"' }] } } }),
       },
     ])
     globalThis.fetch = fetchMock
@@ -133,7 +133,13 @@ describe('AppCreatePage', () => {
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
-      expect(JSON.parse(call[1].body)).toEqual({ name: 'HUB', is_hub: true, connect: true, scope_names: ['employees:read'] })
+      expect(JSON.parse(call[1].body)).toEqual({
+        name: 'HUB',
+        is_hub: true,
+        connect: true,
+        scope_names: ['employees:read'],
+        env_settings: { hub_access_mode: 'warn', hub_bypass_emails: [] },
+      })
     })
   })
 
@@ -190,6 +196,17 @@ describe('AppCreatePage', () => {
     expect(description.className).toContain('break-all')
   })
 
+  it('asks how the Hub signs people in only when the Hub is chosen', async () => {
+    globalThis.fetch = createFetchRouter([SCOPES])
+    const { user } = renderPage()
+    expect(screen.queryByText('Hub Sign-in')).toBeNull()
+    await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
+    expect(screen.getByText('Hub Sign-in')).toBeVisible()
+    expect(screen.getByRole('radio', { name: /Warn/ })).toHaveAttribute('aria-checked', 'true')
+    await user.type(screen.getByLabelText('Emails that always get in'), 'nope')
+    expect(screen.getByText('"nope" is not a valid email.')).toBeVisible()
+  })
+
   it('tidies extra spaces when leaving the name', async () => {
     globalThis.fetch = createFetchRouter([SCOPES])
     const { user } = renderPage()
@@ -230,7 +247,7 @@ describe('AppCreatePage', () => {
               organization_id: 'org_demo_x',
               connection: {
                 token: 'mws_abc.secretsecretsecret',
-                env: [{ key: 'HUB_SSO_APP_ID', value: 'demo' }, { key: 'CENTRAL_DATA_API_TOKEN', value: 'mws_abc.secretsecretsecret' }],
+                env: [{ key: 'HUB_SSO_APP_ID', value: 'demo', secret: false, group: 0, line: 'HUB_SSO_APP_ID="demo"' }, { key: 'CENTRAL_DATA_API_TOKEN', value: 'mws_abc.secretsecretsecret', secret: true, group: 0, line: 'CENTRAL_DATA_API_TOKEN="mws_abc.secretsecretsecret"' }],
               },
             },
           }),

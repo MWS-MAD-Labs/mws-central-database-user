@@ -29,6 +29,7 @@ function makeSetup(overrides = {}) {
     can_publish: false,
     missing: ['permissions', 'roles', 'groups'],
     is_hub: false,
+    env_settings: null,
     removal: { can_remove: false, retire_available: true },
     data_access: { scope_names: ['application_entitlements:read', 'application_permissions:write'], editable: true },
     ...overrides,
@@ -87,10 +88,10 @@ describe('AppSetupPage', () => {
               token,
               client: { token },
               env: [
-                { key: 'HUB_SSO_APP_ID', value: 'demo' },
-                { key: 'CENTRAL_DATA_API_BASE_URL', value: 'https://db.example.com' },
-                { key: 'CENTRAL_DATA_API_TOKEN', value: token },
-                { key: 'CENTRAL_ORGANIZATION_ID', value: 'org_demo_abcdefghijklmnopqrst' },
+                { key: 'HUB_SSO_APP_ID', value: 'demo', secret: false, group: 0, line: 'HUB_SSO_APP_ID="demo"' },
+                { key: 'CENTRAL_DATA_API_BASE_URL', value: 'https://db.example.com', secret: false, group: 0, line: 'CENTRAL_DATA_API_BASE_URL="https://db.example.com"' },
+                { key: 'CENTRAL_DATA_API_TOKEN', value: token, secret: true, group: 0, line: `CENTRAL_DATA_API_TOKEN="${token}"` },
+                { key: 'CENTRAL_ORGANIZATION_ID', value: 'org_demo_abcdefghijklmnopqrst', secret: false, group: 0, line: 'CENTRAL_ORGANIZATION_ID="org_demo_abcdefghijklmnopqrst"' },
               ],
             },
           }),
@@ -98,8 +99,8 @@ describe('AppSetupPage', () => {
     ])
     await user.click(await screen.findByRole('button', { name: 'Create Connection' }))
     expect(await screen.findByText('Connection Created')).toBeVisible()
-    expect(screen.getByText(/HUB_SSO_APP_ID=demo/)).toBeVisible()
-    expect(screen.getByText(/CENTRAL_DATA_API_TOKEN=mws_47d0b3/)).toBeVisible()
+    expect(screen.getByText('HUB_SSO_APP_ID="demo"')).toBeVisible()
+    expect(screen.getByText(/CENTRAL_DATA_API_TOKEN="mws_47d0b3/)).toBeVisible()
     expect(screen.queryByText(new RegExp(token.slice(-12)))).toBeNull()
   })
 
@@ -300,10 +301,10 @@ describe('AppSetupPage', () => {
               token: 'mws_new.secret',
               credentials: [],
               env: [
-                { key: 'HUB_SSO_APP_ID', value: 'demo' },
-                { key: 'CENTRAL_DATA_API_BASE_URL', value: 'https://db.example.com' },
-                { key: 'CENTRAL_DATA_API_TOKEN', value: 'mws_new.secretsecretsecret' },
-                { key: 'CENTRAL_ORGANIZATION_ID', value: 'org_demo_abc' },
+                { key: 'HUB_SSO_APP_ID', value: 'demo', secret: false, group: 0, line: 'HUB_SSO_APP_ID="demo"' },
+                { key: 'CENTRAL_DATA_API_BASE_URL', value: 'https://db.example.com', secret: false, group: 0, line: 'CENTRAL_DATA_API_BASE_URL="https://db.example.com"' },
+                { key: 'CENTRAL_DATA_API_TOKEN', value: 'mws_new.secretsecretsecret', secret: true, group: 0, line: 'CENTRAL_DATA_API_TOKEN="mws_new.secretsecretsecret"' },
+                { key: 'CENTRAL_ORGANIZATION_ID', value: 'org_demo_abc', secret: false, group: 0, line: 'CENTRAL_ORGANIZATION_ID="org_demo_abc"' },
               ],
             },
           })
@@ -315,9 +316,9 @@ describe('AppSetupPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Start Rotation' }))
     expect(await screen.findByText('Rotated Credentials')).toBeVisible()
     // All four values come back, not only the token.
-    expect(screen.getByText(/HUB_SSO_APP_ID=demo/)).toBeVisible()
-    expect(screen.getByText(/CENTRAL_ORGANIZATION_ID=org_demo_abc/)).toBeVisible()
-    expect(screen.getByText(/CENTRAL_DATA_API_BASE_URL=https:\/\/db.example.com/)).toBeVisible()
+    expect(screen.getByText('HUB_SSO_APP_ID="demo"')).toBeVisible()
+    expect(screen.getByText('CENTRAL_ORGANIZATION_ID="org_demo_abc"')).toBeVisible()
+    expect(screen.getByText('CENTRAL_DATA_API_BASE_URL="https://db.example.com"')).toBeVisible()
     expect(rotations).toEqual([{ immediate: false, grace_hours: 24 }])
   })
   it('offers Edit Details on the About step', async () => {
@@ -424,6 +425,48 @@ describe('AppSetupPage', () => {
       expect(await screen.findByRole('button', { name: 'How Removing Works' })).toBeVisible()
       expect(screen.queryByRole('button', { name: 'Retire Application' })).toBeNull()
       expect(screen.queryByRole('button', { name: 'Delete Application' })).toBeNull()
+    })
+  })
+  describe('the Hub sign-in settings', () => {
+    const hubSettings = { hub_access_mode: 'warn', hub_bypass_emails: ['me@millennia21.id'] }
+
+    it('shows them on the Hub only, and saves a change', async () => {
+      const saved = []
+      const { user } = renderPage([
+        setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings })),
+        {
+          path: '/api/admin/application-access/apps/demo/env-settings',
+          method: 'PATCH',
+          response: ({ options }) => {
+            saved.push(JSON.parse(options.body))
+            return jsonResponse({ data: JSON.parse(options.body) })
+          },
+        },
+      ])
+      expect(await screen.findByText('Hub Sign-in')).toBeVisible()
+      expect(screen.getByRole('radio', { name: /Warn/ })).toHaveAttribute('aria-checked', 'true')
+      expect(screen.getByRole('button', { name: 'Save Settings' })).toBeDisabled()
+      // The Hub has no organization id to copy.
+      expect(screen.queryByText('Organization ID')).toBeNull()
+
+      await user.click(screen.getByRole('radio', { name: /Enforce/ }))
+      await user.type(screen.getByLabelText('Emails that always get in'), ', Boss@Millennia21.id')
+      await user.click(screen.getByRole('button', { name: 'Save Settings' }))
+      await waitFor(() => expect(saved).toEqual([{ hub_access_mode: 'enforce', hub_bypass_emails: ['me@millennia21.id', 'boss@millennia21.id'] }]))
+    })
+
+    it('refuses an email that is not one', async () => {
+      const { user } = renderPage([setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings }))])
+      await screen.findByText('Hub Sign-in')
+      await user.type(screen.getByLabelText('Emails that always get in'), ', nonsense')
+      expect(screen.getByText('"nonsense" is not a valid email.')).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Save Settings' })).toBeDisabled()
+    })
+
+    it('has none for an ordinary application', async () => {
+      renderPage([setupRoute(makeSetup())])
+      await screen.findByText('Organization ID')
+      expect(screen.queryByText('Hub Sign-in')).toBeNull()
     })
   })
 })

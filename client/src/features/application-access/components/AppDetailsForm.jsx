@@ -10,7 +10,9 @@ import { HUB_ICON_NAMES } from "../utils/hubIcons.js";
 import { AppCardPreview } from "./AppCardPreview.jsx";
 import { IconPicker } from "./IconPicker.jsx";
 import { NextStepsCard } from "./NextStepsCard.jsx";
+import { HubAccessSettings } from "./HubAccessSettings.jsx";
 import { ScopePicker } from "./ScopePicker.jsx";
+import { emailsProblem } from "../utils/hubSettings.js";
 
 const CATEGORIES = [
   { value: "reporting", label: "Reporting" },
@@ -23,7 +25,7 @@ const CATEGORIES = [
 
 // What the Hub card shows and where it sends people. Used to add an application and to edit it later.
 // On the page layout the id is made from the name. In the dialog the id is the one the application has.
-export function AppDetailsForm({ initial, idLocked = false, isHub = false, layout = "dialog", submitLabel, submitting, onSubmit, onCancel }) {
+export function AppDetailsForm({ initial, idLocked = false, isHub = false, layout = "dialog", adminEmail = "", submitLabel, submitting, onSubmit, onCancel }) {
   const launch = splitAddress(initial?.launch_url);
   const logout = splitAddress(initial?.logout_url, launch.environment);
   const [values, setValues] = useState({
@@ -43,6 +45,9 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const [pasted, setPasted] = useState({ launch: null, logout: null });
   const [notes, setNotes] = useState({ launch: null, logout: null });
   const hub = isHub || hubChosen;
+  // Safe to start with: people still get in, and the one setting it up always does.
+  const [hubSettings, setHubSettings] = useState({ hub_access_mode: "warn", hub_bypass_emails: adminEmail ? [adminEmail] : [] });
+  const hubSettingsProblem = layout === "page" && hubChosen ? emailsProblem(hubSettings.hub_bypass_emails) : null;
   const set = (key) => (event) => setValues((current) => ({ ...current, [key]: event.target.value }));
   const tidyOnBlur = (key) => () => setValues((current) => ({ ...current, [key]: tidyText(current[key]) }));
 
@@ -66,7 +71,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     launch_url: hub ? undefined : (clash("launch") ?? addressProblem(environment, launchRest, { required: needsLaunch }) ?? undefined),
     logout_url: hub ? undefined : (clash("logout") ?? addressProblem(environment, logoutRest) ?? undefined),
   };
-  const valid = !Object.values(errors).some(Boolean);
+  const valid = !Object.values(errors).some(Boolean) && !hubSettingsProblem;
   const shown = (key) => (attempted ? errors[key] : undefined);
 
   // Typing or pasting an address. A scheme in the text is taken off. It sets the environment when the other
@@ -102,7 +107,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       onSubmit({
         ...(idLocked ? { application_id: applicationId } : {}),
         name: "HUB",
-        ...(layout === "page" ? { is_hub: true, connect: true, scope_names: scopeNames } : {}),
+        ...(layout === "page" ? { is_hub: true, connect: true, scope_names: scopeNames, env_settings: hubSettings } : {}),
       });
       return;
     }
@@ -243,6 +248,14 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
         </Field>
       </Section>
       </>)}
+      {layout === "page" && hubChosen ? (
+        <Section title="Hub Sign-in">
+          <p className="text-xs leading-5 text-(--mws-muted)">
+            How strictly the Hub checks who may sign in. These go into the Hub's .env with the token.
+          </p>
+          <HubAccessSettings value={hubSettings} onChange={setHubSettings} attempted={attempted} />
+        </Section>
+      ) : null}
       {layout === "page" ? (
         <Section title="Data Access">
           <p className="text-xs leading-5 text-(--mws-muted)">

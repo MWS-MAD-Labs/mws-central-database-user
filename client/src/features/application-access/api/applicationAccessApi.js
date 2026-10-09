@@ -71,6 +71,12 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  // The Hub's sign-in settings, which go into its .env.
+  async updateEnvSettings(applicationId, settings) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/env-settings`, { method: 'PATCH', body: settings })
+    return response.data
+  },
+
   // Replaces the token of the connection. The new token comes back once.
   async rotateConnection(applicationId, { mode = 'graceful', graceSeconds = 86400 } = {}) {
     const response = await apiRequest(`${ACCESS}/apps/${applicationId}/rotate`, {

@@ -57,6 +57,7 @@ export function AppCreatePage() {
       />
       <AppDetailsForm
         layout="page"
+        adminEmail={user?.email ?? ""}
         submitLabel="Add Application"
         submitting={mutation.isPending}
         onSubmit={(payload) => mutation.mutate(payload)}
