@@ -59,7 +59,7 @@ describe('RemoveApplicationDialog', () => {
     expect(screen.getByText('1 API connection (revoked)')).toBeVisible()
     const button = screen.getByRole('button', { name: 'Delete Application' })
     expect(button).toBeDisabled()
-    await user.type(screen.getByLabelText('Type demo to confirm'), 'demo')
+    await user.type(screen.getByLabelText('Type "demo" to confirm'), 'demo')
     expect(button).toBeEnabled()
     await user.click(button)
     await waitFor(() => expect(onRemoved).toHaveBeenCalled())

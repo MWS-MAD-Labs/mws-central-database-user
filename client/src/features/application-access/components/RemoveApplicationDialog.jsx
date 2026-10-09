@@ -29,13 +29,20 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
       // get a 404 and show a second toast.
       setTimeout(() => {
         for (const kind of ["setup", "removal", "app"]) {
-          queryClient.removeQueries({ queryKey: ["application-access", kind, applicationId] });
+          queryClient.removeQueries({
+            queryKey: ["application-access", kind, applicationId],
+          });
         }
-        queryClient.invalidateQueries({ queryKey: ["application-access", "applications"] });
-        queryClient.invalidateQueries({ queryKey: ["application-access", "organizations"] });
+        queryClient.invalidateQueries({
+          queryKey: ["application-access", "applications"],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["application-access", "organizations"],
+        });
       }, 0);
     },
-    onError: (error) => showErrorToast(error, "Could not remove this application."),
+    onError: (error) =>
+      showErrorToast(error, "Could not remove this application."),
   });
 
   const plan = query.data;
@@ -43,20 +50,31 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
     ? [
         plan.will_delete.roles && count(plan.will_delete.roles, "role"),
         plan.will_delete.groups && count(plan.will_delete.groups, "group"),
-        plan.will_delete.permissions && count(plan.will_delete.permissions, "permission"),
-        plan.will_delete.clients && `${count(plan.will_delete.clients, "API connection")} (revoked)`,
+        plan.will_delete.permissions &&
+          count(plan.will_delete.permissions, "permission"),
+        plan.will_delete.clients &&
+          `${count(plan.will_delete.clients, "API connection")} (revoked)`,
       ].filter(Boolean)
     : [];
 
   return (
-    <CrudDialog title="Delete Application" description={applicationId} onClose={onClose} panelClassName="max-w-lg">
+    <CrudDialog
+      title="Delete Application"
+      description={applicationId}
+      onClose={onClose}
+      panelClassName="max-w-lg"
+    >
       {query.isLoading ? (
         <p className="text-sm text-(--mws-muted)">Checking where it is used…</p>
       ) : query.isError ? (
-        <p className="text-sm font-semibold text-[#a43c41]">This could not be checked. Try again.</p>
+        <p className="text-sm font-semibold text-[#a43c41]">
+          This could not be checked. Try again.
+        </p>
       ) : plan.can_remove ? (
         <div className="space-y-4">
-          <p className="text-sm text-(--mws-charcoal)">Nobody uses this application now. These go with it:</p>
+          <p className="text-sm text-(--mws-charcoal)">
+            Nobody uses this application now. These go with it:
+          </p>
           {goes.length > 0 ? (
             <ul className="list-disc space-y-1 pl-5 text-sm text-(--mws-charcoal)">
               {goes.map((item) => (
@@ -64,11 +82,16 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-(--mws-muted)">Only the application itself.</p>
+            <p className="text-sm text-(--mws-muted)">
+              Only the application itself.
+            </p>
           )}
           <div>
-            <label htmlFor="confirm-application-id" className="mb-1.5 block text-sm font-semibold text-(--mws-charcoal)">
-              Type {applicationId} to confirm
+            <label
+              htmlFor="confirm-application-id"
+              className="mb-1.5 block text-sm font-semibold text-(--mws-charcoal)"
+            >
+              Type "<span className="text-(--mws-rose)">{applicationId}</span>" to confirm
             </label>
             <TextInput
               id="confirm-application-id"
@@ -97,7 +120,9 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
         </div>
       ) : (
         <div className="space-y-4">
-          <p className="text-sm font-semibold text-(--mws-charcoal)">This application is still in use, so it cannot be deleted.</p>
+          <p className="text-sm font-semibold text-(--mws-charcoal)">
+            This application is still in use, so it cannot be deleted.
+          </p>
           <ul className="list-disc space-y-1 pl-5 text-sm text-(--mws-charcoal)">
             {plan.blockers.map((blocker) => (
               <li key={blocker}>{blocker}</li>

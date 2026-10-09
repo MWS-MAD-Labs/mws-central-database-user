@@ -238,7 +238,7 @@ describe('AppSetupPage', () => {
     )
     await user.click(await screen.findByRole('button', { name: 'More actions' }))
     await user.click(await screen.findByRole('button', { name: 'Delete Application' }))
-    await user.type(await screen.findByLabelText('Type demo to confirm'), 'demo')
+    await user.type(await screen.findByLabelText('Type "demo" to confirm'), 'demo')
     const before = requests.length
     await user.click(screen.getAllByRole('button', { name: 'Delete Application' }).at(-1))
     expect(await screen.findByText('List page')).toBeVisible()
