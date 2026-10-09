@@ -180,6 +180,7 @@ export type ApplicationSummary = {
   application_id: string;
   name: string;
   published: boolean;
+  retired: boolean;
   organization_id: string | null;
   role_count: number;
   active_group_count: number;

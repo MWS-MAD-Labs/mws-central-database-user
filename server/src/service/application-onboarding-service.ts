@@ -13,7 +13,7 @@ import { getIntegrationEnvironment } from "../utils/integration-environment";
 import { ApiClientService } from "./api-client-service";
 import { ApplicationIntegrationProfileService } from "./application-integration-profile-service";
 import { AuditService } from "./audit-service";
-import { ApplicationAccessService, resolveOrganizationId } from "./application-entitlement-service";
+import { ApplicationAccessService, clearActiveSnapshot, resolveOrganizationId } from "./application-entitlement-service";
 
 const CONNECT_PURPOSE = "app-connection";
 // Every connection can send permissions and check who may use the application.
@@ -34,6 +34,7 @@ export type ApplicationDetail = {
   launch_url: string | null;
   logout_url: string | null;
   published: boolean;
+  retired_at: string | null;
 };
 
 export type SetupStatus = {
@@ -54,7 +55,11 @@ export type SetupStatus = {
 export type RemovalPlan = {
   can_remove: boolean;
   blockers: string[];
-  will_delete: { roles: number; groups: number; permissions: number; clients: number };
+  // Blocked, but Retire would stop it and open the way to delete.
+  retire_available: boolean;
+  retired: boolean;
+  is_hub: boolean;
+  will_delete: { roles: number; groups: number; permissions: number; clients: number; people: number };
 };
 
 const RECENT_USE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -80,6 +85,7 @@ function toDetail(row: {
   launch_url: string | null;
   logout_url: string | null;
   published: boolean;
+  retired_at: Date | null;
 }): ApplicationDetail {
   return {
     application_id: row.application_id,
@@ -90,6 +96,7 @@ function toDetail(row: {
     launch_url: row.launch_url,
     logout_url: row.logout_url,
     published: row.published,
+    retired_at: row.retired_at ? row.retired_at.toISOString() : null,
   };
 }
 
@@ -233,6 +240,7 @@ export class ApplicationOnboardingService {
   ): Promise<ConnectResponse> {
     assertSuperAdmin(admin);
     const app = await findApplication(applicationId);
+    if (app.retired_at) throw new ResponseError(400, "This application is retired. Restore it first");
     if (await findConnectionClient(applicationId)) {
       throw new ResponseError(400, "This application already has a connection. Rotate its token instead");
     }
@@ -307,6 +315,7 @@ export class ApplicationOnboardingService {
     context: AuditRequestContext = {},
   ): Promise<ApplicationDetail> {
     if (applicationId === hubApplicationId()) throw new ResponseError(400, "This is the Hub itself, it is not listed in the Hub");
+    if ((await findApplication(applicationId)).retired_at) throw new ResponseError(400, "This application is retired. Restore it first");
     const status = await this.setup(admin, applicationId);
     if (!status.application.launch_url) status.missing.unshift("launch URL");
     if (status.missing.length > 0) {
@@ -369,18 +378,76 @@ export class ApplicationOnboardingService {
       ),
     );
 
+    const isHub = applicationId === hubApplicationId();
+    const retired = Boolean(app.retired_at);
     const blockers: string[] = [];
-    if (applicationId === hubApplicationId()) blockers.push("This is the Hub's own application. Removing it would lock everyone out of the Hub.");
-    if (app.published) blockers.push("It is showing in the Hub. Hide it from the Hub first.");
-    if (people > 0) {
-      blockers.push(`${people} ${people === 1 ? "person has" : "people have"} access to it. Remove that access first.`);
+    if (isHub) blockers.push("This is the Hub's own application. Removing it would lock everyone out of the Hub.");
+    // A retired application has no working token and gives nobody access, so only the Hub stops it.
+    if (!retired && !isHub) {
+      if (app.published) blockers.push("It is showing in the Hub.");
+      if (people > 0) blockers.push(`${people} ${people === 1 ? "person has" : "people have"} access to it.`);
+      if (recentlyUsed) blockers.push("Its token was used in the last 30 days, so the application is still running.");
     }
-    if (recentlyUsed) blockers.push("Its token was used in the last 30 days, so the application is still running.");
     return {
       can_remove: blockers.length === 0,
       blockers,
-      will_delete: { roles, groups, permissions, clients: clients.length },
+      retire_available: !isHub && !retired && blockers.length > 0,
+      retired,
+      is_hub: isHub,
+      will_delete: { roles, groups, permissions, clients: clients.length, people },
     };
+  }
+
+  // Stops the application without deleting anything: hidden from the Hub, token revoked, nobody has access.
+  static async retire(admin: AdminUser, applicationId: string, context: AuditRequestContext = {}): Promise<ApplicationDetail> {
+    assertSuperAdmin(admin);
+    if (applicationId === hubApplicationId()) throw new ResponseError(400, "This is the Hub itself. It cannot be retired");
+    const before = await findApplication(applicationId);
+    if (before.retired_at) throw new ResponseError(400, "This application is already retired");
+    const clients = await prismaClient.apiClient.findMany({
+      where: { profile: { code: applicationId }, is_active: true },
+      select: { id: true, name: true },
+    });
+    for (const client of clients) {
+      await ApiClientService.revoke(admin, { id: client.id }, context, { viaApplication: true, skipAudit: true });
+      // Frees the name, so a new connection can be made after a restore.
+      await prismaClient.apiClient.update({ where: { id: client.id }, data: { name: `${client.name} (retired ${new Date().toISOString()})` } });
+    }
+    await prismaClient.application.update({ where: { id: before.id }, data: { published: false, retired_at: new Date() } });
+    clearActiveSnapshot(applicationId);
+    const after = await findApplication(applicationId);
+    await AuditService.record({
+      action: AuditAction.APPLICATION_RETIRE,
+      source: AuditSource.UI,
+      entity_type: "Application",
+      entity_id: after.id,
+      admin_id: admin.id,
+      new_values: { application_id: applicationId, was_published: before.published, revoked_clients: clients.map((client) => client.name) },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+    return toDetail(after);
+  }
+
+  // Active again. The token stays revoked, so a new connection is made, and publishing is done by hand.
+  static async restore(admin: AdminUser, applicationId: string, context: AuditRequestContext = {}): Promise<ApplicationDetail> {
+    assertSuperAdmin(admin);
+    const before = await findApplication(applicationId);
+    if (!before.retired_at) throw new ResponseError(400, "This application is not retired");
+    await prismaClient.application.update({ where: { id: before.id }, data: { retired_at: null } });
+    clearActiveSnapshot(applicationId);
+    const after = await findApplication(applicationId);
+    await AuditService.record({
+      action: AuditAction.APPLICATION_RESTORE,
+      source: AuditSource.UI,
+      entity_type: "Application",
+      entity_id: after.id,
+      admin_id: admin.id,
+      new_values: { application_id: applicationId },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+    return toDetail(after);
   }
 
   // Deletes the application and what only belongs to it. Its API clients are revoked, not deleted, so the audit trail stays.
@@ -403,6 +470,7 @@ export class ApplicationOnboardingService {
     }
 
     await prismaClient.$transaction(async (tx) => {
+      await tx.applicationEntitlement.deleteMany({ where: { application_id: applicationId } });
       await tx.applicationAccessRule.deleteMany({ where: { application_id: applicationId } });
       await tx.applicationRole.deleteMany({ where: { application_id: applicationId } });
       await tx.applicationPermission.deleteMany({ where: { application_id: applicationId } });

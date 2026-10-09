@@ -316,6 +316,8 @@ enum AuditAction {
   APPLICATION_ENTITLEMENT_DELETE
   APPLICATION_CREATE
   APPLICATION_DELETE
+  APPLICATION_RETIRE
+  APPLICATION_RESTORE
   APPLICATION_ROLE_CREATE
   APPLICATION_ROLE_DELETE
   APPLICATION_PERMISSION_CREATE
@@ -1647,6 +1649,8 @@ model Application {
   launch_url     String?
   logout_url     String?
   published      Boolean  @default(false)
+  // Stopped but kept: its connection is revoked, it is hidden from the Hub and it gives nobody access.
+  retired_at     DateTime?
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 

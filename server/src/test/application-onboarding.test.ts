@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import { API_SCOPES } from "../constants/api-scopes";
 import { prismaClient } from "../lib/prisma";
 import { slugifyApplicationId } from "../utils/application-id";
-import { AdminUserTest, ApiClientTest, MasterDataTest, TestRequest } from "./test-utils";
+import { AdminUserTest, ApiClientTest, EmployeeTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const ACCESS = "/api/admin/application-access";
 const ROLES = "/api/admin/application-roles";
@@ -568,6 +568,120 @@ describe("application onboarding", () => {
     });
   });
 
+  describe("retiring an application", () => {
+    async function liveApplication(accessToken: string) {
+      const { data } = await (await create(accessToken, { connect: true })).json();
+      await prismaClient.application.update({ where: { application_id: appId }, data: { published: true } });
+      return data.connection.token as string;
+    }
+    const gone = (token: string) => TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${token}` });
+
+    it("stops the token, hides it from the Hub and keeps the data, in one audit entry", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const token = await liveApplication(accessToken);
+      await TestRequest.post(ROLES, { application_id: appId, key: "STAFF", label: "Staff", permissions: [], allows_employees: true }, accessToken);
+      expect((await gone(token)).status).toBe(200);
+      const before = await prismaClient.auditLog.count({ where: { action: { in: ["APPLICATION_RETIRE", "API_TOKEN_REVOKE"] } } });
+
+      const retired = await TestRequest.post(`${ACCESS}/apps/${appId}/retire`, {}, accessToken);
+      expect(retired.status).toBe(200);
+      expect((await retired.json()).data.retired_at).not.toBeNull();
+      expect((await gone(token)).status).toBe(401);
+      const row = await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } });
+      expect(row.published).toBe(false);
+      expect(await prismaClient.applicationRole.count({ where: { application_id: appId } })).toBe(1);
+      expect(await prismaClient.auditLog.count({ where: { action: { in: ["APPLICATION_RETIRE", "API_TOKEN_REVOKE"] } } })).toBe(before + 1);
+
+      expect((await TestRequest.post(`${ACCESS}/apps/${appId}/retire`, {}, accessToken)).status).toBe(400);
+      expect((await TestRequest.post(`${ACCESS}/apps/${appId}/publish`, {}, accessToken)).status).toBe(400);
+      expect((await TestRequest.post(`${ACCESS}/apps/${appId}/connect`, {}, accessToken)).status).toBe(400);
+      const list = (await (await TestRequest.get(`${ACCESS}/applications?search=${appId}`, accessToken)).json()).data;
+      expect(list[0].retired).toBe(true);
+    });
+
+    it("gives nobody access while retired and again after a restore", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken, { connect: true });
+      const person = await EmployeeTest.create({
+        email: "test_onb_retire@millennia21.id",
+        unitId: master.unit.id,
+        jobPositionId: master.position.id,
+        jobLevelId: master.level.id,
+        buildingId: master.building.id,
+      });
+      const organization = await prismaClient.applicationOrganization.findUniqueOrThrow({ where: { application_id: appId } });
+      await prismaClient.applicationRole.create({ data: { application_id: appId, key: "STAFF", label: "Staff", permissions: [] } });
+      await prismaClient.applicationEntitlement.create({
+        data: { person_id: person.id, application_id: appId, organization_id: organization.organization_id, role: "STAFF" },
+      });
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [API_SCOPES.APPLICATION_ENTITLEMENTS_READ] });
+      const headers = { Authorization: `Bearer ${token}` };
+      const lookup = () => TestRequest.get(`/api/internal/application-entitlements/lookup?person_id=${person.id}&application_id=${appId}`, undefined, headers);
+      try {
+        expect((await lookup()).status).toBe(200);
+        await TestRequest.post(`${ACCESS}/apps/${appId}/retire`, {}, accessToken);
+        expect((await lookup()).status).toBe(404);
+        const version = await TestRequest.get(`/api/internal/application-entitlements/version?application_id=${appId}`, undefined, headers);
+        expect((await version.json()).data.total).toBe(0);
+
+        expect((await TestRequest.post(`${ACCESS}/apps/${appId}/restore`, {}, accessToken)).status).toBe(200);
+        expect((await lookup()).status).toBe(200);
+        expect((await TestRequest.post(`${ACCESS}/apps/${appId}/restore`, {}, accessToken)).status).toBe(400);
+        // The old token stays revoked, a new connection is made.
+        expect((await TestRequest.post(`${ACCESS}/apps/${appId}/connect`, {}, accessToken)).status).toBe(200);
+      } finally {
+        await prismaClient.applicationEntitlement.deleteMany({ where: { application_id: appId } });
+        await EmployeeTest.delete();
+      }
+    });
+
+    it("opens the delete once retired, and removes the people who were left", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await liveApplication(accessToken);
+      const person = await EmployeeTest.create({
+        email: "test_onb_retire2@millennia21.id",
+        unitId: master.unit.id,
+        jobPositionId: master.position.id,
+        jobLevelId: master.level.id,
+        buildingId: master.building.id,
+      });
+      const organization = await prismaClient.applicationOrganization.findUniqueOrThrow({ where: { application_id: appId } });
+      await prismaClient.applicationRole.create({ data: { application_id: appId, key: "STAFF", label: "Staff", permissions: [] } });
+      await prismaClient.applicationEntitlement.create({
+        data: { person_id: person.id, application_id: appId, organization_id: organization.organization_id, role: "STAFF" },
+      });
+      try {
+        const blocked = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/removal`, accessToken)).json()).data;
+        expect(blocked.can_remove).toBe(false);
+        expect(blocked.retire_available).toBe(true);
+        expect((await TestRequest.delete(`${ACCESS}/apps/${appId}`, accessToken)).status).toBe(400);
+
+        await TestRequest.post(`${ACCESS}/apps/${appId}/retire`, {}, accessToken);
+        const open = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/removal`, accessToken)).json()).data;
+        expect(open).toMatchObject({ can_remove: true, retired: true, retire_available: false });
+        expect(open.will_delete.people).toBe(1);
+
+        expect((await TestRequest.delete(`${ACCESS}/apps/${appId}`, accessToken)).status).toBe(200);
+        expect(await prismaClient.applicationEntitlement.count({ where: { application_id: appId } })).toBe(0);
+      } finally {
+        await EmployeeTest.delete();
+      }
+    });
+
+    it("refuses the Hub", async () => {
+      process.env.HUB_APPLICATION_ID = appId;
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        await create(accessToken);
+        expect((await TestRequest.post(`${ACCESS}/apps/${appId}/retire`, {}, accessToken)).status).toBe(400);
+        const plan = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/removal`, accessToken)).json()).data;
+        expect(plan).toMatchObject({ can_remove: false, retire_available: false, is_hub: true });
+      } finally {
+        delete process.env.HUB_APPLICATION_ID;
+      }
+    });
+  });
+
   describe("removing an application", () => {
     const removal = (accessToken: string) => TestRequest.get(`${ACCESS}/apps/${appId}/removal`, accessToken);
     const remove = (accessToken: string) => TestRequest.delete(`${ACCESS}/apps/${appId}`, accessToken);
@@ -645,7 +759,7 @@ describe("application onboarding", () => {
       await prismaClient.apiClientCredential.updateMany({ where: { client: { profile: { code: appId } } }, data: { last_used_at: old } });
 
       const plan = (await (await removal(accessToken)).json()).data;
-      expect(plan.will_delete).toEqual({ roles: 1, groups: 1, permissions: 1, clients: 1 });
+      expect(plan.will_delete).toEqual({ roles: 1, groups: 1, permissions: 1, clients: 1, people: 0 });
       expect((await remove(accessToken)).status).toBe(200);
 
       expect(await prismaClient.application.count({ where: { application_id: appId } })).toBe(0);

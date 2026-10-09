@@ -129,6 +129,18 @@ export function clearActiveSnapshotsForTest() {
   activeSnapshots.clear();
 }
 
+// Retiring or restoring an application changes who has access at once, so its cached list goes.
+export function clearActiveSnapshot(applicationId: string) {
+  activeSnapshots.delete(applicationId);
+}
+
+// A retired application gives nobody access.
+async function isApplicationRetired(applicationId: string | undefined): Promise<boolean> {
+  if (!applicationId) return false;
+  const app = await prismaClient.application.findUnique({ where: { application_id: applicationId }, select: { retired_at: true } });
+  return Boolean(app?.retired_at);
+}
+
 const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
 
 // 20 random base32 characters (100 bits). It rides in tokens, so it is long enough to not be guessed.
@@ -277,6 +289,10 @@ export class ApplicationEntitlementService {
       ApplicationEntitlementValidation.LOOKUP,
       request,
     );
+
+    if (await isApplicationRetired(lookup.application_id)) {
+      throw new ResponseError(404, "Active application entitlement not found");
+    }
 
     const entitlement = await prismaClient.applicationEntitlement.findFirst({
       where: {
@@ -734,7 +750,9 @@ export class ApplicationEntitlementService {
   private static async activeSnapshot(applicationId: string): Promise<ActiveSnapshot> {
     const cached = activeSnapshots.get(applicationId);
     if (cached && Date.now() - cached.at < ACTIVE_SNAPSHOT_MS) return cached.snapshot;
-    const items = await ApplicationEntitlementService.computeActive(applicationId);
+    const items = (await isApplicationRetired(applicationId))
+      ? []
+      : await ApplicationEntitlementService.computeActive(applicationId);
     // The key moves only when something the satellite keeps about a person moves.
     const key = createHash("sha256")
       .update(
@@ -1779,6 +1797,7 @@ export class ApplicationAccessService {
           application_id: applicationId,
           name: app?.name ?? applicationId,
           published: app?.published ?? false,
+          retired: Boolean(app?.retired_at),
           organization_id: organization?.organization_id ?? null,
           role_count: roles.find((row) => row.application_id === applicationId)?._count._all ?? 0,
           active_group_count: groups.find((row) => row.application_id === applicationId)?._count._all ?? 0,
@@ -1859,6 +1878,7 @@ export class ApplicationAccessService {
       application_id: input.application_id,
       name: app.name,
       published: false,
+      retired: false,
       organization_id: organizationRow.organization_id,
       role_count: 0,
       active_group_count: 0,

@@ -299,6 +299,14 @@ export class ApplicationAccessController {
     return c.json({ data: response });
   }
 
+  static async retire(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: await ApplicationOnboardingService.retire(c.var.admin, requireApplicationId(c), getAuditRequestContext(c)) });
+  }
+
+  static async restore(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: await ApplicationOnboardingService.restore(c.var.admin, requireApplicationId(c), getAuditRequestContext(c)) });
+  }
+
   static async removal(c: Context<{ Variables: AdminVariables }>) {
     return c.json({ data: await ApplicationOnboardingService.removalPlan(c.var.admin, requireApplicationId(c)) });
   }
