@@ -182,6 +182,8 @@ export type ApplicationSummary = {
   published: boolean;
   retired: boolean;
   is_hub: boolean;
+  can_remove: boolean;
+  retire_available: boolean;
   organization_id: string | null;
   role_count: number;
   active_group_count: number;

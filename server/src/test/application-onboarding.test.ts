@@ -564,6 +564,33 @@ describe("application onboarding", () => {
       expect(live.removal).toEqual({ can_remove: false, retire_available: true });
     });
 
+    it("says in the list which rows may be deleted, and puts the Hub first", async () => {
+      process.env.HUB_APPLICATION_ID = "hub-first-test";
+      const hubId = "hub-first-test";
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        await create(accessToken);
+        await prismaClient.application.create({ data: { application_id: hubId, name: "HUB" } });
+        await prismaClient.applicationOrganization.create({ data: { application_id: hubId, organization_id: "org_hub_x" } });
+        const rowOf = async () => {
+          const list = (await (await TestRequest.get(`${ACCESS}/applications?search=${appId.slice(0, 8)}&size=50`, accessToken)).json()).data;
+          return list.find((item: { application_id: string }) => item.application_id === appId);
+        };
+        expect(await rowOf()).toMatchObject({ can_remove: true, retire_available: false });
+        await prismaClient.application.update({ where: { application_id: appId }, data: { published: true } });
+        expect(await rowOf()).toMatchObject({ can_remove: false, retire_available: true });
+        await prismaClient.application.update({ where: { application_id: appId }, data: { retired_at: new Date(), published: false } });
+        expect(await rowOf()).toMatchObject({ can_remove: true, retire_available: false, retired: true });
+
+        const all = (await (await TestRequest.get(`${ACCESS}/applications?size=50`, accessToken)).json()).data;
+        expect(all[0]).toMatchObject({ application_id: hubId, is_hub: true, can_remove: false, retire_available: false });
+      } finally {
+        await prismaClient.applicationOrganization.deleteMany({ where: { application_id: hubId } });
+        await prismaClient.application.deleteMany({ where: { application_id: hubId } });
+        delete process.env.HUB_APPLICATION_ID;
+      }
+    });
+
     it("marks the Hub in the list", async () => {
       process.env.HUB_APPLICATION_ID = appId;
       try {

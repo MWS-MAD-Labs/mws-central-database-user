@@ -9,6 +9,7 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import type { ApplicationSummary, CreateApplicationRequest, UpdateApplicationRequest } from "../model/application-entitlement-model";
 import { ApplicationValidation } from "../validation/application-entitlement-validation";
 import { Validation } from "../validation/validation";
+import { evaluateRemoval, usedRecently } from "../utils/application-removal";
 import { getIntegrationEnvironment } from "../utils/integration-environment";
 import { ApiClientService } from "./api-client-service";
 import { ApplicationIntegrationProfileService } from "./application-integration-profile-service";
@@ -63,8 +64,6 @@ export type RemovalPlan = {
   is_hub: boolean;
   will_delete: { roles: number; groups: number; permissions: number; clients: number; people: number };
 };
-
-const RECENT_USE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type ConnectResponse = {
   client: ApiClientCreatedResponse;
@@ -376,27 +375,16 @@ export class ApplicationOnboardingService {
         include: { credentials: { select: { last_used_at: true } } },
       }),
     ]);
-    const since = Date.now() - RECENT_USE_MS;
     const recentlyUsed = clients.some((client) =>
-      [client.last_used_at, ...client.credentials.map((credential) => credential.last_used_at)].some(
-        (date) => date && date.getTime() > since,
-      ),
+      usedRecently([client.last_used_at, ...client.credentials.map((credential) => credential.last_used_at)]),
     );
-
     const isHub = applicationId === hubApplicationId();
     const retired = Boolean(app.retired_at);
-    const blockers: string[] = [];
-    if (isHub) blockers.push("This is the Hub's own application. Removing it would lock everyone out of the Hub.");
-    // A retired application has no working token and gives nobody access, so only the Hub stops it.
-    if (!retired && !isHub) {
-      if (app.published) blockers.push("It is showing in the Hub.");
-      if (people > 0) blockers.push(`${people} ${people === 1 ? "person has" : "people have"} access to it.`);
-      if (recentlyUsed) blockers.push("Its token was used in the last 30 days, so the application is still running.");
-    }
+    const verdict = evaluateRemoval({ isHub, retired, published: app.published, people, recentlyUsed });
     return {
-      can_remove: blockers.length === 0,
-      blockers,
-      retire_available: !isHub && !retired && blockers.length > 0,
+      can_remove: verdict.can_remove,
+      blockers: verdict.blockers,
+      retire_available: verdict.retire_available,
       retired,
       is_hub: isHub,
       will_delete: { roles, groups, permissions, clients: clients.length, people },

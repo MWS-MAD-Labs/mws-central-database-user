@@ -12,6 +12,7 @@ import {
   type AdminUser,
   type ApplicationEntitlement,
 } from "../generated/prisma/client";
+import { evaluateRemoval, usedRecently } from "../utils/application-removal";
 import { hubApplicationId } from "../constants/hub-application";
 import { slugifyApplicationId } from "../utils/application-id";
 import { ResponseError } from "../error/response-error";
@@ -1782,7 +1783,8 @@ export class ApplicationAccessService {
     const needle = filters.search?.toLowerCase();
     const all: ApplicationSummary[] = [...ids]
       .filter((id) => !needle || id.includes(needle))
-      .sort()
+      // The Hub is always first, the rest by id.
+      .sort((left, right) => Number(right === hubApplicationId()) - Number(left === hubApplicationId()) || left.localeCompare(right))
       .map((applicationId) => {
         const organization = organizations.find((row) => row.application_id === applicationId);
         const dates = [
@@ -1805,11 +1807,34 @@ export class ApplicationAccessService {
           exception_count: exceptions.find((row) => row.application_id === applicationId)?._count._all ?? 0,
           blocked_count: blocked.find((row) => row.application_id === applicationId)?._count._all ?? 0,
           updated_at: latest ? latest.toISOString() : null,
+          can_remove: false,
+          retire_available: false,
         };
       });
 
+    // Whether each row on this page may be deleted, from one query for all of them.
+    const pageRows = all.slice((page - 1) * size, page * size);
+    const clients = await prismaClient.apiClient.findMany({
+      where: { is_active: true, profile: { code: { in: pageRows.map((row) => row.application_id) } } },
+      select: { last_used_at: true, profile: { select: { code: true } }, credentials: { select: { last_used_at: true } } },
+    });
+    for (const row of pageRows) {
+      const own = clients.filter((client) => client.profile?.code === row.application_id);
+      const verdict = evaluateRemoval({
+        isHub: row.is_hub,
+        retired: row.retired,
+        published: row.published,
+        people: row.exception_count + row.blocked_count,
+        recentlyUsed: own.some((client) =>
+          usedRecently([client.last_used_at, ...client.credentials.map((credential) => credential.last_used_at)]),
+        ),
+      });
+      row.can_remove = verdict.can_remove;
+      row.retire_available = verdict.retire_available;
+    }
+
     return {
-      data: all.slice((page - 1) * size, page * size),
+      data: pageRows,
       paging: {
         size,
         current_page: page,
@@ -1881,6 +1906,8 @@ export class ApplicationAccessService {
       published: false,
       retired: false,
       is_hub: applicationId === hubApplicationId(),
+      can_remove: applicationId !== hubApplicationId(),
+      retire_available: false,
       organization_id: organizationRow.organization_id,
       role_count: 0,
       active_group_count: 0,
