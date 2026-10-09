@@ -30,6 +30,16 @@ function listQuery(value: string | undefined): string[] | undefined {
   return items?.length ? items : undefined;
 }
 
+// The address apps reach Central on. CENTRAL_API_PUBLIC_URL wins, otherwise what the proxy forwarded.
+function publicBaseUrl(c: Context<{ Variables: AdminVariables }>): string {
+  const configured = process.env.CENTRAL_API_PUBLIC_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  const url = new URL(c.req.url);
+  const proto = c.req.header("x-forwarded-proto")?.split(",")[0]?.trim() || url.protocol.replace(":", "");
+  const host = c.req.header("x-forwarded-host")?.split(",")[0]?.trim() || c.req.header("host") || url.host;
+  return `${proto}://${host}`;
+}
+
 function requireApplicationId(c: Context<{ Variables: AdminVariables }>): string {
   const applicationId = c.req.param("applicationId");
   if (!applicationId) throw new ResponseError(400, "Application ID is required");
@@ -258,7 +268,7 @@ export class ApplicationAccessController {
   }
 
   static async connect(c: Context<{ Variables: AdminVariables }>) {
-    const publicUrl = process.env.CENTRAL_API_PUBLIC_URL?.trim() || new URL(c.req.url).origin;
+    const publicUrl = publicBaseUrl(c);
     const response = await ApplicationOnboardingService.connect(
       c.var.admin,
       requireApplicationId(c),

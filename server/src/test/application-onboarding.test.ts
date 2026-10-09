@@ -136,6 +136,9 @@ describe("application onboarding", () => {
       [API_SCOPES.APPLICATION_ENTITLEMENTS_READ, API_SCOPES.APPLICATION_PERMISSIONS_WRITE, API_SCOPES.EMPLOYEES_READ].sort(),
     );
 
+    // Behind a proxy the address is the one the proxy forwarded.
+    expect(env.CENTRAL_DATA_API_BASE_URL).toMatch(/^https?:\/\/[^/]+$/);
+
     const again = await TestRequest.post(`${ACCESS}/apps/${appId}/connect`, {}, accessToken);
     expect(again.status).toBe(400);
     expect(await prismaClient.applicationIntegrationProfile.count({ where: { code: appId } })).toBe(1);

@@ -1,11 +1,19 @@
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
-import { Field, TextAreaInput, TextInput } from "../../../components/ui/FormControls.jsx";
+import { Field, SelectInput, TextAreaInput, TextInput } from "../../../components/ui/FormControls.jsx";
 
 // Lowercase, spaces become underscores, anything else odd is dropped.
 const cleanId = (value) => value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_-]/g, "");
 const ID_PATTERN = /^[a-z][a-z0-9_-]*$/;
 const URL_PATTERN = /^https?:\/\/\S+$/i;
+
+const CATEGORIES = [
+  { value: "reporting", label: "Reporting" },
+  { value: "students", label: "Students" },
+  { value: "workplace", label: "Workplace" },
+  { value: "operations", label: "Operations" },
+  { value: "utilities", label: "Utilities" },
+];
 
 const EMPTY = { application_id: "", name: "", description: "", icon: "", category: "", launch_url: "", logout_url: "" };
 
@@ -65,8 +73,15 @@ export function AppDetailsForm({ initial, idLocked = false, submitLabel, submitt
         <TextAreaInput aria-label="Description" rows={2} value={values.description} onChange={set("description")} />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Category" hint="For example Finance or Learning.">
-          <TextInput aria-label="Category" value={values.category} onChange={set("category")} />
+        <Field label="Category" hint="Where the Hub groups the card.">
+          <SelectInput aria-label="Category" value={values.category} onChange={set("category")}>
+            <option value="">Utilities (default)</option>
+            {CATEGORIES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </SelectInput>
         </Field>
         <Field label="Icon" hint="An icon name from the Hub, like AppWindow. Leave it empty for the default.">
           <TextInput aria-label="Icon" value={values.icon} onChange={set("icon")} />
