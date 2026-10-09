@@ -539,6 +539,11 @@ describe("application onboarding", () => {
         const rename = await TestRequest.patch(`${ACCESS}/apps/${appId}/details`, { name: "Renamed" }, accessToken);
         expect(rename.status).toBe(400);
         expect(JSON.stringify(await rename.json())).toContain("cannot change");
+        // An older Hub row spelled otherwise can be put right to HUB.
+        await prismaClient.application.update({ where: { application_id: appId }, data: { name: "hub" } });
+        const fix = await TestRequest.patch(`${ACCESS}/apps/${appId}/details`, { name: "HUB" }, accessToken);
+        expect(fix.status).toBe(200);
+        expect((await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } })).name).toBe("HUB");
         const again = await TestRequest.post(`${ACCESS}/applications`, { name: "Other Hub", is_hub: true }, accessToken);
         expect(again.status).toBe(400);
         expect(JSON.stringify(await again.json())).toContain("already added");

@@ -142,7 +142,8 @@ export class ApplicationOnboardingService {
     assertSuperAdmin(admin);
     const input = Validation.validate(ApplicationValidation.UPDATE, request);
     const before = await findApplication(input.application_id);
-    if (input.application_id === hubApplicationId() && input.name !== undefined && input.name !== before.name) {
+    // The Hub is always called HUB. An older Hub row with another spelling can be put right, nothing else.
+    if (input.application_id === hubApplicationId() && input.name !== undefined && input.name !== before.name && input.name !== "HUB") {
       throw new ResponseError(400, "The name of the Hub cannot change");
     }
     const data = {
