@@ -553,6 +553,30 @@ describe("application onboarding", () => {
     });
   });
 
+  describe("what the menu may offer", () => {
+    it("says in the setup whether delete is allowed or only retire", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken);
+      const unused = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+      expect(unused.removal).toEqual({ can_remove: true, retire_available: false });
+      await prismaClient.application.update({ where: { application_id: appId }, data: { published: true } });
+      const live = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+      expect(live.removal).toEqual({ can_remove: false, retire_available: true });
+    });
+
+    it("marks the Hub in the list", async () => {
+      process.env.HUB_APPLICATION_ID = appId;
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        await create(accessToken);
+        const list = (await (await TestRequest.get(`${ACCESS}/applications?search=${appId}`, accessToken)).json()).data;
+        expect(list[0].is_hub).toBe(true);
+      } finally {
+        delete process.env.HUB_APPLICATION_ID;
+      }
+    });
+  });
+
   describe("the Hub itself", () => {
     it("has no show in Hub step and cannot be published or removed", async () => {
       process.env.HUB_APPLICATION_ID = appId;

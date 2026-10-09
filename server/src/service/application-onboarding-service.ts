@@ -50,6 +50,8 @@ export type SetupStatus = {
   is_hub: boolean;
   // Scopes of the connection profile. Only a profile made for this application can be changed.
   data_access: { scope_names: string[]; editable: boolean };
+  // What the menu may offer: delete when it is allowed, otherwise retire.
+  removal: { can_remove: boolean; retire_available: boolean };
 };
 
 export type RemovalPlan = {
@@ -208,7 +210,9 @@ export class ApplicationOnboardingService {
     if (roles === 0) missing.push("roles");
     if (groups === 0) missing.push("groups");
 
+    const plan = await this.removalPlan(admin, applicationId);
     return {
+      removal: { can_remove: plan.can_remove, retire_available: plan.retire_available },
       application: toDetail(app),
       organization_id: organizationId,
       connection: {
