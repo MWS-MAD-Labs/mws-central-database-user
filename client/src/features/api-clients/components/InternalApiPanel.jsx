@@ -131,6 +131,7 @@ export function InternalApiPanel({ endpoints, profiles = [], isLoading }) {
                         {endpoint.title ? (
                           <p className="max-w-md text-xs text-(--mws-muted)">{endpoint.purpose}</p>
                         ) : null}
+                        {endpoint.note ? <p className="mt-1 max-w-md text-xs text-(--mws-navy)">{endpoint.note}</p> : null}
                         {endpoint.group ? <p className="mt-1 text-[11px] text-(--mws-muted)">{endpoint.group}</p> : null}
                       </td>
                       <td className="px-4 py-3" title={endpoint.scope}>

@@ -48,6 +48,28 @@ function renderPage(extraRoutes = [], { profiles = [hubProfile], clients = [], e
 }
 
 describe('ApiClientsPage application profiles', () => {
+  it('sends a profile that belongs to an application to Application Access instead of editing it', async () => {
+    const owned = { ...hubProfile, application: { application_id: 'hub', name: 'Hub App' } }
+    const free = { ...hubProfile, id: 'profile-free', code: 'reports', name: 'Reports', application: null }
+    const { user } = renderPage([], { profiles: [owned, free] })
+    await user.click(await screen.findByRole('tab', { name: 'Application Profiles' }))
+    expect(await screen.findByText('App: Hub App')).toBeVisible()
+    const link = screen.getByRole('link', { name: 'Manage in Application Access' })
+    expect(link).toHaveAttribute('href', '/application-access/apps/hub/setup')
+    // Only the profile without an application can be edited here.
+    expect(screen.getAllByRole('button', { name: /^Edit/ })).toHaveLength(1)
+  })
+
+  it('shows the application name on a client and links to its setup', async () => {
+    const owned = { ...hubProfile, application: { application_id: 'hub', name: 'Hub App' } }
+    const client = {
+      id: 'c1', name: 'MWS Hub (DEVELOPMENT/backend)', description: null, is_active: true, status: 'ACTIVE', scopes: [], credentials: [],
+      profile: { id: 'profile-hub', code: 'hub', name: 'MWS Hub', version: 2 }, environment: 'DEVELOPMENT', purpose: 'backend',
+    }
+    renderPage([], { profiles: [owned], clients: [client] })
+    expect(await screen.findByRole('link', { name: 'Hub App' })).toHaveAttribute('href', '/application-access/apps/hub/setup')
+  })
+
   it('creates a profile from the UI with Save disabled until it is valid', async () => {
     const posts = []
     const { user } = renderPage([
@@ -63,7 +85,7 @@ describe('ApiClientsPage application profiles', () => {
 
     await user.click(await screen.findByRole('tab', { name: 'Application Profiles' }))
     expect(await screen.findByText('MWS Hub')).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'New Profile' }))
+    await user.click(screen.getByRole('button', { name: 'New Standalone Profile' }))
     const dialog = await screen.findByRole('dialog', { name: 'New Application Profile' })
     const save = within(dialog).getByRole('button', { name: 'Save' })
     expect(save).toBeDisabled()
@@ -432,5 +454,21 @@ describe('ApiClientsPage application profiles', () => {
       expect(await screen.findByRole('button', { name: 'Edit Legacy Scopes' })).toBeVisible()
       expect(screen.queryByRole('button', { name: 'Revoke Old Token' })).not.toBeInTheDocument()
     })
+  })
+  it('shows the note of an endpoint that takes an application id', async () => {
+    renderPage([], {
+      endpoints: [
+        {
+          method: 'PUT',
+          path: '/api/internal/application-permissions/{application_id}',
+          scope: 'employees:read',
+          title: 'Publish application permissions',
+          group: 'Application Access',
+          purpose: 'An application sends the permissions its code understands.',
+          note: 'Use me instead of the application ID to mean the application this token was made for.',
+        },
+      ],
+    })
+    expect(await screen.findByText(/Use me instead of the application ID/)).toBeVisible()
   })
 })

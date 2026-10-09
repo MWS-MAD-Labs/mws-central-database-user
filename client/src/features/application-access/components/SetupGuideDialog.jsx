@@ -16,10 +16,10 @@ export function SetupGuideDialog({ applicationId, onClose }) {
         <section>
           <h3 className="font-display font-bold">2. Send its permissions</h3>
           <p className="mt-1 text-(--mws-muted)">
-            When it starts, the application sends the permissions its code understands. Roles can only use these.
+            When it starts, the application sends the permissions its code understands. Roles can only use these. "me" means the application this token was made for, so no ID is needed.
           </p>
           <pre className="mt-2 overflow-x-auto rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3 font-mono text-xs">
-{`PUT {CENTRAL_DATA_API_BASE_URL}/api/internal/application-permissions/${applicationId}
+{`PUT {CENTRAL_DATA_API_BASE_URL}/api/internal/application-permissions/me
 Authorization: Bearer {CENTRAL_DATA_API_TOKEN}
 
 { "permissions": [{ "key": "app.use", "description": "Open the app" }] }`}

@@ -136,7 +136,7 @@ export function AppSetupPage() {
     switch (step.id) {
       case "connect":
         return setup.connection.created ? (
-          quiet("/api-clients", "Rotate Token")
+          quiet(`/api-clients?client=${setup.connection.client_id}`, "Rotate Token")
         ) : (
           <Button type="button" loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
             Create Connection

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, KeyRound, Plus } from "lucide-react";
-import { useState } from "react";
-import { useSearchParams } from "react-router";
+import { useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -155,8 +155,20 @@ export function ApiClientsPage() {
   }
 
   const clients = clientsQuery.data || [];
+  // Arriving from an application's setup page with ?client=<id> points at that client.
+  const requestedClient = searchParams.get("client");
+  const scrolledTo = useRef(null);
+  const pointAt = (id) => (element) => {
+    if (!element || id !== requestedClient || scrolledTo.current === id) return;
+    scrolledTo.current = id;
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
   const clientPaging = usePagedList(clients);
   const profiles = profilesQuery.data?.profiles || [];
+  // Profiles that belong to an application added in Application Access, by code.
+  const profileApplications = new Map(
+    profiles.filter((profile) => profile.application).map((profile) => [profile.code, profile.application]),
+  );
   const serverEnvironment =
     profilesQuery.data?.environment ||
     clients.find((client) => client.environment)?.environment ||
@@ -169,9 +181,9 @@ export function ApiClientsPage() {
         description="Create and manage scoped access for internal MWS applications."
         actions={
           activeTab === "profiles" ? (
-            <Button type="button" onClick={() => setProfileDialog({ mode: "create" })}>
+            <Button type="button" variant="secondary" onClick={() => setProfileDialog({ mode: "create" })}>
               <Plus size={16} />
-              New Profile
+              New Standalone Profile
             </Button>
           ) : (
             <Button type="button" onClick={() => setCreateOpen(true)}>
@@ -264,11 +276,22 @@ export function ApiClientsPage() {
                   <tr
                     key={client.id}
                     id={`api-client-${client.id}`}
-                    className={`border-t border-(--mws-line) transition hover:bg-(--mws-soft) ${highlightClientId === client.id ? "bg-[#fff4d8] ring-2 ring-inset ring-[#c59b3b]" : "bg-white"}`}
+                    ref={pointAt(client.id)}
+                    className={`border-t border-(--mws-line) transition hover:bg-(--mws-soft) ${highlightClientId === client.id || requestedClient === client.id ? "bg-[#fff4d8] ring-2 ring-inset ring-[#c59b3b]" : "bg-white"}`}
                   >
                     <td className="px-4 py-3">
                       <p className="font-semibold text-(--mws-charcoal)">
-                        {client.profile?.name || client.application || client.name}
+                        {profileApplications.has(client.profile?.code) ? (
+                          <Link
+                            to={`/application-access/apps/${client.profile.code}/setup`}
+                            className="hover:text-(--mws-burgundy) hover:underline"
+                            title="Open in Application Access"
+                          >
+                            {profileApplications.get(client.profile.code).name}
+                          </Link>
+                        ) : (
+                          client.profile?.name || client.application || client.name
+                        )}
                         {!client.profile ? (
                           <StatusBadge tone="amber" className="ml-2 align-middle">Legacy</StatusBadge>
                         ) : null}

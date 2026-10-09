@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Layers, Pencil } from "lucide-react";
+import { Link } from "react-router";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -68,7 +69,8 @@ export function ApplicationProfilesPanel({ profiles, isLoading, dialog, setDialo
               Application profiles
             </h2>
             <p className="text-xs text-(--mws-muted)">
-              A profile is the scope bundle every client of an application gets.
+              A profile is the scope bundle every client of an application gets. Applications get their profile
+              when you add them in Application Access.
             </p>
           </div>
         </div>
@@ -105,6 +107,11 @@ export function ApplicationProfilesPanel({ profiles, isLoading, dialog, setDialo
                 <tr key={profile.id} className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)">
                   <td className="px-4 py-3">
                     <p className="font-semibold text-(--mws-charcoal)">{profile.name}</p>
+                    {profile.application ? (
+                      <StatusBadge tone="neutral" className="mt-1">
+                        App: {profile.application.name}
+                      </StatusBadge>
+                    ) : null}
                     <p className="max-w-xs truncate text-xs text-(--mws-muted)">
                       {profile.description || "-"}
                     </p>
@@ -123,21 +130,29 @@ export function ApplicationProfilesPanel({ profiles, isLoading, dialog, setDialo
                     </StatusBadge>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={profile.code === "unmapped"}
-                      title={
-                        profile.code === "unmapped"
-                          ? "Placeholder for legacy clients, not editable"
-                          : undefined
-                      }
-                      onClick={() => setDialog({ mode: "edit", profile })}
-                    >
-                      <Pencil size={15} />
-                      Edit
-                    </Button>
+                    {profile.application ? (
+                      <Button asChild variant="ghost" size="sm">
+                        <Link to={`/application-access/apps/${profile.application.application_id}/setup`}>
+                          Manage in Application Access
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={profile.code === "unmapped"}
+                        title={
+                          profile.code === "unmapped"
+                            ? "Placeholder for legacy clients, not editable"
+                            : undefined
+                        }
+                        onClick={() => setDialog({ mode: "edit", profile })}
+                      >
+                        <Pencil size={15} />
+                        Edit
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))
