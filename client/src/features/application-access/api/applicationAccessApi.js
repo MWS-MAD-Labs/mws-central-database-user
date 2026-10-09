@@ -60,6 +60,15 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  // Replaces the token of the connection. The new token comes back once.
+  async rotateConnection(applicationId, { mode = 'graceful', graceSeconds = 86400 } = {}) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/rotate`, {
+      method: 'POST',
+      body: { immediate: mode === 'emergency', grace_hours: mode === 'graceful' ? graceSeconds / 3600 : 0 },
+    })
+    return response.data
+  },
+
   async publish(applicationId) {
     const response = await apiRequest(`${ACCESS}/apps/${applicationId}/publish`, { method: 'POST', body: {} })
     return response.data

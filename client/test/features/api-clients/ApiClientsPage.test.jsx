@@ -47,186 +47,101 @@ function renderPage(extraRoutes = [], { profiles = [hubProfile], clients = [], e
   return { ...result, fetchMock }
 }
 
-describe('ApiClientsPage application profiles', () => {
-  it('sends a profile that belongs to an application to Application Access instead of editing it', async () => {
-    const owned = { ...hubProfile, application: { application_id: 'hub', name: 'Hub App' } }
-    const free = { ...hubProfile, id: 'profile-free', code: 'reports', name: 'Reports', application: null }
-    const { user } = renderPage([], { profiles: [owned, free] })
-    await user.click(await screen.findByRole('tab', { name: 'Application Profiles' }))
-    expect(await screen.findByText('App: Hub App')).toBeVisible()
-    const link = screen.getByRole('link', { name: 'Manage in Application Access' })
-    expect(link).toHaveAttribute('href', '/application-access/apps/hub/setup')
-    // Only the profile without an application can be edited here.
-    expect(screen.getAllByRole('button', { name: /^Edit/ })).toHaveLength(1)
+const legacyClient = {
+  id: 'legacy-1',
+  name: 'Old Reporting Tool',
+  description: 'Before applications',
+  status: 'ACTIVE',
+  is_active: true,
+  profile: null,
+  effective_scopes: ['employees:read'],
+  credentials: [],
+  last_used_at: null,
+}
+
+const appClient = {
+  id: 'c1',
+  name: 'MWS Hub (DEVELOPMENT/backend)',
+  status: 'ACTIVE',
+  is_active: true,
+  profile: { id: 'profile-hub', code: 'hub', name: 'MWS Hub', version: 2 },
+  effective_scopes: ['employees:read'],
+  credentials: [],
+}
+
+describe('ApiClientsPage as a reference', () => {
+  const owned = { ...hubProfile, application: { application_id: 'hub', name: 'Hub App' } }
+
+  it('has no way to make clients or profiles, those belong to Application Access', async () => {
+    renderPage([], { profiles: [owned], clients: [appClient] })
+    expect(await screen.findByRole('heading', { name: 'API Reference' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: /New Client|New Profile|New Standalone Profile/ })).toBeNull()
+    expect(screen.queryByRole('tab')).toBeNull()
   })
 
-  it('shows the application name on a client and links to its setup', async () => {
-    const owned = { ...hubProfile, application: { application_id: 'hub', name: 'Hub App' } }
-    const client = {
-      id: 'c1', name: 'MWS Hub (DEVELOPMENT/backend)', description: null, is_active: true, status: 'ACTIVE', scopes: [], credentials: [],
-      profile: { id: 'profile-hub', code: 'hub', name: 'MWS Hub', version: 2 }, environment: 'DEVELOPMENT', purpose: 'backend',
-    }
-    renderPage([], { profiles: [owned], clients: [client] })
-    expect(await screen.findByRole('link', { name: 'Hub App' })).toHaveAttribute('href', '/application-access/apps/hub/setup')
+  it('leaves out the clients of applications and hides Other Clients when none are left', async () => {
+    renderPage([], { profiles: [owned], clients: [appClient] })
+    await screen.findByRole('heading', { name: 'API Reference' })
+    await waitFor(() => expect(screen.queryByText('Other Clients')).toBeNull())
+    expect(screen.queryByText('MWS Hub')).toBeNull()
   })
 
-  it('creates a profile from the UI with Save disabled until it is valid', async () => {
-    const posts = []
-    const { user } = renderPage([
-      {
-        path: '/api/admin/application-integration-profiles',
-        method: 'POST',
-        response: ({ options }) => {
-          posts.push(JSON.parse(options.body))
-          return jsonResponse({ data: { ...hubProfile, id: 'profile-new', code: 'reports', name: 'Reports' } })
+  it('lists clients that belong to no application and revokes one after confirming', async () => {
+    const revoked = []
+    const { user } = renderPage(
+      [
+        {
+          path: '/api/admin/api-clients/revoke/legacy-1',
+          method: 'PATCH',
+          response: () => {
+            revoked.push('legacy-1')
+            return jsonResponse({ data: { ...legacyClient, is_active: false, status: 'REVOKED' } })
+          },
         },
-      },
-    ])
-
-    await user.click(await screen.findByRole('tab', { name: 'Application Profiles' }))
-    expect(await screen.findByText('MWS Hub')).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'New Standalone Profile' }))
-    const dialog = await screen.findByRole('dialog', { name: 'New Application Profile' })
-    const save = within(dialog).getByRole('button', { name: 'Save' })
-    expect(save).toBeDisabled()
-
-    await user.type(within(dialog).getAllByRole('textbox')[0], 'Reports')
-    // The code is suggested from the name.
-    expect(within(dialog).getAllByRole('textbox')[1]).toHaveValue('reports')
-    expect(save).toBeDisabled()
-
-    // Scopes are shown with plain-language names.
-    await user.click(await within(dialog).findByRole('checkbox', { name: /View employee profiles/ }))
-    expect(save).not.toBeDisabled()
-    await user.click(save)
-
-    await waitFor(() => expect(posts).toHaveLength(1))
-    expect(posts[0]).toMatchObject({ code: 'reports', name: 'Reports', scope_names: ['employees:read'] })
+      ],
+      { profiles: [owned], clients: [appClient, legacyClient] },
+    )
+    expect(await screen.findByText('Other Clients')).toBeVisible()
+    expect(screen.getByText('Old Reporting Tool')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: /Actions for Old Reporting Tool/ }))
+    await user.click(await screen.findByRole('button', { name: 'Revoke Client' }))
+    await user.click(await screen.findByRole('button', { name: 'Revoke' }))
+    await waitFor(() => expect(revoked).toEqual(['legacy-1']))
   })
 
-  it('edits scopes of an existing profile and keeps the code read-only', async () => {
-    const patches = []
-    const { user } = renderPage([
-      {
-        path: '/api/admin/application-integration-profiles/profile-hub',
-        method: 'PATCH',
-        response: ({ options }) => {
-          patches.push(JSON.parse(options.body))
-          return jsonResponse({ data: hubProfile })
+  it('rotates a client token and shows the new one', async () => {
+    const { user } = renderPage(
+      [
+        {
+          path: '/api/admin/api-clients/rotate/legacy-1',
+          method: 'PATCH',
+          response: () => jsonResponse({ data: { ...legacyClient, token: 'mws_new.secret', credentials: [] } }),
         },
-      },
-    ])
-
-    await user.click(await screen.findByRole('tab', { name: 'Application Profiles' }))
-    await screen.findByText('MWS Hub')
-    await user.click(screen.getByRole('button', { name: /Edit/ }))
-    const dialog = await screen.findByRole('dialog', { name: 'Edit Application Profile' })
-    expect(within(dialog).getByDisplayValue('hub')).toHaveAttribute('readonly')
-
-    await user.click(await within(dialog).findByRole('checkbox', { name: /View student health records/ }))
-    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
-
-    await waitFor(() => expect(patches).toHaveLength(1))
-    expect(patches[0].scope_names.sort()).toEqual(['employees:read', 'students:health:read'])
-    expect(patches[0].code).toBeUndefined()
+      ],
+      { profiles: [owned], clients: [legacyClient] },
+    )
+    await user.click(await screen.findByRole('button', { name: /Actions for Old Reporting Tool/ }))
+    await user.click(await screen.findByRole('button', { name: 'Rotate Credentials' }))
+    await user.click(await screen.findByRole('button', { name: 'Rotate' }))
+    await user.click(await screen.findByRole('button', { name: 'Start Rotation' }))
+    expect(await screen.findByText('Rotated Credentials')).toBeVisible()
   })
 
-  it('previews profile scopes in New Client using the standard searchable select', async () => {
-    const { user } = renderPage()
-
-    await user.click(await screen.findByRole('button', { name: 'New Client' }))
-    const dialog = await screen.findByRole('dialog', { name: 'New API Client' })
-    expect(within(dialog).getByRole('button', { name: 'Create' })).toBeDisabled()
-
-    await user.click(within(dialog).getByRole('button', { name: 'Select a profile' }))
-    await user.click(await screen.findByRole('option', { name: /MWS Hub/ }))
-    expect(within(dialog).getByText('View employee profiles')).toBeVisible()
-    expect(within(dialog).getByRole('button', { name: 'Create' })).not.toBeDisabled()
-  })
-
-  it('groups scopes into pills that open a plain-language list', async () => {
-    const { user } = renderPage([], {
-      profiles: [{ ...hubProfile, scopes }],
+  it('shows the note of an endpoint that takes an application id', async () => {
+    renderPage([], {
+      endpoints: [
+        {
+          method: 'PUT',
+          path: '/api/internal/application-permissions/{application_id}',
+          scope: 'employees:read',
+          title: 'Publish application permissions',
+          group: 'Application Access',
+          purpose: 'An application sends the permissions its code understands.',
+          note: 'Use me instead of the application ID to mean the application this token was made for.',
+        },
+      ],
     })
-
-    await user.click(await screen.findByRole('tab', { name: 'Application Profiles' }))
-    await screen.findByText('MWS Hub')
-    await user.click(screen.getByRole('button', { name: 'Employees scopes' }))
-    expect(await screen.findByText('View employee profiles')).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'Students scopes' }))
-    expect(await screen.findByText('View student health records')).toBeVisible()
-    expect(screen.getByText('Sensitive')).toBeVisible()
-  })
-
-  it('pages application profiles instead of scrolling', async () => {
-    const many = Array.from({ length: 12 }, (_, index) => ({
-      ...hubProfile,
-      id: `profile-${index}`,
-      code: `app-${index}`,
-      name: `App ${String(index).padStart(2, '0')}`,
-    }))
-    const { user } = renderPage([], { profiles: many })
-
-    await user.click(await screen.findByRole('tab', { name: 'Application Profiles' }))
-    expect(await screen.findByText('App 00')).toBeVisible()
-    expect(screen.getByText('App 09')).toBeVisible()
-    expect(screen.queryByText('App 10')).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: /Next/ }))
-    expect(await screen.findByText('App 10')).toBeVisible()
-    expect(screen.queryByText('App 00')).not.toBeInTheDocument()
-  })
-
-  it('pages the token management table', async () => {
-    const clients = Array.from({ length: 11 }, (_, index) => ({
-      id: `client-${index}`,
-      name: `Client ${String(index).padStart(2, '0')}`,
-      status: 'ACTIVE',
-      is_active: true,
-      profile: { id: 'profile-hub', code: 'hub', name: `Hub ${String(index).padStart(2, '0')}`, version: 1 },
-      environment: 'DEVELOPMENT',
-      purpose: 'backend',
-      effective_scopes: ['employees:read'],
-      credentials: [],
-    }))
-    const { user } = renderPage([], { clients })
-
-    expect(await screen.findByText('Hub 00')).toBeVisible()
-    expect(screen.queryByText('Hub 10')).not.toBeInTheDocument()
-    const tokenSection = screen.getByRole('heading', { name: 'Token management' }).closest('section')
-    await user.click(within(tokenSection).getByRole('button', { name: /Next/ }))
-    expect(await screen.findByText('Hub 10')).toBeVisible()
-  })
-
-  it('explains internal endpoints in plain language, filters by group, and pages', async () => {
-    const endpoints = [
-      { method: 'GET', path: '/api/internal/students', scope: 'students:read', title: 'List students', group: 'Students', purpose: 'Gets the list of students.' },
-      { method: 'GET', path: '/api/internal/employees', scope: 'employees:read', title: 'List employees', group: 'Employees', purpose: 'Gets the list of employees.' },
-      ...Array.from({ length: 10 }, (_, index) => ({
-        method: 'GET',
-        path: `/api/internal/students/x${index}`,
-        scope: 'students:health:read',
-        title: `Extra ${String(index).padStart(2, '0')}`,
-        group: 'Students',
-        purpose: 'Extra endpoint.',
-      })),
-    ]
-    const { user } = renderPage([], { endpoints })
-
-    expect(await screen.findByText('What connected apps can ask for')).toBeVisible()
-    expect(await screen.findByText('List students')).toBeVisible()
-    // 12 endpoints: 10 on the first page.
-    expect(screen.queryByText('Extra 09')).not.toBeInTheDocument()
-    const referenceSection = screen
-      .getByRole('heading', { name: 'What connected apps can ask for' })
-      .closest('section')
-    await user.click(within(referenceSection).getByRole('button', { name: /Next/ }))
-    expect(await screen.findByText('Extra 09')).toBeVisible()
-
-    await user.click(screen.getByRole('button', { name: 'All Groups' }))
-    await user.click(await screen.findByRole('option', { name: 'Employees' }))
-    expect(await screen.findByText('List employees')).toBeVisible()
-    expect(screen.queryByText('Extra 09')).not.toBeInTheDocument()
+    expect(await screen.findByText(/Use me instead of the application ID/)).toBeVisible()
   })
 
   describe('per app view of the endpoints', () => {
@@ -454,21 +369,5 @@ describe('ApiClientsPage application profiles', () => {
       expect(await screen.findByRole('button', { name: 'Edit Legacy Scopes' })).toBeVisible()
       expect(screen.queryByRole('button', { name: 'Revoke Old Token' })).not.toBeInTheDocument()
     })
-  })
-  it('shows the note of an endpoint that takes an application id', async () => {
-    renderPage([], {
-      endpoints: [
-        {
-          method: 'PUT',
-          path: '/api/internal/application-permissions/{application_id}',
-          scope: 'employees:read',
-          title: 'Publish application permissions',
-          group: 'Application Access',
-          purpose: 'An application sends the permissions its code understands.',
-          note: 'Use me instead of the application ID to mean the application this token was made for.',
-        },
-      ],
-    })
-    expect(await screen.findByText(/Use me instead of the application ID/)).toBeVisible()
   })
 })

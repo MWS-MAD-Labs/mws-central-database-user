@@ -66,8 +66,8 @@ export function InternalApiPanel({ endpoints, profiles = [], isLoading }) {
               What connected apps can ask for
             </h2>
             <p className="break-words text-xs text-(--mws-muted)">
-              Data that MWS apps can request, and the permission each request needs. Give a client a
-              profile with that permission.
+              Data that MWS apps can request, and the permission each request needs. An application gets
+              these in Data Access when you add it in Application Access.
             </p>
           </div>
         </div>

@@ -15,6 +15,7 @@ import { AppDetailsForm } from "../components/AppDetailsForm.jsx";
 import { ConnectDialog } from "../components/ConnectDialog.jsx";
 import { DataAccessDialog } from "../components/DataAccessDialog.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
+import { RotateTokenFlow } from "../../api-clients/components/RotateTokenFlow.jsx";
 import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
 import { SetupGuideDialog } from "../components/SetupGuideDialog.jsx";
 import { buildSteps, stepsDone } from "../utils/setupSteps.js";
@@ -40,6 +41,7 @@ export function AppSetupPage() {
   const [connection, setConnection] = useState(null);
   const [removing, setRemoving] = useState(false);
   const [guide, setGuide] = useState(false);
+  const [rotating, setRotating] = useState(false);
   const [dataAccess, setDataAccess] = useState(false);
   // Ticks so the ten minute note can appear without a reload.
   const [now, setNow] = useState(() => Date.now());
@@ -136,7 +138,9 @@ export function AppSetupPage() {
     switch (step.id) {
       case "connect":
         return setup.connection.created ? (
-          quiet(`/api-clients?client=${setup.connection.client_id}`, "Rotate Token")
+          <Button type="button" variant="ghost" size="sm" onClick={() => setRotating(true)}>
+            Rotate Token
+          </Button>
         ) : (
           <Button type="button" loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
             Create Connection
@@ -302,6 +306,14 @@ export function AppSetupPage() {
         ))}
       </ol>
 
+      {rotating ? (
+        <RotateTokenFlow
+          title={setup.application.name}
+          rotate={(options) => applicationAccessApi.rotateConnection(applicationId, options)}
+          onRotated={refresh}
+          onClose={() => setRotating(false)}
+        />
+      ) : null}
       {dataAccess ? (
         <DataAccessDialog
           applicationId={applicationId}

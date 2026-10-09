@@ -172,7 +172,7 @@ export function AppShell() {
               icon: CalendarDays,
             },
             { to: "/audit-logs", label: "Audit Logs", icon: FileClock },
-            { to: "/api-clients", label: "API Clients", icon: KeyRound },
+            { to: "/api-clients", label: "API Reference", icon: KeyRound },
             { to: "/application-access", label: "Application Access", icon: ShieldCheck },
           ],
         },

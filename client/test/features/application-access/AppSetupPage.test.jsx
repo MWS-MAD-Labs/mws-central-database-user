@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { screen, waitFor } from '@testing-library/react'
 import { Route, Routes } from 'react-router'
+import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { AppSetupPage } from '../../../src/features/application-access/pages/AppSetupPage.jsx'
 import { renderWithProviders } from '../../helpers/render.jsx'
@@ -37,9 +38,11 @@ function renderPage(routes, user = { role: 'SUPER_ADMIN' }) {
   globalThis.fetch = createFetchRouter(routes)
   return renderWithProviders(
     <AuthContext.Provider value={{ user }}>
-      <Routes>
-        <Route path="/application-access/apps/:applicationId/setup" element={<AppSetupPage />} />
-      </Routes>
+      <ConfirmProvider>
+        <Routes>
+          <Route path="/application-access/apps/:applicationId/setup" element={<AppSetupPage />} />
+        </Routes>
+      </ConfirmProvider>
     </AuthContext.Provider>,
     { route: '/application-access/apps/demo/setup' },
   )
@@ -102,7 +105,7 @@ describe('AppSetupPage', () => {
   it('shows that it is waiting for the application to send permissions', async () => {
     renderPage([setupRoute(makeSetup({ connection: { client_id: 'c1', created: true, last_used_at: null } }))])
     expect(await screen.findByText('Waiting for the application. Deploy it with the .env values and its permission sync.')).toBeVisible()
-    expect(screen.getByRole('link', { name: 'Rotate Token' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Rotate Token' })).toBeVisible()
     // Tells what to do next instead of leaving the person guessing.
     expect(screen.getByText('Do This Next')).toBeVisible()
     expect(screen.getByText('Deploy it, or run it locally with those values.')).toBeVisible()
@@ -279,5 +282,24 @@ describe('AppSetupPage', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(saved).toHaveLength(1))
     expect(saved[0].scope_names.sort()).toEqual(['application_entitlements:read', 'application_permissions:write', 'students:read'])
+  })
+  it('rotates the token of the connection from the setup page', async () => {
+    const rotations = []
+    const { user } = renderPage([
+      setupRoute(makeSetup({ connection: { client_id: 'c1', created: true, created_at: new Date().toISOString(), last_used_at: new Date().toISOString() }, permissions: { count: 1, synced_at: null } })),
+      {
+        path: '/api/admin/application-access/apps/demo/rotate',
+        method: 'POST',
+        response: ({ options }) => {
+          rotations.push(JSON.parse(options.body))
+          return jsonResponse({ data: { token: 'mws_new.secret', credentials: [] } })
+        },
+      },
+    ])
+    await user.click(await screen.findByRole('button', { name: 'Rotate Token' }))
+    await user.click(await screen.findByRole('button', { name: 'Rotate' }))
+    await user.click(await screen.findByRole('button', { name: 'Start Rotation' }))
+    expect(await screen.findByText('Rotated Credentials')).toBeVisible()
+    expect(rotations).toEqual([{ immediate: false, grace_hours: 24 }])
   })
 })
