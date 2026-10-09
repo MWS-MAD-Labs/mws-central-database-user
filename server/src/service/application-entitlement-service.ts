@@ -1814,7 +1814,7 @@ export class ApplicationAccessService {
     if (applicationId === "me") throw new ResponseError(400, "This name makes a reserved id. Pick another name");
     // The Hub has no card and no address.
     const input = parsed.is_hub
-      ? { ...parsed, application_id: applicationId, description: null, icon: null, category: null, launch_url: null, logout_url: null }
+      ? { ...parsed, application_id: applicationId, name: "HUB", description: null, icon: null, category: null, launch_url: null, logout_url: null }
       : { ...parsed, application_id: applicationId };
     const [organization, roles, rules, entitlements, existing] = await Promise.all([
       prismaClient.applicationOrganization.count({ where: { application_id: input.application_id } }),

@@ -42,7 +42,7 @@ describe("application onboarding", () => {
 
   it("creates an application with its details and a long random organization id", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const response = await create(accessToken, { description: "Test app", icon: "Cash", category: "operations" });
+    const response = await create(accessToken, { description: "Test app", icon: "Wallet", category: "operations" });
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.data.name).toBe("TEST_Onboard");
@@ -50,7 +50,7 @@ describe("application onboarding", () => {
     expect(body.data.organization_id).toMatch(new RegExp(`^org_${appId.replace(/-/g, "_")}_[a-z2-7]{20}$`));
 
     const row = await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } });
-    expect(row).toMatchObject({ description: "Test app", icon: "Cash", category: "operations", published: false });
+    expect(row).toMatchObject({ description: "Test app", icon: "Wallet", category: "operations", published: false });
 
     expect((await create(accessToken)).status).toBe(400);
     const badUrl = await TestRequest.post(
@@ -193,7 +193,7 @@ describe("application onboarding", () => {
       data: {
         application_id: appId,
         name: "TEST_Onboard",
-        icon: "Cash",
+        icon: "Wallet",
         launch_url: "https://onb.example.com/auth/sso",
         logout_url: "https://onb.example.com/auth/logout",
         published: true,
@@ -212,7 +212,7 @@ describe("application onboarding", () => {
         id: appId,
         name: "TEST_Onboard",
         description: null,
-        icon: "Cash",
+        icon: "Wallet",
         category: null,
         launch_url: "https://onb.example.com/auth/sso",
         logout_url: "https://onb.example.com/auth/logout",
@@ -394,6 +394,8 @@ describe("application onboarding", () => {
       expect(await bad({ description: "hello <script>" })).toBe(400);
       expect(await bad({ icon: "App Window" })).toBe(400);
       expect(await bad({ icon: "../x" })).toBe(400);
+      // The Hub only draws the icons it knows, so a made up name is refused.
+      expect(await bad({ icon: "Cash" })).toBe(400);
       expect(await bad({ category: "Finance" })).toBe(400);
       // Extra spaces are tidied, not refused.
       const ok = await create(accessToken, { name: "  TEST   Spaced  Name ", description: "a   b\n c" });
@@ -532,7 +534,11 @@ describe("application onboarding", () => {
         const { data } = await response.json();
         expect(data.application_id).toBe(appId);
         const row = await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } });
-        expect(row).toMatchObject({ name: "TEST MWS Hub", launch_url: null, category: null, description: null });
+        // Whatever name is sent, the Hub is called HUB.
+        expect(row).toMatchObject({ name: "HUB", launch_url: null, category: null, description: null });
+        const rename = await TestRequest.patch(`${ACCESS}/apps/${appId}/details`, { name: "Renamed" }, accessToken);
+        expect(rename.status).toBe(400);
+        expect(JSON.stringify(await rename.json())).toContain("cannot change");
         const again = await TestRequest.post(`${ACCESS}/applications`, { name: "Other Hub", is_hub: true }, accessToken);
         expect(again.status).toBe(400);
         expect(JSON.stringify(await again.json())).toContain("already added");

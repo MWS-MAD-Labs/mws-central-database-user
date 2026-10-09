@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ApplicationAudience, EmploymentType } from "../generated/prisma/client";
+import { isHubIcon } from "../constants/hub-icons";
 import { addressProblem } from "../utils/application-id";
 
 const applicationId = z
@@ -61,7 +62,7 @@ const applicationDetails = {
     .string()
     .trim()
     .max(40, "Icon is too long")
-    .refine((value) => value === "" || /^[A-Za-z][A-Za-z0-9]*$/.test(value), "Icon may only have letters and numbers")
+    .refine((value) => value === "" || isHubIcon(value), "Pick an icon from the list")
     .optional()
     .nullable(),
   category: z

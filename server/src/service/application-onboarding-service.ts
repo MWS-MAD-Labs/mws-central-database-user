@@ -135,6 +135,9 @@ export class ApplicationOnboardingService {
     assertSuperAdmin(admin);
     const input = Validation.validate(ApplicationValidation.UPDATE, request);
     const before = await findApplication(input.application_id);
+    if (input.application_id === hubApplicationId() && input.name !== undefined && input.name !== before.name) {
+      throw new ResponseError(400, "The name of the Hub cannot change");
+    }
     const data = {
       ...(input.name !== undefined && { name: input.name }),
       ...(input.description !== undefined && { description: input.description || null }),
