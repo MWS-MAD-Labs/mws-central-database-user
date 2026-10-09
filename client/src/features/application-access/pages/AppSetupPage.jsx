@@ -15,6 +15,7 @@ import { AppDetailsForm } from "../components/AppDetailsForm.jsx";
 import { ConnectDialog } from "../components/ConnectDialog.jsx";
 import { DataAccessDialog } from "../components/DataAccessDialog.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
+import { oldTokenNotice } from "../../api-clients/utils/oldTokenNotice.js";
 import { RotateTokenFlow } from "../../api-clients/components/RotateTokenFlow.jsx";
 import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
 import { SetupGuideDialog } from "../components/SetupGuideDialog.jsx";
@@ -311,6 +312,15 @@ export function AppSetupPage() {
           title={setup.application.name}
           rotate={(options) => applicationAccessApi.rotateConnection(applicationId, options)}
           onRotated={refresh}
+          renderResult={({ client, rotation, onClose }) => (
+            <ConnectDialog
+              title="Rotated Credentials"
+              description="Put these lines in the .env of the application, then deploy it."
+              connection={{ env: client.env }}
+              notice={oldTokenNotice(client, rotation)}
+              onClose={onClose}
+            />
+          )}
           onClose={() => setRotating(false)}
         />
       ) : null}

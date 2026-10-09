@@ -39,31 +39,58 @@ describe('AppCreatePage', () => {
     expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
   })
 
-  it('turns capital letters into lowercase as they are typed', async () => {
+  it('makes the application id from the name and does not let it be typed', async () => {
     globalThis.fetch = createFetchRouter([SCOPES])
     const { user } = renderPage()
-    await user.type(screen.getByLabelText('Application ID'), 'ExIMa')
-    expect(screen.getByLabelText('Application ID')).toHaveValue('exima')
+    const id = screen.getByLabelText('Application ID')
+    expect(id).toBeDisabled()
+    await user.type(screen.getByLabelText('Name'), 'MWS Hub')
+    expect(id).toHaveValue('mws-hub')
+    await user.clear(screen.getByLabelText('Name'))
+    await user.type(screen.getByLabelText('Name'), 'Café & Co. 2')
+    expect(id).toHaveValue('cafe-co-2')
   })
 
-  it('turns spaces into underscores and drops other symbols', async () => {
+  it('puts the scheme in front of the address from the environment', async () => {
     globalThis.fetch = createFetchRouter([SCOPES])
     const { user } = renderPage()
-    await user.type(screen.getByLabelText('Application ID'), 'My App!')
-    expect(screen.getByLabelText('Application ID')).toHaveValue('my_app')
+    const production = screen.getByRole('radio', { name: 'Production' })
+    expect(production).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getAllByText('https://')).toHaveLength(2)
+    await user.click(screen.getByRole('radio', { name: 'Local' }))
+    expect(screen.getAllByText('http://')).toHaveLength(2)
+    // A pasted full address loses its scheme and sets the environment.
+    await user.click(screen.getByRole('radio', { name: 'Production' }))
+    await user.type(screen.getByLabelText('Launch URL'), 'http://localhost:3000/auth/sso')
+    expect(screen.getByLabelText('Launch URL')).toHaveValue('localhost:3000/auth/sso')
+    expect(screen.getByRole('radio', { name: 'Local' })).toHaveAttribute('aria-checked', 'true')
   })
 
-  it('rejects a badly formatted id, a missing name and a bad address without calling the server', async () => {
+  it('refuses spaces, symbols and a public address on Local, without calling the server', async () => {
     const fetchMock = createFetchRouter([SCOPES])
     globalThis.fetch = fetchMock
     const { user } = renderPage()
-    await user.type(screen.getByLabelText('Application ID'), '9 lives')
-    await user.type(screen.getByLabelText('Launch URL'), 'ftp://nope')
+    await user.type(screen.getByLabelText('Name'), 'Bad <b>')
+    await user.type(screen.getByLabelText('Description'), 'hello <script>')
+    await user.type(screen.getByLabelText('Icon'), 'App Window')
+    await user.type(screen.getByLabelText('Launch URL'), 'exa mple.com/auth')
+    await user.click(screen.getByRole('radio', { name: 'Local' }))
+    await user.type(screen.getByLabelText('Logout URL'), 'exima.mws.web.id/out')
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
-    expect(await screen.findByText(/^Use lowercase letters/)).toBeVisible()
-    expect(screen.getByText('Name is required.')).toBeVisible()
-    expect(screen.getByText('Start with http:// or https://.')).toBeVisible()
+    expect(await screen.findByText(/Use letters, numbers, spaces and/)).toBeVisible()
+    expect(screen.getByText('Leave out < and > from the description.')).toBeVisible()
+    expect(screen.getByText(/letters and numbers only/)).toBeVisible()
+    expect(screen.getByText('No spaces allowed.')).toBeVisible()
+    expect(screen.getByText('Local addresses use http. Pick Production for a public address.')).toBeVisible()
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+  })
+
+  it('tidies extra spaces when leaving the name', async () => {
+    globalThis.fetch = createFetchRouter([SCOPES])
+    const { user } = renderPage()
+    await user.type(screen.getByLabelText('Name'), '  MWS    Hub  ')
+    await user.tab()
+    expect(screen.getByLabelText('Name')).toHaveValue('MWS Hub')
   })
 
   it('keeps the two required scopes on and marks sensitive data', async () => {
@@ -80,7 +107,7 @@ describe('AppCreatePage', () => {
     const { user } = renderPage()
     expect(screen.getByText('Application name')).toBeVisible()
     await user.type(screen.getByLabelText('Name'), 'Demo App')
-    await user.type(screen.getByLabelText('Launch URL'), 'https://demo.example.com')
+    await user.type(screen.getByLabelText('Launch URL'), 'demo.example.com')
     expect(screen.getByText('Demo App')).toBeVisible()
     expect(screen.getByText('Opens https://demo.example.com')).toBeVisible()
   })
@@ -106,9 +133,8 @@ describe('AppCreatePage', () => {
     ])
     globalThis.fetch = fetchMock
     const { user } = renderPage()
-    await user.type(screen.getByLabelText('Application ID'), 'demo')
     await user.type(screen.getByLabelText('Name'), 'Demo App')
-    await user.type(screen.getByLabelText('Launch URL'), 'https://demo.example.com/auth/sso')
+    await user.type(screen.getByLabelText('Launch URL'), 'demo.example.com/auth/sso')
     await user.click(await screen.findByRole('checkbox', { name: /View student profiles/ }))
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     // The .env values are handed over first, the setup page follows once they are copied.
@@ -116,7 +142,6 @@ describe('AppCreatePage', () => {
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
       expect(JSON.parse(call[1].body)).toEqual({
-        application_id: 'demo',
         name: 'Demo App',
         description: '',
         icon: '',

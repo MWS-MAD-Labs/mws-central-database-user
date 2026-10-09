@@ -86,6 +86,18 @@ describe('ApiClientsPage as a reference', () => {
     expect(screen.queryByText('MWS Hub')).toBeNull()
   })
 
+  it('offers only applications in the app filter, not profiles that belong to none', async () => {
+    const standalone = { ...hubProfile, id: 'profile-reports', code: 'reports', name: 'Standalone Reports', application: null }
+    const { user } = renderPage([], {
+      profiles: [owned, standalone],
+      endpoints: [{ method: 'GET', path: '/api/internal/employees', scope: 'employees:read', title: 'List employees', group: 'Employees', purpose: 'Gets employees.' }],
+    })
+    await screen.findByText('List employees')
+    await user.click(screen.getByRole('button', { name: 'All Apps' }))
+    expect(await screen.findByRole('option', { name: 'Hub App' })).toBeVisible()
+    expect(screen.queryByRole('option', { name: 'Standalone Reports' })).toBeNull()
+  })
+
   it('lists clients that belong to no application and revokes one after confirming', async () => {
     const revoked = []
     const { user } = renderPage(
@@ -155,6 +167,7 @@ describe('ApiClientsPage as a reference', () => {
       id: `profile-${code}`,
       code,
       name,
+      application: { application_id: code, name },
       scopes: names.map((scopeName) => ({ name: scopeName, description: '', is_sensitive: false })),
     })
     const profiles = [

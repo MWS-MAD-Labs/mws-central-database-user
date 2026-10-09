@@ -76,7 +76,7 @@ export function InternalApiPanel({ endpoints, profiles = [], isLoading }) {
             <SearchableSelect
               value={app}
               onChange={pick(setApp)}
-              options={[{ value: ALL, label: "All Apps" }, ...profiles.map((profile) => ({ value: profile.code, label: profile.name }))]}
+              options={[{ value: ALL, label: "All Apps" }, ...profiles.map((profile) => ({ value: profile.code, label: profile.application?.name ?? profile.name }))]}
               placeholder="All Apps"
               searchPlaceholder="Search app"
               searchableThreshold={8}
@@ -213,5 +213,5 @@ function UsedBy({ apps, total, scope }) {
   if (total > 1 && apps.length === total) {
     return <span className="text-sm font-semibold text-(--mws-charcoal)">All Apps</span>;
   }
-  return <NameList names={apps.map((profile) => profile.name)} noun="Apps" title={`Apps that use ${scope}`} />;
+  return <NameList names={apps.map((profile) => profile.application?.name ?? profile.name)} noun="Apps" title={`Apps that use ${scope}`} />;
 }

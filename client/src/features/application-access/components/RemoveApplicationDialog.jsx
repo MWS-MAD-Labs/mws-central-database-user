@@ -70,7 +70,15 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
             <label htmlFor="confirm-application-id" className="mb-1.5 block text-sm font-semibold text-(--mws-charcoal)">
               Type {applicationId} to confirm
             </label>
-            <TextInput id="confirm-application-id" value={typed} onChange={(event) => setTyped(event.target.value)} />
+            <TextInput
+              id="confirm-application-id"
+              name={`confirm-delete-${applicationId}`}
+              value={typed}
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              onChange={(event) => setTyped(event.target.value)}
+            />
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={onClose}>

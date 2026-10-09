@@ -87,7 +87,8 @@ export function ApiClientsPage() {
 
   const profiles = profilesQuery.data?.profiles || [];
   // Profiles that belong to an application added in Application Access, by code.
-  const applicationCodes = new Set(profiles.filter((profile) => profile.application).map((profile) => profile.code));
+  const applicationProfiles = profiles.filter((profile) => profile.application);
+  const applicationCodes = new Set(applicationProfiles.map((profile) => profile.code));
   const others = (clientsQuery.data || []).filter((client) => !applicationCodes.has(client.profile?.code));
   const clientPaging = usePagedList(others);
   const serverEnvironment =
@@ -102,7 +103,7 @@ export function ApiClientsPage() {
         description="What connected MWS apps can ask for. Connections are made in Application Access when you add an application."
       />
 
-      <InternalApiPanel endpoints={internalEndpoints} profiles={profiles} isLoading={internalEndpointsQuery.isLoading} />
+      <InternalApiPanel endpoints={internalEndpoints} profiles={applicationProfiles} isLoading={internalEndpointsQuery.isLoading} />
 
       {!clientsQuery.isLoading && others.length > 0 ? (
         <section className="mt-5 min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">

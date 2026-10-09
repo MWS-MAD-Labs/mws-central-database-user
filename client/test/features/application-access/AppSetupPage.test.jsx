@@ -292,7 +292,18 @@ describe('AppSetupPage', () => {
         method: 'POST',
         response: ({ options }) => {
           rotations.push(JSON.parse(options.body))
-          return jsonResponse({ data: { token: 'mws_new.secret', credentials: [] } })
+          return jsonResponse({
+            data: {
+              token: 'mws_new.secret',
+              credentials: [],
+              env: [
+                { key: 'HUB_SSO_APP_ID', value: 'demo' },
+                { key: 'CENTRAL_DATA_API_BASE_URL', value: 'https://db.example.com' },
+                { key: 'CENTRAL_DATA_API_TOKEN', value: 'mws_new.secretsecretsecret' },
+                { key: 'CENTRAL_ORGANIZATION_ID', value: 'org_demo_abc' },
+              ],
+            },
+          })
         },
       },
     ])
@@ -300,6 +311,10 @@ describe('AppSetupPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Rotate' }))
     await user.click(await screen.findByRole('button', { name: 'Start Rotation' }))
     expect(await screen.findByText('Rotated Credentials')).toBeVisible()
+    // All four values come back, not only the token.
+    expect(screen.getByText(/HUB_SSO_APP_ID=demo/)).toBeVisible()
+    expect(screen.getByText(/CENTRAL_ORGANIZATION_ID=org_demo_abc/)).toBeVisible()
+    expect(screen.getByText(/CENTRAL_DATA_API_BASE_URL=https:\/\/db.example.com/)).toBeVisible()
     expect(rotations).toEqual([{ immediate: false, grace_hours: 24 }])
   })
 })

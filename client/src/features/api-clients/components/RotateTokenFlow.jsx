@@ -8,7 +8,7 @@ import { TokenDialog } from "./TokenDialog.jsx";
 
 // Rotating a token: pick graceful or emergency, confirm, then show the new token once.
 // `rotate` gets { mode, graceSeconds } and returns the client with its new token.
-export function RotateTokenFlow({ title, rotate, onRotated, onClose }) {
+export function RotateTokenFlow({ title, rotate, onRotated, onClose, renderResult }) {
   const confirm = useConfirm();
   const [result, setResult] = useState(null);
   const mutation = useMutation({
@@ -33,6 +33,8 @@ export function RotateTokenFlow({ title, rotate, onRotated, onClose }) {
   }
 
   if (result) {
+    // A caller can show the result its own way, for example with the whole .env.
+    if (renderResult) return renderResult({ ...result, onClose });
     return <TokenDialog title="Rotated Credentials" client={result.client} rotation={result.rotation} onClose={onClose} />;
   }
   return <RotateModeDialog title={title} isSubmitting={mutation.isPending} onClose={onClose} onSubmit={submit} />;

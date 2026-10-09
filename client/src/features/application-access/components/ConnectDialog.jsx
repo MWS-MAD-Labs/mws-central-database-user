@@ -11,7 +11,13 @@ const CLOSE_DELAY_MS = 700;
 // The .env lines for the application. The token inside is shown once and only masked on screen, the
 // button copies the real lines and then closes the dialog. If the clipboard is blocked the lines
 // are offered in a field instead, otherwise the token would be lost.
-export function ConnectDialog({ connection, onClose }) {
+export function ConnectDialog({
+  connection,
+  onClose,
+  title = "Connection Created",
+  description = "Put these lines in the .env of the application, then deploy it.",
+  notice = null,
+}) {
   const lines = connection.env.map((item) => `${item.key}=${item.value}`);
   const text = lines.join("\n");
   const [copied, setCopied] = useState(false);
@@ -49,11 +55,7 @@ export function ConnectDialog({ connection, onClose }) {
   }
 
   return (
-    <CrudDialog
-      title="Connection Created"
-      description="Put these lines in the .env of the application, then deploy it."
-      onClose={requestClose}
-    >
+    <CrudDialog title={title} description={description} onClose={requestClose}>
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <p className="font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">.env Values</p>
@@ -94,6 +96,20 @@ export function ConnectDialog({ connection, onClose }) {
                 Close
               </Button>
             </div>
+          </div>
+        ) : null}
+
+        {notice ? (
+          <div
+            role="note"
+            className={
+              notice.tone === "danger"
+                ? "rounded-xl border border-[#e3a2a5] bg-[#fff0f1] p-3"
+                : "rounded-xl border border-[#d8b45b] bg-[#fff8e8] p-3"
+            }
+          >
+            <p className={`text-sm font-semibold ${notice.tone === "danger" ? "text-[#a43c41]" : "text-[#745716]"}`}>{notice.title}</p>
+            <p className={`mt-1 text-sm ${notice.tone === "danger" ? "text-[#a43c41]" : "text-[#745716]"}`}>{notice.text}</p>
           </div>
         ) : null}
 
