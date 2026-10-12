@@ -1,6 +1,5 @@
 import { useEffect, useEffectEvent, useState } from "react";
-import { Check } from "lucide-react";
-import { Button } from "../../../components/ui/Button.jsx";
+import { Check, ShieldCheck } from "lucide-react";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast } from "../../../lib/toast.js";
@@ -55,9 +54,9 @@ export function HubSecretTest({ secret, address, disabled = false, onReady }) {
 
   return (
     <div className="space-y-1.5">
-      <Button type="button" variant="secondary" loading={running} disabled={disabled || !clean} onClick={run}>
+      <TextAction icon={ShieldCheck} loading={running} disabled={disabled || !clean} onClick={run}>
         Test This Secret
-      </Button>
+      </TextAction>
       <div aria-live="polite" className="min-h-5 text-xs">
         {current === "ok" ? (
           <p className="flex items-center gap-1.5 font-semibold text-[#3b5d36]">
