@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { checkHubAddress, checkHubSecret } from "../service/hub-address-check";
+import { checkApplicationAddress, checkHubAddress, checkHubSecret } from "../service/hub-address-check";
 import { AdminUserTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const ACCESS = "/api/admin/application-access";
@@ -125,6 +125,54 @@ describe("hub address check", () => {
 
         const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
         expect((await TestRequest.post(`${ACCESS}/hub-secret-check`, { address: at(), secret: SECRET }, other)).status).toBe(403);
+      } finally {
+        await AdminUserTest.delete();
+        await MasterDataTest.delete();
+      }
+    });
+  });
+
+  describe("application address check", () => {
+    it("counts any answer under 500 as up, and a missing or broken one as not", async () => {
+      const app = Bun.serve({
+        port: 0,
+        fetch(request) {
+          const path = new URL(request.url).pathname;
+          if (path === "/") return new Response("not here", { status: 404 });
+          return new Response("x", { status: 200 });
+        },
+      });
+      const redirecting = Bun.serve({ port: 0, fetch: () => new Response("", { status: 302, headers: { Location: "/auth/sso" } }) });
+      const broken = Bun.serve({ port: 0, fetch: () => new Response("bad gateway", { status: 502 }) });
+      const closed = Bun.serve({ port: 0, fetch: () => new Response("x") });
+      const closedPort = closed.port;
+      closed.stop(true);
+      try {
+        expect(await checkApplicationAddress(`http://127.0.0.1:${app.port}`)).toBe("ok");
+        expect(await checkApplicationAddress(`http://127.0.0.1:${redirecting.port}`)).toBe("ok");
+        expect(await checkApplicationAddress(`http://127.0.0.1:${broken.port}`)).toBe("unreachable");
+        expect(await checkApplicationAddress(`http://127.0.0.1:${closedPort}`)).toBe("unreachable");
+        expect(await checkApplicationAddress("http://169.254.169.254")).toBe("refused");
+        expect(await checkApplicationAddress("ftp://x.example.com")).toBe("refused");
+      } finally {
+        app.stop(true);
+        redirecting.stop(true);
+        broken.stop(true);
+      }
+    });
+
+    it("GET /application-address-check gives only the verdict, to a Super Admin only", async () => {
+      await AdminUserTest.delete();
+      await MasterDataTest.delete();
+      await MasterDataTest.create();
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        const ask = async (url: string, token = accessToken) => TestRequest.get(`${ACCESS}/application-address-check?url=${encodeURIComponent(url)}`, token);
+        expect((await (await ask(base())).json()).data).toEqual({ verdict: "ok" });
+        expect((await (await ask("http://app.example.com")).json()).data).toEqual({ verdict: "refused" });
+        expect((await (await ask("")).json()).data).toEqual({ verdict: "refused" });
+        const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
+        expect((await ask(base(), other)).status).toBe(403);
       } finally {
         await AdminUserTest.delete();
         await MasterDataTest.delete();

@@ -82,3 +82,29 @@ export async function checkHubSecret(address: string, secret: string): Promise<H
     return "unreachable";
   }
 }
+
+export type ApplicationAddressVerdict = "ok" | "unreachable" | "refused";
+
+// Whether anything answers at the address of an application. Any answer under 500 counts, a 404 or a redirect to
+// the sign-in page is still an application that is up. A proxy with nothing behind it (502 to 504) is not.
+export async function checkApplicationAddress(address: string): Promise<ApplicationAddressVerdict> {
+  let url: URL;
+  try {
+    url = new URL(address);
+  } catch {
+    return "refused";
+  }
+  if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password || refusedHost(url.hostname)) {
+    return "refused";
+  }
+  try {
+    const response = await fetch(new URL("/", url.origin), {
+      redirect: "manual",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    await response.body?.cancel();
+    return response.status >= 500 ? "unreachable" : "ok";
+  } catch {
+    return "unreachable";
+  }
+}

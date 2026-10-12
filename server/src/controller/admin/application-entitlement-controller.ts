@@ -1,4 +1,4 @@
-import { checkHubAddress, checkHubSecret } from "../../service/hub-address-check";
+import { checkApplicationAddress, checkHubAddress, checkHubSecret } from "../../service/hub-address-check";
 import { keyReady } from "../../utils/secret-box";
 import { ApplicationTaxonomyService } from "../../service/application-taxonomy-service";
 import { ApplicationOnboardingService } from "../../service/application-onboarding-service";
@@ -18,6 +18,7 @@ import type {
 import { ApplicationPermissionService } from "../../service/application-permission-service";
 import { ResponseError } from "../../error/response-error";
 import { Validation } from "../../validation/validation";
+import { addressProblem } from "../../utils/application-id";
 import { ApplicationValidation } from "../../validation/application-entitlement-validation";
 import {
   ApplicationAccessRuleService,
@@ -342,6 +343,14 @@ export class ApplicationAccessController {
     const parsed = ApplicationValidation.HUB_ADDRESS.safeParse({ hub_base_url: address });
     if (!parsed.success) return c.json({ data: { verdict: "refused" } });
     return c.json({ data: { verdict: await checkHubAddress(parsed.data.hub_base_url as string) } });
+  }
+
+  static async applicationAddressCheck(c: Context<{ Variables: AdminVariables }>) {
+    if (c.var.admin.role !== "SUPER_ADMIN") throw new ResponseError(403, "Forbidden: Only Super Admin can manage applications");
+    const address = (c.req.query("url") ?? "").trim();
+    // The same rules as saving it, so only an address that could be kept is asked.
+    if (!address || addressProblem(address)) return c.json({ data: { verdict: "refused" } });
+    return c.json({ data: { verdict: await checkApplicationAddress(address) } });
   }
 
   static async hubSecretCheck(c: Context<{ Variables: AdminVariables }>) {
