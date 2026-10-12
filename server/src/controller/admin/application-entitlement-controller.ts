@@ -311,6 +311,25 @@ export class ApplicationAccessController {
     });
   }
 
+  static async updateHubAddress(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({
+      data: await ApplicationOnboardingService.setHubAddress(c.var.admin, requireApplicationId(c), await c.req.json(), getAuditRequestContext(c)),
+    });
+  }
+
+  static async setHubSecret(c: Context<{ Variables: AdminVariables }>) {
+    const body = await c.req.json().catch(() => ({}));
+    return c.json({
+      data: await ApplicationOnboardingService.setHubSecret(c.var.admin, requireApplicationId(c), body, getAuditRequestContext(c)),
+    });
+  }
+
+  static async revealHubSecret(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({
+      data: await ApplicationOnboardingService.revealHubSecret(c.var.admin, requireApplicationId(c), getAuditRequestContext(c)),
+    });
+  }
+
   static async retire(c: Context<{ Variables: AdminVariables }>) {
     return c.json({ data: await ApplicationOnboardingService.retire(c.var.admin, requireApplicationId(c), getAuditRequestContext(c)) });
   }

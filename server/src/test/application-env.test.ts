@@ -1,9 +1,35 @@
 import { describe, expect, it } from "bun:test";
-import { buildEnvItems, envText, quoteEnv, resolveHubSettings } from "../utils/application-env";
+import { buildEnvItems, envText, hubLinesMissing, quoteEnv, resolveHubSettings } from "../utils/application-env";
 
 const facts = { organizationId: "org_x_abc", publicUrl: "https://db.mws.web.id", token: "mws_abc.def" };
 
 describe("application env", () => {
+  const hub = { baseUrl: "https://app.mws.web.id/", secret: "s3cret" };
+
+  it("gives every application the Hub lines when the Hub has an address and a secret", () => {
+    for (const applicationId of ["exima", "daily-checkin"]) {
+      const items = buildEnvItems({ ...facts, applicationId, isHub: false, hub });
+      const byKey = Object.fromEntries(items.map((item) => [item.key, item]));
+      expect(byKey.HUB_BASE_URL!.line).toBe('HUB_BASE_URL="https://app.mws.web.id"');
+      expect(byKey.HUB_SSO_JWKS_URL!.value).toBe("https://app.mws.web.id/.well-known/jwks.json");
+      expect(byKey.HUB_INTERNAL_SECRET!.secret).toBe(true);
+      expect(hubLinesMissing({ isHub: false, hub })).toBe(false);
+    }
+  });
+
+  it("leaves the Hub lines out and says so when the Hub has no address or secret yet", () => {
+    const items = buildEnvItems({ ...facts, applicationId: "exima", isHub: false, hub: { baseUrl: null, secret: null } });
+    expect(items.some((item) => item.key.startsWith("HUB_BASE") || item.key === "HUB_INTERNAL_SECRET")).toBe(false);
+    expect(hubLinesMissing({ isHub: false, hub: { baseUrl: null, secret: "x" } })).toBe(true);
+    expect(hubLinesMissing({ isHub: true, hub: undefined })).toBe(false);
+  });
+
+  it("gives the Hub the same secret but not its own address", () => {
+    const items = buildEnvItems({ ...facts, applicationId: "hub", isHub: true, hub });
+    expect(items.map((item) => item.key)).toContain("HUB_INTERNAL_SECRET");
+    expect(items.map((item) => item.key)).not.toContain("HUB_BASE_URL");
+  });
+
   it("quotes values and escapes what would break the line", () => {
     expect(quoteEnv("plain")).toBe('"plain"');
     expect(quoteEnv('a"b\\c')).toBe('"a\\"b\\\\c"');

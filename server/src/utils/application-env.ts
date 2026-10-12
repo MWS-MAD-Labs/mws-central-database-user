@@ -46,7 +46,28 @@ type Facts = {
   token: string;
   isHub: boolean;
   hubSettings?: HubEnvSettings;
+  // What the Hub shares with the applications. Missing until the Hub has its address and secret.
+  hub?: HubFacts;
 };
+
+export type HubFacts = { baseUrl: string | null; secret: string | null };
+
+// The lines every application that signs in through the Hub reads about the Hub.
+function hubLines(hub: HubFacts | undefined, group: number): EnvItem[] {
+  if (!hub) return [];
+  const lines: EnvItem[] = [];
+  if (hub.baseUrl) {
+    const base = hub.baseUrl.replace(/\/+$/, "");
+    lines.push(item("HUB_BASE_URL", base, group), item("HUB_SSO_JWKS_URL", `${base}/.well-known/jwks.json`, group));
+  }
+  if (hub.secret) lines.push(item("HUB_INTERNAL_SECRET", hub.secret, group, true));
+  return lines;
+}
+
+// Whether an application's block lacks the Hub lines, so the screen can say why.
+export function hubLinesMissing(facts: Pick<Facts, "isHub" | "hub">): boolean {
+  return !facts.isHub && !(facts.hub?.baseUrl && facts.hub?.secret);
+}
 
 // The lines an application needs in its .env. Each application reads its own names, so the Hub gets the
 // ones the Hub reads, and the others get the ones the apps read.
@@ -59,6 +80,8 @@ export function buildEnvItems(facts: Facts): EnvItem[] {
       item("HUB_CENTRAL_ACCESS_MODE", settings.hub_access_mode, 1),
       item("HUB_CENTRAL_ACCESS_APP_ID", facts.applicationId, 1),
       item("HUB_CENTRAL_ACCESS_BYPASS_EMAILS", settings.hub_bypass_emails.join(","), 1),
+      // The Hub's own address is not read by the Hub. The secret is the same one the applications get.
+      ...hubLines(facts.hub ? { baseUrl: null, secret: facts.hub.secret } : undefined, 2),
     ];
   }
   // Daily Check-in reads the same names as the Hub for the Central connection, and pins the organization.
@@ -67,6 +90,7 @@ export function buildEnvItems(facts: Facts): EnvItem[] {
       item("CENTRAL_API_BASE_URL", `${facts.publicUrl}/api/internal`, 0),
       item("CENTRAL_API_TOKEN", facts.token, 0, true),
       item("CENTRAL_ENTITLEMENT_ORGANIZATION_ID", facts.organizationId, 1),
+      ...hubLines(facts.hub, 2),
     ];
   }
   return [
@@ -74,6 +98,7 @@ export function buildEnvItems(facts: Facts): EnvItem[] {
     item("CENTRAL_DATA_API_BASE_URL", facts.publicUrl, 0),
     item("CENTRAL_DATA_API_TOKEN", facts.token, 0, true),
     item("CENTRAL_ORGANIZATION_ID", facts.organizationId, 0),
+    ...hubLines(facts.hub, 1),
   ];
 }
 

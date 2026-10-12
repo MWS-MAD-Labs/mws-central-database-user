@@ -10,7 +10,9 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import type { ApplicationSummary, CreateApplicationRequest, UpdateApplicationRequest } from "../model/application-entitlement-model";
 import { ApplicationValidation } from "../validation/application-entitlement-validation";
 import { Validation } from "../validation/validation";
-import { buildEnvItems, resolveHubSettings, type EnvItem, type HubEnvSettings } from "../utils/application-env";
+import { buildEnvItems, hubLinesMissing, resolveHubSettings, type EnvItem, type HubEnvSettings, type HubFacts } from "../utils/application-env";
+import { decryptSecret, encryptSecret, newSecret } from "../utils/secret-box";
+import { addressProblem } from "../utils/application-id";
 import { evaluateRemoval, usedRecently } from "../utils/application-removal";
 import { getIntegrationEnvironment } from "../utils/integration-environment";
 import { ApiClientService } from "./api-client-service";
@@ -59,6 +61,8 @@ export type SetupStatus = {
   removal: { can_remove: boolean; retire_available: boolean };
   // The Hub's sign-in settings that go into its .env. Null for other applications.
   env_settings: HubEnvSettings | null;
+  // The Hub's address and whether it has a secret. The secret itself is never in the setup.
+  hub: { base_url: string | null; secret_set: boolean } | null;
   // The names this application reads in its .env, so the guides can name them.
   env_keys: { key: string; secret: boolean }[];
 };
@@ -77,6 +81,8 @@ export type ConnectResponse = {
   client: ApiClientCreatedResponse;
   token: string;
   env: EnvItem[];
+  // The Hub has no address or secret yet, so the lines about it are not in the .env.
+  hub_lines_missing: boolean;
 };
 
 function assertSuperAdmin(admin: AdminUser) {
@@ -135,17 +141,40 @@ async function findConnectionClient(applicationId: string) {
   });
 }
 
+// What the Hub shares with the applications. The secret is only decrypted when a block is made, and
+// `reveal: false` leaves it as a stand-in for listings that only need the names of the lines.
+async function loadHubFacts(reveal = true): Promise<HubFacts> {
+  const row = await prismaClient.application.findUnique({
+    where: { application_id: hubApplicationId() },
+    select: { hub_base_url: true, hub_internal_secret: true },
+  });
+  return {
+    baseUrl: row?.hub_base_url ?? null,
+    secret: row?.hub_internal_secret ? (reveal ? decryptSecret(row.hub_internal_secret) : "-") : null,
+  };
+}
+
 // The .env of an application, made from what Central knows about it.
-function envFor(app: { application_id: string; env_settings: unknown }, organizationId: string, publicUrl: string, token: string, adminEmail?: string) {
+async function envFor(
+  app: { application_id: string; env_settings: unknown },
+  organizationId: string,
+  publicUrl: string,
+  token: string,
+  adminEmail?: string,
+  reveal = true,
+) {
   const isHub = app.application_id === hubApplicationId();
-  return buildEnvItems({
+  const hub = await loadHubFacts(reveal);
+  const facts = {
     applicationId: app.application_id,
     organizationId,
     publicUrl,
     token,
     isHub,
     hubSettings: isHub ? resolveHubSettings(app.env_settings, adminEmail) : undefined,
-  });
+    hub,
+  };
+  return { env: buildEnvItems(facts), hub_lines_missing: hubLinesMissing(facts) };
 }
 
 export class ApplicationOnboardingService {
@@ -236,7 +265,11 @@ export class ApplicationOnboardingService {
     return {
       removal: { can_remove: plan.can_remove, retire_available: plan.retire_available },
       env_settings: applicationId === hubApplicationId() ? resolveHubSettings(app.env_settings, admin.email) : null,
-      env_keys: envFor(app, organizationId, "", "", admin.email).map((item) => ({ key: item.key, secret: item.secret })),
+      hub:
+        applicationId === hubApplicationId()
+          ? { base_url: app.hub_base_url, secret_set: Boolean(app.hub_internal_secret) }
+          : null,
+      env_keys: (await envFor(app, organizationId, "", "", admin.email, false)).env.map((item) => ({ key: item.key, secret: item.secret })),
       application: toDetail(app),
       organization_id: organizationId,
       connection: {
@@ -302,7 +335,7 @@ export class ApplicationOnboardingService {
       { viaApplication: true, skipAudit: options.skipAudit },
     );
 
-    return { client, token: client.token, env: envFor(app, organizationId, publicUrl, client.token, admin.email) };
+    return { client, token: client.token, ...(await envFor(app, organizationId, publicUrl, client.token, admin.email)) };
   }
 
   // Changes what a connection made for this application may read.
@@ -347,6 +380,85 @@ export class ApplicationOnboardingService {
     return settings;
   }
 
+  // The address people and applications reach the Hub at. The applications get it in their .env.
+  static async setHubAddress(
+    admin: AdminUser,
+    applicationId: string,
+    request: unknown,
+    context: AuditRequestContext = {},
+  ): Promise<{ base_url: string }> {
+    assertSuperAdmin(admin);
+    const app = await findApplication(applicationId);
+    if (applicationId !== hubApplicationId()) throw new ResponseError(400, "Only the Hub has an address to share");
+    const { hub_base_url } = Validation.validate(ApplicationValidation.HUB_ADDRESS, request) as { hub_base_url: string };
+    await prismaClient.application.update({ where: { id: app.id }, data: { hub_base_url } });
+    await AuditService.record({
+      action: AuditAction.APPLICATION_ROLE_UPDATE,
+      source: AuditSource.UI,
+      entity_type: "Application",
+      entity_id: app.id,
+      admin_id: admin.id,
+      old_values: { hub_base_url: app.hub_base_url },
+      new_values: { hub_base_url },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+    return { base_url: hub_base_url };
+  }
+
+  // Makes a new secret for the Hub, or keeps the one the Hub already runs with when it is given.
+  static async setHubSecret(
+    admin: AdminUser,
+    applicationId: string,
+    request: unknown,
+    context: AuditRequestContext = {},
+  ): Promise<{ secret_set: true }> {
+    assertSuperAdmin(admin);
+    const app = await findApplication(applicationId);
+    if (applicationId !== hubApplicationId()) throw new ResponseError(400, "Only the Hub has a secret to share");
+    const { secret } = Validation.validate(ApplicationValidation.HUB_SECRET, request ?? {}) as { secret?: string };
+    const stored = encryptSecret(secret ?? newSecret());
+    await prismaClient.application.update({ where: { id: app.id }, data: { hub_internal_secret: stored } });
+    // The value itself never goes into the log.
+    await AuditService.record({
+      action: AuditAction.APPLICATION_ROLE_UPDATE,
+      source: AuditSource.UI,
+      entity_type: "Application",
+      entity_id: app.id,
+      admin_id: admin.id,
+      old_values: { hub_internal_secret: app.hub_internal_secret ? "set" : "none" },
+      new_values: { hub_internal_secret: secret ? "set from the existing one" : "newly made" },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+    return { secret_set: true };
+  }
+
+  // Shows the secret once to a Super Admin who asked for it. Every look is logged.
+  static async revealHubSecret(
+    admin: AdminUser,
+    applicationId: string,
+    context: AuditRequestContext = {},
+  ): Promise<{ secret: string }> {
+    assertSuperAdmin(admin);
+    const app = await findApplication(applicationId);
+    if (applicationId !== hubApplicationId()) throw new ResponseError(400, "Only the Hub has a secret to share");
+    if (!app.hub_internal_secret) throw new ResponseError(404, "The Hub has no secret yet");
+    const secret = decryptSecret(app.hub_internal_secret);
+    await AuditService.record({
+      action: AuditAction.APPLICATION_ROLE_UPDATE,
+      source: AuditSource.UI,
+      entity_type: "Application",
+      entity_id: app.id,
+      admin_id: admin.id,
+      old_values: {},
+      new_values: { hub_internal_secret: "shown to the admin" },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+    return { secret };
+  }
+
   // Replaces the token of the connection of this application. The old one follows the grace of the mode.
   static async rotate(
     admin: AdminUser,
@@ -362,7 +474,7 @@ export class ApplicationOnboardingService {
     const rotated = await ApiClientService.rotate(admin, { id: client.id, ...request }, context);
     // The new token comes with the other three values, so the whole .env can be pasted again.
     const organizationId = await resolveOrganizationId(applicationId);
-    return { ...rotated, env: envFor(app, organizationId, publicUrl, rotated.token, admin.email) };
+    return { ...rotated, ...(await envFor(app, organizationId, publicUrl, rotated.token, admin.email)) };
   }
 
   static async publish(

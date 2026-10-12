@@ -15,6 +15,7 @@ import {
 import { evaluateRemoval, usedRecently } from "../utils/application-removal";
 import { hubApplicationId } from "../constants/hub-application";
 import { slugifyApplicationId } from "../utils/application-id";
+import { encryptSecret, newSecret } from "../utils/secret-box";
 import { ApplicationTaxonomyService } from "./application-taxonomy-service";
 import { ResponseError } from "../error/response-error";
 import { prismaClient } from "../lib/prisma";
@@ -1908,6 +1909,8 @@ export class ApplicationAccessService {
         launch_mode: input.launch_mode === "link" ? "LINK" : "SSO",
         // Only the Hub has settings for its .env.
         ...(parsed.is_hub && parsed.env_settings ? { env_settings: parsed.env_settings } : {}),
+        // The Hub shares its address and a secret of its own making with every application.
+        ...(parsed.is_hub ? { hub_internal_secret: encryptSecret(newSecret()), hub_base_url: parsed.hub_base_url ?? null } : {}),
       },
     });
     if (!options.skipAudit) await AuditService.record({

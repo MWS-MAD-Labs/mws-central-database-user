@@ -183,7 +183,39 @@ const envSettings = z.object({
     .refine((emails) => new Set(emails).size === emails.length, "Each email only once"),
 });
 
+// The public address of the Hub, as an origin: scheme and host, no path.
+const hubAddress = z
+  .string()
+  .trim()
+  .min(1, "Hub address is required")
+  .max(200, "Hub address is too long")
+  .transform((value) => value.replace(/\/+$/, ""))
+  .superRefine((value, ctx) => {
+    const problem = addressProblem(value);
+    if (problem) {
+      ctx.addIssue({ code: "custom", message: problem });
+      return;
+    }
+    const url = new URL(value);
+    if (url.pathname !== "/" || url.search || url.hash) {
+      ctx.addIssue({ code: "custom", message: "Use only the address, like https://app.mws.web.id, with nothing after it" });
+    }
+  });
+
 export class ApplicationValidation {
+  static readonly HUB_ADDRESS = z.object({ hub_base_url: hubAddress });
+
+  static readonly HUB_SECRET = z.object({
+    // An existing secret to keep. Left out, a new one is made.
+    secret: z
+      .string()
+      .trim()
+      .min(16, "A secret is at least 16 characters")
+      .max(200, "A secret is at most 200 characters")
+      .regex(/^\S+$/, "A secret has no spaces")
+      .optional(),
+  });
+
   static readonly ENV_SETTINGS = envSettings;
 
   static readonly LIST = z.object({
@@ -203,6 +235,7 @@ export class ApplicationValidation {
       // The Hub itself: its id is fixed and it has no card or address.
       is_hub: z.boolean().optional(),
       env_settings: envSettings.optional(),
+      hub_base_url: hubAddress.optional(),
     })
     .refine((value) => value.application_id || value.name, { message: "Name is required", path: ["name"] });
 

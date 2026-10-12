@@ -634,8 +634,11 @@ describe("application onboarding", () => {
           "HUB_CENTRAL_ACCESS_MODE",
           "HUB_CENTRAL_ACCESS_APP_ID",
           "HUB_CENTRAL_ACCESS_BYPASS_EMAILS",
+          "HUB_INTERNAL_SECRET",
         ]);
         const byKey = Object.fromEntries(items.map((item) => [item.key, item]));
+        expect(byKey.HUB_INTERNAL_SECRET.secret).toBe(true);
+        expect(byKey.HUB_INTERNAL_SECRET.value).toMatch(/^[0-9a-f]{64}$/);
         expect(byKey.CENTRAL_API_BASE_URL.value).toMatch(/^https?:\/\/[^/]+\/api\/internal$/);
         expect(byKey.CENTRAL_API_TOKEN.secret).toBe(true);
         expect(byKey.CENTRAL_API_TOKEN.line).toBe(`CENTRAL_API_TOKEN="${data.connection.token}"`);
@@ -643,6 +646,74 @@ describe("application onboarding", () => {
         expect(byKey.HUB_CENTRAL_ACCESS_APP_ID.value).toBe(appId);
         expect(byKey.HUB_CENTRAL_ACCESS_BYPASS_EMAILS.value).toMatch(/@/);
       });
+    });
+
+    it("keeps the Hub address and secret, hides the secret, and puts both into the .env of an application", async () => {
+      const other = `test-hubuse-${randomBytes(3).toString("hex")}`;
+      await asHub(async (accessToken) => {
+        // Without the Hub having an address, an application is told its Hub lines are missing.
+        const before = await create(accessToken, { application_id: other, name: "TEST_Other", connect: true });
+        // The Hub is not added yet in this run, so there is nothing to share.
+        expect((await before.json()).data.connection.hub_lines_missing).toBe(true);
+        await prismaClient.application.deleteMany({ where: { application_id: other } });
+        await prismaClient.applicationOrganization.deleteMany({ where: { application_id: other } });
+        await prismaClient.apiClient.deleteMany({ where: { profile: { code: other } } });
+        await prismaClient.applicationIntegrationProfile.deleteMany({ where: { code: other } });
+
+        const hub = await TestRequest.post(`${ACCESS}/applications`, { name: "HUB", is_hub: true, hub_base_url: "https://hub.example.com/", connect: true }, accessToken);
+        expect(hub.status).toBe(200);
+        const stored = await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } });
+        expect(stored.hub_base_url).toBe("https://hub.example.com");
+        // Kept encrypted, never as it is.
+        expect(stored.hub_internal_secret).toMatch(/^v1:/);
+
+        const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+        expect(setup.hub).toEqual({ base_url: "https://hub.example.com", secret_set: true });
+        expect(JSON.stringify(setup)).not.toContain("secret\":\"");
+        expect(JSON.stringify(setup)).not.toContain(stored.hub_internal_secret!);
+
+        const shown = await TestRequest.get(`${ACCESS}/apps/${appId}/hub-secret`, accessToken);
+        const { secret } = (await shown.json()).data;
+        expect(secret).toMatch(/^[0-9a-f]{64}$/);
+
+        const created = await create(accessToken, { application_id: other, name: "TEST_Other", connect: true });
+        const env = (await created.json()).data.connection;
+        expect(env.hub_lines_missing).toBe(false);
+        const byKey = Object.fromEntries(env.env.map((item: { key: string }) => [item.key, item]));
+        expect(byKey.HUB_BASE_URL.value).toBe("https://hub.example.com");
+        expect(byKey.HUB_SSO_JWKS_URL.value).toBe("https://hub.example.com/.well-known/jwks.json");
+        expect(byKey.HUB_INTERNAL_SECRET.value).toBe(secret);
+        expect(byKey.HUB_INTERNAL_SECRET.secret).toBe(true);
+        const otherKeys = (await (await TestRequest.get(`${ACCESS}/apps/${other}/setup`, accessToken)).json()).data.env_keys.map((item: { key: string }) => item.key);
+        expect(otherKeys).toContain("HUB_INTERNAL_SECRET");
+
+        // A new secret replaces it, and one the Hub already runs with can be kept.
+        expect((await TestRequest.post(`${ACCESS}/apps/${appId}/hub-secret`, {}, accessToken)).status).toBe(200);
+        const next = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/hub-secret`, accessToken)).json()).data.secret;
+        expect(next).not.toBe(secret);
+        expect((await TestRequest.post(`${ACCESS}/apps/${appId}/hub-secret`, { secret: "short" }, accessToken)).status).toBe(400);
+        expect((await TestRequest.post(`${ACCESS}/apps/${appId}/hub-secret`, { secret: "kept-from-the-hub-env-0123456789" }, accessToken)).status).toBe(200);
+        expect((await (await TestRequest.get(`${ACCESS}/apps/${appId}/hub-secret`, accessToken)).json()).data.secret).toBe("kept-from-the-hub-env-0123456789");
+
+        // The address has to be an origin.
+        const address = (body: unknown) => TestRequest.patch(`${ACCESS}/apps/${appId}/hub-address`, body, accessToken);
+        expect((await address({ hub_base_url: "https://hub.example.com/path" })).status).toBe(400);
+        expect((await address({ hub_base_url: "http://hub.example.com" })).status).toBe(400);
+        expect((await address({ hub_base_url: "http://localhost:4001" })).status).toBe(200);
+
+        // Nothing shows the value in the audit log.
+        const logs = await prismaClient.auditLog.findMany({ where: { entity_type: "Application" } });
+        expect(JSON.stringify(logs)).not.toContain("kept-from-the-hub-env");
+        expect(JSON.stringify(logs)).not.toContain(next);
+
+        // Only the Hub has them.
+        expect((await TestRequest.post(`${ACCESS}/apps/${other}/hub-secret`, {}, accessToken)).status).toBe(400);
+      });
+      await prismaClient.application.deleteMany({ where: { application_id: other } });
+      await prismaClient.applicationOrganization.deleteMany({ where: { application_id: other } });
+      await prismaClient.applicationRole.deleteMany({ where: { application_id: other } });
+      await prismaClient.apiClient.deleteMany({ where: { profile: { code: other } } });
+      await prismaClient.applicationIntegrationProfile.deleteMany({ where: { code: other } });
     });
 
     it("changes the settings, validates them, and uses them on the next rotation", async () => {

@@ -1660,6 +1660,9 @@ model Application {
   retired_at     DateTime?
   // Settings that go into the .env of the application, for now only the Hub's sign-in settings.
   env_settings   Json?
+  // Only on the Hub's own row. Its public address, and the secret it shares with the applications (encrypted).
+  hub_base_url        String?
+  hub_internal_secret String?
   // sso: opened through the Hub's sign-in handoff. link: a plain address, nothing to connect.
   launch_mode    ApplicationLaunchMode @default(SSO)
   created_at     DateTime @default(now())
