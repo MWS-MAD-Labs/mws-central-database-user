@@ -432,6 +432,8 @@ DATABASE_URL="your-database-url"
 
 # Auth
 JWT_SECRET="[ENCRYPTION_KEY]"
+# Keeps the Hub secret encrypted. Make one with: cd server && bun run secrets:key
+APP_SECRETS_KEY="[32_RANDOM_BYTES_BASE64]"
 ALLOWED_DOMAIN="mws.sch.id"
 GOOGLE_CLIENT_ID="your-google-oauth-client-id"
 GOOGLE_CLIENT_SECRET="your-google-oauth-client-secret"

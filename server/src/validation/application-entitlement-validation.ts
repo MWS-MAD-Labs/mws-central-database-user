@@ -72,6 +72,8 @@ const applicationDetails = {
   logout_url: optionalUrl("Logout URL"),
   // sso: opened through the Hub's sign-in handoff. link: a plain address.
   launch_mode: z.enum(["sso", "link"], { message: "Pick sso or link" }).optional(),
+  // Whether the .env of the application carries the Hub address and the shared secret.
+  uses_hub: z.boolean().optional(),
 };
 
 const nonemptyId = (label: string) =>

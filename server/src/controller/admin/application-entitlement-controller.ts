@@ -330,6 +330,10 @@ export class ApplicationAccessController {
     });
   }
 
+  static async hubSecretImpact(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: await ApplicationOnboardingService.hubSecretImpact(c.var.admin, requireApplicationId(c)) });
+  }
+
   static async retire(c: Context<{ Variables: AdminVariables }>) {
     return c.json({ data: await ApplicationOnboardingService.retire(c.var.admin, requireApplicationId(c), getAuditRequestContext(c)) });
   }

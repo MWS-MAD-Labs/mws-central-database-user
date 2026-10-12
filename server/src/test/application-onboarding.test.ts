@@ -668,7 +668,7 @@ describe("application onboarding", () => {
         expect(stored.hub_internal_secret).toMatch(/^v1:/);
 
         const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
-        expect(setup.hub).toEqual({ base_url: "https://hub.example.com", secret_set: true });
+        expect(setup.hub).toEqual({ base_url: "https://hub.example.com", secret_set: true, key_ready: true });
         expect(JSON.stringify(setup)).not.toContain("secret\":\"");
         expect(JSON.stringify(setup)).not.toContain(stored.hub_internal_secret!);
 
@@ -820,21 +820,90 @@ describe("application onboarding", () => {
   });
 
   describe("the Hub itself", () => {
-    it("has no show in Hub step and cannot be published or removed", async () => {
+    it("has no show in Hub step, and cannot be removed while other applications are set up", async () => {
       process.env.HUB_APPLICATION_ID = appId;
       try {
         const { accessToken } = await AdminUserTest.createSuperAdmin();
         await create(accessToken);
+        const others = await prismaClient.application.count({ where: { application_id: { not: appId } } });
         const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
         expect(setup.is_hub).toBe(true);
         expect(setup.can_publish).toBe(false);
         expect((await TestRequest.post(`${ACCESS}/apps/${appId}/publish`, {}, accessToken)).status).toBe(400);
-        const plan = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/removal`, accessToken)).json()).data;
-        expect(plan.can_remove).toBe(false);
-        expect(plan.blockers.join(" ")).toContain("Hub's own application");
-        expect((await TestRequest.delete(`${ACCESS}/apps/${appId}`, accessToken)).status).toBe(400);
+        if (others > 0) {
+          const plan = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/removal`, accessToken)).json()).data;
+          expect(plan.can_remove).toBe(false);
+          expect(plan.retire_available).toBe(false);
+          expect(plan.blockers.join(" ")).toMatch(new RegExp(`${others} other applications? (is|are) still set up`));
+          expect((await TestRequest.delete(`${ACCESS}/apps/${appId}`, accessToken)).status).toBe(400);
+          expect((await TestRequest.post(`${ACCESS}/apps/${appId}/retire`, {}, accessToken)).status).toBe(400);
+        }
       } finally {
         delete process.env.HUB_APPLICATION_ID;
+      }
+    });
+
+    it("can be retired and deleted once it is the only application left", async () => {
+      process.env.HUB_APPLICATION_ID = appId;
+      // The test database keeps applications from other runs. Set them aside and put them back.
+      const kept = await prismaClient.application.findMany({ where: { application_id: { not: appId } } });
+      await prismaClient.application.deleteMany({ where: { application_id: { not: appId } } });
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        await create(accessToken);
+        const plan = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/removal`, accessToken)).json()).data;
+        expect(plan.can_remove).toBe(true);
+        const listed = (await (await TestRequest.get(`${ACCESS}/applications?search=${appId}`, accessToken)).json()).data.find(
+          (row: { application_id: string }) => row.application_id === appId,
+        );
+        expect(listed.can_remove).toBe(true);
+        expect((await TestRequest.delete(`${ACCESS}/apps/${appId}`, accessToken)).status).toBe(200);
+        expect(await prismaClient.application.count({ where: { application_id: appId } })).toBe(0);
+
+        // With a second application it waits, and retiring waits too.
+        await create(accessToken);
+        await prismaClient.application.create({ data: { application_id: `${appId}-b`, name: "TEST_Second" } });
+        const blocked = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/removal`, accessToken)).json()).data;
+        expect(blocked.can_remove).toBe(false);
+        expect(blocked.blockers.join(" ")).toContain("1 other application is still set up");
+        expect((await TestRequest.post(`${ACCESS}/apps/${appId}/retire`, {}, accessToken)).status).toBe(400);
+      } finally {
+        delete process.env.HUB_APPLICATION_ID;
+        await prismaClient.application.deleteMany({ where: { application_id: `${appId}-b` } });
+        if (kept.length > 0) {
+          await prismaClient.application.createMany({
+            data: kept.map(({ env_settings, ...row }) => (env_settings === null ? row : { ...row, env_settings })),
+          });
+        }
+      }
+    });
+
+    it("leaves the Hub lines out of an application that does not sign in through the Hub", async () => {
+      const other = `test-nohub-${randomBytes(3).toString("hex")}`;
+      process.env.HUB_APPLICATION_ID = appId;
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        await create(accessToken, { is_hub: true, application_id: undefined, name: "HUB", hub_base_url: "https://hub.example.com" });
+        const withHub = await create(accessToken, { application_id: other, name: "TEST_UsesHub", connect: true });
+        const keys = (await withHub.json()).data.connection.env.map((item: { key: string }) => item.key);
+        expect(keys).toContain("HUB_INTERNAL_SECRET");
+        const impact = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/hub-secret-impact`, accessToken)).json()).data;
+        expect(impact.applications.map((row: { application_id: string }) => row.application_id)).toContain(other);
+
+        await TestRequest.patch(`${ACCESS}/apps/${other}/details`, { uses_hub: false }, accessToken);
+        const rotated = await TestRequest.post(`${ACCESS}/apps/${other}/rotate`, { immediate: true }, accessToken);
+        const rotatedBody = (await rotated.json()).data;
+        expect(rotatedBody.env.map((item: { key: string }) => item.key)).not.toContain("HUB_INTERNAL_SECRET");
+        expect(rotatedBody.hub_lines_missing).toBe(false);
+        const after = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/hub-secret-impact`, accessToken)).json()).data;
+        expect(after.applications.map((row: { application_id: string }) => row.application_id)).not.toContain(other);
+      } finally {
+        delete process.env.HUB_APPLICATION_ID;
+        await prismaClient.applicationRole.deleteMany({ where: { application_id: other } });
+        await prismaClient.applicationOrganization.deleteMany({ where: { application_id: other } });
+        await prismaClient.application.deleteMany({ where: { application_id: other } });
+        await prismaClient.apiClient.deleteMany({ where: { profile: { code: other } } });
+        await prismaClient.applicationIntegrationProfile.deleteMany({ where: { code: other } });
       }
     });
   });

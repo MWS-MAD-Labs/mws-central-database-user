@@ -44,6 +44,7 @@ services:
       - DATABASE_URL=${DATABASE_URL:-postgresql://root:PostgresPassword123@db:5432/mws-center?schema=public}
       - NODE_ENV=${NODE_ENV:-production}
       - JWT_SECRET=${JWT_SECRET}
+      - APP_SECRETS_KEY=${APP_SECRETS_KEY}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}

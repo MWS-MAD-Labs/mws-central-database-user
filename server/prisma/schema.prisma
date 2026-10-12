@@ -1662,6 +1662,8 @@ model Application {
   env_settings   Json?
   // Only on the Hub's own row. Its public address, and the secret it shares with the applications (encrypted).
   hub_base_url        String?
+  // Whether the .env of this application carries the Hub address and the shared secret.
+  uses_hub            Boolean @default(true)
   hub_internal_secret String?
   // sso: opened through the Hub's sign-in handoff. link: a plain address, nothing to connect.
   launch_mode    ApplicationLaunchMode @default(SSO)

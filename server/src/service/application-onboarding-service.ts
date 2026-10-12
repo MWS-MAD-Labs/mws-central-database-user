@@ -11,7 +11,7 @@ import type { ApplicationSummary, CreateApplicationRequest, UpdateApplicationReq
 import { ApplicationValidation } from "../validation/application-entitlement-validation";
 import { Validation } from "../validation/validation";
 import { buildEnvItems, hubLinesMissing, resolveHubSettings, type EnvItem, type HubEnvSettings, type HubFacts } from "../utils/application-env";
-import { decryptSecret, encryptSecret, newSecret } from "../utils/secret-box";
+import { decryptSecret, encryptSecret, keyReady, newSecret } from "../utils/secret-box";
 import { addressProblem } from "../utils/application-id";
 import { evaluateRemoval, usedRecently } from "../utils/application-removal";
 import { getIntegrationEnvironment } from "../utils/integration-environment";
@@ -41,6 +41,8 @@ export type ApplicationDetail = {
   logout_url: string | null;
   published: boolean;
   retired_at: string | null;
+  // Whether its .env carries the Hub address and the shared secret.
+  uses_hub: boolean;
   launch_mode: "sso" | "link";
 };
 
@@ -62,7 +64,7 @@ export type SetupStatus = {
   // The Hub's sign-in settings that go into its .env. Null for other applications.
   env_settings: HubEnvSettings | null;
   // The Hub's address and whether it has a secret. The secret itself is never in the setup.
-  hub: { base_url: string | null; secret_set: boolean } | null;
+  hub: { base_url: string | null; secret_set: boolean; key_ready: boolean } | null;
   // The names this application reads in its .env, so the guides can name them.
   env_keys: { key: string; secret: boolean }[];
 };
@@ -103,6 +105,7 @@ function toDetail(row: {
   published: boolean;
   retired_at: Date | null;
   launch_mode: ApplicationLaunchMode;
+  uses_hub: boolean;
 }): ApplicationDetail {
   return {
     application_id: row.application_id,
@@ -115,6 +118,7 @@ function toDetail(row: {
     logout_url: row.logout_url,
     published: row.published,
     retired_at: row.retired_at ? row.retired_at.toISOString() : null,
+    uses_hub: row.uses_hub,
     launch_mode: row.launch_mode === ApplicationLaunchMode.LINK ? "link" : "sso",
   };
 }
@@ -156,7 +160,7 @@ async function loadHubFacts(reveal = true): Promise<HubFacts> {
 
 // The .env of an application, made from what Central knows about it.
 async function envFor(
-  app: { application_id: string; env_settings: unknown },
+  app: { application_id: string; env_settings: unknown; uses_hub?: boolean },
   organizationId: string,
   publicUrl: string,
   token: string,
@@ -164,7 +168,9 @@ async function envFor(
   reveal = true,
 ) {
   const isHub = app.application_id === hubApplicationId();
-  const hub = await loadHubFacts(reveal);
+  // An application that does not sign in through the Hub gets none of its lines.
+  const usesHub = isHub || app.uses_hub !== false;
+  const hub = usesHub ? await loadHubFacts(reveal) : undefined;
   const facts = {
     applicationId: app.application_id,
     organizationId,
@@ -174,7 +180,7 @@ async function envFor(
     hubSettings: isHub ? resolveHubSettings(app.env_settings, adminEmail) : undefined,
     hub,
   };
-  return { env: buildEnvItems(facts), hub_lines_missing: hubLinesMissing(facts) };
+  return { env: buildEnvItems(facts), hub_lines_missing: usesHub && hubLinesMissing(facts) };
 }
 
 export class ApplicationOnboardingService {
@@ -202,6 +208,7 @@ export class ApplicationOnboardingService {
       ...(input.icon !== undefined && { icon: input.icon || null }),
       ...(input.category !== undefined && { category: input.category || null }),
       ...(input.scope !== undefined && { scope: input.scope || null }),
+      ...(input.uses_hub !== undefined && { uses_hub: input.uses_hub }),
       ...(input.launch_url !== undefined && { launch_url: input.launch_url || null }),
       ...(input.launch_mode !== undefined && { launch_mode: input.launch_mode === "link" ? ApplicationLaunchMode.LINK : ApplicationLaunchMode.SSO }),
       ...(input.logout_url !== undefined && { logout_url: input.logout_url || null }),
@@ -267,7 +274,7 @@ export class ApplicationOnboardingService {
       env_settings: applicationId === hubApplicationId() ? resolveHubSettings(app.env_settings, admin.email) : null,
       hub:
         applicationId === hubApplicationId()
-          ? { base_url: app.hub_base_url, secret_set: Boolean(app.hub_internal_secret) }
+          ? { base_url: app.hub_base_url, secret_set: Boolean(app.hub_internal_secret), key_ready: keyReady() }
           : null,
       env_keys: (await envFor(app, organizationId, "", "", admin.email, false)).env.map((item) => ({ key: item.key, secret: item.secret })),
       application: toDetail(app),
@@ -459,6 +466,19 @@ export class ApplicationOnboardingService {
     return { secret };
   }
 
+  // The applications that take the Hub address and secret into their .env, so a change reaches them.
+  static async hubSecretImpact(admin: AdminUser, applicationId: string): Promise<{ applications: { application_id: string; name: string }[] }> {
+    assertSuperAdmin(admin);
+    await findApplication(applicationId);
+    if (applicationId !== hubApplicationId()) throw new ResponseError(400, "Only the Hub has a secret to share");
+    const rows = await prismaClient.application.findMany({
+      where: { application_id: { not: applicationId }, uses_hub: true, launch_mode: ApplicationLaunchMode.SSO, retired_at: null },
+      orderBy: { name: "asc" },
+      select: { application_id: true, name: true },
+    });
+    return { applications: rows };
+  }
+
   // Replaces the token of the connection of this application. The old one follows the grace of the mode.
   static async rotate(
     admin: AdminUser,
@@ -544,7 +564,8 @@ export class ApplicationOnboardingService {
     );
     const isHub = applicationId === hubApplicationId();
     const retired = Boolean(app.retired_at);
-    const verdict = evaluateRemoval({ isHub, retired, published: app.published, people, recentlyUsed });
+    const otherApplications = isHub ? await prismaClient.application.count({ where: { application_id: { not: applicationId } } }) : 0;
+    const verdict = evaluateRemoval({ isHub, otherApplications, retired, published: app.published, people, recentlyUsed });
     return {
       can_remove: verdict.can_remove,
       blockers: verdict.blockers,
@@ -558,8 +579,13 @@ export class ApplicationOnboardingService {
   // Stops the application without deleting anything: hidden from the Hub, token revoked, nobody has access.
   static async retire(admin: AdminUser, applicationId: string, context: AuditRequestContext = {}): Promise<ApplicationDetail> {
     assertSuperAdmin(admin);
-    if (applicationId === hubApplicationId()) throw new ResponseError(400, "This is the Hub itself. It cannot be retired");
     const before = await findApplication(applicationId);
+    if (applicationId === hubApplicationId()) {
+      const others = await prismaClient.application.count({ where: { application_id: { not: applicationId } } });
+      if (others > 0) {
+        throw new ResponseError(400, `${others} other ${others === 1 ? "application is" : "applications are"} still set up in Central. Remove ${others === 1 ? "it" : "them"} before the Hub`);
+      }
+    }
     if (before.retired_at) throw new ResponseError(400, "This application is already retired");
     const clients = await prismaClient.apiClient.findMany({
       where: { profile: { code: applicationId }, is_active: true },

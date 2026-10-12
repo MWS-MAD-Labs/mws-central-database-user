@@ -12,6 +12,16 @@ function key(): Buffer {
   return bytes;
 }
 
+// Whether a secret can be kept here: the key is set and the right size.
+export function keyReady(): boolean {
+  try {
+    key();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // A secret Central has to show again later, so it cannot be hashed. Kept encrypted instead.
 export function encryptSecret(plain: string): string {
   const iv = randomBytes(12);

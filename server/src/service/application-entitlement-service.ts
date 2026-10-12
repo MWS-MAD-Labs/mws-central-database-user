@@ -1831,6 +1831,7 @@ export class ApplicationAccessService {
       where: { application_id: { in: pageRows.map((row) => row.application_id) }, source: "MANIFEST", deprecated_at: null },
       _count: { _all: true },
     });
+    const otherApplications = await prismaClient.application.count({ where: { application_id: { not: hubApplicationId() } } });
     for (const row of pageRows) {
       const own = clients.filter((client) => client.profile?.code === row.application_id);
       row.permission_count = permissionCounts.find((item) => item.application_id === row.application_id)?._count._all ?? 0;
@@ -1842,6 +1843,7 @@ export class ApplicationAccessService {
       row.connection_last_used_at = used ? used.toISOString() : null;
       const verdict = evaluateRemoval({
         isHub: row.is_hub,
+        otherApplications,
         retired: row.retired,
         published: row.published,
         people: row.exception_count + row.blocked_count,
@@ -1907,6 +1909,7 @@ export class ApplicationAccessService {
         launch_url: input.launch_url || null,
         logout_url: input.logout_url || null,
         launch_mode: input.launch_mode === "link" ? "LINK" : "SSO",
+        uses_hub: input.uses_hub ?? true,
         // Only the Hub has settings for its .env.
         ...(parsed.is_hub && parsed.env_settings ? { env_settings: parsed.env_settings } : {}),
         // The Hub shares its address and a secret of its own making with every application.

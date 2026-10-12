@@ -32,6 +32,8 @@ Create `server/.env`:
 ```sh
 DATABASE_URL="postgresql://root:PostgresPassword123@localhost:5434/mws-center?schema=public"
 JWT_SECRET="replace-with-a-long-random-secret"
+# Keeps the Hub secret encrypted. Make one with: bun run secrets:key
+APP_SECRETS_KEY="replace-with-32-random-bytes-in-base64"
 ALLOWED_DOMAIN="mws.sch.id"
 GOOGLE_CLIENT_ID="your-google-oauth-client-id"
 GOOGLE_CLIENT_SECRET="your-google-oauth-client-secret"
