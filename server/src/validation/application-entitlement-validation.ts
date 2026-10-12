@@ -208,8 +208,16 @@ const hubAddress = z
 export function cleanPastedSecret(value: unknown): unknown {
   if (typeof value !== "string") return value;
   let text = value.trim();
-  text = text.replace(/^HUB_INTERNAL_SECRET\s*=\s*/, "");
-  while (text.length > 1 && /^(["'])[\s\S]*\1$/.test(text)) text = text.slice(1, -1).trim();
+  // Repeated, so a line that was already wrapped by an earlier copy is also reduced.
+  for (let round = 0; round < 10; round += 1) {
+    const next = text
+      .replace(/^HUB_INTERNAL_SECRET\s*=\s*/, "")
+      .replace(/\\+(["'])/g, "$1")
+      .replace(/^(["'])([\s\S]*)\1$/, "$2")
+      .trim();
+    if (next === text) break;
+    text = next;
+  }
   return text;
 }
 

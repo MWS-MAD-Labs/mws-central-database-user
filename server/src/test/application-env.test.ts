@@ -121,5 +121,7 @@ describe("pasted Hub secret", () => {
     expect(cleanPastedSecret(`HUB_INTERNAL_SECRET="${raw}"`)).toBe(raw);
     expect(cleanPastedSecret(`  ${raw} `)).toBe(raw);
     expect(cleanPastedSecret(`HUB_INTERNAL_SECRET='${raw}'`)).toBe(raw);
+    // Wrapped again and again by earlier copies.
+    expect(cleanPastedSecret(`HUB_INTERNAL_SECRET="HUB_INTERNAL_SECRET=\\"${raw}\\""`)).toBe(raw);
   });
 });
