@@ -457,8 +457,11 @@ export function AppSetupPage() {
                 <p className="mt-2 text-xs text-(--mws-muted)">This page checks every few seconds and updates by itself.</p>
                 {stalled ? (
                   <p role="note" className="mt-3 rounded-lg border border-[#f3d7a3] bg-[#fff8e8] px-3 py-2 text-xs text-[#805b18]">
-                    Still nothing after 10 minutes. Check that the application is deployed, that the token and base URL in its .env are
-                    the ones from the connection, and that it calls Central on start.
+                    Still nothing after 10 minutes. The token of this connection has not been used yet. Check that the .env of the
+                    application has these names: {(setup.env_keys ?? []).map((item) => item.key).join(", ")}. An older variable with
+                    another name can be read first and keep the new token from being used. Check that it was restarted, and that this
+                    block was made for the application that reads it (its ID here is {applicationId}). Then send the permissions once
+                    from your machine, as in the Setup Guide.
                   </p>
                 ) : null}
                 <TextAction className="mt-3" icon={BookOpen} onClick={() => setGuide(true)}>
