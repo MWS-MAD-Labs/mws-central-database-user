@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { Route, Routes } from 'react-router'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
+import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
 import { AppCreatePage } from '../../../src/features/application-access/pages/AppCreatePage.jsx'
 import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
@@ -20,13 +21,21 @@ const SCOPES = {
     }),
 }
 
+const NO_HUB = {
+  path: /\/api\/admin\/application-access\/applications\?/,
+  method: 'GET',
+  response: () => jsonResponse({ data: [], paging: { current_page: 1, total_page: 1, total_item: 0, size: 20 } }),
+}
+
 function renderPage(user = { role: 'SUPER_ADMIN' }) {
   return renderWithProviders(
     <AuthContext.Provider value={{ user }}>
-      <Routes>
-        <Route path="/application-access/apps/new" element={<AppCreatePage />} />
-        <Route path="/application-access/apps/:applicationId/setup" element={<div>Setup page</div>} />
-      </Routes>
+      <ConfirmProvider>
+        <Routes>
+          <Route path="/application-access/apps/new" element={<AppCreatePage />} />
+          <Route path="/application-access/apps/:applicationId/setup" element={<div>Setup page</div>} />
+        </Routes>
+      </ConfirmProvider>
     </AuthContext.Provider>,
     { route: '/application-access/apps/new' },
   )
@@ -34,13 +43,13 @@ function renderPage(user = { role: 'SUPER_ADMIN' }) {
 
 describe('AppCreatePage', () => {
   it('refuses anyone who is not a Super Admin', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
     renderPage({ role: 'DATABASE_ADMIN' })
     expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
   })
 
   it('makes the application id from the name and does not let it be typed', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
     const { user } = renderPage()
     const id = screen.getByLabelText('Application ID')
     expect(id).toBeDisabled()
@@ -52,7 +61,7 @@ describe('AppCreatePage', () => {
   })
 
   it('puts the scheme in front of the address from the environment', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
     const { user } = renderPage()
     const production = screen.getByRole('radio', { name: 'Production' })
     expect(production).toHaveAttribute('aria-checked', 'true')
@@ -67,7 +76,7 @@ describe('AppCreatePage', () => {
   })
 
   it('refuses spaces, symbols and a public address on Local, without calling the server', async () => {
-    const fetchMock = createFetchRouter([SCOPES])
+    const fetchMock = createFetchRouter([SCOPES, NO_HUB])
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'Bad <b>')
@@ -84,7 +93,7 @@ describe('AppCreatePage', () => {
   })
 
   it('switches the environment when the pasted address is the only one, and says so', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
     const { user } = renderPage()
     await user.click(screen.getByRole('radio', { name: 'Local' }))
     await user.click(screen.getByLabelText('Launch URL'))
@@ -95,7 +104,7 @@ describe('AppCreatePage', () => {
   })
 
   it('refuses a pasted scheme that clashes with the environment when the other address is filled', async () => {
-    const fetchMock = createFetchRouter([SCOPES])
+    const fetchMock = createFetchRouter([SCOPES, NO_HUB])
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'Demo')
@@ -112,6 +121,7 @@ describe('AppCreatePage', () => {
   it('marks the Hub itself: id hub, no card or addresses, and sends is_hub', async () => {
     const fetchMock = createFetchRouter([
       SCOPES,
+      NO_HUB,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',
@@ -131,6 +141,9 @@ describe('AppCreatePage', () => {
     expect(screen.queryByLabelText('Launch URL')).toBeNull()
     expect(screen.queryByText('Hub Card')).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
+    const confirmDialog = await screen.findByRole('dialog', { name: 'Add the Hub' })
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+    await user.click(within(confirmDialog).getByRole('button', { name: 'Add Hub' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
       expect(JSON.parse(call[1].body)).toEqual({
@@ -146,6 +159,7 @@ describe('AppCreatePage', () => {
   it('picks the icon from the list the Hub knows and shows it on the preview', async () => {
     const fetchMock = createFetchRouter([
       SCOPES,
+      NO_HUB,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',
@@ -170,13 +184,13 @@ describe('AppCreatePage', () => {
   })
 
   it('starts on the default icon', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
     renderPage()
     expect(screen.getByRole('button', { name: 'Icon' })).toHaveTextContent('Default (AppWindow)')
   })
 
   it('stops the description at 50 characters and counts them', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Description'), 'x'.repeat(80))
     expect(screen.getByLabelText('Description')).toHaveValue('x'.repeat(50))
@@ -184,7 +198,7 @@ describe('AppCreatePage', () => {
   })
 
   it('keeps a very long name and description inside the preview card', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'A'.repeat(60))
     await user.type(screen.getByLabelText('Description'), 'y'.repeat(50))
@@ -197,18 +211,48 @@ describe('AppCreatePage', () => {
   })
 
   it('asks how the Hub signs people in only when the Hub is chosen', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
     const { user } = renderPage()
     expect(screen.queryByText('Hub Sign-in')).toBeNull()
     await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
     expect(screen.getByText('Hub Sign-in')).toBeVisible()
     expect(screen.getByRole('radio', { name: /Warn/ })).toHaveAttribute('aria-checked', 'true')
-    await user.type(screen.getByLabelText('Emails that always get in'), 'nope')
+    await user.type(screen.getByLabelText('Add an email that always gets in'), 'nope')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
     expect(screen.getByText('"nope" is not a valid email.')).toBeVisible()
+    expect(screen.getByText('No emails yet.')).toBeVisible()
+  })
+
+  it('adds the emails that always get in one by one and removes them', async () => {
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    const { user } = renderPage()
+    await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
+    const input = screen.getByLabelText('Add an email that always gets in')
+    expect(input).toHaveAttribute('maxlength', '50')
+    await user.type(input, 'Me@Millennia21.id{Enter}')
+    await user.type(input, 'me@millennia21.id{Enter}')
+    expect(screen.getByText('Each email only once.')).toBeVisible()
+    await user.clear(input)
+    await user.type(input, 'boss@millennia21.id')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+    expect(screen.getByText('me@millennia21.id')).toBeVisible()
+    expect(screen.getByText('boss@millennia21.id')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Remove me@millennia21.id' }))
+    expect(screen.queryByText('me@millennia21.id')).toBeNull()
+  })
+
+  it('hides the Hub choice once a Hub exists', async () => {
+    globalThis.fetch = createFetchRouter([
+      SCOPES,
+      { ...NO_HUB, response: () => jsonResponse({ data: [{ application_id: 'hub', is_hub: true }], paging: {} }) },
+    ])
+    renderPage()
+    await waitFor(() => expect(globalThis.fetch.mock.calls.some(([url]) => String(url).includes('search=hub'))).toBe(true))
+    await waitFor(() => expect(screen.queryByRole('checkbox', { name: /This is the Hub itself/ })).toBeNull())
   })
 
   it('tidies extra spaces when leaving the name', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), '  MWS    Hub  ')
     await user.tab()
@@ -216,7 +260,7 @@ describe('AppCreatePage', () => {
   })
 
   it('keeps the two required scopes on and marks sensitive data', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
     renderPage()
     const required = await screen.findByRole('checkbox', { name: /Publish an application's permissions/ })
     expect(required).toBeChecked()
@@ -225,7 +269,7 @@ describe('AppCreatePage', () => {
   })
 
   it('shows a preview of the Hub card that follows what is typed', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
     const { user } = renderPage()
     expect(screen.getByText('Application name')).toBeVisible()
     await user.type(screen.getByLabelText('Name'), 'Demo App')
@@ -237,6 +281,7 @@ describe('AppCreatePage', () => {
   it('creates the application with its details and opens the setup steps', async () => {
     const fetchMock = createFetchRouter([
       SCOPES,
+      NO_HUB,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',
@@ -280,6 +325,7 @@ describe('AppCreatePage', () => {
   it('adds a plain link without a connection or data access', async () => {
     const fetchMock = createFetchRouter([
       SCOPES,
+      NO_HUB,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',

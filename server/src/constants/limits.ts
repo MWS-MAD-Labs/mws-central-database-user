@@ -6,6 +6,8 @@ export const LIMITS = {
   GRADE_NAME_MAX: 30,
   CLASS_NAME_MAX: 30,
   APPLICATION_DESCRIPTION_MAX: 50,
+  // A whole email address, the same cap as the email of an employee or student.
+  EMAIL_MAX: 50,
   CLASS_CAPACITY_MAX: 100,
   JOB_POSITION_HOLDERS_MAX: 200,
   GRADE_LEVEL_MIN: -5,

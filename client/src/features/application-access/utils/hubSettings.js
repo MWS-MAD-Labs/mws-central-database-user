@@ -18,6 +18,8 @@ export const HUB_MODES = [
   },
 ]
 
+import { LIMITS } from '../../../lib/limits.js'
+
 export const MAX_BYPASS_EMAILS = 10
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -31,6 +33,8 @@ export function parseEmails(text) {
 
 export function emailsProblem(emails) {
   if (emails.length > MAX_BYPASS_EMAILS) return `At most ${MAX_BYPASS_EMAILS} emails.`
+  const long = emails.find((email) => email.length > LIMITS.EMAIL_MAX)
+  if (long) return `An email can have up to ${LIMITS.EMAIL_MAX} characters.`
   const bad = emails.find((email) => !EMAIL.test(email))
   if (bad) return `"${bad}" is not a valid email.`
   if (new Set(emails).size !== emails.length) return 'Each email only once.'

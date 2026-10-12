@@ -1,10 +1,11 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
@@ -18,7 +19,16 @@ export function AppCreatePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [created, setCreated] = useState(null);
+
+  // Only one Hub can exist, so the choice goes away once there is one.
+  const hubQuery = useQuery({
+    queryKey: ["application-access", "hub-exists"],
+    queryFn: () => applicationAccessApi.listApplications({ search: "hub", size: 20 }),
+    enabled: user?.role === "SUPER_ADMIN",
+  });
+  const hubExists = Boolean(hubQuery.data?.data?.some((row) => row.is_hub));
 
   const mutation = useMutation({
     mutationFn: (payload) => applicationAccessApi.createApplication(payload),
@@ -59,8 +69,20 @@ export function AppCreatePage() {
         layout="page"
         adminEmail={user?.email ?? ""}
         submitLabel="Add Application"
+        hubExists={hubExists}
         submitting={mutation.isPending}
-        onSubmit={(payload) => mutation.mutate(payload)}
+        onSubmit={async (payload) => {
+          if (payload.is_hub) {
+            const confirmed = await confirm({
+              title: "Add the Hub",
+              description:
+                "The Hub cannot be retired, deleted or renamed once it is added, and there can only be one. Add it only for the real Hub.",
+              confirmLabel: "Add Hub",
+            });
+            if (!confirmed) return;
+          }
+          mutation.mutate(payload);
+        }}
         onCancel={() => navigate(BACK)}
       />
       {created ? (

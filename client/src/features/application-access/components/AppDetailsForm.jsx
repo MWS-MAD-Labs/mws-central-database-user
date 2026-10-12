@@ -25,7 +25,7 @@ const CATEGORIES = [
 
 // What the Hub card shows and where it sends people. Used to add an application and to edit it later.
 // On the page layout the id is made from the name. In the dialog the id is the one the application has.
-export function AppDetailsForm({ initial, idLocked = false, isHub = false, layout = "dialog", adminEmail = "", submitLabel, submitting, onSubmit, onCancel }) {
+export function AppDetailsForm({ initial, idLocked = false, isHub = false, layout = "dialog", hubExists = false, adminEmail = "", submitLabel, submitting, onSubmit, onCancel }) {
   const launch = splitAddress(initial?.launch_url);
   const logout = splitAddress(initial?.logout_url, launch.environment);
   const [values, setValues] = useState({
@@ -149,10 +149,10 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
             <TextInput aria-label="Application ID" value={applicationId} disabled readOnly />
           </Field>
         </div>
-        {layout === "page" ? (
+        {layout === "page" && !hubExists ? (
           <CheckboxField
             label="This is the Hub itself"
-            description="The Hub is not listed in the Hub, so it has no card or launch address."
+            description="The Hub is not listed in the Hub, so it has no card or launch address. It cannot be retired, deleted or renamed, and there can only be one."
             checked={hubChosen}
             onChange={(event) => setHubChosen(event.target.checked)}
           />
@@ -268,7 +268,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
           <p className="text-xs leading-5 text-(--mws-muted)">
             How strictly the Hub checks who may sign in. These go into the Hub's .env with the token.
           </p>
-          <HubAccessSettings value={hubSettings} onChange={setHubSettings} attempted={attempted} />
+          <HubAccessSettings value={hubSettings} onChange={setHubSettings} />
         </Section>
       ) : null}
       {layout === "page" && launchMode === "sso" ? (

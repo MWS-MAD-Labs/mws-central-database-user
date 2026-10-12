@@ -75,3 +75,9 @@ The Hub shows every app that is published in Central, so its own Application Cat
 3. In Central server: `bun run import:hub-catalog catalog.json --dry-run`, then again without `--dry-run`. Add `--publish` to publish apps that have a launch address. Apps with no single sign-on address become plain links. Existing apps are never touched.
 4. For each imported app, add its roles and groups, then publish it.
 5. In the Hub backend: `bun run prune:catalog` shows what would go, `bun run prune:catalog --confirm` deletes the rows Central now covers.
+
+## Adding the Hub in production
+
+The Hub is the application whose id equals `HUB_APPLICATION_ID` in Central's `.env` (default `hub`). There is no separate flag. Check that value matches before adding it.
+
+Add it once from Add Application with "This is the Hub itself" ticked. After that it cannot be retired, deleted or renamed, and the tick box disappears. Central asks for a confirmation before it is created. Put your own email under "Emails That Always Get In" and keep Warn mode until everyone who should get in has access.

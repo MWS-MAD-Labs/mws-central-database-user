@@ -1,16 +1,33 @@
-import { Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { useState } from "react";
-import { Field, TextAreaInput } from "../../../components/ui/FormControls.jsx";
+import { Button } from "../../../components/ui/Button.jsx";
+import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { cn } from "../../../lib/cn.js";
+import { LIMITS } from "../../../lib/limits.js";
 import { HUB_MODES, MAX_BYPASS_EMAILS, emailsProblem, parseEmails } from "../utils/hubSettings.js";
 
 // How strictly the Hub checks who may sign in, and who always gets in. Both go into the Hub's .env.
 // The parent keeps `value` as { hub_access_mode, hub_bypass_emails } and is told of each change.
-export function HubAccessSettings({ value, onChange, attempted = false }) {
-  const [emailText, setEmailText] = useState(() => value.hub_bypass_emails.join(", "));
-  const emails = parseEmails(emailText);
-  const problem = emailsProblem(emails);
+export function HubAccessSettings({ value, onChange }) {
+  const emails = value.hub_bypass_emails;
+  const [draft, setDraft] = useState("");
+  const [draftProblem, setDraftProblem] = useState(null);
+
+  // One email at a time. Several pasted together are split and added if they all pass.
+  function add() {
+    const entered = parseEmails(draft);
+    if (entered.length === 0) return;
+    const next = [...emails, ...entered];
+    const problem = emailsProblem(next);
+    if (problem) {
+      setDraftProblem(problem);
+      return;
+    }
+    onChange({ ...value, hub_bypass_emails: next });
+    setDraft("");
+    setDraftProblem(null);
+  }
 
   return (
     <div className="space-y-4">
@@ -41,21 +58,58 @@ export function HubAccessSettings({ value, onChange, attempted = false }) {
       </div>
       <Field
         label="Emails That Always Get In"
-        hint={`Up to ${MAX_BYPASS_EMAILS}, separated by commas. Keep yours here so a wrong setting cannot lock you out.`}
-        error={attempted || emailText ? (problem ?? undefined) : undefined}
+        hint={`Up to ${MAX_BYPASS_EMAILS}. Keep yours here so a wrong setting cannot lock you out.`}
+        error={draftProblem ?? undefined}
       >
-        <TextAreaInput
-          aria-label="Emails that always get in"
-          rows={2}
-          value={emailText}
-          autoComplete="off"
-          spellCheck={false}
-          onChange={(event) => {
-            setEmailText(event.target.value);
-            onChange({ ...value, hub_bypass_emails: parseEmails(event.target.value) });
-          }}
-        />
+        <div className="flex gap-2">
+          <TextInput
+            aria-label="Add an email that always gets in"
+            type="email"
+            maxLength={LIMITS.EMAIL_MAX}
+            value={draft}
+            invalid={Boolean(draftProblem)}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="name@millennia21.id"
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setDraftProblem(null);
+            }}
+            onBlur={add}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                add();
+              }
+            }}
+          />
+          <Button type="button" variant="secondary" onClick={add}>
+            Add
+          </Button>
+        </div>
       </Field>
+      {emails.length === 0 ? (
+        <p className="text-xs text-(--mws-muted)">No emails yet.</p>
+      ) : (
+        <ul className="flex flex-wrap gap-2">
+          {emails.map((email) => (
+            <li
+              key={email}
+              className="inline-flex items-center gap-1.5 rounded-full border border-(--mws-line) bg-(--mws-soft) py-1 pr-1 pl-3 text-xs text-(--mws-charcoal)"
+            >
+              {email}
+              <button
+                type="button"
+                aria-label={`Remove ${email}`}
+                onClick={() => onChange({ ...value, hub_bypass_emails: emails.filter((item) => item !== email) })}
+                className="flex size-5 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) hover:bg-white hover:text-(--mws-burgundy)"
+              >
+                <X size={12} aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

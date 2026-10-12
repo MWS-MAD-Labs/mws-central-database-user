@@ -450,7 +450,7 @@ describe('AppSetupPage', () => {
       expect(screen.queryByText('Organization ID')).toBeNull()
 
       await user.click(screen.getByRole('radio', { name: /Enforce/ }))
-      await user.type(screen.getByLabelText('Emails that always get in'), ', Boss@Millennia21.id')
+      await user.type(screen.getByLabelText('Add an email that always gets in'), 'Boss@Millennia21.id{Enter}')
       await user.click(screen.getByRole('button', { name: 'Save Settings' }))
       await waitFor(() => expect(saved).toEqual([{ hub_access_mode: 'enforce', hub_bypass_emails: ['me@millennia21.id', 'boss@millennia21.id'] }]))
     })
@@ -458,7 +458,7 @@ describe('AppSetupPage', () => {
     it('refuses an email that is not one', async () => {
       const { user } = renderPage([setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings }))])
       await screen.findByText('Hub Sign-in')
-      await user.type(screen.getByLabelText('Emails that always get in'), ', nonsense')
+      await user.type(screen.getByLabelText('Add an email that always gets in'), 'nonsense{Enter}')
       expect(screen.getByText('"nonsense" is not a valid email.')).toBeVisible()
       expect(screen.getByRole('button', { name: 'Save Settings' })).toBeDisabled()
     })
