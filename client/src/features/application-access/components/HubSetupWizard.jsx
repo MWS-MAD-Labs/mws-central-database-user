@@ -69,6 +69,7 @@ export function HubSetupWizard({
   useEffect(() => {
     if (managing) return;
     onChange?.({
+      step,
       address,
       settings: signIn,
       secret:
@@ -76,7 +77,7 @@ export function HubSetupWizard({
           ? existingValue.trim()
           : undefined,
     });
-  }, [managing, onChange, address, signIn, secretChoice, existingValue]);
+  }, [managing, onChange, step, address, signIn, secretChoice, existingValue]);
 
   const refresh = () => {
     queryClient.invalidateQueries({
@@ -241,7 +242,7 @@ export function HubSetupWizard({
                     disabled={!keyReady}
                     onClick={() => setDialog("existing")}
                   >
-                    Use the Hub's current secret
+                    Use The Hub's Current Secret
                   </TextAction>
                 </div>
               )}
@@ -256,13 +257,13 @@ export function HubSetupWizard({
               {[
                 [
                   "new",
-                  "Make a new secret",
-                  "Central makes it when the Hub is added.",
+                  "Make A New Secret",
+                  "Central makes a random one when you add the Hub and shows it once. Put it in the Hub's .env as HUB_INTERNAL_SECRET. Choose this for a new Hub, or when no application uses a secret yet.",
                 ],
                 [
                   "existing",
-                  "Use the secret the Hub runs with now",
-                  "Paste it, and nothing that uses it has to change.",
+                  "Use The Hub's Current Secret",
+                  "Open the .env of the Hub, copy the value of HUB_INTERNAL_SECRET and paste it below. Applications that already use it keep working, and nothing in their .env changes. Choose this when the Hub and its applications already run.",
                 ],
               ].map(([id, title, text]) => (
                 <button
@@ -285,8 +286,13 @@ export function HubSetupWizard({
                 </button>
               ))}
               {secretChoice === "existing" ? (
-                <div>
+                <div className="space-y-1.5">
+                  <label htmlFor="existing-hub-secret" className="block text-sm font-semibold text-(--mws-charcoal)">
+                    HUB_INTERNAL_SECRET From The Hub's .env
+                  </label>
+                  <p className="text-xs text-(--mws-muted)">At least 16 characters.</p>
                   <TextInput
+                    id="existing-hub-secret"
                     aria-label="Existing Hub secret"
                     type="password"
                     autoComplete="off"

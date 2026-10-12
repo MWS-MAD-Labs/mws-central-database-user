@@ -28,6 +28,7 @@ export const applicationAccessRouter = new Hono<{ Variables: AdminVariables }>()
 applicationAccessRouter.get("/applications", (c) => ApplicationAccessController.applications(c));
 applicationAccessRouter.post("/applications", (c) => ApplicationAccessController.createApplication(c));
 applicationAccessRouter.get("/apps/:applicationId/exceptions", (c) => ApplicationAccessController.exceptions(c));
+applicationAccessRouter.get("/hub-address-check", (c) => ApplicationAccessController.hubAddressCheck(c));
 applicationAccessRouter.get("/secrets-status", (c) => ApplicationAccessController.secretsStatus(c));
 applicationAccessRouter.get("/taxonomy", (c) => ApplicationAccessController.taxonomy(c));
 applicationAccessRouter.get("/scope-catalog", (c) => ApplicationAccessController.scopeCatalog(c));

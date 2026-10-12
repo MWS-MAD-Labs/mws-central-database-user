@@ -72,5 +72,11 @@ export function addressPlaceholder(environment, path) {
 export function hubAddressProblem(environment, rest) {
   const text = rest.trim()
   if (/[/?#]/.test(text)) return 'Use only the address, like app.mws.web.id, with nothing after it.'
-  return addressProblem(environment, text, { required: true })
+  const problem = addressProblem(environment, text, { required: true })
+  if (problem) return problem
+  // A public Hub has a public name. Something that only exists on one machine would not work for anyone else.
+  if (environment === 'production' && isLocalHost(text.split(':')[0])) {
+    return 'That is a local address. Pick Local, or type the public address of the Hub.'
+  }
+  return null
 }

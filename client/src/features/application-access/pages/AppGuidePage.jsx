@@ -206,7 +206,7 @@ function LocalPart({ setup, keys, base, token, short, environment }) {
               ? `The Central address in it is the one you are using now${setup.central_url ? `, ${setup.central_url}` : ""}. Keep it for local work.`
               : "If you run the application against a Central on your machine, make the connection in that Central and copy its block instead.",
             setup.hub_address
-              ? `The Hub address in the block is ${setup.hub_address}. For local work it should be where the Hub runs on your machine.`
+              ? `The Hub address in the block is ${setup.hub_address}. For local work it should be the page you open the Hub at, usually http://localhost:5175. Its backend on 4001 sits behind it.`
               : "If the block has no Hub lines, the Hub has no address yet. Set it in the Hub setup first.",
             "Take out any older variables for the same thing with other names. An application can read an older name first and never use the new token.",
             "Restart the application so it reads the file.",

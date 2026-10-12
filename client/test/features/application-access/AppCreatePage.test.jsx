@@ -43,6 +43,11 @@ const KEY = {
   response: () => jsonResponse({ data: { key_ready: true } }),
 }
 
+const HUB_OK = {
+  path: /\/api\/admin\/application-access\/hub-address-check/,
+  response: () => jsonResponse({ data: { verdict: 'ok' } }),
+}
+
 const NO_HUB = {
   path: /\/api\/admin\/application-access\/applications\?/,
   method: 'GET',
@@ -149,6 +154,7 @@ describe('AppCreatePage', () => {
       NO_HUB,
       TAXONOMY,
       KEY,
+      HUB_OK,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',
@@ -173,14 +179,16 @@ describe('AppCreatePage', () => {
     // 1. Address, which has to be there to go on.
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText('Found the Hub.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     // 2. Secret. A new one is the way on without typing anything.
-    expect(await screen.findByRole('radio', { name: /Make a new secret/ })).toHaveAttribute('aria-checked', 'true')
+    expect(await screen.findByRole('radio', { name: /Make A New Secret/ })).toHaveAttribute('aria-checked', 'true')
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     // 3. Sign-in.
     expect(screen.getByRole('radio', { name: /Warn/ })).toHaveAttribute('aria-checked', 'true')
     await user.click(screen.getByRole('button', { name: 'Continue' }))
-    // 4. Review.
+    // 4. Review. The Hub checkbox is gone once past step 1.
+    expect(screen.queryByRole('checkbox', { name: /This is the Hub itself/ })).toBeNull()
     expect(screen.getByText('https://app.mws.web.id')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     const confirmDialog = await screen.findByRole('dialog', { name: 'Add the Hub' })
@@ -205,14 +213,16 @@ describe('AppCreatePage', () => {
       NO_HUB,
       TAXONOMY,
       KEY,
+      HUB_OK,
       { path: '/api/admin/application-access/applications', method: 'POST', response: () => jsonResponse({ data: { application_id: 'hub', connection: null } }) },
     ])
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
     await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText('Found the Hub.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
-    await user.click(await screen.findByRole('radio', { name: /Use the secret the Hub runs with now/ }))
+    await user.click(await screen.findByRole('radio', { name: /Use The Hub's Current Secret/ }))
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     await user.type(screen.getByLabelText('Existing Hub secret'), 'kept-from-the-hub-env-0123')
     await user.click(screen.getByRole('button', { name: 'Continue' }))
@@ -231,10 +241,12 @@ describe('AppCreatePage', () => {
       NO_HUB,
       TAXONOMY,
       { path: '/api/admin/application-access/secrets-status', response: () => jsonResponse({ data: { key_ready: false } }) },
+      HUB_OK,
     ])
     const { user } = renderPage()
     await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
     await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText('Found the Hub.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     expect(await screen.findByText('Central cannot keep a secret yet.')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
@@ -296,11 +308,12 @@ describe('AppCreatePage', () => {
   })
 
   it('asks how the Hub signs people in only when the Hub is chosen, on its own step', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, KEY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, KEY, HUB_OK])
     const { user } = renderPage()
     expect(screen.queryByLabelText('Hub Address')).toBeNull()
     await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
     await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText('Found the Hub.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     await user.click(await screen.findByRole('button', { name: 'Continue' }))
     expect(screen.getByRole('radio', { name: /Warn/ })).toHaveAttribute('aria-checked', 'true')
@@ -316,10 +329,11 @@ describe('AppCreatePage', () => {
   })
 
   it('adds up to three emergency emails one by one, keeping only characters an email name can have', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, KEY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, KEY, HUB_OK])
     const { user } = renderPage()
     await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
     await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText('Found the Hub.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     await user.click(await screen.findByRole('button', { name: 'Continue' }))
     await user.click(screen.getByRole('radio', { name: /Enforce/ }))

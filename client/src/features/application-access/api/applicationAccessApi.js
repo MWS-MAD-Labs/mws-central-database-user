@@ -89,6 +89,12 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  // Whether a Hub answers at an address: 'ok', 'unreachable', 'not_hub' or 'refused'.
+  async checkHubAddress(url) {
+    const response = await apiRequest(`${ACCESS}/hub-address-check?url=${encodeURIComponent(url)}`)
+    return response.data.verdict
+  },
+
   async secretsStatus() {
     const response = await apiRequest(`${ACCESS}/secrets-status`)
     return response.data

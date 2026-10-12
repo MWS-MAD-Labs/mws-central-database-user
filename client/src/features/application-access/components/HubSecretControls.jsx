@@ -70,7 +70,7 @@ const COPY = {
   },
   existing: {
     title: "Use The Hub's Current Secret",
-    text: "The secret you paste is kept as the shared one, so nothing that already uses it has to change. It goes into the .env of the applications below from now on.",
+    text: "Open the .env of the Hub and copy the value of HUB_INTERNAL_SECRET. Paste it here and it is kept as the shared one, so nothing that already uses it has to change. It goes into the .env of the applications below from now on.",
     action: "Use This Secret",
   },
   rotate: {

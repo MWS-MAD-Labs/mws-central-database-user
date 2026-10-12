@@ -59,7 +59,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const [hostRest, setHostRest] = useState(startsStandard && initial?.launch_url ? launch.rest.slice(0, -STANDARD_PATHS.launch.length) : "");
   const [scopeNames, setScopeNames] = useState(DEFAULT_SCOPES);
   // What the Hub wizard has gathered while the Hub is being added.
-  const [hubWizard, setHubWizard] = useState({ address: "", settings: null, secret: undefined });
+  const [hubWizard, setHubWizard] = useState({ step: 0, address: "", settings: null, secret: undefined });
   const [hubChosen, setHubChosen] = useState(false);
   // What a pasted address started with, so a clash with the environment can be said out loud.
   const [pasted, setPasted] = useState({ launch: null, logout: null });
@@ -203,7 +203,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
             <TextInput aria-label="Application ID" value={applicationId} disabled readOnly />
           </Field>
         </div>
-        {layout === "page" && !hubExists ? (
+        {/* Gone once the wizard moves past step 1, so a stray click cannot throw the steps away. */}
+        {layout === "page" && !hubExists && !(hubChosen && hubWizard.step > 0) ? (
           <CheckboxField
             label="This is the Hub itself"
             description="The Hub is not listed in the Hub, so it has no card or launch address. It cannot be retired, deleted or renamed, and there can only be one."

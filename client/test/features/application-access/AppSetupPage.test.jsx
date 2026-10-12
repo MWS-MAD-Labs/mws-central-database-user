@@ -222,10 +222,17 @@ describe("AppSetupPage", () => {
 
   it("links to the guide page from the Connect step, the menu and the rotation result", async () => {
     const { user } = renderPage([
-      setupRoute(makeSetup({ connection: { client_id: "c1", created: true, last_used_at: null } })),
+      setupRoute(
+        makeSetup({
+          connection: { client_id: "c1", created: true, last_used_at: null },
+        }),
+      ),
     ]);
     const link = await screen.findByRole("link", { name: "Setup Guide" });
-    expect(link).toHaveAttribute("href", "/application-access/apps/demo/guide?part=local");
+    expect(link).toHaveAttribute(
+      "href",
+      "/application-access/apps/demo/guide?part=local",
+    );
     await user.click(screen.getByRole("button", { name: "More actions" }));
     expect(screen.getByRole("button", { name: "Setup Guide" })).toBeVisible();
   });
@@ -409,7 +416,7 @@ describe("AppSetupPage", () => {
       await screen.findByRole("button", { name: "Delete Application" }),
     );
     await user.type(
-      await screen.findByLabelText('Type "demo" to confirm'),
+      await screen.findByRole("textbox"),
       "demo",
     );
     const before = requests.length;
@@ -562,8 +569,14 @@ describe("AppSetupPage", () => {
     expect(rotations).toEqual([{ immediate: false, grace_hours: 24 }]);
     // What to do next is right there, with the names of this application, and the full steps are one click away.
     expect(screen.getByText("What To Do Now")).toBeVisible();
-    expect(screen.getByText("Replace CENTRAL_DATA_API_TOKEN in the .env of the application.")).toBeVisible();
-    expect(screen.getByRole("link", { name: "Open the full steps" })).toHaveAttribute(
+    expect(
+      screen.getByText(
+        "Replace CENTRAL_DATA_API_TOKEN in the .env of the application.",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Open the full steps" }),
+    ).toHaveAttribute(
       "href",
       "/application-access/apps/demo/guide?part=rotate",
     );
@@ -860,6 +873,10 @@ describe("AppSetupPage", () => {
         }),
       );
     };
+    const HUB_OK = {
+      path: /\/api\/admin\/application-access\/hub-address-check/,
+      response: () => jsonResponse({ data: { verdict: "ok" } }),
+    };
     const IMPACT = {
       path: "/api/admin/application-access/apps/demo/hub-secret-impact",
       response: () =>
@@ -880,13 +897,14 @@ describe("AppSetupPage", () => {
           makeSetup({ is_hub: true, env_settings: hubSettings, hub: HUB }),
         ),
         IMPACT,
+        HUB_OK,
         {
           path: "/api/admin/application-access/apps/demo/hub-address",
           method: "PATCH",
           response: ({ options }) => {
             calls.push(["address", JSON.parse(options.body)]);
             return jsonResponse({
-              data: { base_url: "http://localhost:4001" },
+              data: { base_url: "http://localhost:5175" },
             });
           },
         },
@@ -912,14 +930,15 @@ describe("AppSetupPage", () => {
       expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
       await user.click(screen.getByRole("radio", { name: "Hub Local" }));
       await user.clear(screen.getByLabelText("Hub Address"));
-      await user.type(screen.getByLabelText("Hub Address"), "localhost:4001");
+      await user.type(screen.getByLabelText("Hub Address"), "localhost:5175");
+      expect(await screen.findByText("Found the Hub.")).toBeVisible();
       await user.click(
         screen.getByRole("button", { name: "Save and Continue" }),
       );
       await waitFor(() =>
         expect(calls).toContainEqual([
           "address",
-          { hub_base_url: "http://localhost:4001" },
+          { hub_base_url: "http://localhost:5175" },
         ]),
       );
 
@@ -1006,6 +1025,7 @@ describe("AppSetupPage", () => {
           }),
         ),
         IMPACT,
+        HUB_OK,
         {
           path: "/api/admin/application-access/apps/demo/hub-secret",
           method: "POST",
@@ -1043,6 +1063,7 @@ describe("AppSetupPage", () => {
           }),
         ),
         IMPACT,
+        HUB_OK,
         {
           path: "/api/admin/application-access/apps/demo/hub-secret",
           method: "POST",
@@ -1055,7 +1076,7 @@ describe("AppSetupPage", () => {
       await wizard(user);
       await user.click(screen.getByRole("button", { name: "Continue" }));
       await user.click(
-        screen.getByRole("button", { name: "Use the Hub's current secret" }),
+        screen.getByRole("button", { name: "Use The Hub's Current Secret" }),
       );
       const dialog = await screen.findByRole("dialog", {
         name: "Use The Hub's Current Secret",
@@ -1095,6 +1116,7 @@ describe("AppSetupPage", () => {
           }),
         ),
         IMPACT,
+        HUB_OK,
       ]);
       await wizard(user);
       await user.click(screen.getByRole("button", { name: "Continue" }));
@@ -1112,6 +1134,7 @@ describe("AppSetupPage", () => {
           makeSetup({ is_hub: true, env_settings: hubSettings, hub: HUB }),
         ),
         IMPACT,
+        HUB_OK,
         {
           path: "/api/admin/application-access/apps/demo/hub-secret",
           method: "POST",
@@ -1183,6 +1206,7 @@ describe("AppSetupPage", () => {
           makeSetup({ is_hub: true, env_settings: hubSettings, hub: HUB }),
         ),
         IMPACT,
+        HUB_OK,
       ]);
       await wizard(user);
       await user.click(screen.getByRole("button", { name: "Continue" }));

@@ -159,3 +159,11 @@ After a rotation the dialog that shows the new value lists what to do now (repla
 The Setup Guide shows six numbered parts, one per screen, with Back and Next and a list of the parts that stays in view: Before you start, On your machine, Send the permissions, Staging and production, When you rotate, Troubleshooting. The part is kept in the address (`?part=`), which is how the links from other pages land in the right place. Each part ends with what you should see before going on.
 
 On your machine comes first, since that is where everything is tried. Staging and production adapts to what you may change in GitHub: Environments (owner or admin), repository secrets named with a STAGING_ or PRODUCTION_ in front (no Environments menu), or a ready message for the repository owner when the settings are read only. The application keeps reading the plain names. Only GitHub sees the prefix.
+
+## The Hub address is checked
+
+Typing a Hub address no longer lets you go on by itself. Central asks `GET /api/admin/application-access/hub-address-check?url=` (Super Admin), which fetches `{url}/.well-known/jwks.json` and answers `ok`, `unreachable`, `not_hub` or `refused`. Code is `server/src/service/hub-address-check.ts`. No redirects, 4s timeout, 64KB cap, and `169.254.*` and `metadata.google.internal` are refused.
+
+`HubAddressField` waits 600ms after typing, shows the result under the field, and tells the wizard (or the Hub card) the address is not ready until it is `ok`. `unreachable` has a Use It Anyway link with a confirm, for a Hub that only runs on a laptop while Central runs on a server. `not_hub` has no way around. An address that is the one already saved is not checked again. Production also rejects local, private, `.local`, `.test` and dotless hosts before asking.
+
+Locally the Hub address is the Vite page, `http://localhost:5175`, not the backend on 4001. Vite forwards `/auth`, `/apps`, `/sso`, `/admin/api` and `/.well-known` to 4001. This matches `mws-hub/README.md`.

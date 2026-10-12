@@ -7,6 +7,7 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { TextInput } from "../../../components/ui/FormControls.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { CopyableId } from "./CopyableId.jsx";
 import { RemovalGuideDialog } from "./RemovalGuideDialog.jsx";
 
 const count = (value, word) => `${value} ${word}${value === 1 ? "" : "s"}`;
@@ -112,7 +113,8 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
               htmlFor="confirm-application-id"
               className="mb-1.5 block text-sm font-semibold text-(--mws-charcoal)"
             >
-              Type "<span className="text-(--mws-rose)">{applicationId}</span>" to confirm
+              Type "<CopyableId value={applicationId} className="inline text-sm text-(--mws-rose)" />" to confirm
+              <span className="ml-2 text-xs font-normal text-(--mws-muted)">Click the name to copy it.</span>
             </label>
             <TextInput
               id="confirm-application-id"
