@@ -18,7 +18,7 @@ function Table({ rows, showValue }) {
         <tbody>
           {rows.map((row) => (
             <tr key={row.key} className="border-t border-(--mws-line) align-top">
-              <td className="px-4 py-3 font-mono break-all">{row.key}</td>
+              <td className="px-4 py-3 font-mono break-all">{row.name ?? row.key}</td>
               <td className="px-4 py-3 text-(--mws-muted)">{row.usedBy}</td>
               <td className="px-4 py-3">
                 {showValue && row.value ? (
@@ -42,7 +42,8 @@ function Table({ rows, showValue }) {
 
 // One GitHub environment (staging or production) with what to add in it. The values are only known for the Central
 // that is being looked at. For the other one the card says where they come from.
-export function GithubEnvironmentCard({ name, here, rows }) {
+export function GithubEnvironmentCard({ name, here, rows, mode = "environments" }) {
+  const prefixed = mode === "prefixed";
   const secrets = rows.filter((row) => row.kind === "Secret");
   const variables = rows.filter((row) => row.kind === "Variable");
   return (
@@ -51,26 +52,50 @@ export function GithubEnvironmentCard({ name, here, rows }) {
         <h4 className="font-display text-base font-bold capitalize text-(--mws-charcoal)">{name}</h4>
         {here ? <StatusBadge tone="green">This Central</StatusBadge> : <StatusBadge tone="neutral">Another Central</StatusBadge>}
       </div>
-      <ol className="list-decimal space-y-1 pl-5 text-sm text-(--mws-muted)">
-        <li>
-          In the repository open Settings, then Environments, then New environment, and name it{" "}
-          <span className="font-mono text-(--mws-charcoal)">{name}</span>.
-        </li>
-        <li>Inside it, under Environment secrets and Environment variables, add the names below.</li>
-        {here ? null : (
+      {prefixed ? (
+        <ol className="list-decimal space-y-1 pl-5 text-sm text-(--mws-muted)">
+          <li>In the repository open Settings, then Secrets and variables, then Actions, then New repository secret.</li>
           <li>
-            The values come from the {name} Central. Open this application there, make the connection, and copy them from its block.
+            Add each name below. The {name.toUpperCase()}_ in front keeps {name} apart from the other environment. The application
+            itself reads the plain names without it, in its own .env.
           </li>
-        )}
-      </ol>
-      <div className="space-y-2">
-        <h5 className="text-xs font-bold uppercase tracking-wide text-(--mws-muted)">Environment secrets</h5>
-        <Table rows={secrets} showValue={here} />
-      </div>
-      <div className="space-y-2">
-        <h5 className="text-xs font-bold uppercase tracking-wide text-(--mws-muted)">Environment variables</h5>
-        <Table rows={variables} showValue={here} />
-      </div>
+          {here ? null : (
+            <li>
+              The values come from the {name} Central. Open this application there, make the connection, and copy them from its block.
+            </li>
+          )}
+        </ol>
+      ) : (
+        <ol className="list-decimal space-y-1 pl-5 text-sm text-(--mws-muted)">
+          <li>
+            In the repository open Settings, then Environments, then New environment, and name it{" "}
+            <span className="font-mono text-(--mws-charcoal)">{name}</span>.
+          </li>
+          <li>Inside it, under Environment secrets and Environment variables, add the names below.</li>
+          {here ? null : (
+            <li>
+              The values come from the {name} Central. Open this application there, make the connection, and copy them from its block.
+            </li>
+          )}
+        </ol>
+      )}
+      {prefixed ? (
+        <div className="space-y-2">
+          <h5 className="text-xs font-bold uppercase tracking-wide text-(--mws-muted)">Repository secrets</h5>
+          <Table rows={rows} showValue={here} />
+        </div>
+      ) : (
+        <>
+          <div className="space-y-2">
+            <h5 className="text-xs font-bold uppercase tracking-wide text-(--mws-muted)">Environment secrets</h5>
+            <Table rows={secrets} showValue={here} />
+          </div>
+          <div className="space-y-2">
+            <h5 className="text-xs font-bold uppercase tracking-wide text-(--mws-muted)">Environment variables</h5>
+            <Table rows={variables} showValue={here} />
+          </div>
+        </>
+      )}
     </section>
   );
 }

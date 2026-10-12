@@ -225,7 +225,7 @@ describe("AppSetupPage", () => {
       setupRoute(makeSetup({ connection: { client_id: "c1", created: true, last_used_at: null } })),
     ]);
     const link = await screen.findByRole("link", { name: "Setup Guide" });
-    expect(link).toHaveAttribute("href", "/application-access/apps/demo/guide#first-setup");
+    expect(link).toHaveAttribute("href", "/application-access/apps/demo/guide?part=local");
     await user.click(screen.getByRole("button", { name: "More actions" }));
     expect(screen.getByRole("button", { name: "Setup Guide" })).toBeVisible();
   });
@@ -565,7 +565,7 @@ describe("AppSetupPage", () => {
     expect(screen.getByText("Replace CENTRAL_DATA_API_TOKEN in the .env of the application.")).toBeVisible();
     expect(screen.getByRole("link", { name: "Open the full steps" })).toHaveAttribute(
       "href",
-      "/application-access/apps/demo/guide#rotate",
+      "/application-access/apps/demo/guide?part=rotate",
     );
   });
   it("offers Edit Details on the About step", async () => {

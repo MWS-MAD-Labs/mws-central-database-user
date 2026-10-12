@@ -214,7 +214,7 @@ export function AppSetupPage() {
               </TextAction>
             ) : null}
             <TextAction asChild icon={BookOpen}>
-              <Link to={`${guideBase}#first-setup`}>Setup Guide</Link>
+              <Link to={`${guideBase}?part=local`}>Setup Guide</Link>
             </TextAction>
             {setup.hub_secret?.applies ? (
               <TextAction icon={KeyRound} loading={appSecretMutation.isPending} onClick={changeAppSecret}>
@@ -463,14 +463,14 @@ export function AppSetupPage() {
                     another name can be read first and keep the new token from being used. Check that it was restarted, and that this
                     block was made for the application that reads it (its ID here is {applicationId}). Then send the permissions once
                     from your machine, as in the{" "}
-                    <Link to={`${guideBase}#troubleshooting`} className="font-semibold underline">
+                    <Link to={`${guideBase}?part=troubleshooting`} className="font-semibold underline">
                       Setup Guide
                     </Link>
                     .
                   </p>
                 ) : null}
                 <TextAction asChild className="mt-3" icon={BookOpen}>
-                  <Link to={`${guideBase}#first-setup`}>Show Setup Guide</Link>
+                  <Link to={`${guideBase}?part=local`}>Show Setup Guide</Link>
                 </TextAction>
               </div>
             ) : null}
@@ -489,7 +489,7 @@ export function AppSetupPage() {
               description="Put these lines in the .env of the application, then deploy it."
               connection={{ env: client.env, hub_lines_missing: client.hub_lines_missing }}
               notice={oldTokenNotice(client, rotation)}
-              nextSteps={{ items: rotationHelp.short, href: `${guideBase}#rotate` }}
+              nextSteps={{ items: rotationHelp.short, href: `${guideBase}?part=rotate` }}
               onClose={onClose}
             />
           )}
@@ -517,7 +517,7 @@ export function AppSetupPage() {
         <HubSecretShownDialog
           secret={appSecret}
           applicationName={setup.application.name}
-          nextSteps={{ items: rotationHelp.appSecret.slice(1), href: `${guideBase}#rotate` }}
+          nextSteps={{ items: rotationHelp.appSecret.slice(1), href: `${guideBase}?part=rotate` }}
           onClose={() => setAppSecret(null)}
         />
       ) : null}

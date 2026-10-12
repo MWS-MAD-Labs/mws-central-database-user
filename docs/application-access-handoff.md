@@ -153,3 +153,9 @@ The guide lives at `/application-access/apps/:id/guide` (links from the Connect 
 Staging and production are kept apart with two GitHub **Environments** (Settings, Environments), each holding its own secrets and variables under the same names. The Repository secrets page is shared by every branch, so a token or Central address put there would be used by both. The guide shows one card per environment with what to add in it, and fills in values only for the Central you are looking at.
 
 After a rotation the dialog that shows the new value lists what to do now (replace it in the `.env`, in the GitHub environment of that Central, then deploy or restart), with a link to the full steps for a token, a per-application Hub secret and the Hub master secret.
+
+## The guide goes one part at a time
+
+The Setup Guide shows six numbered parts, one per screen, with Back and Next and a list of the parts that stays in view: Before you start, On your machine, Send the permissions, Staging and production, When you rotate, Troubleshooting. The part is kept in the address (`?part=`), which is how the links from other pages land in the right place. Each part ends with what you should see before going on.
+
+On your machine comes first, since that is where everything is tried. Staging and production adapts to what you may change in GitHub: Environments (owner or admin), repository secrets named with a STAGING_ or PRODUCTION_ in front (no Environments menu), or a ready message for the repository owner when the settings are read only. The application keeps reading the plain names. Only GitHub sees the prefix.
