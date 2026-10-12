@@ -48,6 +48,12 @@ const HUB_OK = {
   response: () => jsonResponse({ data: { verdict: 'ok' } }),
 }
 
+const SECRET_OK = {
+  path: '/api/admin/application-access/hub-secret-check',
+  method: 'POST',
+  response: () => jsonResponse({ data: { verdict: 'ok' } }),
+}
+
 const NO_HUB = {
   path: /\/api\/admin\/application-access\/applications\?/,
   method: 'GET',
@@ -155,6 +161,7 @@ describe('AppCreatePage', () => {
       TAXONOMY,
       KEY,
       HUB_OK,
+      SECRET_OK,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',
@@ -214,6 +221,7 @@ describe('AppCreatePage', () => {
       TAXONOMY,
       KEY,
       HUB_OK,
+      SECRET_OK,
       { path: '/api/admin/application-access/applications', method: 'POST', response: () => jsonResponse({ data: { application_id: 'hub', connection: null } }) },
     ])
     globalThis.fetch = fetchMock
@@ -225,12 +233,16 @@ describe('AppCreatePage', () => {
     await user.click(await screen.findByRole('radio', { name: /Use The Hub's Current Secret/ }))
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     await user.type(screen.getByLabelText('Existing Hub secret'), 'kept-from-the-hub-env-0123')
+    // Not on until the Hub has said it is the right one.
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Test This Secret' }))
+    expect(await screen.findByText('The Hub accepts this secret.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     await user.click(within(await screen.findByRole('dialog', { name: 'Add the Hub' })).getByRole('button', { name: 'Add Hub' }))
     await waitFor(() => {
-      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
+      const call = fetchMock.mock.calls.find(([url, options]) => options?.method === 'POST' && String(url).endsWith('/applications'))
       expect(JSON.parse(call[1].body).hub_secret).toBe('kept-from-the-hub-env-0123')
     })
   })
@@ -242,6 +254,7 @@ describe('AppCreatePage', () => {
       TAXONOMY,
       { path: '/api/admin/application-access/secrets-status', response: () => jsonResponse({ data: { key_ready: false } }) },
       HUB_OK,
+      SECRET_OK,
     ])
     const { user } = renderPage()
     await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))

@@ -167,3 +167,9 @@ Typing a Hub address no longer lets you go on by itself. Central asks `GET /api/
 `HubAddressField` waits 600ms after typing, shows the result under the field, and tells the wizard (or the Hub card) the address is not ready until it is `ok`. `unreachable` has a Use It Anyway link with a confirm, for a Hub that only runs on a laptop while Central runs on a server. `not_hub` has no way around. An address that is the one already saved is not checked again. Production also rejects local, private, `.local`, `.test` and dotless hosts before asking.
 
 Locally the Hub address is the Vite page, `http://localhost:5175`, not the backend on 4001. Vite forwards `/auth`, `/apps`, `/sso`, `/admin/api` and `/.well-known` to 4001. This matches `mws-hub/README.md`.
+
+## Testing a pasted Hub secret
+
+"Use The Hub's Current Secret" has a Test This Secret button. Central sends the pasted value in the `x-hub-internal-secret` header to the Hub's `POST /sso/secret-check` (Hub commit `94c170d`) and gets back only a verdict: `ok`, `wrong`, `unreachable`, `no_check` (a Hub without the route) or `refused`. Continue and Use This Secret stay off until `ok`. `unreachable` and `no_check` allow Use It Anyway, `wrong` does not. The endpoint is `POST /api/admin/application-access/hub-secret-check` (Super Admin); without an address in the body it asks the Hub address that is kept. The secret is never stored or logged by the check. Make A New Secret is not tested, since the Hub only has the value after it is put in its .env.
+
+A pasted `.env` line is reduced to its value (`cleanPastedSecret`, server and client). Another variable's line (`CENTRAL_API_TOKEN="..."`) or an API token (`mws_`) is refused. Deploy the Hub before Central.

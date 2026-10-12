@@ -95,6 +95,16 @@ export const applicationAccessApi = {
     return response.data.verdict
   },
 
+  // Whether the Hub accepts this secret: 'ok', 'wrong', 'unreachable', 'no_check' or 'refused'.
+  // Without an address the one kept for the Hub is asked.
+  async checkHubSecret({ address, secret }) {
+    const response = await apiRequest(`${ACCESS}/hub-secret-check`, {
+      method: 'POST',
+      body: { ...(address ? { address } : {}), secret },
+    })
+    return response.data.verdict
+  },
+
   async secretsStatus() {
     const response = await apiRequest(`${ACCESS}/secrets-status`)
     return response.data

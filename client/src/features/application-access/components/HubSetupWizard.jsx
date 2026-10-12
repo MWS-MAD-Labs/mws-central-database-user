@@ -7,8 +7,9 @@ import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { cn } from "../../../lib/cn.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { emailsProblem, existingSecretProblem } from "../utils/hubSettings.js";
+import { cleanPastedSecret, emailsProblem, existingSecretProblem } from "../utils/hubSettings.js";
 import { HubAccessSettings } from "./HubAccessSettings.jsx";
+import { HubSecretTest } from "./HubSecretTest.jsx";
 import { HubAddressField } from "./HubAddressField.jsx";
 import {
   HubSecretShownDialog,
@@ -52,6 +53,7 @@ export function HubSetupWizard({
   );
   const [secretChoice, setSecretChoice] = useState("new");
   const [existingValue, setExistingValue] = useState("");
+  const [secretVerified, setSecretVerified] = useState(false);
   const [dialog, setDialog] = useState(null);
   // A secret Central just made. It is shown once, then it is gone.
   const [shownSecret, setShownSecret] = useState(null);
@@ -74,7 +76,7 @@ export function HubSetupWizard({
       settings: signIn,
       secret:
         secretChoice === "existing" && existingValue.trim()
-          ? existingValue.trim()
+          ? cleanPastedSecret(existingValue)
           : undefined,
     });
   }, [managing, onChange, step, address, signIn, secretChoice, existingValue]);
@@ -124,7 +126,7 @@ export function HubSetupWizard({
     ? secretSet
     : keyReady &&
       (secretChoice === "new" ||
-        (existingValue.trim() !== "" && !existingSecretProblem(existingValue)));
+        (existingValue.trim() !== "" && !existingSecretProblem(existingValue) && secretVerified));
   const signInProblem = emailsProblem(signIn.hub_bypass_emails);
   const addressChanged = managing && address !== (hub?.base_url ?? "");
   const signInChanged =
@@ -305,6 +307,12 @@ export function HubSetupWizard({
                       {existingSecretProblem(existingValue)}
                     </p>
                   ) : null}
+                  <HubSecretTest
+                    secret={existingValue}
+                    address={address}
+                    disabled={!existingValue.trim() || Boolean(existingSecretProblem(existingValue))}
+                    onReady={setSecretVerified}
+                  />
                 </div>
               ) : null}
             </div>

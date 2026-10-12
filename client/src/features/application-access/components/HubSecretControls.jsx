@@ -4,8 +4,9 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { existingSecretProblem } from "../utils/hubSettings.js";
+import { cleanPastedSecret, existingSecretProblem } from "../utils/hubSettings.js";
 import { ConnectDialog } from "./ConnectDialog.jsx";
+import { HubSecretTest } from "./HubSecretTest.jsx";
 
 // Used when the key that keeps the secret encrypted is missing from Central's .env.
 export function SecretsKeyWarning() {
@@ -84,8 +85,9 @@ const COPY = {
 export function SecretConfirmDialog({ kind, applicationId, saving, onConfirm, onClose }) {
   const copy = COPY[kind];
   const [value, setValue] = useState("");
+  const [verified, setVerified] = useState(false);
   const problem = kind === "existing" ? existingSecretProblem(value) : null;
-  const blocked = kind === "existing" && (!value.trim() || Boolean(problem));
+  const blocked = kind === "existing" && (!value.trim() || Boolean(problem) || !verified);
   return (
     <CrudDialog title={copy.title} description={copy.text} onClose={onClose}>
       <div className="space-y-4">
@@ -94,12 +96,13 @@ export function SecretConfirmDialog({ kind, applicationId, saving, onConfirm, on
             <TextInput aria-label="Existing Hub secret" type="password" autoComplete="off" value={value} invalid={Boolean(problem)} onChange={(event) => setValue(event.target.value)} />
           </Field>
         ) : null}
+        {kind === "existing" ? <HubSecretTest secret={value} disabled={!value.trim() || Boolean(problem)} onReady={setVerified} /> : null}
         <ImpactList applicationId={applicationId} />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" variant={kind === "rotate" ? "danger" : undefined} loading={saving} disabled={blocked} onClick={() => onConfirm(kind === "existing" ? value.trim() : undefined)}>
+          <Button type="button" variant={kind === "rotate" ? "danger" : undefined} loading={saving} disabled={blocked} onClick={() => onConfirm(kind === "existing" ? cleanPastedSecret(value) : undefined)}>
             {copy.action}
           </Button>
         </div>

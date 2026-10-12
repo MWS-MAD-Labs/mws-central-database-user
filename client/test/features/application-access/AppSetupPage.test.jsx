@@ -825,6 +825,11 @@ describe("AppSetupPage", () => {
         }),
       );
     };
+    const SECRET_OK = {
+      path: "/api/admin/application-access/hub-secret-check",
+      method: "POST",
+      response: () => jsonResponse({ data: { verdict: "ok" } }),
+    };
     const HUB_OK = {
       path: /\/api\/admin\/application-access\/hub-address-check/,
       response: () => jsonResponse({ data: { verdict: "ok" } }),
@@ -850,6 +855,7 @@ describe("AppSetupPage", () => {
         ),
         IMPACT,
         HUB_OK,
+        SECRET_OK,
         {
           path: "/api/admin/application-access/apps/demo/hub-address",
           method: "PATCH",
@@ -978,6 +984,7 @@ describe("AppSetupPage", () => {
         ),
         IMPACT,
         HUB_OK,
+        SECRET_OK,
         {
           path: "/api/admin/application-access/apps/demo/hub-secret",
           method: "POST",
@@ -1016,6 +1023,7 @@ describe("AppSetupPage", () => {
         ),
         IMPACT,
         HUB_OK,
+        SECRET_OK,
         {
           path: "/api/admin/application-access/apps/demo/hub-secret",
           method: "POST",
@@ -1046,6 +1054,15 @@ describe("AppSetupPage", () => {
         within(dialog).getByLabelText("Existing Hub secret"),
         "kept-from-the-hub-env-0123",
       );
+      expect(
+        within(dialog).getByRole("button", { name: "Use This Secret" }),
+      ).toBeDisabled();
+      await user.click(
+        within(dialog).getByRole("button", { name: "Test This Secret" }),
+      );
+      expect(
+        await within(dialog).findByText("The Hub accepts this secret."),
+      ).toBeVisible();
       await user.click(
         within(dialog).getByRole("button", { name: "Use This Secret" }),
       );
@@ -1069,6 +1086,7 @@ describe("AppSetupPage", () => {
         ),
         IMPACT,
         HUB_OK,
+        SECRET_OK,
       ]);
       await wizard(user);
       await user.click(screen.getByRole("button", { name: "Continue" }));
@@ -1087,6 +1105,7 @@ describe("AppSetupPage", () => {
         ),
         IMPACT,
         HUB_OK,
+        SECRET_OK,
         {
           path: "/api/admin/application-access/apps/demo/hub-secret",
           method: "POST",
@@ -1159,6 +1178,7 @@ describe("AppSetupPage", () => {
         ),
         IMPACT,
         HUB_OK,
+        SECRET_OK,
       ]);
       await wizard(user);
       await user.click(screen.getByRole("button", { name: "Continue" }));
