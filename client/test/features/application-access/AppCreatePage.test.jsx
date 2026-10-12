@@ -631,4 +631,18 @@ describe('AppCreatePage', () => {
     expect(await screen.findByText('The application answers.')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Add Application' })).toBeEnabled()
   })
+
+  it('keeps Add Application off until the name and the address are filled', async () => {
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
+    const { user } = renderPage()
+    const add = screen.getByRole('button', { name: 'Add Application' })
+    expect(add).toBeDisabled()
+    await user.type(screen.getByLabelText('Name'), 'Demo')
+    expect(add).toBeDisabled()
+    await user.type(screen.getByLabelText('Application Address'), 'demo.example.com')
+    expect(await screen.findByText('The application answers.')).toBeVisible()
+    expect(add).toBeEnabled()
+    await user.clear(screen.getByLabelText('Name'))
+    expect(add).toBeDisabled()
+  })
 })

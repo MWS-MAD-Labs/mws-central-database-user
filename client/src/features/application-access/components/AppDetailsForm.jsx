@@ -138,6 +138,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   });
   // An address with a mistake in it is left to the error shown on submit. Only a well formed one waits for the check.
   const addressReady = !checkedAddress || addressCheck.ready;
+  // Name and address are required, so the button waits until both are filled.
+  const missing = !hub && (!values.name.trim() || (needsLaunch && !effectiveLaunch.trim()));
   const shown = (key) => (attempted ? errors[key] : undefined);
 
   // Typing or pasting an address. A scheme in the text is taken off. It sets the environment when the other
@@ -425,7 +427,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       <Button type="button" variant="secondary" className={layout === "page" ? "flex-1" : undefined} onClick={onCancel}>
         Cancel
       </Button>
-      <Button type="submit" className={layout === "page" ? "flex-1" : undefined} loading={submitting} disabled={unchanged || !addressReady}>
+      <Button type="submit" className={layout === "page" ? "flex-1" : undefined} loading={submitting} disabled={unchanged || !addressReady || missing}>
         {submitLabel}
       </Button>
     </div>
