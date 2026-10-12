@@ -218,6 +218,7 @@ describe("application onboarding", () => {
         category: null,
         launch_url: "https://onb.example.com/auth/sso",
         logout_url: "https://onb.example.com/auth/logout",
+        launch_mode: "sso",
       });
       expect(data.find((item: { id: string }) => item.id === draft)).toBeUndefined();
 
@@ -669,6 +670,74 @@ describe("application onboarding", () => {
       expect(patch.status).toBe(400);
       const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
       expect(setup.env_settings).toBeNull();
+    });
+  });
+
+  describe("the list tells more", () => {
+    it("shows the connection, the permissions received and the launch mode of each row", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const { data } = await (await create(accessToken, { connect: true })).json();
+      const rowOf = async () => {
+        const list = (await (await TestRequest.get(`${ACCESS}/applications?search=${appId}&size=50`, accessToken)).json()).data;
+        return list.find((item: { application_id: string }) => item.application_id === appId);
+      };
+      expect(await rowOf()).toMatchObject({ launch_mode: "sso", connection_created: true, connection_last_used_at: null, permission_count: 0 });
+      await TestRequest.put("/api/internal/application-permissions/me", { permissions: [{ key: "a.b" }, { key: "a.c" }] }, undefined, {
+        Authorization: `Bearer ${data.connection.token}`,
+      });
+      const after = await rowOf();
+      expect(after.permission_count).toBe(2);
+      expect(after.connection_last_used_at).not.toBeNull();
+    });
+
+    it("calls the Hub HUB in the list and in the setup, and puts an older row right", async () => {
+      process.env.HUB_APPLICATION_ID = appId;
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        await create(accessToken);
+        await prismaClient.application.update({ where: { application_id: appId }, data: { name: "hub" } });
+        const list = (await (await TestRequest.get(`${ACCESS}/applications?search=${appId}&size=50`, accessToken)).json()).data;
+        expect(list.find((item: { application_id: string }) => item.application_id === appId).name).toBe("HUB");
+        const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+        expect(setup.application.name).toBe("HUB");
+        expect((await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } })).name).toBe("HUB");
+      } finally {
+        delete process.env.HUB_APPLICATION_ID;
+      }
+    });
+  });
+
+  describe("a plain link", () => {
+    it("has no connection, needs no permissions, and goes to the Hub as a link", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await create(accessToken, { launch_mode: "link", connect: true, launch_url: "https://tools.example.com/report" });
+      expect(response.status).toBe(200);
+      const { data } = await response.json();
+      expect(data.launch_mode).toBe("link");
+      // Asked for a connection, but a link has nothing to connect.
+      expect(data.connection).toBeNull();
+      expect(await prismaClient.applicationIntegrationProfile.count({ where: { code: appId } })).toBe(0);
+      expect((await TestRequest.post(`${ACCESS}/apps/${appId}/connect`, {}, accessToken)).status).toBe(400);
+
+      const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+      expect(setup.missing).toEqual(["roles", "groups"]);
+
+      await TestRequest.post(ROLES, { application_id: appId, key: "STAFF", label: "Staff", permissions: [], allows_employees: true }, accessToken);
+      await TestRequest.post(RULES, { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF" }, accessToken);
+      expect((await TestRequest.post(`${ACCESS}/apps/${appId}/publish`, {}, accessToken)).status).toBe(200);
+
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [API_SCOPES.APPLICATION_ENTITLEMENTS_READ] });
+      const list = (await (await TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${token}` })).json()).data;
+      expect(list.find((item: { id: string }) => item.id === appId)).toMatchObject({ launch_mode: "link", launch_url: "https://tools.example.com/report" });
+    });
+
+    it("can be switched with the details", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken);
+      const patched = await TestRequest.patch(`${ACCESS}/apps/${appId}/details`, { launch_mode: "link" }, accessToken);
+      expect(patched.status).toBe(200);
+      expect((await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } })).launch_mode).toBe("LINK");
+      expect((await TestRequest.patch(`${ACCESS}/apps/${appId}/details`, { launch_mode: "teleport" }, accessToken)).status).toBe(400);
     });
   });
 

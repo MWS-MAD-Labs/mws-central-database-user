@@ -1797,7 +1797,9 @@ export class ApplicationAccessService {
         const app = catalog.find((row) => row.application_id === applicationId);
         return {
           application_id: applicationId,
-          name: app?.name ?? applicationId,
+          // The Hub is always called HUB, whatever an older row says.
+          name: applicationId === hubApplicationId() ? "HUB" : (app?.name ?? applicationId),
+          launch_mode: app?.launch_mode === "LINK" ? "link" : "sso",
           published: app?.published ?? false,
           retired: Boolean(app?.retired_at),
           is_hub: applicationId === hubApplicationId(),
@@ -1809,6 +1811,9 @@ export class ApplicationAccessService {
           updated_at: latest ? latest.toISOString() : null,
           can_remove: false,
           retire_available: false,
+          connection_created: false,
+          connection_last_used_at: null,
+          permission_count: 0,
         };
       });
 
@@ -1818,8 +1823,20 @@ export class ApplicationAccessService {
       where: { is_active: true, profile: { code: { in: pageRows.map((row) => row.application_id) } } },
       select: { last_used_at: true, profile: { select: { code: true } }, credentials: { select: { last_used_at: true } } },
     });
+    const permissionCounts = await prismaClient.applicationPermission.groupBy({
+      by: ["application_id"],
+      where: { application_id: { in: pageRows.map((row) => row.application_id) }, source: "MANIFEST", deprecated_at: null },
+      _count: { _all: true },
+    });
     for (const row of pageRows) {
       const own = clients.filter((client) => client.profile?.code === row.application_id);
+      row.permission_count = permissionCounts.find((item) => item.application_id === row.application_id)?._count._all ?? 0;
+      row.connection_created = own.length > 0;
+      const used = own
+        .flatMap((client) => [client.last_used_at, ...client.credentials.map((credential) => credential.last_used_at)])
+        .filter((date): date is Date => Boolean(date))
+        .sort((left, right) => right.getTime() - left.getTime())[0];
+      row.connection_last_used_at = used ? used.toISOString() : null;
       const verdict = evaluateRemoval({
         isHub: row.is_hub,
         retired: row.retired,
@@ -1884,6 +1901,7 @@ export class ApplicationAccessService {
         category: input.category || null,
         launch_url: input.launch_url || null,
         logout_url: input.logout_url || null,
+        launch_mode: input.launch_mode === "link" ? "LINK" : "SSO",
         // Only the Hub has settings for its .env.
         ...(parsed.is_hub && parsed.env_settings ? { env_settings: parsed.env_settings } : {}),
       },
@@ -1910,6 +1928,10 @@ export class ApplicationAccessService {
       is_hub: applicationId === hubApplicationId(),
       can_remove: applicationId !== hubApplicationId(),
       retire_available: false,
+      launch_mode: input.launch_mode === "link" ? "link" : "sso",
+      connection_created: false,
+      connection_last_used_at: null,
+      permission_count: 0,
       organization_id: organizationRow.organization_id,
       role_count: 0,
       active_group_count: 0,

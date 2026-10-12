@@ -45,6 +45,19 @@ describe("application env", () => {
     expect(items.find((item) => item.key === "CENTRAL_API_TOKEN")?.secret).toBe(true);
   });
 
+  it("gives Daily Check-in the names it reads, with the organization it pins", () => {
+    const items = buildEnvItems({ ...facts, applicationId: "daily-checkin", isHub: false });
+    expect(envText(items)).toBe(
+      [
+        'CENTRAL_API_BASE_URL="https://db.mws.web.id/api/internal"',
+        'CENTRAL_API_TOKEN="mws_abc.def"',
+        "",
+        'CENTRAL_ENTITLEMENT_ORGANIZATION_ID="org_x_abc"',
+      ].join("\n"),
+    );
+    expect(items.filter((item) => item.secret).map((item) => item.key)).toEqual(["CENTRAL_API_TOKEN"]);
+  });
+
   it("starts safe: warn, and the admin who sets it up gets in", () => {
     expect(resolveHubSettings(null, "me@millennia21.id")).toEqual({ hub_access_mode: "warn", hub_bypass_emails: ["me@millennia21.id"] });
     expect(resolveHubSettings({ hub_access_mode: "enforce", hub_bypass_emails: [] }, "me@millennia21.id")).toEqual({

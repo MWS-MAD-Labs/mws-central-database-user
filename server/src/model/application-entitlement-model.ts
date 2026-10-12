@@ -174,6 +174,7 @@ export type ApplicationDetails = {
   category?: string | null;
   launch_url?: string | null;
   logout_url?: string | null;
+  launch_mode?: "sso" | "link";
 };
 
 export type ApplicationSummary = {
@@ -184,6 +185,10 @@ export type ApplicationSummary = {
   is_hub: boolean;
   can_remove: boolean;
   retire_available: boolean;
+  launch_mode: "sso" | "link";
+  connection_created: boolean;
+  connection_last_used_at: string | null;
+  permission_count: number;
   organization_id: string | null;
   role_count: number;
   active_group_count: number;

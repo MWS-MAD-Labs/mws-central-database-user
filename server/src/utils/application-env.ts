@@ -61,6 +61,14 @@ export function buildEnvItems(facts: Facts): EnvItem[] {
       item("HUB_CENTRAL_ACCESS_BYPASS_EMAILS", settings.hub_bypass_emails.join(","), 1),
     ];
   }
+  // Daily Check-in reads the same names as the Hub for the Central connection, and pins the organization.
+  if (facts.applicationId === "daily-checkin") {
+    return [
+      item("CENTRAL_API_BASE_URL", `${facts.publicUrl}/api/internal`, 0),
+      item("CENTRAL_API_TOKEN", facts.token, 0, true),
+      item("CENTRAL_ENTITLEMENT_ORGANIZATION_ID", facts.organizationId, 1),
+    ];
+  }
   return [
     item("HUB_SSO_APP_ID", facts.applicationId, 0),
     item("CENTRAL_DATA_API_BASE_URL", facts.publicUrl, 0),

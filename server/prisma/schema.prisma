@@ -1638,6 +1638,11 @@ model ApplicationOrganization {
   @@map("application_organizations")
 }
 
+enum ApplicationLaunchMode {
+  SSO
+  LINK
+}
+
 // What an application looks like in the Hub, and whether the Hub may show it.
 model Application {
   id             String   @id @default(cuid())
@@ -1653,6 +1658,8 @@ model Application {
   retired_at     DateTime?
   // Settings that go into the .env of the application, for now only the Hub's sign-in settings.
   env_settings   Json?
+  // sso: opened through the Hub's sign-in handoff. link: a plain address, nothing to connect.
+  launch_mode    ApplicationLaunchMode @default(SSO)
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 

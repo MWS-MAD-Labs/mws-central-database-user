@@ -1,4 +1,4 @@
-import { AdminRole, ApiCredentialStatus, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
+import { AdminRole, ApiCredentialStatus, ApplicationLaunchMode, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
 import type { AdminUser } from "../generated/prisma/client";
 import { API_SCOPES } from "../constants/api-scopes";
 import { hubApplicationId } from "../constants/hub-application";
@@ -37,6 +37,7 @@ export type ApplicationDetail = {
   logout_url: string | null;
   published: boolean;
   retired_at: string | null;
+  launch_mode: "sso" | "link";
 };
 
 export type SetupStatus = {
@@ -90,6 +91,7 @@ function toDetail(row: {
   logout_url: string | null;
   published: boolean;
   retired_at: Date | null;
+  launch_mode: ApplicationLaunchMode;
 }): ApplicationDetail {
   return {
     application_id: row.application_id,
@@ -101,12 +103,17 @@ function toDetail(row: {
     logout_url: row.logout_url,
     published: row.published,
     retired_at: row.retired_at ? row.retired_at.toISOString() : null,
+    launch_mode: row.launch_mode === ApplicationLaunchMode.LINK ? "link" : "sso",
   };
 }
 
 async function findApplication(applicationId: string) {
   const app = await prismaClient.application.findUnique({ where: { application_id: applicationId } });
   if (!app) throw new ResponseError(404, `Application ${applicationId} not found`);
+  // The Hub is always called HUB. A row made before that rule is put right when it is read.
+  if (applicationId === hubApplicationId() && app.name !== "HUB") {
+    return prismaClient.application.update({ where: { id: app.id }, data: { name: "HUB" } });
+  }
   return app;
 }
 
@@ -159,6 +166,7 @@ export class ApplicationOnboardingService {
       ...(input.icon !== undefined && { icon: input.icon || null }),
       ...(input.category !== undefined && { category: input.category || null }),
       ...(input.launch_url !== undefined && { launch_url: input.launch_url || null }),
+      ...(input.launch_mode !== undefined && { launch_mode: input.launch_mode === "link" ? ApplicationLaunchMode.LINK : ApplicationLaunchMode.SSO }),
       ...(input.logout_url !== undefined && { logout_url: input.logout_url || null }),
     };
     await prismaClient.application.update({ where: { id: before.id }, data });
@@ -211,7 +219,8 @@ export class ApplicationOnboardingService {
     }
 
     const missing: string[] = [];
-    if (permissionCount === 0) missing.push("permissions");
+    // A plain link has no connection, so no permissions arrive.
+    if (permissionCount === 0 && app.launch_mode === ApplicationLaunchMode.SSO) missing.push("permissions");
     if (roles === 0) missing.push("roles");
     if (groups === 0) missing.push("groups");
 
@@ -252,6 +261,7 @@ export class ApplicationOnboardingService {
     assertSuperAdmin(admin);
     const app = await findApplication(applicationId);
     if (app.retired_at) throw new ResponseError(400, "This application is retired. Restore it first");
+    if (app.launch_mode === ApplicationLaunchMode.LINK) throw new ResponseError(400, "A plain link has no connection");
     if (await findConnectionClient(applicationId)) {
       throw new ResponseError(400, "This application already has a connection. Rotate its token instead");
     }
@@ -530,7 +540,7 @@ export class ApplicationOnboardingService {
     const app = await findApplication(summary.application_id);
     let connection: ConnectResponse | null = null;
     try {
-      if (request.connect) {
+      if (request.connect && app.launch_mode === ApplicationLaunchMode.SSO) {
         connection = await this.connect(admin, app.application_id, publicUrl, context, request.scope_names, { skipAudit: true });
       }
     } finally {
@@ -580,6 +590,7 @@ export class ApplicationOnboardingService {
       category: row.category,
       launch_url: row.launch_url,
       logout_url: row.logout_url,
+      launch_mode: row.launch_mode === ApplicationLaunchMode.LINK ? "link" : "sso",
     }));
   }
 }

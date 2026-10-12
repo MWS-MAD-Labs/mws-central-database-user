@@ -74,6 +74,8 @@ const applicationDetails = {
     .nullable(),
   launch_url: optionalUrl("Launch URL"),
   logout_url: optionalUrl("Logout URL"),
+  // sso: opened through the Hub's sign-in handoff. link: a plain address.
+  launch_mode: z.enum(["sso", "link"], { message: "Pick sso or link" }).optional(),
 };
 
 const nonemptyId = (label: string) =>
