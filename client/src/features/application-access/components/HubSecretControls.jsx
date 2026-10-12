@@ -109,7 +109,7 @@ export function SecretConfirmDialog({ kind, applicationId, saving, onConfirm, on
 }
 
 // A secret Central made, shown this once like a token. Only the line is copied, never read out loud.
-export function HubSecretShownDialog({ secret, onClose, applicationName = null }) {
+export function HubSecretShownDialog({ secret, onClose, applicationName = null, nextSteps = null }) {
   const own = Boolean(applicationName);
   return (
     <ConnectDialog
@@ -120,6 +120,7 @@ export function HubSecretShownDialog({ secret, onClose, applicationName = null }
           : "Put this line in the .env of the Hub. The applications get it in their own .env when their token is made or rotated."
       }
       onceLabel="Secret Shown Once"
+      nextSteps={nextSteps}
       connection={{
         env: [
           {

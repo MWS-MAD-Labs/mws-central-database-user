@@ -145,3 +145,11 @@ The guide on an application's setup page now goes in the order things are done: 
 For the permissions, the permanent way is a script kept in the application's repository (`scripts/sync-permissions.mjs`, copied from the guide) that sends `permissions.json` and tries again while Central starts. The same command runs on a machine, from `predev`, and in the deploy workflow, so local runs behave like a deploy. curl is only for the one-off check in step 2. The Hub uses its own `bun run permissions:sync`.
 
 Step 4 has a Staging | Production switch. It opens on the environment of the Central you are looking at and fills in what is known there (the application ID, that Central's address, its Organization ID, the Hub address). For the other environment it says where to get the values instead of guessing. Tokens and secrets are never filled in.
+
+## The Setup Guide is a page
+
+The guide lives at `/application-access/apps/:id/guide` (links from the Connect step, More actions, the application page, and the dialogs that show a new token or secret). It has four parts: First setup, Staging and production with GitHub, When you rotate, and Troubleshooting.
+
+Staging and production are kept apart with two GitHub **Environments** (Settings, Environments), each holding its own secrets and variables under the same names. The Repository secrets page is shared by every branch, so a token or Central address put there would be used by both. The guide shows one card per environment with what to add in it, and fills in values only for the Central you are looking at.
+
+After a rotation the dialog that shows the new value lists what to do now (replace it in the `.env`, in the GitHub environment of that Central, then deploy or restart), with a link to the full steps for a token, a per-application Hub secret and the Hub master secret.

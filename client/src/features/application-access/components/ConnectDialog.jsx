@@ -1,4 +1,5 @@
 import { Check, Copy } from "lucide-react";
+import { Link } from "react-router";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -16,6 +17,7 @@ export function ConnectDialog({
   onClose,
   title = "Connection Created",
   onceLabel = "Token Shown Once",
+  nextSteps = null,
   description = "Put these lines in the .env of the application, then deploy it.",
   notice = null,
 }) {
@@ -113,6 +115,22 @@ export function ConnectDialog({
             <p className="mt-1 text-sm text-[#745716]">
               Add the Hub's address and secret on the Hub's setup page. Rotate this token after that to get HUB_BASE_URL, HUB_SSO_JWKS_URL and HUB_INTERNAL_SECRET in the .env.
             </p>
+          </div>
+        ) : null}
+
+        {nextSteps ? (
+          <div className="rounded-xl border border-(--mws-line) bg-white p-3">
+            <p className="font-display text-sm font-bold text-(--mws-charcoal)">What To Do Now</p>
+            <ol className="mt-1.5 list-decimal space-y-1 pl-5 text-sm text-(--mws-muted)">
+              {nextSteps.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ol>
+            {nextSteps.href ? (
+              <Link to={nextSteps.href} className="mt-2 inline-block text-xs font-semibold text-(--mws-burgundy) hover:underline">
+                Open the full steps
+              </Link>
+            ) : null}
           </div>
         ) : null}
 

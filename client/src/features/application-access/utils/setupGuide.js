@@ -92,3 +92,46 @@ console.error("Central did not answer");
 process.exit(1);
 `
 }
+
+// The GitHub environment that holds the values of the Central being looked at, or null for a development Central.
+export function githubEnvironmentOf(environment) {
+  return STANDARD_ENVIRONMENTS.includes(environment) ? environment : null
+}
+
+// What to do after a rotation, in the order it is done, with the names this application reads and the GitHub
+// environment of the Central being looked at.
+export function rotationSteps({ keys, environment }) {
+  const { token } = connectionKeys(keys)
+  const github = githubEnvironmentOf(environment)
+  const inGithub = (name) =>
+    github
+      ? `In GitHub open Settings, then Environments, then ${github}, and replace the secret ${name} with the new value.`
+      : `This is a development Central. If the application also runs in staging or production, those have their own values, rotate them in their own Central.`
+  return {
+    token: [
+      'Copy the new block now. The token is shown once, and closing the dialog without copying loses it.',
+      `Replace ${token} in the .env of the application.`,
+      inGithub(token),
+      'Deploy or restart the application so it reads the new value. If you chose a grace time, the old token keeps working until it ends, so do this before then.',
+      'This page shows Connected again once the application calls Central with the new token.',
+    ],
+    appSecret: [
+      'Copy the new line now. The secret is shown once.',
+      'Replace HUB_INTERNAL_SECRET in the .env of the application.',
+      inGithub('HUB_INTERNAL_SECRET'),
+      'Deploy or restart the application. Until then it and the Hub do not trust each other. Other applications are not affected.',
+    ],
+    master: [
+      'Rotate it in the Hub setup. The dialog lists every application that is reached.',
+      'Put the new HUB_INTERNAL_SECRET in the .env of the Hub, and in the GitHub environment and the server of the Hub.',
+      'Then do the same for each application in that list: open it here, rotate its token or ask for its secret, and replace the value in its .env and GitHub environment.',
+      'Applications that have a secret of their own get a new one made from the new master, so their .env changes too.',
+    ],
+    // The short version shown in the dialog that follows a rotation.
+    short: [
+      `Replace ${token} in the .env of the application.`,
+      github ? `Replace the secret ${token} in the GitHub environment ${github}.` : 'Replace it in the GitHub environment of staging or production if it runs there.',
+      'Deploy or restart the application.',
+    ],
+  }
+}

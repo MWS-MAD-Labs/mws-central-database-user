@@ -23,8 +23,8 @@ import { HubSecretShownDialog } from "../components/HubSecretControls.jsx";
 import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
 import { RemovalGuideDialog } from "../components/RemovalGuideDialog.jsx";
 import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
-import { SetupGuideDialog } from "../components/SetupGuideDialog.jsx";
 import { useInternalEndpoints } from "../hooks/useInternalEndpoints.js";
+import { rotationSteps } from "../utils/setupGuide.js";
 import { buildSteps, stepsDone } from "../utils/setupSteps.js";
 
 const BACK = "/application-access";
@@ -48,7 +48,6 @@ export function AppSetupPage() {
   const [connection, setConnection] = useState(null);
   const [removing, setRemoving] = useState(false);
   const confirm = useConfirm();
-  const [guide, setGuide] = useState(false);
   // A Hub secret made for this application. Shown once.
   const [appSecret, setAppSecret] = useState(null);
   const appSecretMutation = useMutation({
@@ -82,6 +81,7 @@ export function AppSetupPage() {
     },
   });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["application-access"] });
+  const guideBase = `/application-access/apps/${applicationId}/guide`;
 
   const connectMutation = useMutation({
     mutationFn: () => applicationAccessApi.connect(applicationId),
@@ -158,6 +158,7 @@ export function AppSetupPage() {
 
   const setup = setupQuery.data;
   const steps = buildSteps(setup);
+  const rotationHelp = rotationSteps({ keys: setup.env_keys ?? [], environment: setup.environment });
   const endpointCount = countFor(setup.data_access.scope_names);
   const finished = stepsDone(steps);
   const base = `/application-access/apps/${applicationId}`;
@@ -212,8 +213,8 @@ export function AppSetupPage() {
                 {`Data Access, ${endpointCount} endpoint${endpointCount === 1 ? "" : "s"}`}
               </TextAction>
             ) : null}
-            <TextAction icon={BookOpen} onClick={() => setGuide(true)}>
-              Setup Guide
+            <TextAction asChild icon={BookOpen}>
+              <Link to={`${guideBase}#first-setup`}>Setup Guide</Link>
             </TextAction>
             {setup.hub_secret?.applies ? (
               <TextAction icon={KeyRound} loading={appSecretMutation.isPending} onClick={changeAppSecret}>
@@ -314,7 +315,7 @@ export function AppSetupPage() {
                   <ActionsMenuItem
                     onClick={() => {
                       closeMenu();
-                      setGuide(true);
+                      navigate(guideBase);
                     }}
                   >
                     Setup Guide
@@ -461,11 +462,15 @@ export function AppSetupPage() {
                     application has these names: {(setup.env_keys ?? []).map((item) => item.key).join(", ")}. An older variable with
                     another name can be read first and keep the new token from being used. Check that it was restarted, and that this
                     block was made for the application that reads it (its ID here is {applicationId}). Then send the permissions once
-                    from your machine, as in the Setup Guide.
+                    from your machine, as in the{" "}
+                    <Link to={`${guideBase}#troubleshooting`} className="font-semibold underline">
+                      Setup Guide
+                    </Link>
+                    .
                   </p>
                 ) : null}
-                <TextAction className="mt-3" icon={BookOpen} onClick={() => setGuide(true)}>
-                  Show Setup Guide
+                <TextAction asChild className="mt-3" icon={BookOpen}>
+                  <Link to={`${guideBase}#first-setup`}>Show Setup Guide</Link>
                 </TextAction>
               </div>
             ) : null}
@@ -484,6 +489,7 @@ export function AppSetupPage() {
               description="Put these lines in the .env of the application, then deploy it."
               connection={{ env: client.env, hub_lines_missing: client.hub_lines_missing }}
               notice={oldTokenNotice(client, rotation)}
+              nextSteps={{ items: rotationHelp.short, href: `${guideBase}#rotate` }}
               onClose={onClose}
             />
           )}
@@ -498,16 +504,7 @@ export function AppSetupPage() {
         />
       ) : null}
       {removalGuide ? <RemovalGuideDialog onClose={() => setRemovalGuide(false)} /> : null}
-      {guide ? <SetupGuideDialog
-          applicationId={applicationId}
-          isHub={setup.is_hub}
-          envKeys={setup.env_keys}
-          environment={setup.environment}
-          centralUrl={setup.central_url}
-          hubAddress={setup.hub_address}
-          organizationId={setup.organization_id}
-          onClose={() => setGuide(false)}
-        /> : null}
+
       {removing ? (
         <RemoveApplicationDialog
           applicationId={applicationId}
@@ -516,7 +513,14 @@ export function AppSetupPage() {
         />
       ) : null}
       {connection ? <ConnectDialog connection={connection} onClose={() => setConnection(null)} /> : null}
-      {appSecret ? <HubSecretShownDialog secret={appSecret} applicationName={setup.application.name} onClose={() => setAppSecret(null)} /> : null}
+      {appSecret ? (
+        <HubSecretShownDialog
+          secret={appSecret}
+          applicationName={setup.application.name}
+          nextSteps={{ items: rotationHelp.appSecret.slice(1), href: `${guideBase}#rotate` }}
+          onClose={() => setAppSecret(null)}
+        />
+      ) : null}
       {editing ? (
         <CrudDialog title="Edit Details" onClose={() => setEditing(false)}>
           <AppDetailsForm

@@ -135,7 +135,10 @@ export function AppAccessPage() {
             Finish setup ({stepsDone(buildSteps(setupQuery.data))} of {buildSteps(setupQuery.data).length})
           </span>
           <span>{setupQuery.data.is_hub ? "Some setup steps are still open." : "This application does not show in the Hub yet."}</span>
-          <Button asChild variant="secondary" size="sm" className="ml-auto">
+          <Link to={`/application-access/apps/${applicationId}/guide`} className="ml-auto text-xs font-medium text-(--mws-muted) hover:text-(--mws-charcoal) hover:underline">
+            Setup Guide
+          </Link>
+          <Button asChild variant="secondary" size="sm">
             <Link to={`/application-access/apps/${applicationId}/setup`}>Continue Setup</Link>
           </Button>
         </div>
