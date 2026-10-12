@@ -1207,18 +1207,23 @@ export class ClassService {
                 ],
               }
             : {}),
-          ...(capped
-            ? {
-                class_assignments: {
-                  none: {
-                    role: searchRequest.role,
-                    end_date: null,
-                    deleted_at: null,
-                    class: { academic_year_id: klass.academic_year_id },
-                  },
+          // A homeroom role is limited per year, so anyone who already has it this year is left out. Subject
+          // teachers are not limited, but one already teaching in this class is not offered again.
+          class_assignments: {
+            none: capped
+              ? {
+                  role: searchRequest.role,
+                  end_date: null,
+                  deleted_at: null,
+                  class: { academic_year_id: klass.academic_year_id },
+                }
+              : {
+                  role: searchRequest.role,
+                  class_id: klass.id,
+                  end_date: null,
+                  deleted_at: null,
                 },
-              }
-            : {}),
+          },
         },
         include: { person: true, job_position: true },
       }),
@@ -1244,18 +1249,21 @@ export class ClassService {
                     ],
                   }
                 : {}),
-              ...(capped
-                ? {
-                    class_assignments: {
-                      none: {
-                        role: searchRequest.role,
-                        end_date: null,
-                        deleted_at: null,
-                        class: { academic_year_id: klass.academic_year_id },
-                      },
+              class_assignments: {
+                none: capped
+                  ? {
+                      role: searchRequest.role,
+                      end_date: null,
+                      deleted_at: null,
+                      class: { academic_year_id: klass.academic_year_id },
+                    }
+                  : {
+                      role: searchRequest.role,
+                      class_id: klass.id,
+                      end_date: null,
+                      deleted_at: null,
                     },
-                  }
-                : {}),
+              },
             },
             include: { job_position: true },
           }),
