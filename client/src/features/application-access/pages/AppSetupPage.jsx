@@ -188,6 +188,9 @@ export function AppSetupPage() {
                 {`Data Access, ${endpointCount} endpoint${endpointCount === 1 ? "" : "s"}`}
               </TextAction>
             ) : null}
+            <TextAction icon={BookOpen} onClick={() => setGuide(true)}>
+              Setup Guide
+            </TextAction>
             <TextAction icon={RotateCw} onClick={() => setRotating(true)}>
               Rotate Token
             </TextAction>
@@ -279,6 +282,14 @@ export function AppSetupPage() {
                       Change Data Access
                     </ActionsMenuItem>
                   ) : null}
+                  <ActionsMenuItem
+                    onClick={() => {
+                      closeMenu();
+                      setGuide(true);
+                    }}
+                  >
+                    Setup Guide
+                  </ActionsMenuItem>
                   <ActionsMenuItem
                     onClick={() => {
                       closeMenu();

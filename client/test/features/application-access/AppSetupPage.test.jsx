@@ -248,7 +248,7 @@ describe("AppSetupPage", () => {
       ),
     ).toBeVisible();
     expect(screen.getByText("3. Run it on your machine")).toBeVisible();
-    expect(screen.getByText("4. Production")).toBeVisible();
+    expect(screen.getByText("4. Production, with GitHub Actions")).toBeVisible();
   });
 
   it("adds a troubleshooting note when nothing called Central for ten minutes", async () => {
