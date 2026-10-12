@@ -237,7 +237,7 @@ export function ApplicationAccessPage() {
                           Copy Organization ID
                         </ActionsMenuItem>
                       ) : null}
-                      {row.is_hub ? null : (
+                      {row.is_hub && !row.retired && !row.retire_available && !row.can_remove ? null : (
                         <>
                           <div className="my-1 border-t border-(--mws-line)" />
                           {row.retired ? (
@@ -250,7 +250,7 @@ export function ApplicationAccessPage() {
                             >
                               Restore Application
                             </ActionsMenuItem>
-                          ) : (
+                          ) : !row.is_hub || row.retire_available ? (
                             <ActionsMenuItem
                               tone="warning"
                               onClick={() => {
@@ -260,7 +260,7 @@ export function ApplicationAccessPage() {
                             >
                               Retire Application
                             </ActionsMenuItem>
-                          )}
+                          ) : null}
                           {row.can_remove ? (
                             <ActionsMenuItem
                               tone="danger"

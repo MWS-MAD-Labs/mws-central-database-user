@@ -287,7 +287,7 @@ export function AppSetupPage() {
                   >
                     How Removing Works
                   </ActionsMenuItem>
-                  {setup.is_hub ? null : (
+                  {setup.is_hub && !retired && !setup.removal.retire_available && !setup.removal.can_remove ? null : (
                     <>
                       <div className="my-1 border-t border-(--mws-line)" />
                       {retired ? (
@@ -300,7 +300,7 @@ export function AppSetupPage() {
                         >
                           Restore Application
                         </ActionsMenuItem>
-                      ) : (
+                      ) : !setup.is_hub || setup.removal.retire_available ? (
                         <ActionsMenuItem
                           tone="warning"
                           onClick={() => {
@@ -310,7 +310,7 @@ export function AppSetupPage() {
                         >
                           Retire Application
                         </ActionsMenuItem>
-                      )}
+                      ) : null}
                       {retired || setup.removal.can_remove ? (
                         <ActionsMenuItem
                           tone="danger"
@@ -335,7 +335,7 @@ export function AppSetupPage() {
         <div role="note" className="flex items-center gap-3 rounded-2xl border border-[#d9a9ac] bg-[#7E15180D] px-5 py-3 text-sm text-(--mws-burgundy)">
           <ShieldCheck size={18} aria-hidden="true" className="shrink-0" />
           <span>
-            <span className="font-semibold">This is the Hub itself.</span> It is always on, so it cannot be retired or deleted.
+            <span className="font-semibold">This is the Hub itself.</span> Every other application signs in through it, so it can only be removed after they are.
           </span>
         </div>
       ) : null}

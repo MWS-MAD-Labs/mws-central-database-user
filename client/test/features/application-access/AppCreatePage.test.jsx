@@ -342,6 +342,30 @@ describe('AppCreatePage', () => {
     expect(screen.getByLabelText('Application Address')).toHaveValue('localhost:3000')
   })
 
+  it('lets an application opt out of the Hub lines, and not for a plain link', async () => {
+    const fetchMock = createFetchRouter([
+      SCOPES,
+      NO_HUB,
+      TAXONOMY,
+      { path: '/api/admin/application-access/applications', method: 'POST', response: () => jsonResponse({ data: { application_id: 'solo', connection: null } }) },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await user.type(screen.getByLabelText('Name'), 'Solo')
+    await user.click(screen.getByRole('button', { name: 'Single Sign-On' }))
+    await user.click(screen.getByRole('option', { name: /Plain Link/ }))
+    expect(screen.queryByRole('checkbox', { name: /Signs in through the Hub/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Plain Link' }))
+    await user.click(screen.getByRole('option', { name: /Single Sign-On/ }))
+    await user.click(screen.getByRole('checkbox', { name: /Signs in through the Hub/ }))
+    await user.type(screen.getByLabelText('Application Address'), 'solo.example.com')
+    await user.click(screen.getByRole('button', { name: 'Add Application' }))
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
+      expect(JSON.parse(call[1].body).uses_hub).toBe(false)
+    })
+  })
+
   it('hides the Hub choice once a Hub exists', async () => {
     globalThis.fetch = createFetchRouter([
       SCOPES,
@@ -421,6 +445,7 @@ describe('AppCreatePage', () => {
         logout_url: 'https://demo.example.com/auth/logout',
         scope: '',
         launch_mode: 'sso',
+        uses_hub: true,
         connect: true,
         scope_names: ['employees:read', 'students:read'],
       })

@@ -451,14 +451,21 @@ describe('AppSetupPage', () => {
     await waitFor(() => expect(retired).toEqual(['demo']))
   })
 
-  it('explains on the Hub itself why it has no Retire or Delete', async () => {
+  it('explains on the Hub itself that it goes after the other applications', async () => {
     renderPage([setupRoute(makeSetup({ is_hub: true, removal: { can_remove: false, retire_available: false } }))])
     expect(await screen.findByText('This is the Hub itself.')).toBeVisible()
-    expect(screen.getByText(/cannot be retired or deleted/)).toBeVisible()
+    expect(screen.getByText(/can only be removed after they are/)).toBeVisible()
   })
 
-  it('has no Retire in the menu for the Hub', async () => {
-    const { user } = renderPage([setupRoute(makeSetup({ is_hub: true }))])
+  it('offers Delete on the Hub once nothing else is set up', async () => {
+    const { user } = renderPage([setupRoute(makeSetup({ is_hub: true, removal: { can_remove: true, retire_available: false } }))])
+    await user.click(await screen.findByRole('button', { name: 'More actions' }))
+    expect(await screen.findByRole('button', { name: 'Delete Application' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Retire Application' })).toBeNull()
+  })
+
+  it('has no Retire in the menu for the Hub while other applications are set up', async () => {
+    const { user } = renderPage([setupRoute(makeSetup({ is_hub: true, removal: { can_remove: false, retire_available: false } }))])
     await user.click(await screen.findByRole('button', { name: 'More actions' }))
     expect(await screen.findByRole('button', { name: 'How Removing Works' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Retire Application' })).toBeNull()

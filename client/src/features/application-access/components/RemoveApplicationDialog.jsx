@@ -142,7 +142,7 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
       ) : (
         <div className="space-y-4">
           <p className="text-sm font-semibold text-(--mws-charcoal)">
-            {plan.is_hub ? "This is the Hub itself, so it cannot be retired or deleted." : "This application is still in use, so it cannot be deleted yet."}
+            {plan.is_hub ? "The Hub cannot be deleted yet." : "This application is still in use, so it cannot be deleted yet."}
           </p>
           <ul className="list-disc space-y-1 pl-5 text-sm text-(--mws-charcoal)">
             {plan.blockers.map((blocker) => (

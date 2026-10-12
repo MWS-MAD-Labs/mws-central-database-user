@@ -49,6 +49,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const [logoutRest, setLogoutRest] = useState(logout.rest);
   const [attempted, setAttempted] = useState(false);
   const [launchMode, setLaunchMode] = useState(initial?.launch_mode ?? "sso");
+  const [usesHub, setUsesHub] = useState(initial?.uses_hub ?? true);
   // Every application signs in at /auth/sso and signs out at /auth/logout, so only the address is asked for.
   // An application that differs, or an address kept by hand, keeps its own paths.
   const startsStandard =
@@ -163,6 +164,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       launch_url: joinAddress(environment, effectiveLaunch),
       logout_url: joinAddress(environment, effectiveLogout),
       launch_mode: launchMode,
+      uses_hub: launchMode === "sso" ? usesHub : true,
       // On the page layout the connection is made together with the application, unless it is a plain link.
       ...(layout === "page" && launchMode === "sso" ? { connect: true, scope_names: scopeNames } : {}),
     });
@@ -223,6 +225,14 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
         >
           <SearchableSelect value={launchMode} onChange={setLaunchMode} options={LAUNCH_MODES} placeholder="Select how it opens" />
         </Field>
+        {launchMode === "sso" ? (
+          <CheckboxField
+            label="Signs in through the Hub"
+            description="Its .env gets the Hub address and the secret the Hub shares. Turn it off for an application that does not use the Hub's sign-in."
+            checked={usesHub}
+            onChange={(event) => setUsesHub(event.target.checked)}
+          />
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Scope" hint="The product space it belongs to, like Safespace. Optional.">
             <SearchableSelect
@@ -362,7 +372,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   );
 
   // Editing: Save waits for something to change.
-  const snapshot = JSON.stringify({ values, environment, effectiveLaunch, effectiveLogout, launchMode });
+  const snapshot = JSON.stringify({ values, environment, effectiveLaunch, effectiveLogout, launchMode, usesHub });
   const [baseline] = useState(snapshot);
   const unchanged = Boolean(initial) && snapshot === baseline;
 

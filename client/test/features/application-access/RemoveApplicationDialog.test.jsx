@@ -101,7 +101,7 @@ describe('RemoveApplicationDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
   })
 
-  it('has no Retire for the Hub and says why', async () => {
+  it('holds the Hub back while other applications are set up and says why', async () => {
     renderDialog([
       {
         path: REMOVAL,
@@ -109,7 +109,7 @@ describe('RemoveApplicationDialog', () => {
           jsonResponse({
             data: {
               can_remove: false,
-              blockers: ["This is the Hub's own application. Removing it would lock everyone out of the Hub."],
+              blockers: ['2 other applications are still set up in Central. Remove them first.'],
               retire_available: false,
               retired: false,
               is_hub: true,
@@ -118,7 +118,8 @@ describe('RemoveApplicationDialog', () => {
           }),
       },
     ])
-    expect(await screen.findByText('This is the Hub itself, so it cannot be retired or deleted.')).toBeVisible()
+    expect(await screen.findByText('The Hub cannot be deleted yet.')).toBeVisible()
+    expect(screen.getByText('2 other applications are still set up in Central. Remove them first.')).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Retire Application' })).toBeNull()
   })
 
