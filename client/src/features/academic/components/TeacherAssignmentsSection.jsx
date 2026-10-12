@@ -1,7 +1,6 @@
 import {
   CalendarClock,
   CalendarOff,
-  Eye,
   GraduationCap,
   MoveRight,
   Plus,
@@ -29,7 +28,6 @@ import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { SelectFilter } from "./SelectFilter.jsx";
-import { PaginatedSingleSelect } from "../../../components/ui/PaginatedSingleSelect.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { useDebouncedValue } from "../../../hooks/useDebouncedValue.js";
@@ -42,6 +40,7 @@ import {
   classSelectOptions,
 } from "../utils/selectOptions.js";
 import { AssignmentDurationCell } from "./AssignmentDurationCell.jsx";
+import { TeacherCandidateList } from "./TeacherCandidateList.jsx";
 
 function formatSubjectDetail(assignment) {
   return assignment.subject || null
@@ -624,16 +623,23 @@ export function TeacherAssignmentsSection({
             noValidate
             className="grid gap-3"
           >
-            <Field label="Teacher">
-              <PaginatedSingleSelect
-                itemLabel="teacher or intern"
-                options={candidates.map(candidateOption)}
-                value={form.workforce_target}
+            <Field
+              label="Teacher"
+              hint={`Showing teachers and interns who can take the ${formatStatus(form.role).toLowerCase()} role. Pick one, then save once.`}
+            >
+              <TeacherCandidateList
+                items={candidates.map(candidateItem)}
+                selectedValue={form.workforce_target}
+                selectedName={
+                  candidates.some((item) => candidateValue(item) === form.workforce_target)
+                    ? candidateName(candidates.find((item) => candidateValue(item) === form.workforce_target))
+                    : undefined
+                }
                 paging={candidatePaging}
                 search={candidateSearch}
                 isLoading={candidatesQuery.isLoading}
                 emptyMessage="No teachers or interns match."
-                onChange={(value) => {
+                onSelect={(value) => {
                   const candidate = candidates.find(
                     (item) => candidateValue(item) === value,
                   );
@@ -653,23 +659,13 @@ export function TeacherAssignmentsSection({
                   setCandidateSearch(value);
                   setCandidatePage(1);
                 }}
-                onPageChange={setCandidatePage}
+                onPrevious={() => setCandidatePage((page) => Math.max(page - 1, 1))}
+                onNext={() => setCandidatePage((page) => page + 1)}
                 onPageSizeChange={(size) => {
                   setCandidatePageSize(size);
                   setCandidatePage(1);
                 }}
               />
-              {form.workforce_target ? (
-                <Link
-                  to={candidateHref(form.workforce_target)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-(--mws-muted) hover:text-(--mws-burgundy)"
-                >
-                  <Eye size={14} />
-                  Open teacher detail in a new tab
-                </Link>
-              ) : null}
             </Field>
             <Field
               label="Role"
@@ -1073,12 +1069,13 @@ function candidateValue(candidate) {
   return `${candidateType(candidate)}:${candidate.id}`;
 }
 
-function candidateOption(candidate) {
+function candidateItem(candidate) {
   const type = candidateType(candidate);
   return {
     value: candidateValue(candidate),
     label: `${candidateName(candidate)}${type === "INTERN" ? " (Intern)" : ""}`,
-    description: candidate.employment?.job_position || candidate.job_position,
+    sublabel: candidate.employment?.job_position || candidate.job_position,
+    href: candidateHref(candidateValue(candidate)),
   };
 }
 

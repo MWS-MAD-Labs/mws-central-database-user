@@ -247,6 +247,57 @@ describe('TeacherAssignmentsSection', () => {
     expect(await screen.findByRole('radio', { name: /Ari Art \(Intern\)/ })).toBeVisible()
   })
 
+  it('lays the teachers out like the students of Enroll Student', async () => {
+    const fetchMock = createFetchRouter([
+      {
+        path: /^\/api\/admin\/classes\/class-1\/teacher-candidates(?:\?.*)?$/,
+        response: ({ url }) =>
+          jsonResponse({
+            data: teachingEmployees,
+            paging: { current_page: 1, total_page: 2, total_item: 14, size: 10 },
+            echo: url,
+          }),
+      },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderAcademic(
+      <TeacherAssignmentsSection
+        assignments={[]}
+        currentClassId="class-1"
+        academicYearStartDate="2026-07-01T00:00:00.000Z"
+        canWrite
+        onAssign={() => {}}
+        onEnd={() => {}}
+        onRemove={() => {}}
+        onReopen={() => {}}
+        onBulkMove={() => {}}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Assign teacher' }))
+    const dialog = screen.getByRole('dialog', { name: 'Assign Teacher' })
+    expect(await within(dialog).findByText('Pick one of the 14 on this list')).toBeVisible()
+    expect(within(dialog).getByText(/Showing teachers and interns who can take the homeroom role/)).toBeVisible()
+    expect(within(dialog).getByText('No teacher selected.')).toBeVisible()
+    // Each row can be opened in a new tab without leaving the dialog.
+    const eye = within(dialog).getAllByTitle('Open teacher detail in a new tab')[0]
+    expect(eye).toHaveAttribute('target', '_blank')
+    expect(eye.getAttribute('href')).toMatch(/^\/employees\/employee-/)
+
+    await user.click(within(dialog).getAllByRole('radio')[0])
+    expect(within(dialog).getByText(/selected\.$/)).toBeVisible()
+    expect(within(dialog).queryByText('No teacher selected.')).toBeNull()
+
+    // The page bar sits inside the box and asks for the next page.
+    await user.click(within(dialog).getByRole('button', { name: /Next/ }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('page=2'))).toBe(true))
+
+    // A different role starts the choice again.
+    await user.click(within(dialog).getByRole('button', { name: 'Homeroom' }))
+    await user.click(screen.getByRole('option', { name: 'Subject Teacher' }))
+    expect(await within(dialog).findByText('No teacher selected.')).toBeVisible()
+  })
+
   it('shows position, unit, status and duration columns, and sorts, searches and filters teachers', async () => {
     const mk = (id, name, extra = {}) => ({
       ...activeAssignment,
