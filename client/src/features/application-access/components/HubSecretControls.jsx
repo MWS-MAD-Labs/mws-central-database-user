@@ -48,6 +48,11 @@ export function ImpactList({ applicationId }) {
           </li>
         ))}
       </ul>
+      {apps.some((app) => app.mode === "shared") ? (
+        <p className="mt-1.5 text-xs text-(--mws-muted)">
+          {apps.filter((app) => app.mode === "shared").length} of them still use the Hub's own secret. The others have a secret of their own, made from it.
+        </p>
+      ) : null}
       {apps.length > IMPACT_SHOWN ? (
         <button type="button" onClick={() => setAll((current) => !current)} className="mt-1.5 cursor-pointer text-xs font-medium text-(--mws-burgundy) hover:underline">
           {all ? "Show fewer" : `Show all ${apps.length} (${hidden} more)`}
@@ -104,11 +109,16 @@ export function SecretConfirmDialog({ kind, applicationId, saving, onConfirm, on
 }
 
 // A secret Central made, shown this once like a token. Only the line is copied, never read out loud.
-export function HubSecretShownDialog({ secret, onClose }) {
+export function HubSecretShownDialog({ secret, onClose, applicationName = null }) {
+  const own = Boolean(applicationName);
   return (
     <ConnectDialog
-      title="Hub Secret"
-      description="Put this line in the .env of the Hub. The applications get it in their own .env when their token is made or rotated."
+      title={own ? "Hub Secret For This Application" : "Hub Secret"}
+      description={
+        own
+          ? `Put this line in the .env of ${applicationName} and deploy it. Until then it still uses the old value.`
+          : "Put this line in the .env of the Hub. The applications get it in their own .env when their token is made or rotated."
+      }
       onceLabel="Secret Shown Once"
       connection={{
         env: [
@@ -118,7 +128,9 @@ export function HubSecretShownDialog({ secret, onClose }) {
             secret: true,
             group: 0,
             line: `HUB_INTERNAL_SECRET="${secret}"`,
-            heading: "The Hub's master secret. Never copy it into another application. Changes only when it is rotated here.",
+            heading: own
+              ? "From the Hub, for this application only. Changes when this application's Hub secret is rotated, or when the Hub secret is."
+              : "The Hub's master secret. Never copy it into another application. Changes only when it is rotated here.",
           },
         ],
       }}

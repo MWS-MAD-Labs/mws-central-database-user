@@ -504,16 +504,22 @@ export class ApplicationOnboardingService {
   }
 
   // The applications that take the Hub address and secret into their .env, so a change reaches them.
-  static async hubSecretImpact(admin: AdminUser, applicationId: string): Promise<{ applications: { application_id: string; name: string }[] }> {
+  static async hubSecretImpact(admin: AdminUser, applicationId: string): Promise<{ applications: { application_id: string; name: string; mode: "shared" | "own" }[] }> {
     assertSuperAdmin(admin);
     await findApplication(applicationId);
     if (applicationId !== hubApplicationId()) throw new ResponseError(400, "Only the Hub has a secret to share");
     const rows = await prismaClient.application.findMany({
       where: { application_id: { not: applicationId }, uses_hub: true, launch_mode: ApplicationLaunchMode.SSO, retired_at: null },
       orderBy: { name: "asc" },
-      select: { application_id: true, name: true },
+      select: { application_id: true, name: true, hub_secret_mode: true },
     });
-    return { applications: rows };
+    return {
+      applications: rows.map((row) => ({
+        application_id: row.application_id,
+        name: row.name,
+        mode: row.hub_secret_mode === HubSecretMode.OWN ? ("own" as const) : ("shared" as const),
+      })),
+    };
   }
 
   // Replaces the token of the connection of this application. The old one follows the grace of the mode.

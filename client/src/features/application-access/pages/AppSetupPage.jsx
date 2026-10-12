@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, ShieldCheck, Check, Circle, Eye, EyeOff, Loader2, Lock, Pencil, Plus, RotateCw } from "lucide-react";
+import { ArrowLeft, BookOpen, KeyRound, ShieldCheck, Check, Circle, Eye, EyeOff, Loader2, Lock, Pencil, Plus, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
@@ -19,6 +19,7 @@ import { DataAccessDialog } from "../components/DataAccessDialog.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
 import { oldTokenNotice } from "../../api-clients/utils/oldTokenNotice.js";
 import { RotateTokenFlow } from "../../api-clients/components/RotateTokenFlow.jsx";
+import { HubSecretShownDialog } from "../components/HubSecretControls.jsx";
 import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
 import { RemovalGuideDialog } from "../components/RemovalGuideDialog.jsx";
 import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
@@ -48,6 +49,16 @@ export function AppSetupPage() {
   const [removing, setRemoving] = useState(false);
   const confirm = useConfirm();
   const [guide, setGuide] = useState(false);
+  // A Hub secret made for this application. Shown once.
+  const [appSecret, setAppSecret] = useState(null);
+  const appSecretMutation = useMutation({
+    mutationFn: (action) => applicationAccessApi.setHubAppSecret(applicationId, action),
+    onSuccess: (result) => {
+      refresh();
+      setAppSecret(result.secret);
+    },
+    onError: (error) => showErrorToast(error, "Could not make the Hub secret."),
+  });
   const [removalGuide, setRemovalGuide] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [dataAccess, setDataAccess] = useState(false);
@@ -165,6 +176,19 @@ export function AppSetupPage() {
     if (confirmed) retireMutation.mutate();
   }
 
+  async function changeAppSecret() {
+    const own = setup.hub_secret.mode === "own";
+    const confirmed = await confirm({
+      title: own ? "Rotate Hub Secret" : "Give Its Own Hub Secret",
+      description: own
+        ? `${setup.application.name} and the Hub stop trusting each other until its .env has the new value. Other applications are not affected.`
+        : `${setup.application.name} gets a Hub secret that only it has, so one that leaks does not reach the others. Put the new value in its .env. Until then it keeps working with the Hub's own secret.`,
+      confirmLabel: own ? "Rotate" : "Give Its Own",
+      tone: own ? "danger" : undefined,
+    });
+    if (confirmed) appSecretMutation.mutate(own ? "rotate" : "own");
+  }
+
   function actions(step) {
     if (retired || step.status === "locked") return null;
     const current = step.status === "current";
@@ -191,6 +215,11 @@ export function AppSetupPage() {
             <TextAction icon={BookOpen} onClick={() => setGuide(true)}>
               Setup Guide
             </TextAction>
+            {setup.hub_secret?.applies ? (
+              <TextAction icon={KeyRound} loading={appSecretMutation.isPending} onClick={changeAppSecret}>
+                {setup.hub_secret.mode === "own" ? "Rotate Hub Secret" : "Give Its Own Hub Secret"}
+              </TextAction>
+            ) : null}
             <TextAction icon={RotateCw} onClick={() => setRotating(true)}>
               Rotate Token
             </TextAction>
@@ -475,6 +504,7 @@ export function AppSetupPage() {
         />
       ) : null}
       {connection ? <ConnectDialog connection={connection} onClose={() => setConnection(null)} /> : null}
+      {appSecret ? <HubSecretShownDialog secret={appSecret} applicationName={setup.application.name} onClose={() => setAppSecret(null)} /> : null}
       {editing ? (
         <CrudDialog title="Edit Details" onClose={() => setEditing(false)}>
           <AppDetailsForm

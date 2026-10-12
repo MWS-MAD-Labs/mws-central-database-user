@@ -83,6 +83,12 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  // Gives an application a Hub secret of its own ('own') or replaces it ('rotate'). The secret comes back once.
+  async setHubAppSecret(applicationId, action) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/hub-app-secret`, { method: 'POST', body: { action } })
+    return response.data
+  },
+
   async secretsStatus() {
     const response = await apiRequest(`${ACCESS}/secrets-status`)
     return response.data
