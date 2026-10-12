@@ -394,7 +394,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
           <button
             type="button"
             onClick={simplePaths ? switchToCustomPaths : switchToStandardPaths}
-            className="cursor-pointer text-xs font-medium text-(--mws-burgundy) hover:underline"
+            className="cursor-pointer text-xs! font-medium! text-(--mws-burgundy) hover:underline"
           >
             {simplePaths ? "This application uses different paths" : "Use the standard paths again"}
           </button>
