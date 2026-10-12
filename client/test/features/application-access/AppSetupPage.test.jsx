@@ -1174,7 +1174,7 @@ describe("AppSetupPage", () => {
         name: "Sign-in Lines",
       });
       const lines =
-        'HUB_CENTRAL_ACCESS_MODE="warn"\nHUB_CENTRAL_ACCESS_APP_ID="demo"\nHUB_CENTRAL_ACCESS_BYPASS_EMAILS="me@millennia21.id"';
+        '# How the Hub checks who may sign in. Changes in the Hub setup wizard.\nHUB_CENTRAL_ACCESS_MODE="warn"\nHUB_CENTRAL_ACCESS_APP_ID="demo"\nHUB_CENTRAL_ACCESS_BYPASS_EMAILS="me@millennia21.id"';
       expect(
         within(dialog).getByText(/HUB_CENTRAL_ACCESS_MODE="warn"/),
       ).toBeVisible();

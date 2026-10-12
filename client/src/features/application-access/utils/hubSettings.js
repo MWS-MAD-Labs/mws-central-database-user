@@ -73,6 +73,7 @@ const quote = (value) => `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"
 // The three sign-in lines of the Hub's .env, written like the server writes them.
 export function signInEnvLines(applicationId, settings) {
   return [
+    '# How the Hub checks who may sign in. Changes in the Hub setup wizard.',
     `HUB_CENTRAL_ACCESS_MODE=${quote(settings.hub_access_mode)}`,
     `HUB_CENTRAL_ACCESS_APP_ID=${quote(applicationId)}`,
     `HUB_CENTRAL_ACCESS_BYPASS_EMAILS=${quote(settings.hub_bypass_emails.join(','))}`,

@@ -110,7 +110,18 @@ export function HubSecretShownDialog({ secret, onClose }) {
       title="Hub Secret"
       description="Put this line in the .env of the Hub. The applications get it in their own .env when their token is made or rotated."
       onceLabel="Secret Shown Once"
-      connection={{ env: [{ key: "HUB_INTERNAL_SECRET", value: secret, secret: true, group: 0, line: `HUB_INTERNAL_SECRET="${secret}"` }] }}
+      connection={{
+        env: [
+          {
+            key: "HUB_INTERNAL_SECRET",
+            value: secret,
+            secret: true,
+            group: 0,
+            line: `HUB_INTERNAL_SECRET="${secret}"`,
+            heading: "The Hub's master secret. Never copy it into another application. Changes only when it is rotated here.",
+          },
+        ],
+      }}
       onClose={onClose}
     />
   );

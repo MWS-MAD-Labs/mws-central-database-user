@@ -12,6 +12,8 @@ export type EnvItem = {
   group: number;
   // The line as it is written in the .env, with the value quoted.
   line: string;
+  // A comment written above the first line of a group, saying where the lines come from and what changes them.
+  heading?: string;
 };
 
 // A value in double quotes, with \ and " escaped so it reads back the same.
@@ -19,13 +21,26 @@ export function quoteEnv(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-const item = (key: string, value: string, group: number, secret = false): EnvItem => ({
+const item = (key: string, value: string, group: number, secret = false, heading?: string): EnvItem => ({
   key,
   value,
   secret,
   group,
   line: `${key}=${quoteEnv(value)}`,
+  ...(heading ? { heading } : {}),
 });
+
+const HEADINGS = {
+  application: "This application. Fixed when it is added.",
+  central: "Connection to Central. Its own token. Changes when this application's token is rotated.",
+  hubShared: "From the Hub, the same for every application. Changes only if the Hub's address changes.",
+  hubSecret:
+    "From the Hub, shared by the Hub and every application. Changes only when the Hub secret is rotated, then every .env needs the new value.",
+  hubOwnCentral: "The Hub's own connection to Central. Changes when the Hub's token is rotated.",
+  hubSignIn: "How the Hub checks who may sign in. Changes in the Hub setup wizard.",
+  hubMaster: "The Hub's master secret. Never copy it into another application. Changes only when it is rotated here.",
+  daily: "This application's organization in Central. Fixed when it is added.",
+};
 
 // Safe by default: people still get in, and whoever would be turned away is only logged.
 export function resolveHubSettings(stored: unknown, adminEmail?: string): HubEnvSettings {
@@ -53,14 +68,17 @@ type Facts = {
 export type HubFacts = { baseUrl: string | null; secret: string | null };
 
 // The lines every application that signs in through the Hub reads about the Hub.
-function hubLines(hub: HubFacts | undefined, group: number): EnvItem[] {
+function hubLines(hub: HubFacts | undefined, group: number, secretHeading = HEADINGS.hubSecret): EnvItem[] {
   if (!hub) return [];
   const lines: EnvItem[] = [];
   if (hub.baseUrl) {
     const base = hub.baseUrl.replace(/\/+$/, "");
-    lines.push(item("HUB_BASE_URL", base, group), item("HUB_SSO_JWKS_URL", `${base}/.well-known/jwks.json`, group));
+    lines.push(
+      item("HUB_BASE_URL", base, group, false, HEADINGS.hubShared),
+      item("HUB_SSO_JWKS_URL", `${base}/.well-known/jwks.json`, group),
+    );
   }
-  if (hub.secret) lines.push(item("HUB_INTERNAL_SECRET", hub.secret, group, true));
+  if (hub.secret) lines.push(item("HUB_INTERNAL_SECRET", hub.secret, hub.baseUrl ? group + 1 : group, true, secretHeading));
   return lines;
 }
 
@@ -75,36 +93,40 @@ export function buildEnvItems(facts: Facts): EnvItem[] {
   if (facts.isHub) {
     const settings = facts.hubSettings ?? resolveHubSettings(null);
     return [
-      item("CENTRAL_API_BASE_URL", `${facts.publicUrl}/api/internal`, 0),
+      item("CENTRAL_API_BASE_URL", `${facts.publicUrl}/api/internal`, 0, false, HEADINGS.hubOwnCentral),
       item("CENTRAL_API_TOKEN", facts.token, 0, true),
-      item("HUB_CENTRAL_ACCESS_MODE", settings.hub_access_mode, 1),
+      item("HUB_CENTRAL_ACCESS_MODE", settings.hub_access_mode, 1, false, HEADINGS.hubSignIn),
       item("HUB_CENTRAL_ACCESS_APP_ID", facts.applicationId, 1),
       item("HUB_CENTRAL_ACCESS_BYPASS_EMAILS", settings.hub_bypass_emails.join(","), 1),
       // The Hub's own address is not read by the Hub. The secret is the same one the applications get.
-      ...hubLines(facts.hub ? { baseUrl: null, secret: facts.hub.secret } : undefined, 2),
+      ...hubLines(facts.hub ? { baseUrl: null, secret: facts.hub.secret } : undefined, 2, HEADINGS.hubMaster),
     ];
   }
   // Daily Check-in reads the same names as the Hub for the Central connection, and pins the organization.
   if (facts.applicationId === "daily-checkin") {
     return [
-      item("CENTRAL_API_BASE_URL", `${facts.publicUrl}/api/internal`, 0),
+      item("CENTRAL_API_BASE_URL", `${facts.publicUrl}/api/internal`, 0, false, HEADINGS.central),
       item("CENTRAL_API_TOKEN", facts.token, 0, true),
-      item("CENTRAL_ENTITLEMENT_ORGANIZATION_ID", facts.organizationId, 1),
+      item("CENTRAL_ENTITLEMENT_ORGANIZATION_ID", facts.organizationId, 1, false, HEADINGS.daily),
       ...hubLines(facts.hub, 2),
     ];
   }
   return [
-    item("HUB_SSO_APP_ID", facts.applicationId, 0),
-    item("CENTRAL_DATA_API_BASE_URL", facts.publicUrl, 0),
-    item("CENTRAL_DATA_API_TOKEN", facts.token, 0, true),
-    item("CENTRAL_ORGANIZATION_ID", facts.organizationId, 0),
-    ...hubLines(facts.hub, 1),
+    item("HUB_SSO_APP_ID", facts.applicationId, 0, false, HEADINGS.application),
+    item("CENTRAL_DATA_API_BASE_URL", facts.publicUrl, 1, false, HEADINGS.central),
+    item("CENTRAL_DATA_API_TOKEN", facts.token, 1, true),
+    item("CENTRAL_ORGANIZATION_ID", facts.organizationId, 1),
+    ...hubLines(facts.hub, 2),
   ];
 }
 
-// The same lines as one text, with a blank line between groups.
+// The same lines as one text, each group under its comment and a blank line between groups.
 export function envText(items: EnvItem[]): string {
   return items
-    .map((entry, index) => (index > 0 && items[index - 1]!.group !== entry.group ? `\n${entry.line}` : entry.line))
+    .map((entry, index) => {
+      const newGroup = index === 0 || items[index - 1]!.group !== entry.group;
+      const heading = newGroup && entry.heading ? `# ${entry.heading}\n` : "";
+      return `${index > 0 && newGroup ? "\n" : ""}${heading}${entry.line}`;
+    })
     .join("\n");
 }

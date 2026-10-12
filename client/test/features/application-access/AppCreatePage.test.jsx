@@ -485,7 +485,7 @@ describe('AppCreatePage', () => {
               connection: {
                 hub_lines_missing: true,
                 token: 'mws_abc.secretsecretsecret',
-                env: [{ key: 'HUB_SSO_APP_ID', value: 'demo', secret: false, group: 0, line: 'HUB_SSO_APP_ID="demo"' }, { key: 'CENTRAL_DATA_API_TOKEN', value: 'mws_abc.secretsecretsecret', secret: true, group: 0, line: 'CENTRAL_DATA_API_TOKEN="mws_abc.secretsecretsecret"' }],
+                env: [{ key: 'HUB_SSO_APP_ID', value: 'demo', secret: false, group: 0, line: 'HUB_SSO_APP_ID="demo"', heading: 'This application. Fixed when it is added.' }, { key: 'CENTRAL_DATA_API_TOKEN', value: 'mws_abc.secretsecretsecret', secret: true, group: 0, line: 'CENTRAL_DATA_API_TOKEN="mws_abc.secretsecretsecret"' }],
               },
             },
           }),
@@ -500,6 +500,7 @@ describe('AppCreatePage', () => {
     // The .env values are handed over first, the setup page follows once they are copied.
     expect(await screen.findByText('Connection Created')).toBeVisible()
     expect(screen.getByText('The Hub lines are not here yet.')).toBeVisible()
+    expect(screen.getByText('# This application. Fixed when it is added.')).toBeVisible()
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
       expect(JSON.parse(call[1].body)).toEqual({

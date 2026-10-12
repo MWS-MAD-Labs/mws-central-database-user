@@ -20,8 +20,12 @@ export function ConnectDialog({
   notice = null,
 }) {
   // The lines are written as they go in the .env, in quotes, with a blank line between groups.
+  const startsGroup = (index) => index === 0 || connection.env[index - 1].group !== connection.env[index].group;
   const text = connection.env
-    .map((item, index) => (index > 0 && connection.env[index - 1].group !== item.group ? `\n${item.line}` : item.line))
+    .map((item, index) => {
+      const heading = startsGroup(index) && item.heading ? `# ${item.heading}\n` : "";
+      return `${index > 0 && startsGroup(index) ? "\n" : ""}${heading}${item.line}`;
+    })
     .join("\n");
   const [copied, setCopied] = useState(false);
   const [blocked, setBlocked] = useState(false);
@@ -73,9 +77,10 @@ export function ConnectDialog({
           onContextMenu={(event) => event.preventDefault()}
         >
           {connection.env.map((item, index) => (
-            <p key={item.key} className={index > 0 && connection.env[index - 1].group !== item.group ? "mt-3" : undefined}>
-              {item.secret ? `${item.key}="${maskToken(item.value)}"` : item.line}
-            </p>
+            <div key={item.key} className={startsGroup(index) && index > 0 ? "mt-3" : undefined}>
+              {startsGroup(index) && item.heading ? <p className="mb-1 font-sans text-[11px] leading-4 break-words text-(--mws-muted)"># {item.heading}</p> : null}
+              <p>{item.secret ? `${item.key}="${maskToken(item.value)}"` : item.line}</p>
+            </div>
           ))}
         </div>
         <Button type="button" className="h-12 w-full text-base" onClick={copyEnv}>

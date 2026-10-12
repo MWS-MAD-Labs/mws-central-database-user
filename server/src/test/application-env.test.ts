@@ -17,6 +17,16 @@ describe("application env", () => {
     }
   });
 
+  it("writes where each group of lines comes from, so a rotation is clear", () => {
+    const text = envText(buildEnvItems({ ...facts, applicationId: "exima", isHub: false, hub }));
+    expect(text).toContain("# From the Hub, the same for every application. Changes only if the Hub's address changes.");
+    expect(text).toContain("# From the Hub, shared by the Hub and every application.");
+    const hubText = envText(buildEnvItems({ ...facts, applicationId: "hub", isHub: true, hub }));
+    expect(hubText).toContain("# The Hub's master secret. Never copy it into another application.");
+    // Every comment sits directly above its first line.
+    expect(text.split("\n").filter((line) => line.startsWith("#")).length).toBe(4);
+  });
+
   it("leaves the Hub lines out and says so when the Hub has no address or secret yet", () => {
     const items = buildEnvItems({ ...facts, applicationId: "exima", isHub: false, hub: { baseUrl: null, secret: null } });
     expect(items.some((item) => item.key.startsWith("HUB_BASE") || item.key === "HUB_INTERNAL_SECRET")).toBe(false);
@@ -39,7 +49,10 @@ describe("application env", () => {
     const items = buildEnvItems({ ...facts, applicationId: "exima", isHub: false });
     expect(envText(items)).toBe(
       [
+        "# This application. Fixed when it is added.",
         'HUB_SSO_APP_ID="exima"',
+        "",
+        "# Connection to Central. Its own token. Changes when this application's token is rotated.",
         'CENTRAL_DATA_API_BASE_URL="https://db.mws.web.id"',
         'CENTRAL_DATA_API_TOKEN="mws_abc.def"',
         'CENTRAL_ORGANIZATION_ID="org_x_abc"',
@@ -57,9 +70,11 @@ describe("application env", () => {
     });
     expect(envText(items)).toBe(
       [
+        "# The Hub's own connection to Central. Changes when the Hub's token is rotated.",
         'CENTRAL_API_BASE_URL="https://db.mws.web.id/api/internal"',
         'CENTRAL_API_TOKEN="mws_abc.def"',
         "",
+        "# How the Hub checks who may sign in. Changes in the Hub setup wizard.",
         'HUB_CENTRAL_ACCESS_MODE="enforce"',
         'HUB_CENTRAL_ACCESS_APP_ID="hub"',
         'HUB_CENTRAL_ACCESS_BYPASS_EMAILS="a@millennia21.id,b@millennia21.id"',
@@ -75,9 +90,11 @@ describe("application env", () => {
     const items = buildEnvItems({ ...facts, applicationId: "daily-checkin", isHub: false });
     expect(envText(items)).toBe(
       [
+        "# Connection to Central. Its own token. Changes when this application's token is rotated.",
         'CENTRAL_API_BASE_URL="https://db.mws.web.id/api/internal"',
         'CENTRAL_API_TOKEN="mws_abc.def"',
         "",
+        "# This application's organization in Central. Fixed when it is added.",
         'CENTRAL_ENTITLEMENT_ORGANIZATION_ID="org_x_abc"',
       ].join("\n"),
     );
