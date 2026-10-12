@@ -91,3 +91,7 @@ After changing the sign-in settings use Copy Sign-in Lines on the same page. It 
 ## Syncing permissions
 
 Every application tells Central which permissions its code knows. In production that belongs in the deploy pipeline, after Central is deployed (the Hub runs `bun run permissions:sync` there). On a local machine there is no pipeline, so run the sync by hand or let the application send it on start. The Setup Guide on an application's setup page shows the exact names and commands for it.
+
+## Categories are the spaces
+
+An application's category is one of Safespace, Learnspace, Carespace, Shieldspace or Others. The old buckets (Reporting, Students, Workplace, Operations, Utilities) are gone. Both Central and the Hub have a migration that moves the old values to Others, so deploy the migrations first and then the code. After that, place each application in its space from its Edit Details. The Hub shows an unknown category as Others.
