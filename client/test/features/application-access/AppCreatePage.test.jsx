@@ -54,6 +54,11 @@ const SECRET_OK = {
   response: () => jsonResponse({ data: { verdict: 'ok' } }),
 }
 
+const APP_OK = {
+  path: /\/api\/admin\/application-access\/application-address-check/,
+  response: () => jsonResponse({ data: { verdict: 'ok' } }),
+}
+
 const NO_HUB = {
   path: /\/api\/admin\/application-access\/applications\?/,
   method: 'GET',
@@ -76,13 +81,13 @@ function renderPage(user = { role: 'SUPER_ADMIN' }) {
 
 describe('AppCreatePage', () => {
   it('refuses anyone who is not a Super Admin', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     renderPage({ role: 'DATABASE_ADMIN' })
     expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
   })
 
   it('makes the application id from the name and does not let it be typed', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     const { user } = renderPage()
     const id = screen.getByLabelText('Application ID')
     expect(id).toBeDisabled()
@@ -94,7 +99,7 @@ describe('AppCreatePage', () => {
   })
 
   it('puts the scheme in front of the address from the environment', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     const { user } = renderPage()
     const production = screen.getByRole('radio', { name: 'Production' })
     expect(production).toHaveAttribute('aria-checked', 'true')
@@ -110,7 +115,7 @@ describe('AppCreatePage', () => {
   })
 
   it('refuses spaces, symbols and a public address on Local, without calling the server', async () => {
-    const fetchMock = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    const fetchMock = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'Bad <b>')
@@ -128,7 +133,7 @@ describe('AppCreatePage', () => {
   })
 
   it('switches the environment when the pasted address is the only one, and says so', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     const { user } = renderPage()
     await user.click(screen.getByRole('radio', { name: 'Local' }))
     await user.click(screen.getByLabelText('Application Address'))
@@ -139,7 +144,7 @@ describe('AppCreatePage', () => {
   })
 
   it('refuses a pasted scheme that clashes with the environment when the other address is filled', async () => {
-    const fetchMock = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    const fetchMock = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'Demo')
@@ -149,6 +154,7 @@ describe('AppCreatePage', () => {
     await user.paste('http://demo.example.com/out')
     // The environment stays, so the first address does not change by itself.
     expect(screen.getByRole('radio', { name: 'Production' })).toHaveAttribute('aria-checked', 'true')
+    expect(await screen.findByText('The application answers.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     expect(await screen.findByText(/starts with http:\/\/ but the Environment is Production/)).toBeVisible()
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
@@ -159,6 +165,7 @@ describe('AppCreatePage', () => {
       SCOPES,
       NO_HUB,
       TAXONOMY,
+      APP_OK,
       KEY,
       HUB_OK,
       SECRET_OK,
@@ -219,6 +226,7 @@ describe('AppCreatePage', () => {
       SCOPES,
       NO_HUB,
       TAXONOMY,
+      APP_OK,
       KEY,
       HUB_OK,
       SECRET_OK,
@@ -252,6 +260,7 @@ describe('AppCreatePage', () => {
       SCOPES,
       NO_HUB,
       TAXONOMY,
+      APP_OK,
       { path: '/api/admin/application-access/secrets-status', response: () => jsonResponse({ data: { key_ready: false } }) },
       HUB_OK,
       SECRET_OK,
@@ -270,6 +279,7 @@ describe('AppCreatePage', () => {
       SCOPES,
       NO_HUB,
       TAXONOMY,
+      APP_OK,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',
@@ -286,6 +296,7 @@ describe('AppCreatePage', () => {
     expect(screen.queryByRole('option', { name: 'Archive' })).toBeNull()
     await user.click(screen.getByRole('option', { name: 'Wallet' }))
     expect(screen.getByRole('button', { name: 'Icon' })).toHaveTextContent('Wallet')
+    expect(await screen.findByText('The application answers.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
@@ -294,13 +305,13 @@ describe('AppCreatePage', () => {
   })
 
   it('starts on the default icon', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     renderPage()
     expect(screen.getByRole('button', { name: 'Icon' })).toHaveTextContent('Default (AppWindow)')
   })
 
   it('stops the description at 50 characters and counts them', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Description'), 'x'.repeat(80))
     expect(screen.getByLabelText('Description')).toHaveValue('x'.repeat(50))
@@ -308,7 +319,7 @@ describe('AppCreatePage', () => {
   })
 
   it('keeps a very long name and description inside the preview card', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'A'.repeat(60))
     await user.type(screen.getByLabelText('Description'), 'y'.repeat(50))
@@ -372,7 +383,7 @@ describe('AppCreatePage', () => {
   })
 
   it('offers the scopes and categories of the master data and a local example when the environment is Local', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     const { user } = renderPage()
     expect(screen.getByLabelText('Application Address')).toHaveAttribute('placeholder', 'exima.mws.web.id')
     await user.click(screen.getByRole('radio', { name: /Local/ }))
@@ -396,6 +407,7 @@ describe('AppCreatePage', () => {
       SCOPES,
       NO_HUB,
       TAXONOMY,
+      APP_OK,
       {
         path: '/api/admin/api-clients/internal-endpoints',
         response: () =>
@@ -419,7 +431,7 @@ describe('AppCreatePage', () => {
   })
 
   it('asks for the address only and fills in the standard sign-in and sign-out paths', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     const { user } = renderPage()
     expect(screen.queryByLabelText('Launch URL')).toBeNull()
     expect(screen.queryByLabelText('Logout URL')).toBeNull()
@@ -440,6 +452,7 @@ describe('AppCreatePage', () => {
       SCOPES,
       NO_HUB,
       TAXONOMY,
+      APP_OK,
       { path: '/api/admin/application-access/applications', method: 'POST', response: () => jsonResponse({ data: { application_id: 'solo', connection: null } }) },
     ])
     globalThis.fetch = fetchMock
@@ -452,6 +465,7 @@ describe('AppCreatePage', () => {
     await user.click(screen.getByRole('option', { name: /Single Sign-On/ }))
     await user.click(screen.getByRole('checkbox', { name: /Signs in through the Hub/ }))
     await user.type(screen.getByLabelText('Application Address'), 'solo.example.com')
+    expect(await screen.findByText('The application answers.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
@@ -470,7 +484,7 @@ describe('AppCreatePage', () => {
   })
 
   it('tidies extra spaces when leaving the name', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), '  MWS    Hub  ')
     await user.tab()
@@ -478,7 +492,7 @@ describe('AppCreatePage', () => {
   })
 
   it('keeps the two required scopes on and marks sensitive data', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     renderPage()
     const required = await screen.findByRole('checkbox', { name: /Publish an application's permissions/ })
     expect(required).toBeChecked()
@@ -487,7 +501,7 @@ describe('AppCreatePage', () => {
   })
 
   it('shows a preview of the Hub card that follows what is typed', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     const { user } = renderPage()
     expect(screen.getByText('Application name')).toBeVisible()
     await user.type(screen.getByLabelText('Name'), 'Demo App')
@@ -501,6 +515,7 @@ describe('AppCreatePage', () => {
       SCOPES,
       NO_HUB,
       TAXONOMY,
+      APP_OK,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',
@@ -523,6 +538,7 @@ describe('AppCreatePage', () => {
     await user.type(screen.getByLabelText('Name'), 'Demo App')
     await user.type(screen.getByLabelText('Application Address'), 'demo.example.com')
     await user.click(await screen.findByRole('checkbox', { name: /View student profiles/ }))
+    expect(await screen.findByText('The application answers.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     // The .env values are handed over first, the setup page follows once they are copied.
     expect(await screen.findByText('Connection Created')).toBeVisible()
@@ -551,6 +567,7 @@ describe('AppCreatePage', () => {
       SCOPES,
       NO_HUB,
       TAXONOMY,
+      APP_OK,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',
@@ -569,6 +586,7 @@ describe('AppCreatePage', () => {
     expect(screen.queryByLabelText('Logout URL')).toBeNull()
     await user.type(screen.getByLabelText('Launch URL'), 'docs.example.com/sheet')
     expect(screen.queryByText('Data Access')).toBeNull()
+    expect(await screen.findByText('The application answers.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
@@ -579,5 +597,38 @@ describe('AppCreatePage', () => {
       expect(body.connect).toBeUndefined()
       expect(body.scope_names).toBeUndefined()
     })
+  })
+
+  it('holds Add Application until something answers at the address, and lets an unreachable one through after a confirm', async () => {
+    let verdict = 'unreachable'
+    const fetchMock = createFetchRouter([
+      SCOPES,
+      NO_HUB,
+      TAXONOMY,
+      { path: /\/api\/admin\/application-access\/application-address-check/, response: () => jsonResponse({ data: { verdict } }) },
+      { path: '/api/admin/application-access/applications', method: 'POST', response: () => jsonResponse({ data: { application_id: 'demo', connection: null } }) },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await user.type(screen.getByLabelText('Name'), 'Demo')
+    await user.type(screen.getByLabelText('Application Address'), 'demo.example.com')
+    expect(await screen.findByText(/Nothing answers at this address/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Add Application' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Use It Anyway' }))
+    const buttons = await screen.findAllByRole('button', { name: 'Use It Anyway' })
+    await user.click(buttons.at(-1))
+    expect(await screen.findByText('Used as typed, not checked.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Add Application' })).toBeEnabled()
+    verdict = 'ok'
+  })
+
+  it('says the application answers and opens Add Application', async () => {
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
+    const { user } = renderPage()
+    await user.type(screen.getByLabelText('Name'), 'Demo')
+    await user.type(screen.getByLabelText('Application Address'), 'demo.example.com')
+    expect(screen.getByRole('button', { name: 'Add Application' })).toBeDisabled()
+    expect(await screen.findByText('The application answers.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Add Application' })).toBeEnabled()
   })
 })

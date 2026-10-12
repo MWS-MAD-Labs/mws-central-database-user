@@ -7,6 +7,9 @@ import { DEFAULT_SCOPES } from "../utils/connectionScopes.js";
 import { descriptionProblem, nameProblem, slugifyApplicationId, tidyText } from "../utils/applicationId.js";
 import { ENVIRONMENTS, addressPlaceholder, addressProblem, environmentOfScheme, joinAddress, readAddressInput, splitAddress } from "../utils/applicationUrl.js";
 import { HUB_ICON_NAMES } from "../utils/hubIcons.js";
+import { useAddressCheck } from "../hooks/useAddressCheck.js";
+import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { AddressCheckStatus } from "./AddressCheckStatus.jsx";
 import { AddressInput } from "./AddressInput.jsx";
 import { AppCardPreview } from "./AppCardPreview.jsx";
 import { IconPicker } from "./IconPicker.jsx";
@@ -32,6 +35,17 @@ const LAUNCH_MODES = [
 
 // What the Hub card shows and where it sends people. Used to add an application and to edit it later.
 // On the page layout the id is made from the name. In the dialog the id is the one the application has.
+const ADDRESS_TEXTS = {
+  found: "The application answers.",
+  anyway: "Used as typed, not checked.",
+  unreachable: "Nothing answers at this address. Is the application running?",
+  refused: "This address cannot be checked.",
+  failed: "The address could not be checked just now. Try again.",
+  anywayTitle: "Use This Address Anyway",
+  anywayText:
+    "Central could not reach this address, which can be true when the application only runs on your machine and Central does not. If it is wrong, the card in the Hub opens a page that does not exist. Use it only if you are sure.",
+};
+
 export function AppDetailsForm({ initial, idLocked = false, isHub = false, layout = "dialog", hubExists = false, adminEmail = "", submitLabel, submitting, onSubmit, onCancel }) {
   const launch = splitAddress(initial?.launch_url);
   const logout = splitAddress(initial?.logout_url, launch.environment);
@@ -100,6 +114,30 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     logout_url: hub ? undefined : (clash("logout") ?? addressProblem(environment, effectiveLogout) ?? undefined),
   };
   const valid = !Object.values(errors).some(Boolean) && !hubSettingsProblem;
+  // The address of the application itself, without the paths, is what gets asked.
+  const checkedAddress = (() => {
+    if (hub || errors.launch_url || !effectiveLaunch.trim()) return "";
+    try {
+      return new URL(joinAddress(environment, effectiveLaunch)).origin;
+    } catch {
+      return "";
+    }
+  })();
+  const [savedAddress] = useState(() => {
+    try {
+      return initial?.launch_url ? new URL(initial.launch_url).origin : "";
+    } catch {
+      return "";
+    }
+  });
+  const addressCheck = useAddressCheck({
+    address: checkedAddress,
+    saved: savedAddress,
+    name: "application-address-check",
+    check: applicationAccessApi.checkApplicationAddress,
+  });
+  // An address with a mistake in it is left to the error shown on submit. Only a well formed one waits for the check.
+  const addressReady = !checkedAddress || addressCheck.ready;
   const shown = (key) => (attempted ? errors[key] : undefined);
 
   // Typing or pasting an address. A scheme in the text is taken off. It sets the environment when the other
@@ -146,7 +184,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     // Adding the Hub is done from the last step of its wizard, not by an Enter key on an earlier one.
     if (layout === "page" && hubChosen && event.nativeEvent?.submitter?.dataset?.hubAdd !== "true") return;
     setAttempted(true);
-    if (!valid) return;
+    if (!valid || !addressReady) return;
     if (hub) {
       onSubmit({
         ...(idLocked ? { application_id: applicationId } : {}),
@@ -351,6 +389,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
             )}
           </>
         )}
+        {hub ? null : <AddressCheckStatus state={addressCheck} texts={ADDRESS_TEXTS} />}
         {launchMode === "sso" ? (
           <button
             type="button"
@@ -386,7 +425,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       <Button type="button" variant="secondary" className={layout === "page" ? "flex-1" : undefined} onClick={onCancel}>
         Cancel
       </Button>
-      <Button type="submit" className={layout === "page" ? "flex-1" : undefined} loading={submitting} disabled={unchanged}>
+      <Button type="submit" className={layout === "page" ? "flex-1" : undefined} loading={submitting} disabled={unchanged || !addressReady}>
         {submitLabel}
       </Button>
     </div>

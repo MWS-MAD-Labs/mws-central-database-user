@@ -95,6 +95,12 @@ export const applicationAccessApi = {
     return response.data.verdict
   },
 
+  // Whether anything answers at the address of an application: 'ok', 'unreachable' or 'refused'.
+  async checkApplicationAddress(url) {
+    const response = await apiRequest(`${ACCESS}/application-address-check?url=${encodeURIComponent(url)}`)
+    return response.data.verdict
+  },
+
   // Whether the Hub accepts this secret: 'ok', 'wrong', 'unreachable', 'no_check' or 'refused'.
   // Without an address the one kept for the Hub is asked.
   async checkHubSecret({ address, secret }) {

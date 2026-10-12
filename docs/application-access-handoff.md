@@ -173,3 +173,9 @@ Locally the Hub address is the Vite page, `http://localhost:5175`, not the backe
 "Use The Hub's Current Secret" has a Test This Secret button. Central sends the pasted value in the `x-hub-internal-secret` header to the Hub's `POST /sso/secret-check` (Hub commit `94c170d`) and gets back only a verdict: `ok`, `wrong`, `unreachable`, `no_check` (a Hub without the route) or `refused`. Continue and Use This Secret stay off until `ok`. `unreachable` and `no_check` allow Use It Anyway, `wrong` does not. The endpoint is `POST /api/admin/application-access/hub-secret-check` (Super Admin); without an address in the body it asks the Hub address that is kept. The secret is never stored or logged by the check. Make A New Secret is not tested, since the Hub only has the value after it is put in its .env.
 
 A pasted `.env` line is reduced to its value (`cleanPastedSecret`, server and client). Another variable's line (`CENTRAL_API_TOKEN="..."`) or an API token (`mws_`) is refused. Deploy the Hub before Central.
+
+## The application address is checked
+
+In Add and Edit Application the address of the application (host and port, not `/auth/sso` or `/auth/logout`) is asked through `GET /api/admin/application-access/application-address-check?url=` (Super Admin). Central does `GET {origin}/` without following redirects and answers `ok` for any status under 500, `unreachable` for no answer, a timeout or a 502 to 504, `refused` for what it must not ask (same rules as the Hub address check). Add Application and Save wait for `ok`, or for Use It Anyway after a confirm when nothing answers (an application that only runs on a laptop). An address kept as saved is not asked again. An address with a mistake in it is not asked, the form shows the mistake on submit instead.
+
+`useAddressCheck` (hook) and `AddressCheckStatus` (the line under the field) are shared with the Hub address field.
