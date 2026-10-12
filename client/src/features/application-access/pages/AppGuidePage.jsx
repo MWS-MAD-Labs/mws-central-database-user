@@ -26,8 +26,8 @@ import {
 
 const GENERIC_KEYS = [
   { key: "HUB_SSO_APP_ID", secret: false },
-  { key: "CENTRAL_DATA_API_BASE_URL", secret: false },
-  { key: "CENTRAL_DATA_API_TOKEN", secret: true },
+  { key: "CENTRAL_API_BASE_URL", secret: false },
+  { key: "CENTRAL_API_TOKEN", secret: true },
   { key: "CENTRAL_ORGANIZATION_ID", secret: false },
 ];
 

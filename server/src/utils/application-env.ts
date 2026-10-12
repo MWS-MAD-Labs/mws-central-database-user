@@ -41,7 +41,6 @@ const HEADINGS = {
   hubOwnCentral: "The Hub's own connection to Central. Changes when the Hub's token is rotated.",
   hubSignIn: "How the Hub checks who may sign in. Changes in the Hub setup wizard.",
   hubMaster: "The Hub's master secret. Never copy it into another application. Changes only when it is rotated here.",
-  daily: "This application's organization in Central. Fixed when it is added.",
 };
 
 // Safe by default: people still get in, and whoever would be turned away is only logged.
@@ -91,8 +90,8 @@ export function hubLinesMissing(facts: Pick<Facts, "isHub" | "hub">): boolean {
   return !facts.isHub && !(facts.hub?.baseUrl && facts.hub?.secret);
 }
 
-// The lines an application needs in its .env. Each application reads its own names, so the Hub gets the
-// ones the Hub reads, and the others get the ones the apps read.
+// The lines an application needs in its .env. Every application gets the same names. The Hub also gets
+// the lines only it reads.
 export function buildEnvItems(facts: Facts): EnvItem[] {
   if (facts.isHub) {
     const settings = facts.hubSettings ?? resolveHubSettings(null);
@@ -106,19 +105,11 @@ export function buildEnvItems(facts: Facts): EnvItem[] {
       ...hubLines(facts.hub ? { baseUrl: null, secret: facts.hub.secret } : undefined, 2, HEADINGS.hubMaster),
     ];
   }
-  // Daily Check-in reads the same names as the Hub for the Central connection, and pins the organization.
-  if (facts.applicationId === "daily-checkin") {
-    return [
-      item("CENTRAL_API_BASE_URL", `${facts.publicUrl}/api/internal`, 0, false, HEADINGS.central),
-      item("CENTRAL_API_TOKEN", facts.token, 0, true),
-      item("CENTRAL_ENTITLEMENT_ORGANIZATION_ID", facts.organizationId, 1, false, HEADINGS.daily),
-      ...hubLines(facts.hub, 2, facts.hubSecretOwn ? HEADINGS.hubSecretOwn : HEADINGS.hubSecret),
-    ];
-  }
+  // Every other application gets the same block, only its id, token and organization differ.
   return [
     item("HUB_SSO_APP_ID", facts.applicationId, 0, false, HEADINGS.application),
-    item("CENTRAL_DATA_API_BASE_URL", facts.publicUrl, 1, false, HEADINGS.central),
-    item("CENTRAL_DATA_API_TOKEN", facts.token, 1, true),
+    item("CENTRAL_API_BASE_URL", `${facts.publicUrl}/api/internal`, 1, false, HEADINGS.central),
+    item("CENTRAL_API_TOKEN", facts.token, 1, true),
     item("CENTRAL_ORGANIZATION_ID", facts.organizationId, 1),
     ...hubLines(facts.hub, 2, facts.hubSecretOwn ? HEADINGS.hubSecretOwn : HEADINGS.hubSecret),
   ];

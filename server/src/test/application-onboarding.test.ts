@@ -135,7 +135,7 @@ describe("application onboarding", () => {
     expect(data.token).toMatch(/^[\w-]+\.[\w-]+$/);
     const env = Object.fromEntries(data.env.map((item: { key: string; value: string }) => [item.key, item.value]));
     expect(env.HUB_SSO_APP_ID).toBe(appId);
-    expect(env.CENTRAL_DATA_API_TOKEN).toBe(data.token);
+    expect(env.CENTRAL_API_TOKEN).toBe(data.token);
     expect(env.CENTRAL_ORGANIZATION_ID).toMatch(/^org_/);
 
     const profile = await prismaClient.applicationIntegrationProfile.findUniqueOrThrow({
@@ -147,7 +147,7 @@ describe("application onboarding", () => {
     );
 
     // Behind a proxy the address is the one the proxy forwarded.
-    expect(env.CENTRAL_DATA_API_BASE_URL).toMatch(/^https?:\/\/[^/]+$/);
+    expect(env.CENTRAL_API_BASE_URL).toMatch(/^https?:\/\/[^/]+\/api\/internal$/);
 
     const again = await TestRequest.post(`${ACCESS}/apps/${appId}/connect`, {}, accessToken);
     expect(again.status).toBe(400);
@@ -247,8 +247,8 @@ describe("application onboarding", () => {
       expect(data.connection.token).toMatch(/^[\w-]+\.[\w-]+$/);
       expect(data.connection.env.map((item: { key: string }) => item.key)).toEqual([
         "HUB_SSO_APP_ID",
-        "CENTRAL_DATA_API_BASE_URL",
-        "CENTRAL_DATA_API_TOKEN",
+        "CENTRAL_API_BASE_URL",
+        "CENTRAL_API_TOKEN",
         "CENTRAL_ORGANIZATION_ID",
       ]);
 
@@ -505,8 +505,8 @@ describe("application onboarding", () => {
       const next = body.token as string;
       // The whole .env comes back with the new token.
       const env = Object.fromEntries(body.env.map((item: { key: string; value: string }) => [item.key, item.value]));
-      expect(env).toMatchObject({ HUB_SSO_APP_ID: appId, CENTRAL_DATA_API_TOKEN: next });
-      expect(env.CENTRAL_DATA_API_BASE_URL).toMatch(/^https?:\/\//);
+      expect(env).toMatchObject({ HUB_SSO_APP_ID: appId, CENTRAL_API_TOKEN: next });
+      expect(env.CENTRAL_API_BASE_URL).toMatch(/\/api\/internal$/);
       expect(env.CENTRAL_ORGANIZATION_ID).toMatch(/^org_/);
       expect(next).not.toBe(data.connection.token);
       // Emergency rotation stops the old token at once.

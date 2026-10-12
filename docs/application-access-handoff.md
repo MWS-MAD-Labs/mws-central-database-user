@@ -183,3 +183,17 @@ In Add and Edit Application the address of the application (host and port, not `
 ## App Display in the Hub
 
 The Hub's admin catalog no longer creates or edits applications. Central owns name, icon, address, category, scope and access. The Hub keeps how a card is shown (status, found in search, keywords) in its own table `application_display` (Hub commit `a0366b5`, migration `20261012090000_add_application_display`), edited at `/admin/display`. A Hub row that still covers the same application wins over it, so a legacy row keeps its own status until it is pruned. Deploy the Hub (with its migration) before anything else; Central has no change for this.
+
+## One set of .env names for every application
+
+Every application except the Hub gets the same block from Central, only its id, token and organization differ:
+
+| Line | Meaning |
+| --- | --- |
+| `HUB_SSO_APP_ID` | the application id |
+| `CENTRAL_API_BASE_URL` | Central's address, already ending in `/api/internal` |
+| `CENTRAL_API_TOKEN` | the token of this application |
+| `CENTRAL_ORGANIZATION_ID` | the Central organization of this application |
+| `HUB_BASE_URL`, `HUB_SSO_JWKS_URL`, `HUB_INTERNAL_SECRET` | the Hub lines |
+
+Before this, Exima read `CENTRAL_DATA_API_BASE_URL` (no `/api/internal`) and `CENTRAL_DATA_API_TOKEN`, and Daily Check-in read `CENTRAL_ENTITLEMENT_ORGANIZATION_ID`. Both still read their old names as a fallback, so deploy the application first, then copy the new block and move the GitHub secrets. A new application only needs the block. The Hub keeps `CENTRAL_API_*` plus its own `HUB_CENTRAL_ACCESS_*` lines.

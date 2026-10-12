@@ -114,18 +114,18 @@ describe("AppSetupPage", () => {
                   line: 'HUB_SSO_APP_ID="demo"',
                 },
                 {
-                  key: "CENTRAL_DATA_API_BASE_URL",
+                  key: "CENTRAL_API_BASE_URL",
                   value: "https://db.example.com",
                   secret: false,
                   group: 0,
-                  line: 'CENTRAL_DATA_API_BASE_URL="https://db.example.com"',
+                  line: 'CENTRAL_API_BASE_URL="https://db.example.com"',
                 },
                 {
-                  key: "CENTRAL_DATA_API_TOKEN",
+                  key: "CENTRAL_API_TOKEN",
                   value: token,
                   secret: true,
                   group: 0,
-                  line: `CENTRAL_DATA_API_TOKEN="${token}"`,
+                  line: `CENTRAL_API_TOKEN="${token}"`,
                 },
                 {
                   key: "CENTRAL_ORGANIZATION_ID",
@@ -145,7 +145,7 @@ describe("AppSetupPage", () => {
     expect(await screen.findByText("Connection Created")).toBeVisible();
     expect(screen.getByText('HUB_SSO_APP_ID="demo"')).toBeVisible();
     expect(
-      screen.getByText(/CENTRAL_DATA_API_TOKEN="mws_47d0b3/),
+      screen.getByText(/CENTRAL_API_TOKEN="mws_47d0b3/),
     ).toBeVisible();
     expect(screen.queryByText(new RegExp(token.slice(-12)))).toBeNull();
   });
@@ -476,18 +476,18 @@ describe("AppSetupPage", () => {
                   line: 'HUB_SSO_APP_ID="demo"',
                 },
                 {
-                  key: "CENTRAL_DATA_API_BASE_URL",
+                  key: "CENTRAL_API_BASE_URL",
                   value: "https://db.example.com",
                   secret: false,
                   group: 0,
-                  line: 'CENTRAL_DATA_API_BASE_URL="https://db.example.com"',
+                  line: 'CENTRAL_API_BASE_URL="https://db.example.com"',
                 },
                 {
-                  key: "CENTRAL_DATA_API_TOKEN",
+                  key: "CENTRAL_API_TOKEN",
                   value: "mws_new.secretsecretsecret",
                   secret: true,
                   group: 0,
-                  line: 'CENTRAL_DATA_API_TOKEN="mws_new.secretsecretsecret"',
+                  line: 'CENTRAL_API_TOKEN="mws_new.secretsecretsecret"',
                 },
                 {
                   key: "CENTRAL_ORGANIZATION_ID",
@@ -516,14 +516,14 @@ describe("AppSetupPage", () => {
       screen.getByText('CENTRAL_ORGANIZATION_ID="org_demo_abc"'),
     ).toBeVisible();
     expect(
-      screen.getByText('CENTRAL_DATA_API_BASE_URL="https://db.example.com"'),
+      screen.getByText('CENTRAL_API_BASE_URL="https://db.example.com"'),
     ).toBeVisible();
     expect(rotations).toEqual([{ immediate: false, grace_hours: 24 }]);
     // What to do next is right there, with the names of this application, and the full steps are one click away.
     expect(screen.getByText("What To Do Now")).toBeVisible();
     expect(
       screen.getByText(
-        "Replace CENTRAL_DATA_API_TOKEN in the .env of the application.",
+        "Replace CENTRAL_API_TOKEN in the .env of the application.",
       ),
     ).toBeVisible();
     expect(

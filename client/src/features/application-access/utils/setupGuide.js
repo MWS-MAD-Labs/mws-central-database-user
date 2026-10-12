@@ -2,8 +2,8 @@ export const STANDARD_ENVIRONMENTS = ['staging', 'production']
 
 // The key that holds the address of Central and the one that holds the token, from the names an application reads.
 export function connectionKeys(keys) {
-  const base = keys.find((item) => item.key.endsWith('_BASE_URL') && item.key.startsWith('CENTRAL'))?.key ?? 'CENTRAL_DATA_API_BASE_URL'
-  const token = keys.find((item) => item.secret && item.key.endsWith('_TOKEN'))?.key ?? 'CENTRAL_DATA_API_TOKEN'
+  const base = keys.find((item) => item.key.endsWith('_BASE_URL') && item.key.startsWith('CENTRAL'))?.key ?? 'CENTRAL_API_BASE_URL'
+  const token = keys.find((item) => item.secret && item.key.endsWith('_TOKEN'))?.key ?? 'CENTRAL_API_TOKEN'
   // An address that already ends in /api/internal takes the short path.
   const short = base === 'CENTRAL_API_BASE_URL'
   return { base, token, short, path: short ? '/application-permissions/me' : '/api/internal/application-permissions/me' }

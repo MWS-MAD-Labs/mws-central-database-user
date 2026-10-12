@@ -10,7 +10,7 @@ import { ownerMessage, prefixedName, workflowJob } from "../../../src/features/a
 const KEYS = [
   { key: "CENTRAL_API_BASE_URL", secret: false },
   { key: "CENTRAL_API_TOKEN", secret: true },
-  { key: "CENTRAL_ENTITLEMENT_ORGANIZATION_ID", secret: false },
+  { key: "CENTRAL_ORGANIZATION_ID", secret: false },
   { key: "HUB_BASE_URL", secret: false },
   { key: "HUB_INTERNAL_SECRET", secret: true },
 ];
@@ -91,7 +91,7 @@ describe("AppGuidePage", () => {
 
   it("walks the local setup with the names this application reads and ends with what to expect", async () => {
     renderGuide("?part=local");
-    expect(await screen.findByText(/CENTRAL_API_BASE_URL, CENTRAL_API_TOKEN, CENTRAL_ENTITLEMENT_ORGANIZATION_ID/)).toBeVisible();
+    expect(await screen.findByText(/CENTRAL_API_BASE_URL, CENTRAL_API_TOKEN, CENTRAL_ORGANIZATION_ID/)).toBeVisible();
     expect(screen.getByText(/curl -i "\$CENTRAL_API_BASE_URL\/application-permissions\/me"/)).toBeVisible();
     expect(screen.getByText(/older variables for the same thing with other names/)).toBeVisible();
     expect(screen.getByText(/You are done when/)).toBeVisible();

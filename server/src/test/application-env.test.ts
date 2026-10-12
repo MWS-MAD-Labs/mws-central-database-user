@@ -56,12 +56,12 @@ describe("application env", () => {
         'HUB_SSO_APP_ID="exima"',
         "",
         "# Connection to Central. Its own token. Changes when this application's token is rotated.",
-        'CENTRAL_DATA_API_BASE_URL="https://db.mws.web.id"',
-        'CENTRAL_DATA_API_TOKEN="mws_abc.def"',
+        'CENTRAL_API_BASE_URL="https://db.mws.web.id/api/internal"',
+        'CENTRAL_API_TOKEN="mws_abc.def"',
         'CENTRAL_ORGANIZATION_ID="org_x_abc"',
       ].join("\n"),
     );
-    expect(items.filter((item) => item.secret).map((item) => item.key)).toEqual(["CENTRAL_DATA_API_TOKEN"]);
+    expect(items.filter((item) => item.secret).map((item) => item.key)).toEqual(["CENTRAL_API_TOKEN"]);
   });
 
   it("gives the Hub the names the Hub reads, with the address ending in /api/internal", () => {
@@ -89,19 +89,11 @@ describe("application env", () => {
     expect(items.find((item) => item.key === "CENTRAL_API_TOKEN")?.secret).toBe(true);
   });
 
-  it("gives Daily Check-in the names it reads, with the organization it pins", () => {
-    const items = buildEnvItems({ ...facts, applicationId: "daily-checkin", isHub: false });
-    expect(envText(items)).toBe(
-      [
-        "# Connection to Central. Its own token. Changes when this application's token is rotated.",
-        'CENTRAL_API_BASE_URL="https://db.mws.web.id/api/internal"',
-        'CENTRAL_API_TOKEN="mws_abc.def"',
-        "",
-        "# This application's organization in Central. Fixed when it is added.",
-        'CENTRAL_ENTITLEMENT_ORGANIZATION_ID="org_x_abc"',
-      ].join("\n"),
-    );
-    expect(items.filter((item) => item.secret).map((item) => item.key)).toEqual(["CENTRAL_API_TOKEN"]);
+  it("gives Daily Check-in the same block as every other application", () => {
+    const text = (applicationId: string) => envText(buildEnvItems({ ...facts, applicationId, isHub: false }));
+    expect(text("daily-checkin")).toBe(text("exima").replace('HUB_SSO_APP_ID="exima"', 'HUB_SSO_APP_ID="daily-checkin"'));
+    expect(text("daily-checkin")).toContain('CENTRAL_ORGANIZATION_ID="org_x_abc"');
+    expect(text("daily-checkin")).not.toContain("CENTRAL_ENTITLEMENT_ORGANIZATION_ID");
   });
 
   it("starts safe: warn, and the admin who sets it up gets in", () => {
