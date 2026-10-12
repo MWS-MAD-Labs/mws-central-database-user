@@ -4,6 +4,8 @@ export type InternalApiEndpointDoc = {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   scope: string;
+  // Scopes the token needs as well, when the endpoint asks for more than one.
+  also_scopes?: string[];
   // Plain-language name and grouping for the admin-facing reference.
   title: string;
   group: "Students" | "Employees" | "Classes and Teachers" | "Application Access";
@@ -72,7 +74,7 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
-    path: "/api/internal/students/{student_id}/support-contacts",
+    path: "/api/internal/students/support-contacts?email=student@millennia21.id",
     scope: API_SCOPES.STUDENTS_SUPPORT_CONTACTS_READ,
     title: "A student's class teachers",
     group: "Students",
@@ -85,6 +87,24 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     title: "Full student roster",
     group: "Students",
     purpose: "Gives one flat list of every student, used by the report card Google Sheet sync.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/persons/lookup?email=person@millennia21.id",
+    scope: API_SCOPES.EMPLOYEES_READ,
+    also_scopes: [API_SCOPES.STUDENTS_READ],
+    title: "Find one person",
+    group: "Employees",
+    purpose: "Finds a person by email whether they are an employee or a student.",
+    note: "The token needs both the employee and the student scope.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/classes",
+    scope: API_SCOPES.CLASSES_READ,
+    title: "List classes",
+    group: "Classes and Teachers",
+    purpose: "Lists every active class, even the ones without a teacher assigned yet.",
   },
   {
     method: "GET",
@@ -109,6 +129,22 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     title: "Applications shown in the Hub",
     group: "Application Access",
     purpose: "Lists the applications published for the Hub, with the name, icon and launch address of each. No people are included.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/application-taxonomy",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Categories and scopes of applications",
+    group: "Application Access",
+    purpose: "Lists the categories and scopes kept in Central's master data, so the Hub can group and filter its cards.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/application-entitlements/applications",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Applications set up in Central",
+    group: "Application Access",
+    purpose: "Lists the ids of the applications set up in Application Access, published or not. No people are included.",
   },
   {
     method: "GET",

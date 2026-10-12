@@ -114,6 +114,29 @@ describe('AppSetupPage', () => {
     expect(screen.queryByText(/Still nothing after 10 minutes/)).toBeNull()
   })
 
+  it('tells how many endpoints the connection can call and opens Data Access', async () => {
+    const { user } = renderPage([
+      setupRoute(makeSetup({ connection: { client_id: 'c1', created: true, last_used_at: null } })),
+      {
+        path: '/api/admin/api-clients/internal-endpoints',
+        response: () =>
+          jsonResponse({
+            data: [
+              { method: 'GET', path: '/api/internal/application-taxonomy', scope: 'application_entitlements:read', title: 'Categories and scopes' },
+              { method: 'PUT', path: '/api/internal/application-permissions/{application_id}', scope: 'application_permissions:write', title: 'Publish permissions' },
+              { method: 'GET', path: '/api/internal/employees', scope: 'employees:read', title: 'List employees' },
+            ],
+          }),
+      },
+      {
+        path: '/api/admin/application-integration-profiles/scopes',
+        response: () => jsonResponse({ data: [] }),
+      },
+    ])
+    await user.click(await screen.findByRole('button', { name: 'Data Access, 2 endpoints' }))
+    expect(await screen.findByRole('dialog', { name: 'Data Access' })).toBeVisible()
+  })
+
   it('names the .env keys of the application in the setup guide', async () => {
     const keys = [
       { key: 'CENTRAL_API_BASE_URL', secret: false },

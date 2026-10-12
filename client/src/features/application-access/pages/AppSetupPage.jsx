@@ -23,6 +23,7 @@ import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
 import { RemovalGuideDialog } from "../components/RemovalGuideDialog.jsx";
 import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
 import { SetupGuideDialog } from "../components/SetupGuideDialog.jsx";
+import { useInternalEndpoints } from "../hooks/useInternalEndpoints.js";
 import { buildSteps, stepsDone } from "../utils/setupSteps.js";
 
 const BACK = "/application-access";
@@ -50,6 +51,7 @@ export function AppSetupPage() {
   const [removalGuide, setRemovalGuide] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [dataAccess, setDataAccess] = useState(false);
+  const { countFor, loaded: endpointsLoaded } = useInternalEndpoints();
   // Ticks so the ten minute note can appear without a reload.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -145,6 +147,7 @@ export function AppSetupPage() {
 
   const setup = setupQuery.data;
   const steps = buildSteps(setup);
+  const endpointCount = countFor(setup.data_access.scope_names);
   const finished = stepsDone(steps);
   const base = `/application-access/apps/${applicationId}`;
   const publishing = isPendingFor(publishMutation, () => true);
@@ -179,9 +182,16 @@ export function AppSetupPage() {
         );
       case "connect":
         return setup.connection.created ? (
-          <TextAction icon={RotateCw} onClick={() => setRotating(true)}>
-            Rotate Token
-          </TextAction>
+          <>
+            {endpointsLoaded && setup.data_access.editable ? (
+              <TextAction icon={ShieldCheck} onClick={() => setDataAccess(true)}>
+                {`Data Access, ${endpointCount} endpoint${endpointCount === 1 ? "" : "s"}`}
+              </TextAction>
+            ) : null}
+            <TextAction icon={RotateCw} onClick={() => setRotating(true)}>
+              Rotate Token
+            </TextAction>
+          </>
         ) : (
           <Button type="button" loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
             Create Connection

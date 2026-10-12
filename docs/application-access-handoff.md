@@ -99,3 +99,7 @@ Two lists live in Central under Master Data > Scopes & Categories. A **category*
 The Hub does not keep these lists. It reads them from Central (`GET /api/internal/application-taxonomy`, same token and cache as the published applications) and falls back to the original five categories if Central cannot be reached. The Hub shows a second row of scope filters once at least one application has a scope.
 
 Deploy order: the Central migration first (it creates the two tables and fills them), then Central, then the Hub.
+
+## Seeing which endpoints a connection can call
+
+Under each scope in Data Access, "N endpoints" lists the endpoints that scope opens, and the setup page shows how many endpoints the connection can call as a whole. The same list is the API Reference page. It is written in `server/src/constants/internal-api-endpoints.ts`, and a test compares it with the real internal routes, so a new endpoint cannot be left out.

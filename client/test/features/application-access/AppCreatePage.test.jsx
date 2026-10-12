@@ -291,6 +291,33 @@ describe('AppCreatePage', () => {
     }
   })
 
+  it('shows which endpoints each data access scope opens', async () => {
+    globalThis.fetch = createFetchRouter([
+      SCOPES,
+      NO_HUB,
+      TAXONOMY,
+      {
+        path: '/api/admin/api-clients/internal-endpoints',
+        response: () =>
+          jsonResponse({
+            data: [
+              { method: 'GET', path: '/api/internal/employees', scope: 'employees:read', title: 'List employees' },
+              { method: 'GET', path: '/api/internal/employees/lookup?email=e@x.id', scope: 'employees:read', title: 'Find one employee' },
+              { method: 'GET', path: '/api/internal/persons/lookup?email=p@x.id', scope: 'employees:read', also_scopes: ['students:read'], title: 'Find one person' },
+            ],
+          }),
+      },
+    ])
+    const { user } = renderPage()
+    expect(await screen.findByRole('button', { name: '3 endpoints' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '1 endpoint' })).toBeVisible()
+    expect(screen.getAllByRole('button', { name: 'No endpoint uses this scope yet' }).length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: '3 endpoints' }))
+    expect(screen.getByText('GET /api/internal/employees')).toBeVisible()
+    expect(screen.getByText('GET /api/internal/persons/lookup')).toBeVisible()
+    expect(screen.queryByText(/email=/)).toBeNull()
+  })
+
   it('hides the Hub choice once a Hub exists', async () => {
     globalThis.fetch = createFetchRouter([
       SCOPES,
