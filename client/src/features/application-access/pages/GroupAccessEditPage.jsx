@@ -152,7 +152,7 @@ function GroupAccessForm({ rule }) {
                   Every role is already used by a broader or narrower group for this scope.
                 </p>
               ) : null}
-              {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} /> : null}
+              {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} applicationId={selectedRole.application_id} /> : null}
               <label className="flex items-center gap-3 text-sm text-(--mws-charcoal)">
                 <input
                   type="checkbox"

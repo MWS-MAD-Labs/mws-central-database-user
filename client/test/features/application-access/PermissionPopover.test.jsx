@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { fireEvent, screen, within } from '@testing-library/react'
 import { PermissionPopover } from '../../../src/features/application-access/components/PermissionPopover.jsx'
 import { renderWithProviders } from '../../helpers/render.jsx'
+import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 
 describe('PermissionPopover', () => {
   it('lists permissions grouped by area and closes on Escape', async () => {
@@ -12,8 +13,8 @@ describe('PermissionPopover', () => {
     const dialog = screen.getByRole('dialog', { name: 'Permissions' })
     expect(within(dialog).getByText('users.manage')).toHaveClass('text-(--mws-burgundy)')
     expect(within(dialog).getByText('users.manage')).not.toHaveClass('bg-(--mws-soft)')
-    expect(within(dialog).getByText('users')).toBeVisible()
-    expect(within(dialog).getByText('checkin')).toBeVisible()
+    expect(within(dialog).getByText('Users')).toBeVisible()
+    expect(within(dialog).getByText('Checkin')).toBeVisible()
     expect(within(dialog).getByText('users.manage')).toBeVisible()
 
     await user.keyboard('{Escape}')
@@ -51,5 +52,27 @@ describe('PermissionPopover', () => {
     renderWithProviders(<PermissionPopover permissions={[]} />)
     expect(screen.getByText('0 permissions')).toBeVisible()
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+  it('writes what a permission lets a person do under it, when the application said so', async () => {
+    globalThis.fetch = createFetchRouter([
+      {
+        path: '/api/admin/application-permissions?application_id=exima',
+        response: () =>
+          jsonResponse({
+            data: {
+              permissions: [
+                { key: 'pos.checkout', description: 'Run the cashier checkout and manage reservations', deprecated: false },
+                { key: 'pos.sales.void', description: null, deprecated: false },
+              ],
+            },
+          }),
+      },
+    ])
+    const { user } = renderWithProviders(<PermissionPopover permissions={['pos.checkout', 'pos.sales.void']} applicationId="exima" />)
+    await user.click(screen.getByRole('button', { name: '2 permissions' }))
+    const dialog = screen.getByRole('dialog', { name: 'Permissions' })
+    expect(await within(dialog).findByText('Run the cashier checkout and manage reservations')).toBeVisible()
+    expect(within(dialog).getByText('pos.sales.void')).toBeVisible()
+    expect(within(dialog).getByText('Pos')).toBeVisible()
   })
 })

@@ -97,14 +97,16 @@ export function ListPopover({
                     </p>
                   ) : null}
                   <ul className="space-y-1.5">
-                    {group.items.map((item) => (
-                      <li
-                        key={item}
-                        className={`break-words text-xs font-semibold text-(--mws-burgundy) ${mono ? "font-mono" : ""}`}
-                      >
-                        {item}
-                      </li>
-                    ))}
+                    {group.items.map((item) => {
+                      // An item is a word, or a word with a line of explanation under it.
+                      const { label, hint } = typeof item === "string" ? { label: item, hint: null } : item;
+                      return (
+                        <li key={label} className="break-words">
+                          <span className={`text-xs font-semibold text-(--mws-burgundy) ${mono ? "font-mono" : ""}`}>{label}</span>
+                          {hint ? <span className="block text-[11px] leading-4 text-(--mws-muted)">{hint}</span> : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ))}

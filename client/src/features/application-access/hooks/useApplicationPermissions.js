@@ -6,5 +6,6 @@ export function useApplicationPermissions(applicationId) {
   return useQuery({
     queryKey: ["application-access", "permissions", applicationId],
     queryFn: () => applicationAccessApi.listPermissions(applicationId),
+    enabled: Boolean(applicationId),
   });
 }

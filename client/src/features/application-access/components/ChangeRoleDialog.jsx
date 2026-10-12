@@ -58,7 +58,7 @@ export function ChangeRoleDialog({ applicationId, exception, roles, onClose, onD
           placeholder="Select a role"
           searchPlaceholder="Search role"
         />
-        {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} /> : null}
+        {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} applicationId={applicationId} /> : null}
       </Field>
     </CrudDialog>
   );

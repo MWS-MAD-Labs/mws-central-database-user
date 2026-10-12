@@ -39,12 +39,12 @@ export function ScopeGrid({ group, label = "Who this group covers" }) {
 }
 
 // The role a group hands out, with its permissions one click away.
-export function RolePill({ roleKey, permissions }) {
+export function RolePill({ roleKey, permissions, applicationId }) {
   return (
     <div className="flex flex-col items-start gap-0.5">
       <span className={labelClass}>Role</span>
       <RoleName className="text-sm">{roleKey}</RoleName>
-      <PermissionPopover permissions={permissions} />
+      <PermissionPopover permissions={permissions} applicationId={applicationId} />
     </div>
   );
 }
@@ -157,7 +157,7 @@ export function RemainingScope({ group, narrower }) {
                   <span className="text-xs text-(--mws-muted)">
                     {countOf(child.covered_count ?? 0, child.audience)}
                     <span aria-hidden="true"> · </span>
-                    <PermissionPopover permissions={child.permissions ?? []} />
+                    <PermissionPopover permissions={child.permissions ?? []} applicationId={child.application_id ?? group.application_id} />
                   </span>
                 </div>
                 <dl
@@ -198,6 +198,7 @@ export function GroupSummary({ group, hasNarrower = false }) {
           <RolePill
             roleKey={group.default_role_key}
             permissions={group.permissions}
+            applicationId={group.application_id}
           />
         </div>
       </div>

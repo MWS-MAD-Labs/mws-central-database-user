@@ -178,7 +178,7 @@ export function AppRolesTab({ applicationId, roles }) {
                     .join(" and ")}
                 </td>
                 <td className={`${denseCellClass} text-center`}>
-                  <PermissionPopover permissions={role.permissions} compact />
+                  <PermissionPopover permissions={role.permissions} applicationId={applicationId} compact />
                   {role.missing_permissions?.length > 0 ? (
                     <span className="mt-1 flex items-center justify-center gap-1 text-xs font-semibold text-[#a43c41]">
                       Missing

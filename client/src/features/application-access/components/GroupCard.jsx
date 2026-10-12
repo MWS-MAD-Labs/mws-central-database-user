@@ -114,7 +114,7 @@ export function GroupCard({
         <div className="space-y-4 border-t border-(--mws-line) px-5 py-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <ScopeGrid group={group} />
-            <RolePill roleKey={group.default_role_key} permissions={group.permissions} />
+            <RolePill roleKey={group.default_role_key} permissions={group.permissions} applicationId={group.application_id ?? applicationId} />
           </div>
           {group.audience === "EMPLOYEES_AND_STUDENTS" ? (
             <p className="rounded-xl bg-[#fff8e8] px-3 py-2 text-xs text-[#805b18]">

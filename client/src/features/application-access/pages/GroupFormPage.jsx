@@ -163,7 +163,7 @@ export function GroupFormPage() {
                   People who also match a narrower group get that group's role instead of this one, not both.
                 </p>
               ) : null}
-              {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} /> : null}
+              {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} applicationId={selectedRole.application_id} /> : null}
               {audience === "STUDENTS" ? (
                 <AllowExceptionsField checked={allowsExceptions} onChange={setAllowsExceptions} />
               ) : null}
