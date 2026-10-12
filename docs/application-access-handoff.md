@@ -133,3 +133,7 @@ The Hub secret is a master that only the Hub and Central hold. Each application 
 New applications get their own secret. Older ones keep using the master until you open their setup page and choose "Give Its Own Hub Secret", put the new value in their `.env` and deploy. "Rotate Hub Secret" on the same page replaces it, and the old one stops working after the Hub refreshes its catalog (about a minute). Rotating the master in the Hub setup changes every secret.
 
 Deploy the Hub first (it accepts both kinds), then Central. When every application has its own secret, set `HUB_ALLOW_SHARED_SECRET=false` in the Hub's `.env` so the master is no longer accepted from applications.
+
+## Staging and production
+
+Staging and production each run their own Central (`DEPLOYMENT_ENVIRONMENT` tells it which), and a connection belongs to the Central that made it. So an application needs a connection in each: a different token, a different Organization ID and a different Hub secret. In GitHub, make two Environments, `staging` and `production`, and add the same names in each with the values of that Central. The deploy workflow picks the environment from the branch (`staging` or `main`), and the Setup Guide has the job to copy. The same values also go into the environment the application runs in on the server.
