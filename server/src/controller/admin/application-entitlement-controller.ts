@@ -268,7 +268,7 @@ export class ApplicationAccessController {
   }
 
   static async setup(c: Context<{ Variables: AdminVariables }>) {
-    return c.json({ data: await ApplicationOnboardingService.setup(c.var.admin, requireApplicationId(c)) });
+    return c.json({ data: await ApplicationOnboardingService.setup(c.var.admin, requireApplicationId(c), publicBaseUrl(c)) });
   }
 
   static async connect(c: Context<{ Variables: AdminVariables }>) {

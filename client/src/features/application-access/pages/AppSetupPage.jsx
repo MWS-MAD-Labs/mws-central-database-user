@@ -498,7 +498,16 @@ export function AppSetupPage() {
         />
       ) : null}
       {removalGuide ? <RemovalGuideDialog onClose={() => setRemovalGuide(false)} /> : null}
-      {guide ? <SetupGuideDialog applicationId={applicationId} isHub={setup.is_hub} envKeys={setup.env_keys} onClose={() => setGuide(false)} /> : null}
+      {guide ? <SetupGuideDialog
+          applicationId={applicationId}
+          isHub={setup.is_hub}
+          envKeys={setup.env_keys}
+          environment={setup.environment}
+          centralUrl={setup.central_url}
+          hubAddress={setup.hub_address}
+          organizationId={setup.organization_id}
+          onClose={() => setGuide(false)}
+        /> : null}
       {removing ? (
         <RemoveApplicationDialog
           applicationId={applicationId}

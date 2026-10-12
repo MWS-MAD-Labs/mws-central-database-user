@@ -66,6 +66,11 @@ export type SetupStatus = {
   env_settings: HubEnvSettings | null;
   // The Hub's address and whether it has a secret. The secret itself is never in the setup.
   hub: { base_url: string | null; secret_set: boolean; key_ready: boolean } | null;
+  // Which Central this is (development, staging or production), its public address, and where the Hub is. The guide
+  // for the pipeline shows these as the values of the environment this Central belongs to.
+  environment: "development" | "test" | "staging" | "production";
+  central_url: string;
+  hub_address: string | null;
   // How an application gets the Hub secret. Null for the Hub, which holds the master.
   hub_secret: { mode: "shared" | "own"; version: number; applies: boolean } | null;
   // The names this application reads in its .env, so the guides can name them.
@@ -240,7 +245,7 @@ export class ApplicationOnboardingService {
   }
 
   // Progress is read from the data, so nothing is stored about which step a person is on.
-  static async setup(admin: AdminUser, applicationId: string): Promise<SetupStatus> {
+  static async setup(admin: AdminUser, applicationId: string, publicUrl = ""): Promise<SetupStatus> {
     assertSuperAdmin(admin);
     const app = await findApplication(applicationId);
     const organizationId = await resolveOrganizationId(applicationId);
@@ -286,6 +291,9 @@ export class ApplicationOnboardingService {
         applicationId === hubApplicationId()
           ? { base_url: app.hub_base_url, secret_set: Boolean(app.hub_internal_secret), key_ready: keyReady() }
           : null,
+      environment: getIntegrationEnvironment().toLowerCase() as SetupStatus["environment"],
+      central_url: publicUrl,
+      hub_address: applicationId === hubApplicationId() ? null : (await loadHubFacts(false)).baseUrl,
       hub_secret:
         applicationId === hubApplicationId()
           ? null

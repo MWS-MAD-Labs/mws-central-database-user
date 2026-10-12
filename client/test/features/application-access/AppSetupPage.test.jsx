@@ -220,35 +220,99 @@ describe("AppSetupPage", () => {
     ).toBeVisible();
   });
 
-  it("names the .env keys of the application in the setup guide", async () => {
-    const keys = [
+  describe("the setup guide", () => {
+    const KEYS = [
       { key: "CENTRAL_API_BASE_URL", secret: false },
       { key: "CENTRAL_API_TOKEN", secret: true },
       { key: "CENTRAL_ENTITLEMENT_ORGANIZATION_ID", secret: false },
+      { key: "HUB_BASE_URL", secret: false },
+      { key: "HUB_INTERNAL_SECRET", secret: true },
     ];
-    const { user } = renderPage([
-      setupRoute(
-        makeSetup({
-          env_keys: keys,
-          connection: { client_id: "c1", created: true, last_used_at: null },
-        }),
-      ),
-    ]);
-    await user.click(
-      await screen.findByRole("button", { name: "Show Setup Guide" }),
-    );
-    expect(
-      screen.getByText(
-        /CENTRAL_API_BASE_URL, CENTRAL_API_TOKEN, CENTRAL_ENTITLEMENT_ORGANIZATION_ID/,
-      ),
-    ).toBeVisible();
-    expect(
-      screen.getByText(
-        /PUT \{CENTRAL_API_BASE_URL\}\/application-permissions\/me/,
-      ),
-    ).toBeVisible();
-    expect(screen.getByText("3. Run it on your machine")).toBeVisible();
-    expect(screen.getByText("4. Staging and production, with GitHub Actions")).toBeVisible();
+    const open = async (overrides = {}) => {
+      const view = renderPage([
+        setupRoute(
+          makeSetup({
+            env_keys: KEYS,
+            environment: "staging",
+            central_url: "https://staging-db.example.com",
+            hub_address: "https://staging-hub.example.com",
+            connection: { client_id: "c1", created: true, last_used_at: null },
+            ...overrides,
+          }),
+        ),
+      ]);
+      // Always within reach on the Connect step, not only while waiting.
+      await view.user.click(await screen.findByRole("button", { name: "Setup Guide" }));
+      return { ...view, guide: await screen.findByRole("dialog", { name: "Setup Guide" }) };
+    };
+
+    it("goes in the order things are done and names the keys the application reads", async () => {
+      const { guide } = await open();
+      const titles = within(guide)
+        .getAllByRole("heading", { level: 3 })
+        .map((heading) => heading.textContent);
+      expect(titles).toEqual([
+        "1. Put the lines in the .env",
+        "2. Check the connection",
+        "3. Send its permissions",
+        "4. Staging and production, with GitHub Actions",
+      ]);
+      expect(within(guide).getByText(/CENTRAL_API_BASE_URL, CENTRAL_API_TOKEN, CENTRAL_ENTITLEMENT_ORGANIZATION_ID/)).toBeVisible();
+      // The check is one call with the names of this application, and says what to look for.
+      expect(within(guide).getByText(/curl -i "\$CENTRAL_API_BASE_URL\/application-permissions\/me"/)).toBeVisible();
+      expect(within(guide).getByText(/A 200 means Central knows the token/)).toBeVisible();
+    });
+
+    it("tells what to do to send the permissions, with a script that uses the names of this application", async () => {
+      const { guide } = await open();
+      expect(within(guide).getByText(/List the permissions of your code in a/)).toBeVisible();
+      const script = within(guide).getByText(/process.env.CENTRAL_API_BASE_URL/, { selector: "pre" });
+      expect(script.textContent).toContain("process.env.CENTRAL_API_TOKEN");
+      expect(script.textContent).toContain("/application-permissions/me");
+      expect(script.textContent).toContain("attempts");
+      expect(within(guide).getByText(/predev/, { selector: "span" })).toBeVisible();
+    });
+
+    it("shows the values of this Central for its environment, and says where to get the other one", async () => {
+      const { guide, user } = await open();
+      // Opens on the environment of the Central being looked at.
+      expect(within(guide).getByRole("radio", { name: "staging" })).toHaveAttribute("aria-checked", "true");
+      const address = within(guide).getByRole("cell", { name: "CENTRAL_API_BASE_URL" }).closest("tr");
+      expect(within(address).getByText("https://staging-db.example.com/api/internal")).toBeVisible();
+      expect(within(address).getByText("Variable")).toBeVisible();
+      expect(within(address).getByText("Sync job and app")).toBeVisible();
+      const hub = within(guide).getByRole("cell", { name: "HUB_BASE_URL" }).closest("tr");
+      expect(within(hub).getByText("https://staging-hub.example.com")).toBeVisible();
+      expect(within(hub).getByText("App")).toBeVisible();
+      // A token is never filled in.
+      const token = within(guide).getByRole("cell", { name: "CENTRAL_API_TOKEN" }).closest("tr");
+      expect(within(token).getByText("Secret")).toBeVisible();
+      expect(within(token).getByText(/Shown once/)).toBeVisible();
+
+      await user.click(within(guide).getByRole("radio", { name: "production" }));
+      expect(within(guide).getByText(/Open this application in the production Central/)).toBeVisible();
+      expect(within(guide).queryByText("https://staging-db.example.com/api/internal")).toBeNull();
+      expect(within(guide).getByText("Value for production")).toBeVisible();
+      const prodAddress = within(guide).getByRole("cell", { name: "CENTRAL_API_BASE_URL" }).closest("tr");
+      expect(within(prodAddress).getByText(/The address of the production Central/)).toBeVisible();
+    });
+
+    it("opens on staging when the Central is a development one, and has the job for the pipeline", async () => {
+      const { guide } = await open({ environment: "development" });
+      expect(within(guide).getByRole("radio", { name: "staging" })).toHaveAttribute("aria-checked", "true");
+      expect(within(guide).getByText(/Send the permissions on every deploy/)).toBeVisible();
+      const job = within(guide).getByText(/environment: \$\{\{ github.ref_name == 'main'/, { selector: "pre" });
+      expect(job.textContent).toContain("secrets.CENTRAL_API_TOKEN");
+      expect(job.textContent).toContain("node scripts/sync-permissions.mjs");
+    });
+
+    it("uses the sync command of the Hub for the Hub", async () => {
+      const { guide } = await open({ is_hub: true, env_settings: { hub_access_mode: "warn", hub_bypass_emails: [] }, hub: { base_url: null, secret_set: true, key_ready: true } });
+      expect(within(guide).getByText("bun run permissions:sync")).toBeVisible();
+      expect(within(guide).queryByText(/Copy Script/)).toBeNull();
+      const job = within(guide).getByText(/environment: \$\{\{ github.ref_name == 'main'/, { selector: "pre" });
+      expect(job.textContent).toContain("bun run permissions:sync --retries 5 --wait 20");
+    });
   });
 
   it("adds a troubleshooting note when nothing called Central for ten minutes", async () => {

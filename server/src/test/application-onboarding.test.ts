@@ -980,6 +980,35 @@ describe("application onboarding", () => {
       }
     });
 
+    it("tells the setup which Central this is, its address and where the Hub is, for the guide", async () => {
+      const original = process.env.DEPLOYMENT_ENVIRONMENT;
+      process.env.DEPLOYMENT_ENVIRONMENT = "staging";
+      process.env.HUB_APPLICATION_ID = "test-hub-for-guide";
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        await create(accessToken);
+        const before = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+        expect(before.environment).toBe("staging");
+        expect(before.central_url).toMatch(/^https?:\/\/[^/]+$/);
+        expect(before.hub_address).toBeNull();
+
+        await prismaClient.application.create({
+          data: { application_id: "test-hub-for-guide", name: "HUB", hub_base_url: "https://hub.example.com" },
+        });
+        const after = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+        expect(after.hub_address).toBe("https://hub.example.com");
+        // The Hub has no Hub address to point at.
+        const hub = (await (await TestRequest.get(`${ACCESS}/apps/test-hub-for-guide/setup`, accessToken)).json()).data;
+        expect(hub.hub_address).toBeNull();
+      } finally {
+        delete process.env.HUB_APPLICATION_ID;
+        if (original === undefined) delete process.env.DEPLOYMENT_ENVIRONMENT;
+        else process.env.DEPLOYMENT_ENVIRONMENT = original;
+        await prismaClient.applicationOrganization.deleteMany({ where: { application_id: "test-hub-for-guide" } });
+        await prismaClient.application.deleteMany({ where: { application_id: "test-hub-for-guide" } });
+      }
+    });
+
     it("leaves the Hub lines out of an application that does not sign in through the Hub", async () => {
       const other = `test-nohub-${randomBytes(3).toString("hex")}`;
       process.env.HUB_APPLICATION_ID = appId;

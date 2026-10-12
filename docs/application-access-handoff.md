@@ -137,3 +137,11 @@ Deploy the Hub first (it accepts both kinds), then Central. When every applicati
 ## Staging and production
 
 Staging and production each run their own Central (`DEPLOYMENT_ENVIRONMENT` tells it which), and a connection belongs to the Central that made it. So an application needs a connection in each: a different token, a different Organization ID and a different Hub secret. In GitHub, make two Environments, `staging` and `production`, and add the same names in each with the values of that Central. The deploy workflow picks the environment from the branch (`staging` or `main`), and the Setup Guide has the job to copy. The same values also go into the environment the application runs in on the server.
+
+## The Setup Guide, in order
+
+The guide on an application's setup page now goes in the order things are done: put the lines in the `.env`, check the connection with one call, send the permissions, then staging and production.
+
+For the permissions, the permanent way is a script kept in the application's repository (`scripts/sync-permissions.mjs`, copied from the guide) that sends `permissions.json` and tries again while Central starts. The same command runs on a machine, from `predev`, and in the deploy workflow, so local runs behave like a deploy. curl is only for the one-off check in step 2. The Hub uses its own `bun run permissions:sync`.
+
+Step 4 has a Staging | Production switch. It opens on the environment of the Central you are looking at and fills in what is known there (the application ID, that Central's address, its Organization ID, the Hub address). For the other environment it says where to get the values instead of guessing. Tokens and secrets are never filled in.
