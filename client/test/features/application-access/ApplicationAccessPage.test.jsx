@@ -15,6 +15,10 @@ const applications = [
     retire_available: true,
     retired: false,
     organization_id: 'org_exima_a1b2c3',
+    launch_mode: 'sso',
+    connection_created: true,
+    connection_last_used_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+    permission_count: 7,
     role_count: 3,
     active_group_count: 2,
     exception_count: 4,
@@ -29,6 +33,10 @@ const applications = [
     retire_available: false,
     retired: false,
     organization_id: null,
+    launch_mode: 'sso',
+    connection_created: false,
+    connection_last_used_at: null,
+    permission_count: 0,
     role_count: 0,
     active_group_count: 0,
     exception_count: 0,
@@ -72,27 +80,33 @@ describe('ApplicationAccessPage', () => {
     expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
   })
 
-  it('lists applications with roles, groups, exceptions and blocked counts', async () => {
+  it('lists applications with connection, permissions, roles, groups, exceptions and blocked counts', async () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage()
     const exima = (await screen.findByText('exima')).closest('tr')
-    expect(within(exima).getByText('org_exima_a1b2c3')).toBeVisible()
+    expect(within(exima).getByText('Exima')).toBeVisible()
+    expect(within(exima).getByText(/2 hours ago/)).toBeVisible()
+    expect(within(exima).getByText('7')).toBeVisible()
     expect(within(exima).getByText('3')).toBeVisible()
     expect(within(exima).getByText('2')).toBeVisible()
     expect(within(exima).getByText('4')).toBeVisible()
     expect(within(exima).getByText('1 Blocked')).toBeVisible()
     const hub = screen.getByText('hub').closest('tr')
-    expect(within(hub).getAllByText('None')).toHaveLength(2)
+    expect(within(hub).getByText('HUB')).toBeVisible()
+    expect(within(hub).getByText('Not Connected')).toBeVisible()
+    expect(within(hub).getAllByText('None')).toHaveLength(3)
   })
 
-  it('copies the organization id when it is clicked and has no Copy button', async () => {
+  it('has no Organization ID column and copies it from the menu', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
-    await user.click(await screen.findByRole('button', { name: 'Copy org_exima_a1b2c3' }))
+    await screen.findByText('exima')
+    expect(screen.queryByText('org_exima_a1b2c3')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Actions for exima' }))
+    await user.click(screen.getByRole('button', { name: 'Copy Organization ID' }))
     await waitFor(async () => {
       expect(await navigator.clipboard.readText()).toBe('org_exima_a1b2c3')
     })
-    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument()
   })
 
   it('pages and searches on the server', async () => {
@@ -163,11 +177,13 @@ describe('ApplicationAccessPage', () => {
     })
   })
 
-  it('opens the page of an application from Manage', async () => {
+  it('opens the page of an application from the menu', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
     await screen.findByText('exima')
-    await user.click(screen.getByRole('button', { name: 'Manage exima' }))
+    expect(screen.queryByRole('button', { name: 'Manage exima' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Actions for exima' }))
+    await user.click(screen.getByRole('button', { name: 'Manage Access' }))
     expect(await screen.findByText('App page')).toBeVisible()
   })
 

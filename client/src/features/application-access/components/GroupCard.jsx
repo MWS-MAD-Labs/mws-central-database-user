@@ -19,12 +19,15 @@ export function GroupCard({
   onDelete,
   onAddException,
 }) {
+  const exceptions = group.exception_count + group.blocked_count;
   const blockedBy =
-    group.exception_count + group.blocked_count > 0
-      ? `Remove its ${group.exception_count + group.blocked_count} exception(s) first`
+    exceptions > 0
+      ? `Remove its ${exceptions} exception(s) first`
       : narrower.length > 0
         ? "Remove the groups inside it first"
         : null;
+  // Turning a group off takes the access of what sits inside it, so it waits for them like Delete does.
+  const cannotTurnOff = group.is_active && blockedBy;
 
   return (
     <div className="min-w-0 space-y-2">
@@ -82,6 +85,8 @@ export function GroupCard({
                 Edit
               </ActionsMenuItem>
               <ActionsMenuItem
+                disabled={Boolean(cannotTurnOff)}
+                title={cannotTurnOff || undefined}
                 onClick={() => {
                   closeMenu();
                   onSwitch();

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Lock, Plus } from "lucide-react";
+import { Lock, Plus } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -16,7 +16,8 @@ import { formatDateTime } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { CopyableId } from "../components/CopyableId.jsx";
+import { copyText } from "../utils/copyText.js";
+import { timeAgo } from "../utils/setupSteps.js";
 import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
 
 // Every application with how much access it has. Roles and groups are managed inside each one.
@@ -105,11 +106,12 @@ export function ApplicationAccessPage() {
       ) : (
         <DenseTable
           dimmed={query.isPlaceholderData}
-          minWidth={900}
+          minWidth={1000}
           head={
             <>
               <th className="px-4 py-2.5">Application</th>
-              <th className="px-4 py-2.5">Organization ID</th>
+              <th className="px-4 py-2.5">Connection</th>
+              <th className="px-4 py-2.5 text-center">Permissions</th>
               <th className="px-4 py-2.5 text-center">Roles</th>
               <th className="px-4 py-2.5 text-center">Groups</th>
               <th className="px-4 py-2.5 text-center">Exceptions</th>
@@ -142,30 +144,48 @@ export function ApplicationAccessPage() {
                   : denseRowClass
               }
             >
-              <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>
-                {row.application_id}
-                {row.is_hub ? (
-                  <span
-                    title="The Hub itself. It cannot be retired or deleted."
-                    className="ml-2 inline-flex items-center gap-1 rounded-full bg-(--mws-burgundy) px-2 py-0.5 align-middle text-[11px] font-bold text-white"
+              <td className={`${denseCellClass} min-w-56`}>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <Link
+                    to={`/application-access/apps/${row.application_id}`}
+                    className="font-semibold text-(--mws-charcoal) hover:text-(--mws-burgundy) hover:underline"
                   >
-                    <Lock size={11} aria-hidden="true" />
-                    Core
-                  </span>
-                ) : null}
-                {row.retired ? (
-                  <StatusBadge tone="red" className="ml-2">
-                    Retired
-                  </StatusBadge>
-                ) : null}
-                {row.published ? (
-                  <StatusBadge tone="green" className="ml-2">
-                    In Hub
-                  </StatusBadge>
-                ) : null}
+                    {row.name}
+                  </Link>
+                  {row.is_hub ? (
+                    <span
+                      title="The Hub itself. It cannot be retired or deleted."
+                      className="inline-flex items-center gap-1 rounded-full bg-(--mws-burgundy) px-2 py-0.5 text-[11px] font-bold text-white"
+                    >
+                      <Lock size={11} aria-hidden="true" />
+                      Core
+                    </span>
+                  ) : null}
+                  {row.retired ? <StatusBadge tone="red">Retired</StatusBadge> : null}
+                  {row.published ? <StatusBadge tone="green">In Hub</StatusBadge> : null}
+                  {row.launch_mode === "link" ? <StatusBadge tone="neutral">Link</StatusBadge> : null}
+                </div>
+                <p className="mt-0.5 font-mono text-[11px] text-(--mws-muted)">{row.application_id}</p>
               </td>
-              <td className={`${denseCellClass} max-w-64`}>
-                {row.organization_id ? <CopyableId value={row.organization_id} /> : "-"}
+              <td className={`${denseCellClass} text-xs`}>
+                {row.launch_mode === "link" ? (
+                  <span className="text-(--mws-muted)">Not needed</span>
+                ) : !row.connection_created ? (
+                  <StatusBadge tone="amber">Not Connected</StatusBadge>
+                ) : row.connection_last_used_at ? (
+                  <span className="text-(--mws-charcoal)">
+                    <span className="mr-1.5 inline-block size-2 rounded-full bg-[#476b43]" aria-hidden="true" />
+                    {timeAgo(row.connection_last_used_at)}
+                  </span>
+                ) : (
+                  <span className="text-(--mws-muted)">
+                    <span className="mr-1.5 inline-block size-2 rounded-full bg-[#c59b3b]" aria-hidden="true" />
+                    Waiting for the first call
+                  </span>
+                )}
+              </td>
+              <td className={`${denseCellClass} text-center`}>
+                {row.launch_mode === "link" ? "-" : row.permission_count === 0 ? <StatusBadge tone="amber">None</StatusBadge> : row.permission_count}
               </td>
               <td className={`${denseCellClass} text-center`}>
                 {row.role_count === 0 ? <StatusBadge tone="amber">None</StatusBadge> : row.role_count}
@@ -185,10 +205,17 @@ export function ApplicationAccessPage() {
                 {row.updated_at ? formatDateTime(row.updated_at) : "-"}
               </td>
               <td className={`${denseCellClass} text-right`}>
-                <div className="inline-flex items-center gap-1">
                 <ActionsMenu label={`Actions for ${row.application_id}`}>
                   {(closeMenu) => (
                     <>
+                      <ActionsMenuItem
+                        onClick={() => {
+                          closeMenu();
+                          navigate(`/application-access/apps/${row.application_id}`);
+                        }}
+                      >
+                        Manage Access
+                      </ActionsMenuItem>
                       <ActionsMenuItem
                         onClick={() => {
                           closeMenu();
@@ -197,6 +224,16 @@ export function ApplicationAccessPage() {
                       >
                         Setup Steps
                       </ActionsMenuItem>
+                      {row.organization_id ? (
+                        <ActionsMenuItem
+                          onClick={() => {
+                            closeMenu();
+                            copyText(row.organization_id);
+                          }}
+                        >
+                          Copy Organization ID
+                        </ActionsMenuItem>
+                      ) : null}
                       {row.is_hub ? null : (
                         <>
                           <div className="my-1 border-t border-(--mws-line)" />
@@ -237,16 +274,6 @@ export function ApplicationAccessPage() {
                     </>
                   )}
                 </ActionsMenu>
-                <button
-                  type="button"
-                  aria-label={`Manage ${row.application_id}`}
-                  title="Manage"
-                  onClick={() => navigate(`/application-access/apps/${row.application_id}`)}
-                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) transition-colors hover:bg-(--mws-soft) hover:text-(--mws-burgundy) focus-visible:outline-2 focus-visible:outline-(--mws-burgundy)"
-                >
-                  <ArrowRight size={16} />
-                </button>
-                </div>
               </td>
             </tr>
           ))}

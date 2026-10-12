@@ -372,7 +372,7 @@ describe("AppAccessPage", () => {
           response: () => jsonResponse({ data: true }),
         },
         {
-          path: "/api/admin/application-access-rules/rule-1",
+          path: "/api/admin/application-access-rules/rule-2",
           method: "PATCH",
           response: () => jsonResponse({ data: {} }),
         },
@@ -428,16 +428,29 @@ describe("AppAccessPage", () => {
       ).toBe(true);
     });
 
+    // The broad group still has an exception, so it cannot be turned off.
     await user.click(
       screen.getByRole("button", {
         name: /Actions for group All Active Employees, All Units/,
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Turn off" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Turn off" })).toHaveAttribute(
+      "title",
+      "Remove its 1 exception(s) first",
+    );
+    await user.keyboard("{Escape}");
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /Actions for group All Active Employees, Units: MAD Lab/,
       }),
     );
     await user.click(screen.getByRole("button", { name: "Turn off" }));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(
         ([url, options]) =>
-          url.endsWith("/application-access-rules/rule-1") &&
+          url.endsWith("/application-access-rules/rule-2") &&
           options.method === "PATCH",
       );
       expect(JSON.parse(call[1].body)).toEqual({ is_active: false });
