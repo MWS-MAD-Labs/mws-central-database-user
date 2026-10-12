@@ -125,3 +125,11 @@ If the page says Central cannot keep a secret, `APP_SECRETS_KEY` is missing from
 The Hub can be retired and deleted once it is the only application left in Central. While others exist, it waits for them.
 
 The Hub secret is shown once, like a token. When Central makes it (Generate or Rotate) a dialog shows it masked with one button that copies the line, and it cannot be read again. After that it only reaches an .env through the block shown when a token is made or rotated, again masked and copied. A secret that was pasted is not shown, since whoever pasted it already has it. If it is lost, rotate it.
+
+## A Hub secret for each application
+
+The Hub secret is a master that only the Hub and Central hold. Each application gets its own secret made from it (the master, the application id and a version), so a secret that leaks only opens that application. Central puts it in the application's `.env` as `HUB_INTERNAL_SECRET`, and the Hub makes it again to check it.
+
+New applications get their own secret. Older ones keep using the master until you open their setup page and choose "Give Its Own Hub Secret", put the new value in their `.env` and deploy. "Rotate Hub Secret" on the same page replaces it, and the old one stops working after the Hub refreshes its catalog (about a minute). Rotating the master in the Hub setup changes every secret.
+
+Deploy the Hub first (it accepts both kinds), then Central. When every application has its own secret, set `HUB_ALLOW_SHARED_SECRET=false` in the Hub's `.env` so the master is no longer accepted from applications.
