@@ -321,7 +321,14 @@ describe('AppSetupPage', () => {
     ])
     await user.click(await screen.findByRole('button', { name: 'More actions' }))
     await user.click(await screen.findByRole('button', { name: 'Change Data Access' }))
-    await user.click(await screen.findByRole('checkbox', { name: /View student profiles/ }))
+    const student = await screen.findByRole('checkbox', { name: /View student profiles/ })
+    // Nothing changed yet.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await user.click(student)
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    await user.click(student)
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await user.click(student)
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(saved).toHaveLength(1))
     expect(saved[0].scope_names.sort()).toEqual(['application_entitlements:read', 'application_permissions:write', 'students:read'])
@@ -364,6 +371,18 @@ describe('AppSetupPage', () => {
     renderPage([setupRoute(makeSetup())])
     const about = (await screen.findByRole('heading', { name: /^About/ })).closest('li')
     expect(within(about).getByRole('button', { name: 'Edit Details' })).toBeVisible()
+  })
+
+  it('keeps Save in Edit Details off until something changes', async () => {
+    const { user } = renderPage([setupRoute(makeSetup())])
+    const about = (await screen.findByRole('heading', { name: /^About/ })).closest('li')
+    await user.click(within(about).getByRole('button', { name: 'Edit Details' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled()
+    await user.type(within(dialog).getByLabelText('Description'), 'x')
+    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeEnabled()
+    await user.keyboard('{Backspace}')
+    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
   it('counts About as done for the Hub, which has no launch address', async () => {

@@ -293,12 +293,17 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     </div>
   );
 
+  // Editing: Save waits for something to change.
+  const snapshot = JSON.stringify({ values, environment, launchRest, logoutRest, launchMode });
+  const [baseline] = useState(snapshot);
+  const unchanged = Boolean(initial) && snapshot === baseline;
+
   const buttons = (
     <div className="flex gap-2">
       <Button type="button" variant="secondary" className={layout === "page" ? "flex-1" : undefined} onClick={onCancel}>
         Cancel
       </Button>
-      <Button type="submit" className={layout === "page" ? "flex-1" : undefined} loading={submitting}>
+      <Button type="submit" className={layout === "page" ? "flex-1" : undefined} loading={submitting} disabled={unchanged}>
         {submitLabel}
       </Button>
     </div>

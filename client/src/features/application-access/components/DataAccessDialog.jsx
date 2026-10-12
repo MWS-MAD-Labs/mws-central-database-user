@@ -10,6 +10,7 @@ import { ScopePicker } from "./ScopePicker.jsx";
 export function DataAccessDialog({ applicationId, current, onClose }) {
   const queryClient = useQueryClient();
   const [scopeNames, setScopeNames] = useState(current);
+  const unchanged = [...scopeNames].sort().join() === [...current].sort().join();
   const mutation = useMutation({
     mutationFn: () => applicationAccessApi.updateConnectionScopes(applicationId, scopeNames),
     onSuccess: () => {
@@ -28,7 +29,7 @@ export function DataAccessDialog({ applicationId, current, onClose }) {
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" loading={mutation.isPending} onClick={() => mutation.mutate()}>
+          <Button type="button" loading={mutation.isPending} disabled={unchanged} onClick={() => mutation.mutate()}>
             Save
           </Button>
         </div>
