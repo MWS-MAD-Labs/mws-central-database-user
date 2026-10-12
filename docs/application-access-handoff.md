@@ -179,3 +179,7 @@ A pasted `.env` line is reduced to its value (`cleanPastedSecret`, server and cl
 In Add and Edit Application the address of the application (host and port, not `/auth/sso` or `/auth/logout`) is asked through `GET /api/admin/application-access/application-address-check?url=` (Super Admin). Central does `GET {origin}/` without following redirects and answers `ok` for any status under 500, `unreachable` for no answer, a timeout or a 502 to 504, `refused` for what it must not ask (same rules as the Hub address check). Add Application and Save wait for `ok`, or for Use It Anyway after a confirm when nothing answers (an application that only runs on a laptop). An address kept as saved is not asked again. An address with a mistake in it is not asked, the form shows the mistake on submit instead.
 
 `useAddressCheck` (hook) and `AddressCheckStatus` (the line under the field) are shared with the Hub address field.
+
+## App Display in the Hub
+
+The Hub's admin catalog no longer creates or edits applications. Central owns name, icon, address, category, scope and access. The Hub keeps how a card is shown (status, found in search, keywords) in its own table `application_display` (Hub commit `a0366b5`, migration `20261012090000_add_application_display`), edited at `/admin/display`. A Hub row that still covers the same application wins over it, so a legacy row keeps its own status until it is pruned. Deploy the Hub (with its migration) before anything else; Central has no change for this.
