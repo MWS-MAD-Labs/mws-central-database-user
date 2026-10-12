@@ -19,8 +19,12 @@ export function SecretsKeyWarning() {
   );
 }
 
-// The applications a change to the secret reaches, from what is set up now.
+const IMPACT_SHOWN = 8;
+
+// The applications a change to the secret reaches, from what is set up now. A long list shows the first few,
+// the rest open on request inside a box that scrolls.
 export function ImpactList({ applicationId }) {
+  const [all, setAll] = useState(false);
   const query = useQuery({
     queryKey: ["application-access", "hub-secret-impact", applicationId],
     queryFn: () => applicationAccessApi.hubSecretImpact(applicationId),
@@ -30,18 +34,25 @@ export function ImpactList({ applicationId }) {
   if (query.isLoading) return <p className="text-sm text-(--mws-muted)">Looking up the applications…</p>;
   const apps = query.data ?? [];
   if (apps.length === 0) return <p className="text-sm text-(--mws-muted)">No application signs in through the Hub yet.</p>;
+  const shown = all ? apps : apps.slice(0, IMPACT_SHOWN);
+  const hidden = apps.length - shown.length;
   return (
     <div>
       <p className="text-sm font-semibold text-(--mws-charcoal)">
         {apps.length} {apps.length === 1 ? "application takes" : "applications take"} this into their .env
       </p>
-      <ul className="mt-1 flex flex-wrap gap-1.5">
-        {apps.map((app) => (
+      <ul className={`mt-1.5 flex flex-wrap gap-1.5 ${all ? "max-h-40 overflow-y-auto pr-1" : ""}`}>
+        {shown.map((app) => (
           <li key={app.application_id} className="rounded-full border border-(--mws-line) bg-(--mws-soft) px-2.5 py-0.5 text-xs text-(--mws-charcoal)">
             {app.name}
           </li>
         ))}
       </ul>
+      {apps.length > IMPACT_SHOWN ? (
+        <button type="button" onClick={() => setAll((current) => !current)} className="mt-1.5 cursor-pointer text-xs font-medium text-(--mws-burgundy) hover:underline">
+          {all ? "Show fewer" : `Show all ${apps.length} (${hidden} more)`}
+        </button>
+      ) : null}
     </div>
   );
 }
