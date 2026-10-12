@@ -13,6 +13,7 @@ import { OrganizationNote } from "../components/OrganizationNote.jsx";
 import { PermissionChecklist } from "../components/PermissionChecklist.jsx";
 import { useApplicationPermissions } from "../hooks/useApplicationPermissions.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
+import { cleanLabelInput, labelProblem } from "../utils/roleLabel.js";
 
 
 // Keys are exact: capital letters, digits and underscores.
@@ -130,7 +131,7 @@ function RoleForm({ applicationId, role, roles }) {
     event.preventDefault();
     setAttempted(true);
     if (!allowsEmployees && !allowsStudents) return;
-    if (twin || !label.trim() || (!isEdit && !key.trim())) return;
+    if (twin || labelProblem(label) || (!isEdit && !key.trim())) return;
     mutation.mutate();
   }
 
@@ -198,13 +199,14 @@ function RoleForm({ applicationId, role, roles }) {
                   </Field>
                 </>
               )}
-              <Field label="Label" error={attempted && !label.trim() ? "Label is required." : undefined}>
+              <Field label="Label" error={attempted ? (labelProblem(label) ?? undefined) : undefined}>
                 <TextInput
                   value={label}
                   maxLength={64}
                   onChange={(event) => {
-                    setLabelEdited(event.target.value !== "");
-                    setLabel(event.target.value);
+                    const next = cleanLabelInput(event.target.value);
+                    setLabelEdited(next !== "");
+                    setLabel(next);
                   }}
                 />
                 {!isEdit ? <p className="mt-1 text-xs text-(--mws-muted)">Suggested from the role key. You can change it.</p> : null}

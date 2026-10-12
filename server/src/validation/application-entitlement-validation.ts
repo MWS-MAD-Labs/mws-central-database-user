@@ -87,6 +87,15 @@ const permissions = z
     "Permissions must be unique",
   );
 
+// A role label is plain words: letters, numbers and single spaces.
+export const ROLE_LABEL_PATTERN = /^[\p{L}\p{N}]+( [\p{L}\p{N}]+)*$/u;
+const roleLabel = z
+  .string()
+  .trim()
+  .min(1, "Label is required")
+  .max(64, "Label is too long")
+  .regex(ROLE_LABEL_PATTERN, "A label can only have letters, numbers and single spaces");
+
 // Role keys are exact: uppercase letters, digits and underscores.
 const roleKey = z
   .string()
@@ -374,7 +383,7 @@ export class ApplicationRoleValidation {
     .object({
       application_id: applicationId,
       key: roleKey,
-      label: z.string().trim().min(1, "Label is required").max(64, "Label is too long"),
+      label: roleLabel,
       permissions,
       allows_employees: z.boolean().optional(),
       allows_students: z.boolean().optional(),
@@ -387,7 +396,7 @@ export class ApplicationRoleValidation {
   static readonly UPDATE = z
     .object({
       id: nonemptyId("Role ID"),
-      label: z.string().trim().min(1, "Label is required").max(64, "Label is too long").optional(),
+      label: roleLabel.optional(),
       permissions: permissions.optional(),
       allows_employees: z.boolean().optional(),
       allows_students: z.boolean().optional(),

@@ -158,6 +158,11 @@ export function GroupFormPage() {
                   Every role is already used by a broader or narrower group for this scope.
                 </p>
               ) : null}
+              {selectedRole ? (
+                <p className="text-xs text-(--mws-muted)">
+                  People who also match a narrower group get that group's role instead of this one, not both.
+                </p>
+              ) : null}
               {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} /> : null}
               {audience === "STUDENTS" ? (
                 <AllowExceptionsField checked={allowsExceptions} onChange={setAllowsExceptions} />
