@@ -1,4 +1,5 @@
-import { describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it, mock, spyOn } from 'bun:test'
+import * as toastLib from '../../../src/lib/toast.js'
 import { screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
@@ -155,6 +156,46 @@ describe('ClassDetailPage', () => {
   })
 })
 
+describe('assigning several teachers from the class page', () => {
+  it('assigns each one on its own and says which did not go through', async () => {
+    const posted = []
+    const success = spyOn(toastLib, 'showSuccessToast').mockImplementation(() => {})
+    const failure = spyOn(toastLib, 'showErrorToast').mockImplementation(() => {})
+    globalThis.fetch = createFetchRouter([
+      ...classDetailRoutes(),
+      {
+        path: /^\/api\/admin\/classes\/class-1\/teacher-candidates(?:\?.*)?$/,
+        response: () => jsonResponse({ data: teachingEmployees, paging: { current_page: 1, total_page: 1, total_item: 2, size: 10 } }),
+      },
+      {
+        path: '/api/admin/classes/class-1/teachers',
+        method: 'POST',
+        response: ({ options }) => {
+          const body = JSON.parse(options.body)
+          posted.push(body.employee_id)
+          return body.employee_id === 'employee-science'
+            ? jsonResponse({ errors: 'Already has a homeroom class this year.' }, 400)
+            : jsonResponse({ data: { id: 'new-assignment' } })
+        },
+      },
+    ])
+    const { user } = renderClassDetail()
+    await screen.findByRole('heading', { level: 1, name: 'Grade 1A' })
+    await user.click(screen.getByRole('button', { name: 'Assign teacher' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Assign Teacher' })
+    await user.click(await within(dialog).findByRole('checkbox', { name: 'Select all 2 on this page' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Add 2 assignments' }))
+    const confirmDialog = await screen.findByRole('dialog', { name: 'Confirm teacher assignments' })
+    await user.click(within(confirmDialog).getByRole('button', { name: 'Add 2 assignments' }))
+    await waitFor(() => expect(posted).toEqual(['employee-home', 'employee-science']))
+    await waitFor(() => expect(success).toHaveBeenCalledWith('Teacher assigned.'))
+    await waitFor(() => expect(failure).toHaveBeenCalled())
+    expect(failure.mock.calls[0][0].message).toMatch(/Sari Science: Already has a homeroom class this year\./)
+    success.mockRestore()
+    failure.mockRestore()
+  })
+})
+
 describe('TeacherAssignmentsSection', () => {
   it('lists teacher candidates from the server by role and derives subject payloads', async () => {
     const onAssign = mock(() => {})
@@ -193,20 +234,23 @@ describe('TeacherAssignmentsSection', () => {
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([url]) => String(url).includes('role=SUBJECT_TEACHER'))).toBe(true),
     )
-    await user.click(await screen.findByRole('radio', { name: /Sari Science/ }))
+    await user.click(await screen.findByRole('checkbox', { name: /Sari Science/ }))
     expect(within(dialog).getByPlaceholderText('e.g. Visual Arts')).toHaveValue('Science')
     await user.click(within(dialog).getByRole('button', { name: 'Add assignment' }))
     const confirmDialog = screen.getByRole('dialog', { name: 'Confirm teacher assignment' })
     await user.click(within(confirmDialog).getByRole('button', { name: 'Add assignment' }))
 
-    expect(onAssign).toHaveBeenCalledWith(
-      expect.objectContaining({
-        employee_id: 'employee-science',
-        role: 'SUBJECT_TEACHER',
-        subject: 'Science',
-        start_date: '2026-07-01T00:00:00.000Z',
-      }),
-    )
+    expect(onAssign).toHaveBeenCalledWith([
+      {
+        label: 'Sari Science',
+        payload: expect.objectContaining({
+          employee_id: 'employee-science',
+          role: 'SUBJECT_TEACHER',
+          subject: 'Science',
+          start_date: '2026-07-01T00:00:00.000Z',
+        }),
+      },
+    ])
   })
 
   it('shows an intern candidate returned for the Subject Teacher role', async () => {
@@ -244,18 +288,17 @@ describe('TeacherAssignmentsSection', () => {
     const dialog = screen.getByRole('dialog', { name: 'Assign Teacher' })
     await user.click(within(dialog).getByRole('button', { name: 'Homeroom' }))
     await user.click(screen.getByRole('option', { name: 'Subject Teacher' }))
-    expect(await screen.findByRole('radio', { name: /Ari Art \(Intern\)/ })).toBeVisible()
+    expect(await screen.findByRole('checkbox', { name: /Ari Art \(Intern\)/ })).toBeVisible()
   })
 
-  it('lays the teachers out like the students of Enroll Student', async () => {
+  it('lays the teachers out like the students of Enroll Student, with checkboxes that carry over pages', async () => {
     const fetchMock = createFetchRouter([
       {
         path: /^\/api\/admin\/classes\/class-1\/teacher-candidates(?:\?.*)?$/,
-        response: ({ url }) =>
+        response: () =>
           jsonResponse({
             data: teachingEmployees,
             paging: { current_page: 1, total_page: 2, total_item: 14, size: 10 },
-            echo: url,
           }),
       },
     ])
@@ -276,26 +319,65 @@ describe('TeacherAssignmentsSection', () => {
 
     await user.click(screen.getByRole('button', { name: 'Assign teacher' }))
     const dialog = screen.getByRole('dialog', { name: 'Assign Teacher' })
-    expect(await within(dialog).findByText('Pick one of the 14 on this list')).toBeVisible()
+    expect(await within(dialog).findByText('Select all 2 on this page')).toBeVisible()
     expect(within(dialog).getByText(/Showing teachers and interns who can take the homeroom role/)).toBeVisible()
-    expect(within(dialog).getByText('No teacher selected.')).toBeVisible()
+    expect(within(dialog).getByText('0 teachers selected.')).toBeVisible()
     // Each row can be opened in a new tab without leaving the dialog.
     const eye = within(dialog).getAllByTitle('Open teacher detail in a new tab')[0]
     expect(eye).toHaveAttribute('target', '_blank')
     expect(eye.getAttribute('href')).toMatch(/^\/employees\/employee-/)
 
-    await user.click(within(dialog).getAllByRole('radio')[0])
-    expect(within(dialog).getByText(/selected\.$/)).toBeVisible()
-    expect(within(dialog).queryByText('No teacher selected.')).toBeNull()
+    await user.click(within(dialog).getByRole('checkbox', { name: /Hana Homeroom/ }))
+    expect(within(dialog).getByText('1 teacher selected.')).toBeVisible()
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Select all 2 on this page' }))
+    expect(within(dialog).getByText('2 teachers selected.')).toBeVisible()
+    expect(within(dialog).getByRole('button', { name: 'Add 2 assignments' })).toBeEnabled()
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Select all 2 on this page' }))
+    expect(within(dialog).getByText('0 teachers selected.')).toBeVisible()
 
     // The page bar sits inside the box and asks for the next page.
     await user.click(within(dialog).getByRole('button', { name: /Next/ }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('page=2'))).toBe(true))
 
     // A different role starts the choice again.
+    await user.click(within(dialog).getByRole('checkbox', { name: /Hana Homeroom/ }))
     await user.click(within(dialog).getByRole('button', { name: 'Homeroom' }))
     await user.click(screen.getByRole('option', { name: 'Subject Teacher' }))
-    expect(await within(dialog).findByText('No teacher selected.')).toBeVisible()
+    expect(await within(dialog).findByText('0 teachers selected.')).toBeVisible()
+  })
+
+  it('assigns several teachers at once with the same role, subject and start date', async () => {
+    const onAssign = mock(() => {})
+    globalThis.fetch = createFetchRouter([
+      {
+        path: /^\/api\/admin\/classes\/class-1\/teacher-candidates(?:\?.*)?$/,
+        response: () => jsonResponse({ data: teachingEmployees, paging: { current_page: 1, total_page: 1, total_item: 2, size: 10 } }),
+      },
+    ])
+    const { user } = renderAcademic(
+      <TeacherAssignmentsSection
+        assignments={[]}
+        currentClassId="class-1"
+        academicYearStartDate="2026-07-01T00:00:00.000Z"
+        canWrite
+        onAssign={onAssign}
+        onEnd={() => {}}
+        onRemove={() => {}}
+        onReopen={() => {}}
+        onBulkMove={() => {}}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Assign teacher' }))
+    const dialog = screen.getByRole('dialog', { name: 'Assign Teacher' })
+    await user.click(await within(dialog).findByRole('checkbox', { name: 'Select all 2 on this page' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Add 2 assignments' }))
+    const confirmDialog = screen.getByRole('dialog', { name: 'Confirm teacher assignments' })
+    expect(within(confirmDialog).getByText(/2 people will be assigned as Homeroom: Hana Homeroom, Sari Science/)).toBeVisible()
+    await user.click(within(confirmDialog).getByRole('button', { name: 'Add 2 assignments' }))
+    expect(onAssign).toHaveBeenCalledTimes(1)
+    const items = onAssign.mock.calls[0][0]
+    expect(items.map((item) => item.payload.employee_id)).toEqual(['employee-home', 'employee-science'])
+    expect(items.every((item) => item.payload.role === 'HOMEROOM' && item.payload.start_date === '2026-07-01T00:00:00.000Z')).toBe(true)
   })
 
   it('shows position, unit, status and duration columns, and sorts, searches and filters teachers', async () => {

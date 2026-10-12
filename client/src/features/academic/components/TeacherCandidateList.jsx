@@ -3,23 +3,24 @@ import { Link } from "react-router";
 import { TextInput } from "../../../components/ui/FormControls.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 
-// The teachers and interns a class can take, laid out like the students in Enroll Student: a search box, a box with
-// one row per person (name, job position, an eye to open their detail), the page bar inside the box, and a line
-// that says who is picked. One person is picked at a time, so the rows are radios.
+// The teachers and interns a class can take, laid out like the students in Enroll Student: a search box, a box with a
+// "select all on this page" row and one row per person (name, job position, an eye to open their detail), the page
+// bar inside the box, and a line that counts who is picked. Picks stay while moving between pages.
 export function TeacherCandidateList({
   items,
-  selectedValue,
-  selectedName,
+  selected,
   paging,
   search,
   isLoading,
   emptyMessage,
-  onSelect,
+  onToggle,
+  onTogglePage,
   onSearchChange,
   onPrevious,
   onNext,
   onPageSizeChange,
 }) {
+  const allOnPage = items.length > 0 && items.every((item) => selected.has(item.value));
   return (
     <div className="space-y-2">
       <TextInput
@@ -29,25 +30,30 @@ export function TeacherCandidateList({
       />
       <div className="overflow-hidden rounded-xl border border-(--mws-line) bg-white">
         {items.length > 0 ? (
-          <p className="border-b border-(--mws-line) bg-(--mws-soft) px-3 py-2 text-sm font-semibold text-(--mws-charcoal)">
-            Pick one of the {paging.total_item} on this list
-          </p>
+          <label className="flex cursor-pointer items-center gap-3 border-b border-(--mws-line) bg-(--mws-soft) px-3 py-2 text-sm font-semibold text-(--mws-charcoal)">
+            <input
+              type="checkbox"
+              className="h-4 w-4 shrink-0 accent-(--mws-burgundy)"
+              checked={allOnPage}
+              onChange={(event) => onTogglePage(event.target.checked, items)}
+            />
+            Select all {items.length} on this page
+          </label>
         ) : null}
         {items.length === 0 ? (
           <p className={`p-3 text-sm text-(--mws-muted) ${isLoading ? "font-semibold" : "leading-6"}`}>
             {isLoading ? "Loading teachers..." : emptyMessage}
           </p>
         ) : (
-          <div role="radiogroup" aria-label="Teacher" className="divide-y divide-(--mws-line)">
+          <div className="divide-y divide-(--mws-line)">
             {items.map((item) => (
               <div key={item.value} className="flex min-w-0 items-center gap-3 px-3 py-2 hover:bg-(--mws-soft)">
                 <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
                   <input
-                    type="radio"
-                    name="assign-teacher"
+                    type="checkbox"
                     aria-label={item.label}
-                    checked={selectedValue === item.value}
-                    onChange={() => onSelect(item.value)}
+                    checked={selected.has(item.value)}
+                    onChange={(event) => onToggle(item, event.target.checked)}
                     className="h-4 w-4 shrink-0 accent-(--mws-burgundy)"
                   />
                   <div className="min-w-0">
@@ -81,7 +87,7 @@ export function TeacherCandidateList({
         ) : null}
       </div>
       <p className="text-xs font-semibold text-(--mws-muted)">
-        {selectedValue ? `${selectedName || "1 teacher"} selected.` : "No teacher selected."}
+        {selected.size} teacher{selected.size === 1 ? "" : "s"} selected.
       </p>
     </div>
   );

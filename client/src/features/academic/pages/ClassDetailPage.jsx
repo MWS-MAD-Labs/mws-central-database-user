@@ -183,14 +183,39 @@ export function ClassDetailPage() {
       )
     : [];
 
+  // Each person is assigned on their own, so the rules of one (homeroom limit, unit) never block the others. What
+  // went through and what did not is said once at the end.
   const assignTeacherMutation = useMutation({
-    meta: { successMessage: "Teacher assigned." },
-    mutationFn: (payload) => classesApi.assignTeacher(classId, payload),
-    onSuccess: () => {
+    mutationFn: async (items) => {
+      const failed = [];
+      let assigned = 0;
+      for (const item of items) {
+        try {
+          await classesApi.assignTeacher(classId, item.payload);
+          assigned += 1;
+        } catch (error) {
+          failed.push({ label: item.label, message: error?.message || "Could not assign" });
+        }
+      }
+      return { assigned, failed };
+    },
+    onSuccess: ({ assigned, failed }) => {
       queryClient.invalidateQueries({
         queryKey: ["classes", classId, "teacher-assignments"],
       });
       queryClient.invalidateQueries({ queryKey: ["classes", classId] });
+      if (assigned > 0) showSuccessToast(assigned === 1 ? "Teacher assigned." : `${assigned} teachers assigned.`);
+      if (failed.length > 0) {
+        showErrorToast(
+          new Error(
+            failed
+              .slice(0, 3)
+              .map((item) => `${item.label}: ${item.message}`)
+              .join(" ") + (failed.length > 3 ? ` And ${failed.length - 3} more.` : ""),
+          ),
+          "Some teachers were not assigned.",
+        );
+      }
     },
   });
 
@@ -782,7 +807,7 @@ export function ClassDetailPage() {
             }
             canWrite={canWriteTeacher}
             isAssigning={assignTeacherMutation.isPending}
-            onAssign={(payload) => assignTeacherMutation.mutate(payload)}
+            onAssign={(items) => assignTeacherMutation.mutate(items)}
             currentClassId={classId}
             academicYearStartDate={klass?.academic_year?.start_date}
             academicYearEndDate={klass?.academic_year?.end_date}
