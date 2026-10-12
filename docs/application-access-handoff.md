@@ -92,6 +92,10 @@ After changing the sign-in settings use Copy Sign-in Lines on the same page. It 
 
 Every application tells Central which permissions its code knows. In production that belongs in the deploy pipeline, after Central is deployed (the Hub runs `bun run permissions:sync` there). On a local machine there is no pipeline, so run the sync by hand or let the application send it on start. The Setup Guide on an application's setup page shows the exact names and commands for it.
 
-## Categories are the spaces
+## Scopes and categories
 
-An application's category is one of Safespace, Learnspace, Carespace, Shieldspace or Others. The old buckets (Reporting, Students, Workplace, Operations, Utilities) are gone. Both Central and the Hub have a migration that moves the old values to Others, so deploy the migrations first and then the code. After that, place each application in its space from its Edit Details. The Hub shows an unknown category as Others.
+Two lists live in Central under Master Data > Scopes & Categories. A **category** is the kind of tool (Reporting, Students, Workplace, Operations, Utilities). A **scope** is the product space (Safespace, Learnspace, Carespace, Shieldspace). An application has one category and may have one scope, both picked in its details. More can be added there at any time. A row's key is made from its name when it is created and never changes, so renaming is safe. A row that applications still use cannot be deleted.
+
+The Hub does not keep these lists. It reads them from Central (`GET /api/internal/application-taxonomy`, same token and cache as the published applications) and falls back to the original five categories if Central cannot be reached. The Hub shows a second row of scope filters once at least one application has a scope.
+
+Deploy order: the Central migration first (it creates the two tables and fills them), then Central, then the Hub.
