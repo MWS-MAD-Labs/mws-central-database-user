@@ -82,9 +82,16 @@ export function signInEnvLines(applicationId, settings) {
 
 export const MIN_SECRET = 16
 
+// A whole .env line pasted (HUB_INTERNAL_SECRET="abc") is reduced to the value.
+export function cleanPastedSecret(value) {
+  let text = value.trim().replace(/^HUB_INTERNAL_SECRET\s*=\s*/, '')
+  while (text.length > 1 && /^(["'])[\s\S]*\1$/.test(text)) text = text.slice(1, -1).trim()
+  return text
+}
+
 // A secret the Hub already runs with, pasted to be kept. Empty is not a problem yet, just not ready.
 export function existingSecretProblem(value) {
-  const clean = value.trim()
+  const clean = cleanPastedSecret(value)
   if (!clean) return null
   if (clean.length < MIN_SECRET) return `At least ${MIN_SECRET} characters.`
   if (/\s/.test(clean)) return 'No spaces.'

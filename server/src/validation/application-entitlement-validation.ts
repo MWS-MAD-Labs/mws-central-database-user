@@ -204,6 +204,15 @@ const hubAddress = z
     }
   });
 
+// A line copied from a .env (HUB_INTERNAL_SECRET="abc") is reduced to the value.
+export function cleanPastedSecret(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  let text = value.trim();
+  text = text.replace(/^HUB_INTERNAL_SECRET\s*=\s*/, "");
+  while (text.length > 1 && /^(["'])[\s\S]*\1$/.test(text)) text = text.slice(1, -1).trim();
+  return text;
+}
+
 export class ApplicationValidation {
   static readonly HUB_ADDRESS = z.object({ hub_base_url: hubAddress });
 
@@ -214,11 +223,11 @@ export class ApplicationValidation {
   static readonly HUB_SECRET = z.object({
     // An existing secret to keep. Left out, a new one is made.
     secret: z
-      .string()
+      .preprocess(cleanPastedSecret, z.string()
       .trim()
       .min(16, "A secret is at least 16 characters")
       .max(200, "A secret is at most 200 characters")
-      .regex(/^\S+$/, "A secret has no spaces")
+      .regex(/^\S+$/, "A secret has no spaces"))
       .optional(),
   });
 
@@ -243,7 +252,7 @@ export class ApplicationValidation {
       env_settings: envSettings.optional(),
       hub_base_url: hubAddress.optional(),
       // The secret the Hub already runs with, kept instead of making a new one.
-      hub_secret: z.string().trim().min(16, "A secret is at least 16 characters").max(200, "A secret is at most 200 characters").regex(/^\S+$/, "A secret has no spaces").optional(),
+      hub_secret: z.preprocess(cleanPastedSecret, z.string().trim().min(16, "A secret is at least 16 characters").max(200, "A secret is at most 200 characters").regex(/^\S+$/, "A secret has no spaces")).optional(),
     })
     .refine((value) => value.application_id || value.name, { message: "Name is required", path: ["name"] });
 

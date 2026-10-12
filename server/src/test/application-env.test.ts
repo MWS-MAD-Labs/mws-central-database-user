@@ -113,3 +113,13 @@ describe("application env", () => {
     expect(resolveHubSettings({ hub_access_mode: "nonsense" }).hub_access_mode).toBe("warn");
   });
 });
+
+describe("pasted Hub secret", () => {
+  it("takes the value out of a whole .env line", async () => {
+    const { cleanPastedSecret } = await import("../validation/application-entitlement-validation");
+    const raw = "a".repeat(32);
+    expect(cleanPastedSecret(`HUB_INTERNAL_SECRET="${raw}"`)).toBe(raw);
+    expect(cleanPastedSecret(`  ${raw} `)).toBe(raw);
+    expect(cleanPastedSecret(`HUB_INTERNAL_SECRET='${raw}'`)).toBe(raw);
+  });
+});
