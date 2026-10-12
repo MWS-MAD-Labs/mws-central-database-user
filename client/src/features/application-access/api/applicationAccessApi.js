@@ -94,11 +94,6 @@ export const applicationAccessApi = {
     return response.data.applications
   },
 
-  async revealHubSecret(applicationId) {
-    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/hub-secret`)
-    return response.data.secret
-  },
-
   async updateEnvSettings(applicationId, settings) {
     const response = await apiRequest(`${ACCESS}/apps/${applicationId}/env-settings`, { method: 'PATCH', body: settings })
     return response.data

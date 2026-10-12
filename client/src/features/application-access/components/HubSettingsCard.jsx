@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { Copy } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { HubSetupWizard } from "./HubSetupWizard.jsx";
 import { SignInLinesDialog } from "./SignInLinesDialog.jsx";
 
@@ -42,9 +44,9 @@ export function HubSettingsCard({ settings, hub, applicationId }) {
         </dd>
       </dl>
       <div className="flex justify-end">
-        <Button type="button" size="sm" variant="secondary" onClick={() => setLines(true)}>
+        <TextAction icon={Copy} onClick={() => setLines(true)}>
           Copy Sign-in Lines
-        </Button>
+        </TextAction>
       </div>
       {lines ? <SignInLinesDialog applicationId={applicationId} settings={settings} onClose={() => setLines(false)} /> : null}
     </section>

@@ -3,9 +3,14 @@ import { randomBytes } from "crypto";
 import { API_SCOPES } from "../constants/api-scopes";
 import { prismaClient } from "../lib/prisma";
 import { slugifyApplicationId } from "../utils/application-id";
+import { decryptSecret } from "../utils/secret-box";
 import { AdminUserTest, ApiClientTest, EmployeeTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const ACCESS = "/api/admin/application-access";
+
+// The secret is never handed out to read, so the tests look at what is kept.
+const keptSecret = async (applicationId: string) =>
+  decryptSecret((await prismaClient.application.findUniqueOrThrow({ where: { application_id: applicationId } })).hub_internal_secret!);
 const ROLES = "/api/admin/application-roles";
 const RULES = "/api/admin/application-access-rules";
 
@@ -672,9 +677,10 @@ describe("application onboarding", () => {
         expect(JSON.stringify(setup)).not.toContain("secret\":\"");
         expect(JSON.stringify(setup)).not.toContain(stored.hub_internal_secret!);
 
-        const shown = await TestRequest.get(`${ACCESS}/apps/${appId}/hub-secret`, accessToken);
-        const { secret } = (await shown.json()).data;
+        const secret = await keptSecret(appId);
         expect(secret).toMatch(/^[0-9a-f]{64}$/);
+        // There is no way to read it back.
+        expect((await TestRequest.get(`${ACCESS}/apps/${appId}/hub-secret`, accessToken)).status).toBe(404);
 
         const created = await create(accessToken, { application_id: other, name: "TEST_Other", connect: true });
         const env = (await created.json()).data.connection;
@@ -688,12 +694,19 @@ describe("application onboarding", () => {
         expect(otherKeys).toContain("HUB_INTERNAL_SECRET");
 
         // A new secret replaces it, and one the Hub already runs with can be kept.
-        expect((await TestRequest.post(`${ACCESS}/apps/${appId}/hub-secret`, {}, accessToken)).status).toBe(200);
-        const next = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/hub-secret`, accessToken)).json()).data.secret;
+        const made = await TestRequest.post(`${ACCESS}/apps/${appId}/hub-secret`, {}, accessToken);
+        expect(made.status).toBe(200);
+        // A secret Central made is returned this once.
+        const next = (await made.json()).data.secret;
+        expect(next).toMatch(/^[0-9a-f]{64}$/);
         expect(next).not.toBe(secret);
+        expect(await keptSecret(appId)).toBe(next);
         expect((await TestRequest.post(`${ACCESS}/apps/${appId}/hub-secret`, { secret: "short" }, accessToken)).status).toBe(400);
-        expect((await TestRequest.post(`${ACCESS}/apps/${appId}/hub-secret`, { secret: "kept-from-the-hub-env-0123456789" }, accessToken)).status).toBe(200);
-        expect((await (await TestRequest.get(`${ACCESS}/apps/${appId}/hub-secret`, accessToken)).json()).data.secret).toBe("kept-from-the-hub-env-0123456789");
+        // One that is pasted is kept and not sent back.
+        const pasted = await TestRequest.post(`${ACCESS}/apps/${appId}/hub-secret`, { secret: "kept-from-the-hub-env-0123456789" }, accessToken);
+        expect(pasted.status).toBe(200);
+        expect((await pasted.json()).data).toEqual({ secret_set: true });
+        expect(await keptSecret(appId)).toBe("kept-from-the-hub-env-0123456789");
 
         // The address has to be an origin.
         const address = (body: unknown) => TestRequest.patch(`${ACCESS}/apps/${appId}/hub-address`, body, accessToken);
@@ -729,8 +742,7 @@ describe("application onboarding", () => {
           accessToken,
         );
         expect(response.status).toBe(200);
-        const shown = await TestRequest.get(`${ACCESS}/apps/${appId}/hub-secret`, accessToken);
-        expect((await shown.json()).data.secret).toBe("kept-from-the-hub-env-0123456789");
+        expect(await keptSecret(appId)).toBe("kept-from-the-hub-env-0123456789");
 
         const original = process.env.APP_SECRETS_KEY;
         delete process.env.APP_SECRETS_KEY;

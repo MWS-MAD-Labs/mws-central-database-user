@@ -413,18 +413,20 @@ export class ApplicationOnboardingService {
     return { base_url: hub_base_url };
   }
 
-  // Makes a new secret for the Hub, or keeps the one the Hub already runs with when it is given.
+  // Makes a new secret for the Hub, or keeps the one the Hub already runs with when it is given. It cannot be read
+  // afterwards: it reaches the .env blocks, and a made one is returned here once.
   static async setHubSecret(
     admin: AdminUser,
     applicationId: string,
     request: unknown,
     context: AuditRequestContext = {},
-  ): Promise<{ secret_set: true }> {
+  ): Promise<{ secret_set: true; secret?: string }> {
     assertSuperAdmin(admin);
     const app = await findApplication(applicationId);
     if (applicationId !== hubApplicationId()) throw new ResponseError(400, "Only the Hub has a secret to share");
-    const { secret } = Validation.validate(ApplicationValidation.HUB_SECRET, request ?? {}) as { secret?: string };
-    const stored = encryptSecret(secret ?? newSecret());
+    const { secret: given } = Validation.validate(ApplicationValidation.HUB_SECRET, request ?? {}) as { secret?: string };
+    const made = given ? undefined : newSecret();
+    const stored = encryptSecret(given ?? made!);
     await prismaClient.application.update({ where: { id: app.id }, data: { hub_internal_secret: stored } });
     // The value itself never goes into the log.
     await AuditService.record({
@@ -434,36 +436,12 @@ export class ApplicationOnboardingService {
       entity_id: app.id,
       admin_id: admin.id,
       old_values: { hub_internal_secret: app.hub_internal_secret ? "set" : "none" },
-      new_values: { hub_internal_secret: secret ? "set from the existing one" : "newly made" },
+      new_values: { hub_internal_secret: given ? "set from the existing one" : "newly made" },
       ip_address: context.ip_address,
       user_agent: context.user_agent,
     });
-    return { secret_set: true };
-  }
-
-  // Shows the secret once to a Super Admin who asked for it. Every look is logged.
-  static async revealHubSecret(
-    admin: AdminUser,
-    applicationId: string,
-    context: AuditRequestContext = {},
-  ): Promise<{ secret: string }> {
-    assertSuperAdmin(admin);
-    const app = await findApplication(applicationId);
-    if (applicationId !== hubApplicationId()) throw new ResponseError(400, "Only the Hub has a secret to share");
-    if (!app.hub_internal_secret) throw new ResponseError(404, "The Hub has no secret yet");
-    const secret = decryptSecret(app.hub_internal_secret);
-    await AuditService.record({
-      action: AuditAction.APPLICATION_ROLE_UPDATE,
-      source: AuditSource.UI,
-      entity_type: "Application",
-      entity_id: app.id,
-      admin_id: admin.id,
-      old_values: {},
-      new_values: { hub_internal_secret: "shown to the admin" },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
-    return { secret };
+    // A secret Central made is shown this once. One that was pasted is already in the hands of whoever pasted it.
+    return { secret_set: true, ...(made ? { secret: made } : {}) };
   }
 
   // The applications that take the Hub address and secret into their .env, so a change reaches them.

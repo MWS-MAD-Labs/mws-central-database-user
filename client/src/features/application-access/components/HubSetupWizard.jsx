@@ -1,16 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check } from "lucide-react";
+import { ArrowLeft, Check, Copy, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextInput } from "../../../components/ui/FormControls.jsx";
-import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { cn } from "../../../lib/cn.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { emailsProblem, existingSecretProblem } from "../utils/hubSettings.js";
 import { HubAccessSettings } from "./HubAccessSettings.jsx";
 import { HubAddressField } from "./HubAddressField.jsx";
-import { ImpactList, SecretConfirmDialog, SecretsKeyWarning, ShowSecretDialog } from "./HubSecretControls.jsx";
+import { HubSecretShownDialog, ImpactList, SecretConfirmDialog, SecretsKeyWarning } from "./HubSecretControls.jsx";
 import { SignInLinesDialog } from "./SignInLinesDialog.jsx";
 
 const STEPS = [
@@ -34,6 +34,8 @@ export function HubSetupWizard({ mode, applicationId, hub, settings, adminEmail 
   const [secretChoice, setSecretChoice] = useState("new");
   const [existingValue, setExistingValue] = useState("");
   const [dialog, setDialog] = useState(null);
+  // A secret Central just made. It is shown once, then it is gone.
+  const [shownSecret, setShownSecret] = useState(null);
 
   const statusQuery = useQuery({
     queryKey: ["application-access", "secrets-status"],
@@ -66,10 +68,11 @@ export function HubSetupWizard({ mode, applicationId, hub, settings, adminEmail 
   });
   const secretMutation = useMutation({
     mutationFn: (secret) => applicationAccessApi.setHubSecret(applicationId, secret),
-    onSuccess: () => {
+    onSuccess: (result) => {
       refresh();
       setDialog(null);
-      showSuccessToast("Hub secret saved.");
+      if (result.secret) setShownSecret(result.secret);
+      else showSuccessToast("Hub secret saved.");
     },
     onError: (error) => showErrorToast(error, "Could not save the Hub secret."),
   });
@@ -132,28 +135,26 @@ export function HubSetupWizard({ mode, applicationId, hub, settings, adminEmail 
           {keyReady ? null : <SecretsKeyWarning />}
           {managing ? (
             <>
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge tone={secretSet ? "green" : "amber"}>{secretSet ? "Generated" : "Not generated yet"}</StatusBadge>
-                {secretSet ? (
-                  <>
-                    <Button type="button" size="sm" variant="secondary" onClick={() => setDialog("show")}>
-                      Show Secret
-                    </Button>
-                    <Button type="button" size="sm" variant="secondary" disabled={!keyReady} onClick={() => setDialog("rotate")}>
-                      Rotate Secret
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button type="button" size="sm" disabled={!keyReady} onClick={() => setDialog("generate")}>
-                      Generate Secret
-                    </Button>
-                    <Button type="button" size="sm" variant="secondary" disabled={!keyReady} onClick={() => setDialog("existing")}>
-                      Use The Hub's Current One
-                    </Button>
-                  </>
-                )}
-              </div>
+              {secretSet ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--mws-line) bg-(--mws-soft) px-4 py-3">
+                  <span className="flex items-center gap-2 text-sm font-medium text-(--mws-charcoal)">
+                    <Check size={16} className="text-[#476b43]" aria-hidden="true" />
+                    Secret generated
+                  </span>
+                  <TextAction icon={RotateCw} disabled={!keyReady} onClick={() => setDialog("rotate")}>
+                    Rotate Secret
+                  </TextAction>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-4">
+                  <Button type="button" disabled={!keyReady} onClick={() => setDialog("generate")}>
+                    Generate Secret
+                  </Button>
+                  <TextAction disabled={!keyReady} onClick={() => setDialog("existing")}>
+                    Use the Hub's current secret
+                  </TextAction>
+                </div>
+              )}
               <ImpactList applicationId={applicationId} />
             </>
           ) : (
@@ -211,24 +212,21 @@ export function HubSetupWizard({ mode, applicationId, hub, settings, adminEmail 
           {managing ? (
             <>
               <ImpactList applicationId={applicationId} />
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="secondary" onClick={() => setDialog("lines")}>
+              <div>
+                <TextAction icon={Copy} onClick={() => setDialog("lines")}>
                   Copy Sign-in Lines
-                </Button>
-                <Button type="button" size="sm" variant="secondary" onClick={() => setDialog("show")}>
-                  Show Secret
-                </Button>
+                </TextAction>
               </div>
-              <p className="text-xs text-(--mws-muted)">Put the sign-in lines and the secret in the Hub's .env, then restart the Hub.</p>
+              <p className="text-xs text-(--mws-muted)">Put the sign-in lines in the Hub's .env, then restart the Hub. The secret is in the Hub's block when its token is made or rotated.</p>
             </>
           ) : null}
         </div>
       ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-(--mws-line) pt-4">
-        <Button type="button" variant="secondary" disabled={step === 0} onClick={() => setStep((current) => Math.max(current - 1, 0))}>
+        <TextAction icon={ArrowLeft} disabled={step === 0} onClick={() => setStep((current) => Math.max(current - 1, 0))}>
           Back
-        </Button>
+        </TextAction>
         <div className="flex gap-2">
           {managing && step === STEPS.length - 1 ? (
             <Button type="button" onClick={onClose}>
@@ -253,7 +251,7 @@ export function HubSetupWizard({ mode, applicationId, hub, settings, adminEmail 
         </div>
       </div>
 
-      {dialog === "show" ? <ShowSecretDialog applicationId={applicationId} onClose={() => setDialog(null)} /> : null}
+      {shownSecret ? <HubSecretShownDialog secret={shownSecret} onClose={() => setShownSecret(null)} /> : null}
       {dialog === "lines" ? <SignInLinesDialog applicationId={applicationId} settings={settings} onClose={() => setDialog(null)} /> : null}
       {dialog === "generate" || dialog === "existing" || dialog === "rotate" ? (
         <SecretConfirmDialog

@@ -112,7 +112,7 @@ The .env block of an application also carries what it needs from the Hub: `HUB_B
 2. Generate the Hub Secret. If the Hub and its applications already run with a secret, use "Use The Hub's Current One" and paste it, so nothing has to change.
 3. Create the connection of each application. Its block now includes the Hub lines. An application made before the Hub had an address shows a note and gets the lines after its token is rotated.
 
-The secret is kept encrypted with `APP_SECRETS_KEY` in Central's `.env`. Make one with `openssl rand -base64 32` and set it on every Central deploy before adding the Hub. Without it the secret cannot be made or read, and the page says so. Do not change the key afterwards, or the stored secret cannot be read any more (paste it again to fix that). "Rotate Secret" makes a new one; the Hub and every application need the new value. Looking at the secret and changing it are written to the audit log, never the value.
+The secret is kept encrypted with `APP_SECRETS_KEY` in Central's `.env`. Make one with `openssl rand -base64 32` and set it on every Central deploy before adding the Hub. Without it the secret cannot be made or read, and the page says so. Do not change the key afterwards, or the stored secret cannot be read any more (paste it again to fix that). "Rotate Secret" makes a new one; the Hub and every application need the new value. Changing the secret is written to the audit log, never the value.
 
 ## The Hub wizard, and who takes the Hub lines
 
@@ -123,3 +123,5 @@ The address and the secret are one value for everything. Whether an application 
 If the page says Central cannot keep a secret, `APP_SECRETS_KEY` is missing from Central's `.env`. Run `bun run secrets:key` in the server folder, put the line in `.env` and restart Central. In Docker, `docker-compose.yml` passes it through from the host environment.
 
 The Hub can be retired and deleted once it is the only application left in Central. While others exist, it waits for them.
+
+The Hub secret is shown once, like a token. When Central makes it (Generate or Rotate) a dialog shows it masked with one button that copies the line, and it cannot be read again. After that it only reaches an .env through the block shown when a token is made or rotated, again masked and copied. A secret that was pasted is not shown, since whoever pasted it already has it. If it is lost, rotate it.

@@ -574,7 +574,8 @@ describe('AppSetupPage', () => {
       )
 
       // 4. Review.
-      expect(await screen.findByText('Put the sign-in lines and the secret in the Hub\'s .env, then restart the Hub.')).toBeVisible()
+      expect(await screen.findByText(/Put the sign-in lines in the Hub's .env, then restart the Hub/)).toBeVisible()
+      expect(screen.queryByRole('button', { name: /Show Secret/ })).toBeNull()
     })
 
     it('asks before it makes the Hub secret, naming the applications it reaches', async () => {
@@ -620,7 +621,7 @@ describe('AppSetupPage', () => {
       ])
       await wizard(user)
       await user.click(screen.getByRole('button', { name: 'Continue' }))
-      await user.click(screen.getByRole('button', { name: "Use The Hub's Current One" }))
+      await user.click(screen.getByRole('button', { name: "Use the Hub's current secret" }))
       const dialog = await screen.findByRole('dialog', { name: "Use The Hub's Current Secret" })
       expect(within(dialog).getByRole('button', { name: 'Use This Secret' })).toBeDisabled()
       await user.type(within(dialog).getByLabelText('Existing Hub secret'), 'short')
@@ -642,19 +643,33 @@ describe('AppSetupPage', () => {
       expect(screen.getByRole('button', { name: 'Generate Secret' })).toBeDisabled()
     })
 
-    it('shows the Hub secret only after it is asked for', async () => {
+    it('shows a secret Central made once, masked, and never offers to show it again', async () => {
       const { user } = renderPage([
         setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings, hub: HUB })),
         IMPACT,
-        { path: '/api/admin/application-access/apps/demo/hub-secret', method: 'GET', response: () => jsonResponse({ data: { secret: 'abc123secret' } }) },
+        {
+          path: '/api/admin/application-access/apps/demo/hub-secret',
+          method: 'POST',
+          response: () => jsonResponse({ data: { secret_set: true, secret: 'abc123secret-0123456789-xyz' } }),
+        },
       ])
       await wizard(user)
       await user.click(screen.getByRole('button', { name: 'Continue' }))
-      await user.click(screen.getByRole('button', { name: 'Show Secret' }))
+      // Nothing to reveal: the secret is generated and can only be replaced.
+      expect(screen.getByText('Secret generated')).toBeVisible()
+      expect(screen.queryByRole('button', { name: /Show Secret|Reveal/ })).toBeNull()
+      await user.click(screen.getByRole('button', { name: 'Rotate Secret' }))
+      const confirm = await screen.findByRole('dialog', { name: 'Rotate Hub Secret' })
+      await user.click(within(confirm).getByRole('button', { name: 'Rotate' }))
+
       const dialog = await screen.findByRole('dialog', { name: 'Hub Secret' })
-      expect(within(dialog).queryByText(/abc123secret/)).toBeNull()
-      await user.click(within(dialog).getByRole('button', { name: 'Reveal' }))
-      expect(await within(dialog).findByText('HUB_INTERNAL_SECRET="abc123secret"')).toBeVisible()
+      expect(within(dialog).getByText('Secret Shown Once')).toBeVisible()
+      // Only a mask is on screen, the whole line is what gets copied.
+      expect(within(dialog).queryByText(/abc123secret-0123456789-xyz/)).toBeNull()
+      await user.click(within(dialog).getByRole('button', { name: /Copy/ }))
+      await waitFor(async () => {
+        expect(await navigator.clipboard.readText()).toContain('HUB_INTERNAL_SECRET="abc123secret-0123456789-xyz"')
+      })
     })
 
     it('shows the three sign-in lines first and copies them from the dialog', async () => {

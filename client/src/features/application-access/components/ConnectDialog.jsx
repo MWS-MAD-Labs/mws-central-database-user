@@ -15,6 +15,7 @@ export function ConnectDialog({
   connection,
   onClose,
   title = "Connection Created",
+  onceLabel = "Token Shown Once",
   description = "Put these lines in the .env of the application, then deploy it.",
   notice = null,
 }) {
@@ -61,7 +62,7 @@ export function ConnectDialog({
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <p className="font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">.env Values</p>
-          <StatusBadge tone="amber">Token Shown Once</StatusBadge>
+          <StatusBadge tone="amber">{onceLabel}</StatusBadge>
         </div>
         <div
           role="img"

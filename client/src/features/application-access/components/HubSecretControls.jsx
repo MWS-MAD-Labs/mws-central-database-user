@@ -1,12 +1,11 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
-import { showErrorToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { copyText } from "../utils/copyText.js";
 import { existingSecretProblem } from "../utils/hubSettings.js";
+import { ConnectDialog } from "./ConnectDialog.jsx";
 
 // Used when the key that keeps the secret encrypted is missing from Central's .env.
 export function SecretsKeyWarning() {
@@ -93,34 +92,15 @@ export function SecretConfirmDialog({ kind, applicationId, saving, onConfirm, on
   );
 }
 
-export function ShowSecretDialog({ applicationId, onClose }) {
-  const [secret, setSecret] = useState(null);
-  const reveal = useMutation({
-    mutationFn: () => applicationAccessApi.revealHubSecret(applicationId),
-    onSuccess: setSecret,
-    onError: (error) => showErrorToast(error, "Could not read the Hub secret."),
-  });
+// A secret Central made, shown this once like a token. Only the line is copied, never read out loud.
+export function HubSecretShownDialog({ secret, onClose }) {
   return (
-    <CrudDialog title="Hub Secret" description="Put it as HUB_INTERNAL_SECRET in the .env of the Hub and of each application. Looking at it is written to the audit log." onClose={onClose}>
-      <div className="space-y-4">
-        <pre className="overflow-x-auto rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3 font-mono text-xs break-all whitespace-pre-wrap text-(--mws-charcoal)">
-          {secret ? `HUB_INTERNAL_SECRET="${secret}"` : "Hidden. Press Reveal to read it."}
-        </pre>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Close
-          </Button>
-          {secret ? (
-            <Button type="button" onClick={() => copyText(`HUB_INTERNAL_SECRET="${secret}"`)}>
-              Copy Line
-            </Button>
-          ) : (
-            <Button type="button" loading={reveal.isPending} onClick={() => reveal.mutate()}>
-              Reveal
-            </Button>
-          )}
-        </div>
-      </div>
-    </CrudDialog>
+    <ConnectDialog
+      title="Hub Secret"
+      description="Put this line in the .env of the Hub. The applications get it in their own .env when their token is made or rotated."
+      onceLabel="Secret Shown Once"
+      connection={{ env: [{ key: "HUB_INTERNAL_SECRET", value: secret, secret: true, group: 0, line: `HUB_INTERNAL_SECRET="${secret}"` }] }}
+      onClose={onClose}
+    />
   );
 }

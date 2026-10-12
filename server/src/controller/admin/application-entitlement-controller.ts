@@ -325,12 +325,6 @@ export class ApplicationAccessController {
     });
   }
 
-  static async revealHubSecret(c: Context<{ Variables: AdminVariables }>) {
-    return c.json({
-      data: await ApplicationOnboardingService.revealHubSecret(c.var.admin, requireApplicationId(c), getAuditRequestContext(c)),
-    });
-  }
-
   static async secretsStatus(c: Context<{ Variables: AdminVariables }>) {
     return c.json({ data: { key_ready: keyReady() } });
   }
