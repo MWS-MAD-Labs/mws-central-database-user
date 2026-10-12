@@ -110,8 +110,24 @@ describe('AppSetupPage', () => {
     expect(screen.getByRole('button', { name: 'Rotate Token' })).toBeVisible()
     // Tells what to do next instead of leaving the person guessing.
     expect(screen.getByText('Do This Next')).toBeVisible()
-    expect(screen.getByText('Deploy it, or run it locally with those values.')).toBeVisible()
+    expect(screen.getByText(/In production, the deploy pipeline should run the sync/)).toBeVisible()
     expect(screen.queryByText(/Still nothing after 10 minutes/)).toBeNull()
+  })
+
+  it('names the .env keys of the application in the setup guide', async () => {
+    const keys = [
+      { key: 'CENTRAL_API_BASE_URL', secret: false },
+      { key: 'CENTRAL_API_TOKEN', secret: true },
+      { key: 'CENTRAL_ENTITLEMENT_ORGANIZATION_ID', secret: false },
+    ]
+    const { user } = renderPage([
+      setupRoute(makeSetup({ env_keys: keys, connection: { client_id: 'c1', created: true, last_used_at: null } })),
+    ])
+    await user.click(await screen.findByRole('button', { name: 'Show Setup Guide' }))
+    expect(screen.getByText(/CENTRAL_API_BASE_URL, CENTRAL_API_TOKEN, CENTRAL_ENTITLEMENT_ORGANIZATION_ID/)).toBeVisible()
+    expect(screen.getByText(/PUT \{CENTRAL_API_BASE_URL\}\/application-permissions\/me/)).toBeVisible()
+    expect(screen.getByText('3. Run it on your machine')).toBeVisible()
+    expect(screen.getByText('4. Production')).toBeVisible()
   })
 
   it('adds a troubleshooting note when nothing called Central for ten minutes', async () => {

@@ -658,6 +658,8 @@ describe("application onboarding", () => {
         const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
         expect(setup.env_settings).toEqual({ hub_access_mode: "enforce", hub_bypass_emails: ["boss@millennia21.id"] });
 
+        expect(setup.env_keys.map((item: { key: string }) => item.key)).toContain("HUB_CENTRAL_ACCESS_MODE");
+        expect(setup.env_keys.find((item: { key: string }) => item.key === "CENTRAL_API_TOKEN").secret).toBe(true);
         const rotated = (await (await TestRequest.post(`${ACCESS}/apps/${appId}/rotate`, { immediate: true }, accessToken)).json()).data;
         const lines = rotated.env.map((item: { line: string }) => item.line);
         expect(lines).toContain('HUB_CENTRAL_ACCESS_MODE="enforce"');

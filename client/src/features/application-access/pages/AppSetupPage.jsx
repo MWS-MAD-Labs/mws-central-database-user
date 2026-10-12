@@ -399,8 +399,8 @@ export function AppSetupPage() {
                 <p className="font-display text-sm font-bold text-(--mws-charcoal)">Do This Next</p>
                 <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-(--mws-charcoal)">
                   <li>Put the .env values you copied in the application.</li>
-                  <li>Make sure the application sends its permissions when it starts.</li>
-                  <li>Deploy it, or run it locally with those values.</li>
+                  <li>On your machine, run the permission sync by hand or start the application if it sends them on start.</li>
+                  <li>In production, the deploy pipeline should run the sync after Central is deployed.</li>
                 </ol>
                 <p className="mt-2 text-xs text-(--mws-muted)">
                   Cannot run the application yet? The setup guide has one command that does the same from a terminal.
@@ -446,7 +446,7 @@ export function AppSetupPage() {
         />
       ) : null}
       {removalGuide ? <RemovalGuideDialog onClose={() => setRemovalGuide(false)} /> : null}
-      {guide ? <SetupGuideDialog applicationId={applicationId} isHub={setup.is_hub} onClose={() => setGuide(false)} /> : null}
+      {guide ? <SetupGuideDialog applicationId={applicationId} isHub={setup.is_hub} envKeys={setup.env_keys} onClose={() => setGuide(false)} /> : null}
       {removing ? (
         <RemoveApplicationDialog
           applicationId={applicationId}

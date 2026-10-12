@@ -57,6 +57,8 @@ export type SetupStatus = {
   removal: { can_remove: boolean; retire_available: boolean };
   // The Hub's sign-in settings that go into its .env. Null for other applications.
   env_settings: HubEnvSettings | null;
+  // The names this application reads in its .env, so the guides can name them.
+  env_keys: { key: string; secret: boolean }[];
 };
 
 export type RemovalPlan = {
@@ -228,6 +230,7 @@ export class ApplicationOnboardingService {
     return {
       removal: { can_remove: plan.can_remove, retire_available: plan.retire_available },
       env_settings: applicationId === hubApplicationId() ? resolveHubSettings(app.env_settings, admin.email) : null,
+      env_keys: envFor(app, organizationId, "", "", admin.email).map((item) => ({ key: item.key, secret: item.secret })),
       application: toDetail(app),
       organization_id: organizationId,
       connection: {

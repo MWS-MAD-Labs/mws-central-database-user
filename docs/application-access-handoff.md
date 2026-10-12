@@ -81,3 +81,13 @@ The Hub shows every app that is published in Central, so its own Application Cat
 The Hub is the application whose id equals `HUB_APPLICATION_ID` in Central's `.env` (default `hub`). There is no separate flag. Check that value matches before adding it.
 
 Add it once from Add Application with "This is the Hub itself" ticked. After that it cannot be retired, deleted or renamed, and the tick box disappears. Central asks for a confirmation before it is created. Put your own email under "Emails That Always Get In" and keep Warn mode until everyone who should get in has access.
+
+## Emergency sign-in and exceptions
+
+"Emergency Sign-in" on the Hub's setup page lists people who skip the Hub's Central access check. They still sign in through Central, so someone who is not in Central cannot get in this way. It only matters in Enforce mode, and it gives no Hub admin rights and no access to other apps. Use it for one or two admins so a wrong group setup or a Central outage cannot lock them out. Everyone else gets access through a group or an exception. Only millennia21.id emails are accepted, typed as the name alone.
+
+After changing the sign-in settings use Copy Sign-in Lines on the same page and restart the Hub. The token does not change.
+
+## Syncing permissions
+
+Every application tells Central which permissions its code knows. In production that belongs in the deploy pipeline, after Central is deployed (the Hub runs `bun run permissions:sync` there). On a local machine there is no pipeline, so run the sync by hand or let the application send it on start. The Setup Guide on an application's setup page shows the exact names and commands for it.
