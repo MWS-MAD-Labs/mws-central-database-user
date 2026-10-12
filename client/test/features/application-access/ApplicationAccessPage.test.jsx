@@ -16,6 +16,7 @@ const applications = [
     retired: false,
     organization_id: 'org_exima_a1b2c3',
     launch_mode: 'sso',
+    scope: 'safespace',
     connection_created: true,
     connection_last_used_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
     permission_count: 7,
@@ -51,6 +52,10 @@ function routes(extra = []) {
   return [
     ...extra,
     {
+      path: '/api/admin/application-access/taxonomy',
+      response: () => jsonResponse({ data: { categories: [], scopes: [{ key: 'safespace', name: 'Safespace' }] } }),
+    },
+    {
       path: /\/api\/admin\/application-access\/applications/,
       method: 'GET',
       response: () => jsonResponse({ data: applications, paging }),
@@ -85,6 +90,7 @@ describe('ApplicationAccessPage', () => {
     renderPage()
     const exima = (await screen.findByText('exima')).closest('tr')
     expect(within(exima).getByText('Exima')).toBeVisible()
+    expect(await within(exima).findByText('Safespace')).toBeVisible()
     expect(within(exima).getByText(/2 hours ago/)).toBeVisible()
     expect(within(exima).getByText('7')).toBeVisible()
     expect(within(exima).getByText('3')).toBeVisible()

@@ -21,6 +21,23 @@ const SCOPES = {
     }),
 }
 
+const TAXONOMY = {
+  path: '/api/admin/application-access/taxonomy',
+  response: () =>
+    jsonResponse({
+      data: {
+        categories: [
+          { key: 'reporting', name: 'Reporting' },
+          { key: 'utilities', name: 'Utilities' },
+        ],
+        scopes: [
+          { key: 'safespace', name: 'Safespace' },
+          { key: 'learnspace', name: 'Learnspace' },
+        ],
+      },
+    }),
+}
+
 const NO_HUB = {
   path: /\/api\/admin\/application-access\/applications\?/,
   method: 'GET',
@@ -43,13 +60,13 @@ function renderPage(user = { role: 'SUPER_ADMIN' }) {
 
 describe('AppCreatePage', () => {
   it('refuses anyone who is not a Super Admin', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     renderPage({ role: 'DATABASE_ADMIN' })
     expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
   })
 
   it('makes the application id from the name and does not let it be typed', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     const { user } = renderPage()
     const id = screen.getByLabelText('Application ID')
     expect(id).toBeDisabled()
@@ -61,7 +78,7 @@ describe('AppCreatePage', () => {
   })
 
   it('puts the scheme in front of the address from the environment', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     const { user } = renderPage()
     const production = screen.getByRole('radio', { name: 'Production' })
     expect(production).toHaveAttribute('aria-checked', 'true')
@@ -76,7 +93,7 @@ describe('AppCreatePage', () => {
   })
 
   it('refuses spaces, symbols and a public address on Local, without calling the server', async () => {
-    const fetchMock = createFetchRouter([SCOPES, NO_HUB])
+    const fetchMock = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'Bad <b>')
@@ -93,7 +110,7 @@ describe('AppCreatePage', () => {
   })
 
   it('switches the environment when the pasted address is the only one, and says so', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     const { user } = renderPage()
     await user.click(screen.getByRole('radio', { name: 'Local' }))
     await user.click(screen.getByLabelText('Launch URL'))
@@ -104,7 +121,7 @@ describe('AppCreatePage', () => {
   })
 
   it('refuses a pasted scheme that clashes with the environment when the other address is filled', async () => {
-    const fetchMock = createFetchRouter([SCOPES, NO_HUB])
+    const fetchMock = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'Demo')
@@ -122,6 +139,7 @@ describe('AppCreatePage', () => {
     const fetchMock = createFetchRouter([
       SCOPES,
       NO_HUB,
+      TAXONOMY,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',
@@ -160,6 +178,7 @@ describe('AppCreatePage', () => {
     const fetchMock = createFetchRouter([
       SCOPES,
       NO_HUB,
+      TAXONOMY,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',
@@ -184,13 +203,13 @@ describe('AppCreatePage', () => {
   })
 
   it('starts on the default icon', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     renderPage()
     expect(screen.getByRole('button', { name: 'Icon' })).toHaveTextContent('Default (AppWindow)')
   })
 
   it('stops the description at 50 characters and counts them', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Description'), 'x'.repeat(80))
     expect(screen.getByLabelText('Description')).toHaveValue('x'.repeat(50))
@@ -198,7 +217,7 @@ describe('AppCreatePage', () => {
   })
 
   it('keeps a very long name and description inside the preview card', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'A'.repeat(60))
     await user.type(screen.getByLabelText('Description'), 'y'.repeat(50))
@@ -211,7 +230,7 @@ describe('AppCreatePage', () => {
   })
 
   it('asks how the Hub signs people in only when the Hub is chosen', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     const { user } = renderPage()
     expect(screen.queryByText('Hub Sign-in')).toBeNull()
     await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
@@ -229,7 +248,7 @@ describe('AppCreatePage', () => {
   })
 
   it('adds up to three emergency emails one by one, keeping only characters an email name can have', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     const { user } = renderPage()
     await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
     await user.click(screen.getByRole('radio', { name: /Enforce/ }))
@@ -254,15 +273,20 @@ describe('AppCreatePage', () => {
     expect(input).not.toBeDisabled()
   })
 
-  it('offers the spaces as categories and a local example when the environment is Local', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+  it('offers the scopes and categories of the master data and a local example when the environment is Local', async () => {
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     const { user } = renderPage()
     expect(screen.getByLabelText('Launch URL')).toHaveAttribute('placeholder', 'exima.mws.web.id/auth/sso')
     await user.click(screen.getByRole('radio', { name: /Local/ }))
     expect(screen.getByLabelText('Launch URL')).toHaveAttribute('placeholder', 'localhost:3000/auth/sso')
     expect(screen.getByLabelText('Logout URL')).toHaveAttribute('placeholder', 'localhost:3000/auth/logout')
-    await user.click(screen.getByRole('button', { name: 'Others' }))
-    for (const name of ['Safespace', 'Learnspace', 'Carespace', 'Shieldspace', 'Others']) {
+    await user.click(await screen.findByRole('button', { name: 'No scope' }))
+    for (const name of ['No scope', 'Safespace', 'Learnspace']) {
+      expect(await screen.findByRole('option', { name })).toBeVisible()
+    }
+    await user.click(screen.getByRole('option', { name: 'Learnspace' }))
+    await user.click(screen.getByRole('button', { name: 'No category' }))
+    for (const name of ['No category', 'Reporting', 'Utilities']) {
       expect(screen.getByRole('option', { name })).toBeVisible()
     }
   })
@@ -278,7 +302,7 @@ describe('AppCreatePage', () => {
   })
 
   it('tidies extra spaces when leaving the name', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), '  MWS    Hub  ')
     await user.tab()
@@ -286,7 +310,7 @@ describe('AppCreatePage', () => {
   })
 
   it('keeps the two required scopes on and marks sensitive data', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     renderPage()
     const required = await screen.findByRole('checkbox', { name: /Publish an application's permissions/ })
     expect(required).toBeChecked()
@@ -295,7 +319,7 @@ describe('AppCreatePage', () => {
   })
 
   it('shows a preview of the Hub card that follows what is typed', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     const { user } = renderPage()
     expect(screen.getByText('Application name')).toBeVisible()
     await user.type(screen.getByLabelText('Name'), 'Demo App')
@@ -308,6 +332,7 @@ describe('AppCreatePage', () => {
     const fetchMock = createFetchRouter([
       SCOPES,
       NO_HUB,
+      TAXONOMY,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',
@@ -341,6 +366,7 @@ describe('AppCreatePage', () => {
         category: '',
         launch_url: 'https://demo.example.com/auth/sso',
         logout_url: '',
+        scope: '',
         launch_mode: 'sso',
         connect: true,
         scope_names: ['employees:read', 'students:read'],
@@ -352,6 +378,7 @@ describe('AppCreatePage', () => {
     const fetchMock = createFetchRouter([
       SCOPES,
       NO_HUB,
+      TAXONOMY,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',

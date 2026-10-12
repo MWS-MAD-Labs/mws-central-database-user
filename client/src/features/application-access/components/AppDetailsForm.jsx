@@ -13,7 +13,7 @@ import { NextStepsCard } from "./NextStepsCard.jsx";
 import { HubAccessSettings } from "./HubAccessSettings.jsx";
 import { ScopePicker } from "./ScopePicker.jsx";
 import { emailsProblem } from "../utils/hubSettings.js";
-import { CATEGORIES, DEFAULT_CATEGORY } from "../utils/categories.js";
+import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.js";
 const LAUNCH_MODES = [
   {
     value: "sso",
@@ -38,6 +38,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     // An icon the Hub does not know falls back to the default, so it is not carried over.
     icon: HUB_ICON_NAMES.includes(initial?.icon) ? initial.icon : "",
     category: initial?.category ?? "",
+    scope: initial?.scope ?? "",
   });
   const [environment, setEnvironment] = useState(initial?.launch_url ? launch.environment : logout.environment);
   const [launchRest, setLaunchRest] = useState(launch.rest);
@@ -49,6 +50,10 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   // What a pasted address started with, so a clash with the environment can be said out loud.
   const [pasted, setPasted] = useState({ launch: null, logout: null });
   const [notes, setNotes] = useState({ launch: null, logout: null });
+  const taxonomy = useApplicationTaxonomy();
+  // A value that is no longer in the list (a removed one) shows as none.
+  const categoryOptions = [{ value: "", label: "No category" }, ...taxonomy.categories.map((item) => ({ value: item.key, label: item.name }))];
+  const scopeOptions = [{ value: "", label: "No scope" }, ...taxonomy.scopes.map((item) => ({ value: item.key, label: item.name }))];
   const hub = isHub || hubChosen;
   // Safe to start with: people still get in, and the one setting it up always does.
   const [hubSettings, setHubSettings] = useState({ hub_access_mode: "warn", hub_bypass_emails: adminEmail.endsWith(`@${LIMITS.EMAIL_DOMAIN}`) ? [adminEmail] : [] });
@@ -122,6 +127,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       description: tidyText(values.description),
       icon: values.icon.trim(),
       category: values.category,
+      scope: values.scope,
       launch_url: joinAddress(environment, launchRest),
       logout_url: joinAddress(environment, logoutRest),
       launch_mode: launchMode,
@@ -186,12 +192,20 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
           <SearchableSelect value={launchMode} onChange={setLaunchMode} options={LAUNCH_MODES} placeholder="Select how it opens" />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Category" hint="Where the Hub groups the card.">
+          <Field label="Scope" hint="The product space it belongs to, like Safespace. Optional.">
             <SearchableSelect
-              value={CATEGORIES.some((item) => item.value === values.category) ? values.category : DEFAULT_CATEGORY}
+              value={values.scope}
+              onChange={(value) => setValues((current) => ({ ...current, scope: value }))}
+              options={scopeOptions}
+              placeholder="No scope"
+            />
+          </Field>
+          <Field label="Category" hint="The kind of tool. The Hub groups its cards by it.">
+            <SearchableSelect
+              value={values.category}
               onChange={(value) => setValues((current) => ({ ...current, category: value }))}
-              options={CATEGORIES}
-              placeholder="Select a category"
+              options={categoryOptions}
+              placeholder="No category"
             />
           </Field>
           <Field label="Icon" hint="The picture on the Hub card.">
@@ -290,7 +304,12 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     </div>
   );
 
-  const preview = { ...values, launch_url: joinAddress(environment, launchRest) };
+  const preview = {
+    ...values,
+    launch_url: joinAddress(environment, launchRest),
+    category_name: nameOf(taxonomy.categories, values.category),
+    scope_name: nameOf(taxonomy.scopes, values.scope),
+  };
 
   if (layout === "page") {
     return (

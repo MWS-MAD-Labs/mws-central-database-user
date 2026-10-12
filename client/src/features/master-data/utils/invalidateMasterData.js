@@ -1,4 +1,6 @@
 const EXTRA_INVALIDATIONS = {
+  'application-scopes': [['application-access', 'taxonomy']],
+  'application-categories': [['application-access', 'taxonomy']],
   'pc-activities': [
     ['academic', 'pc-activities'],
     ['pc-activity-options'],

@@ -15,6 +15,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { formatDateTime } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
+import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { copyText } from "../utils/copyText.js";
 import { timeAgo } from "../utils/setupSteps.js";
@@ -22,6 +23,7 @@ import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.j
 
 // Every application with how much access it has. Roles and groups are managed inside each one.
 export function ApplicationAccessPage() {
+  const taxonomy = useApplicationTaxonomy();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
@@ -163,7 +165,8 @@ export function ApplicationAccessPage() {
                   ) : null}
                   {row.retired ? <StatusBadge tone="red">Retired</StatusBadge> : null}
                   {row.published ? <StatusBadge tone="green">In Hub</StatusBadge> : null}
-                  {row.launch_mode === "link" ? <StatusBadge tone="neutral">Link</StatusBadge> : null}
+                  {row.launch_mode === "link" ? <StatusBadge tone="neutral">Plain Link</StatusBadge> : null}
+                  {row.scope ? <StatusBadge tone="neutral">{nameOf(taxonomy.scopes, row.scope) || row.scope}</StatusBadge> : null}
                 </div>
                 <p className="mt-0.5 font-mono text-[11px] text-(--mws-muted)">{row.application_id}</p>
               </td>

@@ -103,6 +103,11 @@ export const applicationAccessApi = {
   },
 
   // Master data a scope picker needs: what exists where and which pairs match.
+  async taxonomy() {
+    const response = await apiRequest(`${ACCESS}/taxonomy`)
+    return response.data
+  },
+
   async scopeCatalog() {
     const response = await apiRequest(`${ACCESS}/scope-catalog`)
     return response.data

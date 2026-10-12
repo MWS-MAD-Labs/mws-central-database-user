@@ -1,5 +1,4 @@
 import { DEFAULT_ICON, HUB_ICONS } from "../utils/hubIcons.js";
-import { categoryLabel } from "../utils/categories.js";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 
 // A small stand-in for the card the Hub will show, so the form has something to look at.
@@ -30,7 +29,8 @@ export function AppCardPreview({ values }) {
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <StatusBadge tone="neutral">{categoryLabel(values.category)}</StatusBadge>
+          {values.scope_name ? <StatusBadge tone="neutral">{values.scope_name}</StatusBadge> : null}
+          {values.category_name ? <StatusBadge tone="neutral">{values.category_name}</StatusBadge> : null}
           <span className="min-w-0 truncate text-xs text-(--mws-muted)">{launch ? `Opens ${launch}` : "No launch address yet"}</span>
         </div>
       </div>
