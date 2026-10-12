@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
-import { CheckboxField, Field, SearchableSelect, SelectInput, TextAreaInput, TextInput } from "../../../components/ui/FormControls.jsx";
+import { CheckboxField, Field, SearchableSelect, TextAreaInput, TextInput } from "../../../components/ui/FormControls.jsx";
 import { cn } from "../../../lib/cn.js";
 import { LIMITS } from "../../../lib/limits.js";
 import { DEFAULT_SCOPES } from "../utils/connectionScopes.js";
 import { descriptionProblem, nameProblem, slugifyApplicationId, tidyText } from "../utils/applicationId.js";
-import { ENVIRONMENTS, addressProblem, environmentOfScheme, joinAddress, readAddressInput, splitAddress } from "../utils/applicationUrl.js";
+import { ENVIRONMENTS, addressPlaceholder, addressProblem, environmentOfScheme, joinAddress, readAddressInput, splitAddress } from "../utils/applicationUrl.js";
 import { HUB_ICON_NAMES } from "../utils/hubIcons.js";
 import { AppCardPreview } from "./AppCardPreview.jsx";
 import { IconPicker } from "./IconPicker.jsx";
@@ -13,15 +13,19 @@ import { NextStepsCard } from "./NextStepsCard.jsx";
 import { HubAccessSettings } from "./HubAccessSettings.jsx";
 import { ScopePicker } from "./ScopePicker.jsx";
 import { emailsProblem } from "../utils/hubSettings.js";
-
-const CATEGORIES = [
-  { value: "reporting", label: "Reporting" },
-  { value: "students", label: "Students" },
-  { value: "workplace", label: "Workplace" },
-  { value: "operations", label: "Operations" },
-  { value: "utilities", label: "Utilities" },
+import { CATEGORIES, DEFAULT_CATEGORY } from "../utils/categories.js";
+const LAUNCH_MODES = [
+  {
+    value: "sso",
+    label: "Single Sign-On",
+    hint: "People sign in once in the Hub and open the application already signed in. The application connects to Central, sends its permissions and reads who has access.",
+  },
+  {
+    value: "link",
+    label: "Plain Link",
+    hint: "The card just opens the address. Nothing connects to Central, so there are no permissions or token. Central still decides who sees the card.",
+  },
 ];
-
 
 // What the Hub card shows and where it sends people. Used to add an application and to edit it later.
 // On the page layout the id is made from the name. In the dialog the id is the one the application has.
@@ -177,21 +181,14 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
         </Field>
         <Field
           label="How It Opens"
-          hint={
-            launchMode === "link"
-              ? "A plain link just opens the address. Central still decides who sees the card, but nothing connects."
-              : "People sign in through Central and the application reads their access."
-          }
+          hint={LAUNCH_MODES.find((item) => item.value === launchMode)?.hint}
         >
-          <SelectInput aria-label="How It Opens" value={launchMode} onChange={(event) => setLaunchMode(event.target.value)}>
-            <option value="sso">Single sign-on</option>
-            <option value="link">Plain link</option>
-          </SelectInput>
+          <SearchableSelect value={launchMode} onChange={setLaunchMode} options={LAUNCH_MODES} placeholder="Select how it opens" />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Category" hint="Where the Hub groups the card.">
             <SearchableSelect
-              value={values.category || "utilities"}
+              value={CATEGORIES.some((item) => item.value === values.category) ? values.category : DEFAULT_CATEGORY}
               onChange={(value) => setValues((current) => ({ ...current, category: value }))}
               options={CATEGORIES}
               placeholder="Select a category"
@@ -234,13 +231,13 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
           label="Launch URL"
           required={needsLaunch}
           error={shown("launch_url")}
-          hint={notes.launch ?? "Where the Hub sends people, usually the sign-in address of the application."}
+          hint={notes.launch ?? (environment === "local" ? "Where the Hub sends people. Use localhost and the port the application runs on." : "Where the Hub sends people, usually the sign-in address of the application.")}
         >
           <AddressInput
             label="Launch URL"
             environment={environment}
             value={launchRest}
-            placeholder="exima.mws.web.id/auth/sso"
+            placeholder={addressPlaceholder(environment, "/auth/sso")}
             invalid={Boolean(shown("launch_url"))}
             onChange={typeAddress("launch", setLaunchRest, logoutRest)}
             onBlur={() => setLaunchRest((current) => current.trim())}
@@ -255,7 +252,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
             label="Logout URL"
             environment={environment}
             value={logoutRest}
-            placeholder="exima.mws.web.id/auth/logout"
+            placeholder={addressPlaceholder(environment, "/auth/logout")}
             invalid={Boolean(shown("logout_url"))}
             onChange={typeAddress("logout", setLogoutRest, launchRest)}
             onBlur={() => setLogoutRest((current) => current.trim())}

@@ -6,6 +6,7 @@
 // Nothing that already exists in Central is touched. Applications start unpublished (unless --publish), so
 // they show in the Hub only after roles and groups are set up and they are published.
 import { readFileSync } from "fs";
+import { APPLICATION_CATEGORIES } from "../src/constants/application-categories";
 import { isHubIcon } from "../src/constants/hub-icons";
 import { prismaClient } from "../src/lib/prisma";
 import { resolveOrganizationId } from "../src/service/application-entitlement-service";
@@ -24,7 +25,6 @@ type HubRow = {
   sso_central_entitlement_app_id?: string | null;
 };
 
-const CATEGORIES = ["reporting", "students", "workplace", "operations", "utilities"];
 const ID_PATTERN = /^[a-z][a-z0-9_-]*$/;
 
 export type PlannedApplication = {
@@ -62,8 +62,9 @@ export function planApplication(row: HubRow): PlannedApplication | { skipped: st
     notes.push(`icon "${icon}" is not one the Hub can draw, default used`);
     icon = null;
   }
-  const category = row.category && CATEGORIES.includes(row.category) ? row.category : null;
-  if (row.category && !category) notes.push(`category "${row.category}" is not one of the five, default used`);
+  const known = Boolean(row.category) && (APPLICATION_CATEGORIES as readonly string[]).includes(row.category as string);
+  const category = known ? (row.category as string) : row.category ? "others" : null;
+  if (row.category && !known) notes.push(`category "${row.category}" is not a space, put under others`);
 
   const address = (sso ? row.sso_entry_url : row.href) ?? null;
   let launchUrl = address?.trim() || null;

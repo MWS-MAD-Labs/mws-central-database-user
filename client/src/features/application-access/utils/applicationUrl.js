@@ -62,3 +62,8 @@ export function addressProblem(environment, rest, { required = false } = {}) {
   if (joinAddress(environment, text).length > 300) return 'Address is too long.'
   return null
 }
+
+// What the empty address box shows. Local uses the machine and a port, Production a real host.
+export function addressPlaceholder(environment, path) {
+  return `${environment === 'local' ? 'localhost:3000' : 'exima.mws.web.id'}${path}`
+}

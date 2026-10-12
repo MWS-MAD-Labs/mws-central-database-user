@@ -11,8 +11,8 @@ describe("importing the Hub catalog", () => {
   });
 
   it("plans a plain link and a single sign-on application differently", () => {
-    const link = planApplication({ id: "guide", name: "MWS Guide", href: "https://guide.mws.web.id/", category: "workplace", icon: "BookOpen" });
-    expect(link).toMatchObject({ application_id: "guide", launch_mode: "LINK", launch_url: "https://guide.mws.web.id/", icon: "BookOpen", category: "workplace" });
+    const link = planApplication({ id: "guide", name: "MWS Guide", href: "https://guide.mws.web.id/", category: "safespace", icon: "BookOpen" });
+    expect(link).toMatchObject({ application_id: "guide", launch_mode: "LINK", launch_url: "https://guide.mws.web.id/", icon: "BookOpen", category: "safespace" });
 
     const sso = planApplication({
       id: "emotional-checkin",
@@ -36,7 +36,7 @@ describe("importing the Hub catalog", () => {
       category: "Finance",
       href: "http://public.example.com/path",
     }) as ReturnType<typeof planApplication> & { notes: string[] };
-    expect(plan).toMatchObject({ icon: null, category: null, launch_url: null });
+    expect(plan).toMatchObject({ icon: null, category: "others", launch_url: null });
     expect((plan as { name: string }).name.length).toBe(60);
     expect((plan as { description: string }).description.length).toBe(50);
     expect(plan.notes.join(" ")).toContain("name shortened");

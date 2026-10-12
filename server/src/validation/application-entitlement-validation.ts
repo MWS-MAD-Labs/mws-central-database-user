@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ApplicationAudience, EmploymentType } from "../generated/prisma/client";
+import { APPLICATION_CATEGORIES } from "../constants/application-categories";
 import { LIMITS } from "../constants/limits";
 import { isHubIcon } from "../constants/hub-icons";
 import { addressProblem } from "../utils/application-id";
@@ -31,7 +32,6 @@ const optionalUrl = (label: string) =>
     .optional()
     .nullable();
 
-const CATEGORIES = ["reporting", "students", "workplace", "operations", "utilities"] as const;
 
 const applicationDetails = {
   name: z
@@ -69,7 +69,7 @@ const applicationDetails = {
   category: z
     .string()
     .trim()
-    .refine((value) => value === "" || (CATEGORIES as readonly string[]).includes(value), "Pick a category from the list")
+    .refine((value) => value === "" || (APPLICATION_CATEGORIES as readonly string[]).includes(value), "Pick a category from the list")
     .optional()
     .nullable(),
   launch_url: optionalUrl("Launch URL"),

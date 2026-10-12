@@ -254,6 +254,19 @@ describe('AppCreatePage', () => {
     expect(input).not.toBeDisabled()
   })
 
+  it('offers the spaces as categories and a local example when the environment is Local', async () => {
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB])
+    const { user } = renderPage()
+    expect(screen.getByLabelText('Launch URL')).toHaveAttribute('placeholder', 'exima.mws.web.id/auth/sso')
+    await user.click(screen.getByRole('radio', { name: /Local/ }))
+    expect(screen.getByLabelText('Launch URL')).toHaveAttribute('placeholder', 'localhost:3000/auth/sso')
+    expect(screen.getByLabelText('Logout URL')).toHaveAttribute('placeholder', 'localhost:3000/auth/logout')
+    await user.click(screen.getByRole('button', { name: 'Others' }))
+    for (const name of ['Safespace', 'Learnspace', 'Carespace', 'Shieldspace', 'Others']) {
+      expect(screen.getByRole('option', { name })).toBeVisible()
+    }
+  })
+
   it('hides the Hub choice once a Hub exists', async () => {
     globalThis.fetch = createFetchRouter([
       SCOPES,
@@ -349,7 +362,10 @@ describe('AppCreatePage', () => {
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'Sheet')
     await user.type(screen.getByLabelText('Launch URL'), 'docs.example.com/sheet')
-    await user.selectOptions(screen.getByLabelText('How It Opens'), 'link')
+    expect(screen.getByText(/People sign in once in the Hub/)).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Single Sign-On' }))
+    await user.click(screen.getByRole('option', { name: /Plain Link/ }))
+    expect(screen.getByText(/The card just opens the address/)).toBeVisible()
     expect(screen.queryByText('Data Access')).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     await waitFor(() => {
