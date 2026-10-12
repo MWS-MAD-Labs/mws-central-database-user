@@ -100,24 +100,6 @@ export function AppSetupPage() {
     },
     onError: (error) => showErrorToast(error, "Could not save the details."),
   });
-  const adminRoleMutation = useMutation({
-    mutationFn: async () => {
-      const catalog = await applicationAccessApi.listPermissions(applicationId);
-      const keys = catalog.permissions.filter((permission) => !permission.deprecated).map((permission) => permission.key);
-      return applicationAccessApi.createRole({
-        application_id: applicationId,
-        key: "ADMIN",
-        label: "Admin",
-        permissions: keys,
-        allows_employees: true,
-      });
-    },
-    onSuccess: () => {
-      refresh();
-      showSuccessToast("Admin role created.");
-    },
-    onError: (error) => showErrorToast(error, "Could not create the Admin role."),
-  });
   const retireMutation = useMutation({
     mutationFn: () => applicationAccessApi.retireApplication(applicationId),
     onSuccess: () => {
@@ -235,12 +217,13 @@ export function AppSetupPage() {
       case "roles":
         return (
           <>
-            {current && setup.permissions.count > 0 ? (
-              <Button type="button" loading={adminRoleMutation.isPending} onClick={() => adminRoleMutation.mutate()}>
-                Create Admin Role
+            {current ? (
+              <Button asChild>
+                <Link to={`${base}/roles/new`}>Add Role</Link>
               </Button>
-            ) : null}
-            {quiet(`${base}/roles/new`, "Add Role", Plus)}
+            ) : (
+              quiet(`${base}/roles/new`, "Add Role", Plus)
+            )}
           </>
         );
       case "groups":

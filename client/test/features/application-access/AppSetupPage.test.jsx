@@ -256,54 +256,6 @@ describe("AppSetupPage", () => {
     ).toBeVisible();
   });
 
-  it("offers an Admin role with every permission once permissions arrived", async () => {
-    const created = [];
-    const { user } = renderPage([
-      setupRoute(
-        makeSetup({
-          connection: {
-            client_id: "c1",
-            created: true,
-            last_used_at: new Date().toISOString(),
-          },
-          permissions: { count: 2, synced_at: new Date().toISOString() },
-        }),
-      ),
-      {
-        path: "/api/admin/application-permissions?application_id=demo",
-        response: () =>
-          jsonResponse({
-            data: {
-              permissions: [
-                { key: "app.use", deprecated: false },
-                { key: "app.admin", deprecated: false },
-                { key: "old.thing", deprecated: true },
-              ],
-            },
-          }),
-      },
-      {
-        path: "/api/admin/application-roles",
-        method: "POST",
-        response: ({ options }) => {
-          created.push(JSON.parse(options.body));
-          return jsonResponse({ data: {} });
-        },
-      },
-    ]);
-    await user.click(
-      await screen.findByRole("button", { name: "Create Admin Role" }),
-    );
-    await waitFor(() => expect(created).toHaveLength(1));
-    expect(created[0]).toEqual({
-      application_id: "demo",
-      key: "ADMIN",
-      label: "Admin",
-      permissions: ["app.use", "app.admin"],
-      allows_employees: true,
-    });
-  });
-
   it("publishes once everything before it is done, and can hide it again", async () => {
     const ready = makeSetup({
       connection: {
