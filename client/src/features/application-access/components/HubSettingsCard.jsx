@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { Copy } from "lucide-react";
+import { Copy, Settings2 } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
-import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { HubSetupWizard } from "./HubSetupWizard.jsx";
 import { SignInLinesDialog } from "./SignInLinesDialog.jsx";
@@ -26,16 +25,22 @@ export function HubSettingsCard({ settings, hub, applicationId }) {
           <h2 className="font-display text-base font-bold text-(--mws-charcoal)">Hub Sign-in</h2>
           <p className="text-sm text-(--mws-muted)">The Hub's address, the secret it shares with the applications, and how strictly it checks who may sign in.</p>
         </div>
-        <Button type="button" variant={complete ? "secondary" : undefined} onClick={() => setOpen(true)}>
-          {complete ? "Open Setup Wizard" : "Finish Setup"}
-        </Button>
+        {complete ? (
+          <TextAction icon={Settings2} onClick={() => setOpen(true)}>
+            Open Setup Wizard
+          </TextAction>
+        ) : (
+          <Button type="button" onClick={() => setOpen(true)}>
+            Finish Setup
+          </Button>
+        )}
       </div>
       <dl className="grid gap-2 text-sm sm:grid-cols-[10rem_1fr]">
         <dt className="text-(--mws-muted)">Address</dt>
-        <dd className="font-mono text-xs text-(--mws-charcoal)">{hub?.base_url || <StatusBadge tone="amber">Not set</StatusBadge>}</dd>
+        <dd className={hub?.base_url ? "font-mono text-xs text-(--mws-charcoal)" : "text-sm italic text-(--mws-muted)"}>{hub?.base_url || "Not set"}</dd>
         <dt className="text-(--mws-muted)">Secret</dt>
-        <dd>
-          <StatusBadge tone={hub?.secret_set ? "green" : "amber"}>{hub?.secret_set ? "Generated" : "Not generated yet"}</StatusBadge>
+        <dd className={hub?.secret_set ? "text-sm font-medium text-(--mws-charcoal)" : "text-sm italic text-(--mws-muted)"}>
+          {hub?.secret_set ? "Generated" : "Not generated yet"}
         </dd>
         <dt className="text-(--mws-muted)">Sign-in</dt>
         <dd>
