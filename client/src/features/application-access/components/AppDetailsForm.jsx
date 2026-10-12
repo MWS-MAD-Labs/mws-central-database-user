@@ -14,6 +14,8 @@ import { HubAccessSettings } from "./HubAccessSettings.jsx";
 import { ScopePicker } from "./ScopePicker.jsx";
 import { emailsProblem } from "../utils/hubSettings.js";
 import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.js";
+const STANDARD_PATHS = { launch: "/auth/sso", logout: "/auth/logout" };
+
 const LAUNCH_MODES = [
   {
     value: "sso",
@@ -45,6 +47,14 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const [logoutRest, setLogoutRest] = useState(logout.rest);
   const [attempted, setAttempted] = useState(false);
   const [launchMode, setLaunchMode] = useState(initial?.launch_mode ?? "sso");
+  // Every application signs in at /auth/sso and signs out at /auth/logout, so only the address is asked for.
+  // An application that differs, or an address kept by hand, keeps its own paths.
+  const startsStandard =
+    !initial?.launch_url ||
+    (launch.rest.endsWith(STANDARD_PATHS.launch) &&
+      logout.rest === launch.rest.slice(0, -STANDARD_PATHS.launch.length) + STANDARD_PATHS.logout);
+  const [customPaths, setCustomPaths] = useState(!startsStandard);
+  const [hostRest, setHostRest] = useState(startsStandard && initial?.launch_url ? launch.rest.slice(0, -STANDARD_PATHS.launch.length) : "");
   const [scopeNames, setScopeNames] = useState(DEFAULT_SCOPES);
   const [hubChosen, setHubChosen] = useState(false);
   // What a pasted address started with, so a clash with the environment can be said out loud.
@@ -66,6 +76,11 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const nameShown = hub ? "HUB" : values.name;
   // The Hub itself has no launch address.
   const needsLaunch = !hub;
+  // The one address field stands in for both URLs while the paths are the standard ones.
+  const simplePaths = launchMode === "sso" && !customPaths;
+  const host = hostRest.trim();
+  const effectiveLaunch = simplePaths ? (host ? host + STANDARD_PATHS.launch : "") : launchRest;
+  const effectiveLogout = simplePaths ? (host ? host + STANDARD_PATHS.logout : "") : launchMode === "link" ? "" : logoutRest;
 
   // A pasted scheme that differs from the environment is a clash, unless the environment changed with it.
   const clash = (key) => {
@@ -78,8 +93,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const errors = {
     name: hub ? undefined : (nameProblem(values.name) ?? undefined),
     description: descriptionProblem(values.description) ?? undefined,
-    launch_url: hub ? undefined : (clash("launch") ?? addressProblem(environment, launchRest, { required: needsLaunch }) ?? undefined),
-    logout_url: hub ? undefined : (clash("logout") ?? addressProblem(environment, logoutRest) ?? undefined),
+    launch_url: hub ? undefined : (clash("launch") ?? addressProblem(environment, effectiveLaunch, { required: needsLaunch }) ?? undefined),
+    logout_url: hub ? undefined : (clash("logout") ?? addressProblem(environment, effectiveLogout) ?? undefined),
   };
   const valid = !Object.values(errors).some(Boolean) && !hubSettingsProblem;
   const shown = (key) => (attempted ? errors[key] : undefined);
@@ -109,6 +124,20 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     };
   }
 
+  function switchToCustomPaths() {
+    setLaunchRest(host ? host + STANDARD_PATHS.launch : "");
+    setLogoutRest(host ? host + STANDARD_PATHS.logout : "");
+    setCustomPaths(true);
+  }
+
+  function switchToStandardPaths() {
+    setHostRest(launchRest.split(/[/?#]/)[0]);
+    setCustomPaths(false);
+  }
+
+  // A pasted sign-in or sign-out address is cut back to the address itself.
+  const setHost = (value) => setHostRest(value.replace(/\/auth\/(sso|logout)\/?$/, ""));
+
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
@@ -128,8 +157,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       icon: values.icon.trim(),
       category: values.category,
       scope: values.scope,
-      launch_url: joinAddress(environment, launchRest),
-      logout_url: joinAddress(environment, logoutRest),
+      launch_url: joinAddress(environment, effectiveLaunch),
+      logout_url: joinAddress(environment, effectiveLogout),
       launch_mode: launchMode,
       // On the page layout the connection is made together with the application, unless it is a plain link.
       ...(layout === "page" && launchMode === "sso" ? { connect: true, scope_names: scopeNames } : {}),
@@ -241,37 +270,72 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
             ))}
           </div>
         </Field>
-        <Field
-          label="Launch URL"
-          required={needsLaunch}
-          error={shown("launch_url")}
-          hint={notes.launch ?? (environment === "local" ? "Where the Hub sends people. Use localhost and the port the application runs on." : "Where the Hub sends people, usually the sign-in address of the application.")}
-        >
-          <AddressInput
-            label="Launch URL"
-            environment={environment}
-            value={launchRest}
-            placeholder={addressPlaceholder(environment, "/auth/sso")}
-            invalid={Boolean(shown("launch_url"))}
-            onChange={typeAddress("launch", setLaunchRest, logoutRest)}
-            onBlur={() => setLaunchRest((current) => current.trim())}
-          />
-        </Field>
-        <Field
-          label="Logout URL"
-          hint={notes.logout ?? "Optional. Opened in the background so signing out of the Hub signs out of this application too."}
-          error={shown("logout_url")}
-        >
-          <AddressInput
-            label="Logout URL"
-            environment={environment}
-            value={logoutRest}
-            placeholder={addressPlaceholder(environment, "/auth/logout")}
-            invalid={Boolean(shown("logout_url"))}
-            onChange={typeAddress("logout", setLogoutRest, launchRest)}
-            onBlur={() => setLogoutRest((current) => current.trim())}
-          />
-        </Field>
+        {simplePaths ? (
+          <Field
+            label="Application Address"
+            required={needsLaunch}
+            error={shown("launch_url")}
+            hint={
+              notes.launch ??
+              `Where the application runs${environment === "local" ? ", like localhost:3000" : ""}. The Hub opens ${STANDARD_PATHS.launch} and signs out through ${STANDARD_PATHS.logout}.`
+            }
+          >
+            <AddressInput
+              label="Application Address"
+              environment={environment}
+              value={hostRest}
+              placeholder={addressPlaceholder(environment, "")}
+              invalid={Boolean(shown("launch_url"))}
+              onChange={typeAddress("launch", setHost, "")}
+              onBlur={() => setHostRest((current) => current.trim())}
+            />
+          </Field>
+        ) : (
+          <>
+            <Field
+              label={launchMode === "link" ? "Address" : "Launch URL"}
+              required={needsLaunch}
+              error={shown("launch_url")}
+              hint={notes.launch ?? (launchMode === "link" ? "Where the card sends people." : environment === "local" ? "Where the Hub sends people. Use localhost and the port the application runs on." : "Where the Hub sends people, usually the sign-in address of the application.")}
+            >
+              <AddressInput
+                label="Launch URL"
+                environment={environment}
+                value={launchRest}
+                placeholder={addressPlaceholder(environment, "/auth/sso")}
+                invalid={Boolean(shown("launch_url"))}
+                onChange={typeAddress("launch", setLaunchRest, logoutRest)}
+                onBlur={() => setLaunchRest((current) => current.trim())}
+              />
+            </Field>
+            {launchMode === "link" ? null : (
+              <Field
+                label="Logout URL"
+                hint={notes.logout ?? "Optional. Opened in the background so signing out of the Hub signs out of this application too."}
+                error={shown("logout_url")}
+              >
+                <AddressInput
+                  label="Logout URL"
+                  environment={environment}
+                  value={logoutRest}
+                  placeholder={addressPlaceholder(environment, "/auth/logout")}
+                  invalid={Boolean(shown("logout_url"))}
+                  onChange={typeAddress("logout", setLogoutRest, launchRest)}
+                  onBlur={() => setLogoutRest((current) => current.trim())}
+                />
+              </Field>
+            )}
+          </>
+        )}
+        {launchMode === "sso" ? (
+          <button
+            type="button"
+            onClick={simplePaths ? switchToCustomPaths : switchToStandardPaths}
+            className="cursor-pointer text-xs font-medium text-(--mws-burgundy) hover:underline"
+          >
+            {simplePaths ? "This application uses different paths" : "Use the standard paths again"}
+          </button>
+        ) : null}
       </Section>
       </>)}
       {layout === "page" && hubChosen ? (
@@ -294,7 +358,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   );
 
   // Editing: Save waits for something to change.
-  const snapshot = JSON.stringify({ values, environment, launchRest, logoutRest, launchMode });
+  const snapshot = JSON.stringify({ values, environment, effectiveLaunch, effectiveLogout, launchMode });
   const [baseline] = useState(snapshot);
   const unchanged = Boolean(initial) && snapshot === baseline;
 
@@ -311,7 +375,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
 
   const preview = {
     ...values,
-    launch_url: joinAddress(environment, launchRest),
+    launch_url: joinAddress(environment, effectiveLaunch),
     category_name: nameOf(taxonomy.categories, values.category),
     scope_name: nameOf(taxonomy.scopes, values.scope),
   };

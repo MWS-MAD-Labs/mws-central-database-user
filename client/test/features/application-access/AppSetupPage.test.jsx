@@ -385,6 +385,24 @@ describe('AppSetupPage', () => {
     expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
+  it('edits an application on the standard paths by its address only, and keeps the paths of one that differs', async () => {
+    const { user } = renderPage([
+      setupRoute(makeSetup({ application: { ...APP, launch_url: 'https://demo.example.com/auth/sso', logout_url: 'https://demo.example.com/auth/logout' } })),
+    ])
+    const about = (await screen.findByRole('heading', { name: /^About/ })).closest('li')
+    await user.click(within(about).getByRole('button', { name: 'Edit Details' }))
+    expect(await screen.findByLabelText('Application Address')).toHaveValue('demo.example.com')
+    expect(screen.queryByLabelText('Logout URL')).toBeNull()
+  })
+
+  it('opens an application with its own sign-out setup on the full addresses', async () => {
+    const { user } = renderPage([setupRoute(makeSetup())])
+    const about = (await screen.findByRole('heading', { name: /^About/ })).closest('li')
+    await user.click(within(about).getByRole('button', { name: 'Edit Details' }))
+    expect(await screen.findByLabelText('Launch URL')).toHaveValue('demo.example.com/auth/sso')
+    expect(screen.getByRole('button', { name: 'Use the standard paths again' })).toBeVisible()
+  })
+
   it('counts About as done for the Hub, which has no launch address', async () => {
     renderPage([setupRoute(makeSetup({ is_hub: true, application: { ...APP, launch_url: null } }))])
     expect(await screen.findByText('1 of 5 steps done.', { exact: false })).toBeVisible()

@@ -82,13 +82,14 @@ describe('AppCreatePage', () => {
     const { user } = renderPage()
     const production = screen.getByRole('radio', { name: 'Production' })
     expect(production).toHaveAttribute('aria-checked', 'true')
-    expect(screen.getAllByText('https://')).toHaveLength(2)
+    expect(screen.getAllByText('https://')).toHaveLength(1)
     await user.click(screen.getByRole('radio', { name: 'Local' }))
-    expect(screen.getAllByText('http://')).toHaveLength(2)
+    expect(screen.getAllByText('http://')).toHaveLength(1)
     // A pasted full address loses its scheme and sets the environment.
     await user.click(screen.getByRole('radio', { name: 'Production' }))
-    await user.type(screen.getByLabelText('Launch URL'), 'http://localhost:3000/auth/sso')
-    expect(screen.getByLabelText('Launch URL')).toHaveValue('localhost:3000/auth/sso')
+    await user.type(screen.getByLabelText('Application Address'), 'http://localhost:3000/auth/sso')
+    // A pasted sign-in path is cut back to the address.
+    expect(screen.getByLabelText('Application Address')).toHaveValue('localhost:3000')
     expect(screen.getByRole('radio', { name: 'Local' })).toHaveAttribute('aria-checked', 'true')
   })
 
@@ -98,6 +99,7 @@ describe('AppCreatePage', () => {
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'Bad <b>')
     await user.type(screen.getByLabelText('Description'), 'hello <script>')
+    await user.click(screen.getByRole('button', { name: 'This application uses different paths' }))
     await user.type(screen.getByLabelText('Launch URL'), 'exa mple.com/auth')
     await user.click(screen.getByRole('radio', { name: 'Local' }))
     await user.type(screen.getByLabelText('Logout URL'), 'exima.mws.web.id/out')
@@ -113,9 +115,9 @@ describe('AppCreatePage', () => {
     globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     const { user } = renderPage()
     await user.click(screen.getByRole('radio', { name: 'Local' }))
-    await user.click(screen.getByLabelText('Launch URL'))
-    await user.paste('  HTTPS://Exima.MWS.web.id/auth')
-    expect(screen.getByLabelText('Launch URL')).toHaveValue('exima.mws.web.id/auth')
+    await user.click(screen.getByLabelText('Application Address'))
+    await user.paste('  HTTPS://Exima.MWS.web.id')
+    expect(screen.getByLabelText('Application Address')).toHaveValue('exima.mws.web.id')
     expect(screen.getByRole('radio', { name: 'Production' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByText(/Environment set to Production because the address started with https/)).toBeVisible()
   })
@@ -125,6 +127,7 @@ describe('AppCreatePage', () => {
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'Demo')
+    await user.click(screen.getByRole('button', { name: 'This application uses different paths' }))
     await user.type(screen.getByLabelText('Launch URL'), 'demo.example.com/auth')
     await user.click(screen.getByLabelText('Logout URL'))
     await user.paste('http://demo.example.com/out')
@@ -188,7 +191,7 @@ describe('AppCreatePage', () => {
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'Demo')
-    await user.type(screen.getByLabelText('Launch URL'), 'demo.example.com/auth')
+    await user.type(screen.getByLabelText('Application Address'), 'demo.example.com')
     await user.click(screen.getByRole('button', { name: 'Icon' }))
     expect(screen.getByRole('option', { name: 'Wallet' })).toBeVisible()
     await user.type(screen.getByLabelText('Search icons'), 'wall')
@@ -276,8 +279,10 @@ describe('AppCreatePage', () => {
   it('offers the scopes and categories of the master data and a local example when the environment is Local', async () => {
     globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
     const { user } = renderPage()
-    expect(screen.getByLabelText('Launch URL')).toHaveAttribute('placeholder', 'exima.mws.web.id/auth/sso')
+    expect(screen.getByLabelText('Application Address')).toHaveAttribute('placeholder', 'exima.mws.web.id')
     await user.click(screen.getByRole('radio', { name: /Local/ }))
+    expect(screen.getByLabelText('Application Address')).toHaveAttribute('placeholder', 'localhost:3000')
+    await user.click(screen.getByRole('button', { name: 'This application uses different paths' }))
     expect(screen.getByLabelText('Launch URL')).toHaveAttribute('placeholder', 'localhost:3000/auth/sso')
     expect(screen.getByLabelText('Logout URL')).toHaveAttribute('placeholder', 'localhost:3000/auth/logout')
     await user.click(await screen.findByRole('button', { name: 'No scope' }))
@@ -318,6 +323,23 @@ describe('AppCreatePage', () => {
     expect(screen.queryByText(/email=/)).toBeNull()
   })
 
+  it('asks for the address only and fills in the standard sign-in and sign-out paths', async () => {
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY])
+    const { user } = renderPage()
+    expect(screen.queryByLabelText('Launch URL')).toBeNull()
+    expect(screen.queryByLabelText('Logout URL')).toBeNull()
+    await user.type(screen.getByLabelText('Application Address'), 'localhost:3000')
+    expect(screen.getByText(/The Hub opens \/auth\/sso and signs out through \/auth\/logout/)).toBeVisible()
+    // Different paths carry the address over, and back again.
+    await user.click(screen.getByRole('button', { name: 'This application uses different paths' }))
+    expect(screen.getByLabelText('Launch URL')).toHaveValue('localhost:3000/auth/sso')
+    expect(screen.getByLabelText('Logout URL')).toHaveValue('localhost:3000/auth/logout')
+    await user.clear(screen.getByLabelText('Launch URL'))
+    await user.type(screen.getByLabelText('Launch URL'), 'localhost:3000/sign-in')
+    await user.click(screen.getByRole('button', { name: 'Use the standard paths again' }))
+    expect(screen.getByLabelText('Application Address')).toHaveValue('localhost:3000')
+  })
+
   it('hides the Hub choice once a Hub exists', async () => {
     globalThis.fetch = createFetchRouter([
       SCOPES,
@@ -350,9 +372,9 @@ describe('AppCreatePage', () => {
     const { user } = renderPage()
     expect(screen.getByText('Application name')).toBeVisible()
     await user.type(screen.getByLabelText('Name'), 'Demo App')
-    await user.type(screen.getByLabelText('Launch URL'), 'demo.example.com')
+    await user.type(screen.getByLabelText('Application Address'), 'demo.example.com')
     expect(screen.getByText('Demo App')).toBeVisible()
-    expect(screen.getByText('Opens https://demo.example.com')).toBeVisible()
+    expect(screen.getByText('Opens https://demo.example.com/auth/sso')).toBeVisible()
   })
 
   it('creates the application with its details and opens the setup steps', async () => {
@@ -379,7 +401,7 @@ describe('AppCreatePage', () => {
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'Demo App')
-    await user.type(screen.getByLabelText('Launch URL'), 'demo.example.com/auth/sso')
+    await user.type(screen.getByLabelText('Application Address'), 'demo.example.com')
     await user.click(await screen.findByRole('checkbox', { name: /View student profiles/ }))
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     // The .env values are handed over first, the setup page follows once they are copied.
@@ -392,7 +414,7 @@ describe('AppCreatePage', () => {
         icon: '',
         category: '',
         launch_url: 'https://demo.example.com/auth/sso',
-        logout_url: '',
+        logout_url: 'https://demo.example.com/auth/logout',
         scope: '',
         launch_mode: 'sso',
         connect: true,
@@ -415,17 +437,22 @@ describe('AppCreatePage', () => {
     globalThis.fetch = fetchMock
     const { user } = renderPage()
     await user.type(screen.getByLabelText('Name'), 'Sheet')
-    await user.type(screen.getByLabelText('Launch URL'), 'docs.example.com/sheet')
     expect(screen.getByText(/People sign in once in the Hub/)).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Single Sign-On' }))
     await user.click(screen.getByRole('option', { name: /Plain Link/ }))
     expect(screen.getByText(/The card just opens the address/)).toBeVisible()
+    // A plain link is any address, with no sign-in or sign-out path and no logout.
+    expect(screen.queryByLabelText('Application Address')).toBeNull()
+    expect(screen.queryByLabelText('Logout URL')).toBeNull()
+    await user.type(screen.getByLabelText('Launch URL'), 'docs.example.com/sheet')
     expect(screen.queryByText('Data Access')).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
       const body = JSON.parse(call[1].body)
       expect(body.launch_mode).toBe('link')
+      expect(body.launch_url).toBe('https://docs.example.com/sheet')
+      expect(body.logout_url).toBe('')
       expect(body.connect).toBeUndefined()
       expect(body.scope_names).toBeUndefined()
     })
