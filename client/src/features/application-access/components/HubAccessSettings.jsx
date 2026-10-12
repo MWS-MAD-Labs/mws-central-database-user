@@ -1,11 +1,18 @@
 import { Check, Plus, X } from "lucide-react";
 import { useState } from "react";
-import { Button } from "../../../components/ui/Button.jsx";
 import { Field } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { cn } from "../../../lib/cn.js";
 import { LIMITS } from "../../../lib/limits.js";
-import { HUB_MODES, MAX_BYPASS_EMAILS, emailName, emailsProblem, parseEmails } from "../utils/hubSettings.js";
+import {
+  HUB_MODES,
+  MAX_BYPASS_EMAILS,
+  emailName,
+  emailsProblem,
+  nameProblem,
+  readNameInput,
+  toEmail,
+} from "../utils/hubSettings.js";
 
 // How strictly the Hub checks who may sign in, and who can always open it. Both go into the Hub's .env.
 // The parent keeps `value` as { hub_access_mode, hub_bypass_emails } and is told of each change.
@@ -14,24 +21,29 @@ export function HubAccessSettings({ value, onChange }) {
   const [draft, setDraft] = useState("");
   const [draftProblem, setDraftProblem] = useState(null);
 
-  // One email at a time. Several pasted together are split and added if they all pass.
+  const enforcing = value.hub_access_mode === "enforce";
+
   function add() {
-    const entered = parseEmails(draft);
-    if (entered.length === 0) return;
-    const next = [...emails, ...entered];
-    const problem = emailsProblem(next);
+    const name = draft.trim();
+    if (!name) return;
+    const email = toEmail(name);
+    const problem = nameProblem(name) ?? emailsProblem([...emails, email]);
     if (problem) {
       setDraftProblem(problem);
       return;
     }
-    onChange({ ...value, hub_bypass_emails: next });
+    onChange({ ...value, hub_bypass_emails: [...emails, email] });
     setDraft("");
     setDraftProblem(null);
   }
 
   return (
     <div className="space-y-4">
-      <div role="radiogroup" aria-label="Hub access mode" className="grid gap-2 sm:grid-cols-3">
+      <div
+        role="radiogroup"
+        aria-label="Hub access mode"
+        className="grid gap-2 sm:grid-cols-3"
+      >
         {HUB_MODES.map((mode) => {
           const selected = value.hub_access_mode === mode.id;
           return (
@@ -43,86 +55,121 @@ export function HubAccessSettings({ value, onChange }) {
               onClick={() => onChange({ ...value, hub_access_mode: mode.id })}
               className={cn(
                 "flex cursor-pointer flex-col gap-1 rounded-2xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--mws-burgundy)",
-                selected ? "border-(--mws-burgundy) bg-[#7E15180D]" : "border-(--mws-line) bg-white hover:border-(--mws-burgundy)",
+                selected
+                  ? "border-(--mws-burgundy) bg-[#7E15180D]"
+                  : "border-(--mws-line) bg-white hover:border-(--mws-burgundy)",
               )}
             >
               <span className="flex items-center gap-2">
-                <span className="font-display text-sm font-bold text-(--mws-charcoal)">{mode.title}</span>
-                {mode.recommended ? <StatusBadge tone="green">Start here</StatusBadge> : null}
-                {selected ? <Check size={14} className="ml-auto text-(--mws-burgundy)" aria-hidden="true" /> : null}
+                <span className="font-display text-sm font-bold text-(--mws-charcoal)">
+                  {mode.title}
+                </span>
+                {mode.recommended ? (
+                  <StatusBadge tone="green">Start here</StatusBadge>
+                ) : null}
+                {selected ? (
+                  <Check
+                    size={14}
+                    className="ml-auto text-(--mws-burgundy)"
+                    aria-hidden="true"
+                  />
+                ) : null}
               </span>
-              <span className="text-xs leading-5 text-(--mws-muted)">{mode.text}</span>
+              <span className="text-xs leading-5 text-(--mws-muted)">
+                {mode.text}
+              </span>
             </button>
           );
         })}
       </div>
-      <Field
-        label="Emergency Sign-in"
-        hint={`Can always open the Hub, even if Central access is wrong or Central is down. Keep it to one or two admins. Up to ${MAX_BYPASS_EMAILS}. Used in Enforce mode only.`}
-        error={draftProblem ?? undefined}
-      >
-        <div className="flex gap-2">
-          <div
-            className={cn(
-              "flex h-11 min-w-0 flex-1 items-center overflow-hidden rounded-xl border bg-white focus-within:border-(--mws-burgundy)",
-              draftProblem ? "border-[#c75f64]" : "border-(--mws-line)",
-            )}
+      {enforcing ? (
+        <div className="space-y-3">
+          <Field
+            label="Emergency Sign-in"
+            hint={`Can always open the Hub, even if Central access is wrong or Central is down. Keep it to one or two admins, up to ${MAX_BYPASS_EMAILS}.`}
+            error={draftProblem ?? undefined}
           >
-            <input
-              aria-label="Add an email that always gets in"
-              maxLength={LIMITS.EMAIL_MAX}
-              value={draft}
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="name"
-              className="h-full min-w-0 flex-1 bg-transparent px-3 text-sm text-(--mws-charcoal) outline-none placeholder:text-(--mws-muted)"
-              onChange={(event) => {
-                setDraft(event.target.value);
-                setDraftProblem(null);
-              }}
-              onBlur={add}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  add();
-                }
-              }}
-            />
-            <span className="h-full shrink-0 border-l border-(--mws-line) bg-(--mws-soft) px-3 text-sm leading-[2.75rem] text-(--mws-muted)">
-              @{LIMITS.EMAIL_DOMAIN}
-            </span>
-          </div>
-          <Button type="button" className="h-11" onClick={add} disabled={!draft.trim()}>
-            <Plus size={16} aria-hidden="true" />
-            Add
-          </Button>
-        </div>
-      </Field>
-      {emails.length === 0 ? (
-        <p className="text-xs text-(--mws-muted)">No one yet.</p>
-      ) : (
-        <ul className="flex flex-wrap gap-2">
-          {emails.map((email) => (
-            <li
-              key={email}
-              className="inline-flex items-center gap-1.5 rounded-full border border-(--mws-line) bg-(--mws-soft) py-1 pr-1 pl-3 text-xs text-(--mws-charcoal)"
+            <div
+              className={cn(
+                "flex h-11 min-w-0 items-center overflow-hidden rounded-xl border bg-white focus-within:border-(--mws-burgundy)",
+                draftProblem ? "border-[#c75f64]" : "border-(--mws-line)",
+              )}
             >
-              <span>
-                {emailName(email)}
-                <span className="text-(--mws-muted)">@{LIMITS.EMAIL_DOMAIN}</span>
+              <input
+                aria-label="Add an email that always gets in"
+                maxLength={LIMITS.EMAIL_MAX}
+                value={draft}
+                disabled={emails.length >= MAX_BYPASS_EMAILS}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Email"
+                className="h-full min-w-0 flex-1 bg-transparent px-3 text-sm text-(--mws-charcoal) outline-none placeholder:text-(--mws-muted) disabled:cursor-not-allowed"
+                onChange={(event) => {
+                  const read = readNameInput(event.target.value);
+                  setDraft(read.name);
+                  setDraftProblem(read.problem);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    add();
+                  }
+                }}
+              />
+              <span className="shrink-0 pr-2 text-sm text-(--mws-muted)">
+                @{LIMITS.EMAIL_DOMAIN}
               </span>
               <button
                 type="button"
-                aria-label={`Remove ${email}`}
-                onClick={() => onChange({ ...value, hub_bypass_emails: emails.filter((item) => item !== email) })}
-                className="flex size-6 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) hover:bg-white hover:text-(--mws-burgundy)"
+                aria-label="Add"
+                title="Add"
+                onClick={add}
+                disabled={!draft.trim() || emails.length >= MAX_BYPASS_EMAILS}
+                className="mr-1.5 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-(--mws-burgundy) transition-colors hover:bg-[#7E15180D] focus-visible:outline-2 focus-visible:outline-(--mws-burgundy) disabled:cursor-not-allowed disabled:text-(--mws-muted) disabled:opacity-50 disabled:hover:bg-transparent"
               >
-                <X size={12} aria-hidden="true" />
+                <Plus size={18} aria-hidden="true" />
               </button>
-            </li>
-          ))}
-        </ul>
-      )}
+            </div>
+          </Field>
+          {emails.length === 0 ? (
+            <p className="text-xs text-(--mws-muted)">
+              No one yet. Add one or two admins so a wrong setup cannot lock
+              them out.
+            </p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">
+              {emails.map((email) => (
+                <li
+                  key={email}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-(--mws-line) bg-(--mws-soft) py-1 pr-1 pl-3 text-xs text-(--mws-charcoal)"
+                >
+                  <span>
+                    {emailName(email)}
+                    <span className="text-(--mws-muted)">
+                      @{LIMITS.EMAIL_DOMAIN}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${email}`}
+                    onClick={() =>
+                      onChange({
+                        ...value,
+                        hub_bypass_emails: emails.filter(
+                          (item) => item !== email,
+                        ),
+                      })
+                    }
+                    className="flex size-6 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) hover:bg-white hover:text-(--mws-burgundy)"
+                  >
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -650,9 +650,10 @@ describe("application onboarding", () => {
         expect((await patch({ hub_access_mode: "loud", hub_bypass_emails: [] })).status).toBe(400);
         expect((await patch({ hub_access_mode: "warn", hub_bypass_emails: ["not-an-email"] })).status).toBe(400);
         expect((await patch({ hub_access_mode: "warn", hub_bypass_emails: ["a@millennia21.id", "A@millennia21.id"] })).status).toBe(400);
-        expect((await patch({ hub_access_mode: "warn", hub_bypass_emails: Array.from({ length: 11 }, (_, i) => `u${i}@millennia21.id`) })).status).toBe(400);
+        expect((await patch({ hub_access_mode: "warn", hub_bypass_emails: Array.from({ length: 4 }, (_, i) => `u${i}@millennia21.id`) })).status).toBe(400);
         expect((await patch({ hub_access_mode: "warn", hub_bypass_emails: [`${"a".repeat(40)}@millennia21.id`] })).status).toBe(400);
         expect((await patch({ hub_access_mode: "warn", hub_bypass_emails: ["boss@gmail.com"] })).status).toBe(400);
+        expect((await patch({ hub_access_mode: "warn", hub_bypass_emails: ["bo ss@millennia21.id"] })).status).toBe(400);
 
         expect((await patch({ hub_access_mode: "enforce", hub_bypass_emails: ["Boss@Millennia21.id"] })).status).toBe(200);
         const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;

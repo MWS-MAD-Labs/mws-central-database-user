@@ -471,23 +471,28 @@ describe('AppSetupPage', () => {
       await waitFor(() => expect(saved).toEqual([{ hub_access_mode: 'enforce', hub_bypass_emails: ['me@millennia21.id', 'boss@millennia21.id'] }]))
     })
 
-    it('copies the three sign-in lines without a new token', async () => {
+    it('shows the three sign-in lines first and copies them from the dialog', async () => {
       const { user } = renderPage([setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings }))])
       await screen.findByText('Hub Sign-in')
       await user.click(screen.getByRole('button', { name: 'Copy Sign-in Lines' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Sign-in Lines' })
+      const lines =
+        'HUB_CENTRAL_ACCESS_MODE="warn"\nHUB_CENTRAL_ACCESS_APP_ID="demo"\nHUB_CENTRAL_ACCESS_BYPASS_EMAILS="me@millennia21.id"'
+      expect(within(dialog).getByText(/HUB_CENTRAL_ACCESS_MODE="warn"/)).toBeVisible()
+      await user.click(within(dialog).getByRole('button', { name: 'Copy Lines' }))
       await waitFor(async () => {
-        expect(await navigator.clipboard.readText()).toBe(
-          'HUB_CENTRAL_ACCESS_MODE="warn"\nHUB_CENTRAL_ACCESS_APP_ID="demo"\nHUB_CENTRAL_ACCESS_BYPASS_EMAILS="me@millennia21.id"',
-        )
+        expect(await navigator.clipboard.readText()).toBe(lines)
       })
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Sign-in Lines' })).toBeNull())
     })
 
     it('refuses an email that is not one', async () => {
       const { user } = renderPage([setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings }))])
       await screen.findByText('Hub Sign-in')
-      await user.type(screen.getByLabelText('Add an email that always gets in'), 'nonsense@gmail.com{Enter}')
+      await user.click(screen.getByRole('radio', { name: /Enforce/ }))
+      await user.click(screen.getByLabelText('Add an email that always gets in'))
+      await user.paste('nonsense@gmail.com')
       expect(screen.getByText(/Only millennia21.id emails/)).toBeVisible()
-      expect(screen.getByRole('button', { name: 'Save Settings' })).toBeDisabled()
     })
 
     it('has none for an ordinary application', async () => {

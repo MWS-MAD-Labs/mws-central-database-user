@@ -84,9 +84,9 @@ Add it once from Add Application with "This is the Hub itself" ticked. After tha
 
 ## Emergency sign-in and exceptions
 
-"Emergency Sign-in" on the Hub's setup page lists people who skip the Hub's Central access check. They still sign in through Central, so someone who is not in Central cannot get in this way. It only matters in Enforce mode, and it gives no Hub admin rights and no access to other apps. Use it for one or two admins so a wrong group setup or a Central outage cannot lock them out. Everyone else gets access through a group or an exception. Only millennia21.id emails are accepted, typed as the name alone.
+"Emergency Sign-in" on the Hub's setup page lists up to 3 people who skip the Hub's Central access check. It only shows in Enforce mode, since Warn and Off turn nobody away. They still sign in through Central, so someone who is not in Central cannot get in this way. It gives no Hub admin rights and no access to other apps. Use it for one or two admins so a wrong group setup or a Central outage cannot lock them out. Every such sign-in is written to the Hub's audit log as `hub.login_bypass`. Everyone else gets access through a group or an exception. Only millennia21.id emails are accepted, typed as the name alone.
 
-After changing the sign-in settings use Copy Sign-in Lines on the same page and restart the Hub. The token does not change.
+After changing the sign-in settings use Copy Sign-in Lines on the same page. It shows the three lines before copying them. Restart the Hub after pasting. The token does not change.
 
 ## Syncing permissions
 

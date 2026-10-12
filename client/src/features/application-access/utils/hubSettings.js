@@ -20,17 +20,33 @@ export const HUB_MODES = [
   },
 ]
 
-export const MAX_BYPASS_EMAILS = 10
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+export const MAX_BYPASS_EMAILS = 3
 
-// What is typed or pasted into the name box: "ann", "Ann@millennia21.id" or several of them,
-// into ["ann@millennia21.id"]. Anything with another domain is kept as typed so it can be refused.
-export function parseEmails(text) {
-  return text
-    .split(/[\s,;]+/)
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean)
-    .map((entry) => (entry.includes('@') ? entry : `${entry}@${LIMITS.EMAIL_DOMAIN}`))
+const NAME = /^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$/
+
+// What may stay in the name box: letters, digits, dot, underscore and dash, in lower case.
+export function cleanName(text) {
+  return text.toLowerCase().replace(/[^a-z0-9._-]/g, '')
+}
+
+// Reads the box. A pasted full address gives its name and, when the domain is another one, says so.
+export function readNameInput(text) {
+  const [local, ...rest] = text.split('@')
+  const domain = rest.join('@').trim().toLowerCase()
+  const foreign = rest.length > 0 && domain !== '' && domain !== LIMITS.EMAIL_DOMAIN
+  return { name: cleanName(local), problem: foreign ? `Only ${LIMITS.EMAIL_DOMAIN} emails.` : null }
+}
+
+export function nameProblem(name) {
+  if (!NAME.test(name) || name.includes('..')) {
+    return 'Use letters, digits, dots, dashes or underscores. It cannot start or end with a dot or dash.'
+  }
+  return null
+}
+
+// "ann" into "ann@millennia21.id".
+export function toEmail(name) {
+  return `${name}@${LIMITS.EMAIL_DOMAIN}`
 }
 
 // Only the name part, for showing next to the fixed domain.
@@ -44,8 +60,10 @@ export function emailsProblem(emails) {
   if (foreign) return `Only ${LIMITS.EMAIL_DOMAIN} emails. "${foreign}" is not one.`
   const long = emails.find((email) => email.length > LIMITS.EMAIL_MAX)
   if (long) return `An email can have up to ${LIMITS.EMAIL_MAX} characters.`
-  const bad = emails.find((email) => !EMAIL.test(email))
-  if (bad) return `"${bad}" is not a valid email.`
+  for (const email of emails) {
+    const problem = nameProblem(emailName(email))
+    if (problem) return problem
+  }
   if (new Set(emails).size !== emails.length) return 'Each email only once.'
   return null
 }

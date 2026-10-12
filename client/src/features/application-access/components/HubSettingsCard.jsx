@@ -3,14 +3,15 @@ import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { copyText } from "../utils/copyText.js";
-import { emailsProblem, signInEnvLines } from "../utils/hubSettings.js";
+import { emailsProblem } from "../utils/hubSettings.js";
 import { HubAccessSettings } from "./HubAccessSettings.jsx";
+import { SignInLinesDialog } from "./SignInLinesDialog.jsx";
 
 // The Hub's sign-in settings on its setup page. They are written into its .env, so after saving the three
 // lines are copied again. The token stays as it is.
 export function HubSettingsCard({ settings, applicationId, onSaved }) {
   const [value, setValue] = useState(settings);
+  const [showing, setShowing] = useState(false);
   const changed = JSON.stringify(value) !== JSON.stringify(settings);
   const problem = emailsProblem(value.hub_bypass_emails);
   const mutation = useMutation({
@@ -33,16 +34,18 @@ export function HubSettingsCard({ settings, applicationId, onSaved }) {
         <Button
           type="button"
           variant="secondary"
+          size="sm"
           disabled={changed}
           title={changed ? "Save the settings first" : "The three sign-in lines for the Hub's .env. Restart the Hub after changing them."}
-          onClick={() => copyText(signInEnvLines(applicationId, settings))}
+          onClick={() => setShowing(true)}
         >
           Copy Sign-in Lines
         </Button>
-        <Button type="button" loading={mutation.isPending} disabled={!changed || Boolean(problem)} onClick={() => mutation.mutate()}>
+        <Button type="button" size="sm" loading={mutation.isPending} disabled={!changed || Boolean(problem)} onClick={() => mutation.mutate()}>
           Save Settings
         </Button>
       </div>
+      {showing ? <SignInLinesDialog applicationId={applicationId} settings={settings} onClose={() => setShowing(false)} /> : null}
     </section>
   );
 }
