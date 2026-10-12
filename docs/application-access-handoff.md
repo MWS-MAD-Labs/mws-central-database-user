@@ -65,3 +65,13 @@ Uji regresi yang harus ada setelah perbaikan: `client/test/features/application-
 
 ## Riwayat commit (terbaru di atas)
 `77a05cb2` picker scope mengikuti master data dua arah + blok Taken seragam; `f6826a2b` endpoint `scope-catalog`; `a4e60a7e` baris group hitungan dan blok dua kolom; `71860eeb`, `fad5675d` aturan scope master data; `54353949` own_count dan remaining; `9440797a` baris group bisa dibuka; `c8d7c38e` role-options dan unit sentinel; `0ef1c6ed`, `28012f75`, `8ea61b02` polish tab Roles dan kartu group; `653b045a` gate role kembar; sebelumnya `4dffc1e4`, `aa206548`, `e50d4716`, `fb7000ae`, `6a47b4c3`.
+
+## Moving the Hub catalog into Central
+
+The Hub shows every app that is published in Central, so its own Application Catalog table can be emptied once the apps live here.
+
+1. Deploy Central first. It has a new migration (`launch_mode`).
+2. In the Hub backend: `bun run export:catalog catalog.json`.
+3. In Central server: `bun run import:hub-catalog catalog.json --dry-run`, then again without `--dry-run`. Add `--publish` to publish apps that have a launch address. Apps with no single sign-on address become plain links. Existing apps are never touched.
+4. For each imported app, add its roles and groups, then publish it.
+5. In the Hub backend: `bun run prune:catalog` shows what would go, `bun run prune:catalog --confirm` deletes the rows Central now covers.
