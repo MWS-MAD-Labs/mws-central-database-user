@@ -7,10 +7,12 @@ import { DEFAULT_SCOPES } from "../utils/connectionScopes.js";
 import { descriptionProblem, nameProblem, slugifyApplicationId, tidyText } from "../utils/applicationId.js";
 import { ENVIRONMENTS, addressPlaceholder, addressProblem, environmentOfScheme, joinAddress, readAddressInput, splitAddress } from "../utils/applicationUrl.js";
 import { HUB_ICON_NAMES } from "../utils/hubIcons.js";
+import { AddressInput } from "./AddressInput.jsx";
 import { AppCardPreview } from "./AppCardPreview.jsx";
 import { IconPicker } from "./IconPicker.jsx";
 import { NextStepsCard } from "./NextStepsCard.jsx";
 import { HubAccessSettings } from "./HubAccessSettings.jsx";
+import { HubAddressField } from "./HubAddressField.jsx";
 import { ScopePicker } from "./ScopePicker.jsx";
 import { emailsProblem } from "../utils/hubSettings.js";
 import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.js";
@@ -56,6 +58,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const [customPaths, setCustomPaths] = useState(!startsStandard);
   const [hostRest, setHostRest] = useState(startsStandard && initial?.launch_url ? launch.rest.slice(0, -STANDARD_PATHS.launch.length) : "");
   const [scopeNames, setScopeNames] = useState(DEFAULT_SCOPES);
+  const [hubBaseUrl, setHubBaseUrl] = useState("");
   const [hubChosen, setHubChosen] = useState(false);
   // What a pasted address started with, so a clash with the environment can be said out loud.
   const [pasted, setPasted] = useState({ launch: null, logout: null });
@@ -146,7 +149,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       onSubmit({
         ...(idLocked ? { application_id: applicationId } : {}),
         name: "HUB",
-        ...(layout === "page" ? { is_hub: true, connect: true, scope_names: scopeNames, env_settings: hubSettings } : {}),
+        ...(layout === "page" ? { is_hub: true, connect: true, scope_names: scopeNames, env_settings: hubSettings, ...(hubBaseUrl ? { hub_base_url: hubBaseUrl } : {}) } : {}),
       });
       return;
     }
@@ -343,6 +346,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
           <p className="text-xs leading-5 text-(--mws-muted)">
             How strictly the Hub checks who may sign in. These go into the Hub's .env with the token.
           </p>
+          <HubAddressField value={hubBaseUrl} onChange={(next) => setHubBaseUrl(next)} />
           <HubAccessSettings value={hubSettings} onChange={setHubSettings} />
         </Section>
       ) : null}
@@ -404,34 +408,6 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
 }
 
 // The scheme sits in front of the box, so only the host and path are typed.
-function AddressInput({ label, environment, value, placeholder, invalid, onChange, onBlur }) {
-  const scheme = ENVIRONMENTS.find((item) => item.id === environment)?.scheme;
-  return (
-    <div
-      className={cn(
-        "flex w-full min-w-0 items-stretch overflow-hidden rounded-xl border bg-white transition focus-within:border-(--mws-burgundy) focus-within:ring-2 focus-within:ring-[#7E15181A]",
-        invalid ? "border-[#c75f64]" : "border-(--mws-line)",
-      )}
-    >
-      <span className="flex shrink-0 items-center border-r border-(--mws-line) bg-(--mws-soft) px-3 font-mono text-xs text-(--mws-muted)">
-        {scheme}
-      </span>
-      <input
-        aria-label={label}
-        value={value}
-        placeholder={placeholder}
-        autoComplete="off"
-        spellCheck={false}
-        autoCapitalize="off"
-        inputMode="url"
-        className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-(--mws-charcoal) outline-none placeholder:text-[#a8999b]"
-        onChange={onChange}
-        onBlur={onBlur}
-      />
-    </div>
-  );
-}
-
 function Section({ title, children }) {
   return (
     <fieldset className="min-w-0 space-y-4 border-t border-(--mws-line) pt-5 first:border-t-0 first:pt-0">

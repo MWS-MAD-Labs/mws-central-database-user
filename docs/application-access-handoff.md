@@ -103,3 +103,13 @@ Deploy order: the Central migration first (it creates the two tables and fills t
 ## Seeing which endpoints a connection can call
 
 Under each scope in Data Access, "N endpoints" lists the endpoints that scope opens, and the setup page shows how many endpoints the connection can call as a whole. The same list is the API Reference page. It is written in `server/src/constants/internal-api-endpoints.ts`, and a test compares it with the real internal routes, so a new endpoint cannot be left out.
+
+## Hub values in every .env
+
+The .env block of an application also carries what it needs from the Hub: `HUB_BASE_URL`, `HUB_SSO_JWKS_URL` (the base URL plus `/.well-known/jwks.json`) and `HUB_INTERNAL_SECRET`. The Hub's own block carries the same secret. They come from the Hub's setup page in Central, so the order is:
+
+1. Add the Hub (or open its setup page if it exists) and fill in the Hub Address.
+2. Generate the Hub Secret. If the Hub and its applications already run with a secret, use "Use The Hub's Current One" and paste it, so nothing has to change.
+3. Create the connection of each application. Its block now includes the Hub lines. An application made before the Hub had an address shows a note and gets the lines after its token is rotated.
+
+The secret is kept encrypted with `APP_SECRETS_KEY` in Central's `.env`. Make one with `openssl rand -base64 32` and set it on every Central deploy before adding the Hub. Without it the secret cannot be made or read, and the page says so. Do not change the key afterwards, or the stored secret cannot be read any more (paste it again to fix that). "Rotate Secret" makes a new one; the Hub and every application need the new value. Looking at the secret and changing it are written to the audit log, never the value.

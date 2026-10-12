@@ -367,6 +367,7 @@ export function AppSetupPage() {
         <HubSettingsCard
           key={JSON.stringify(setup.env_settings)}
           settings={setup.env_settings}
+          hub={setup.hub}
           applicationId={applicationId}
           onSaved={refresh}
         />
@@ -440,7 +441,7 @@ export function AppSetupPage() {
             <ConnectDialog
               title="Rotated Credentials"
               description="Put these lines in the .env of the application, then deploy it."
-              connection={{ env: client.env }}
+              connection={{ env: client.env, hub_lines_missing: client.hub_lines_missing }}
               notice={oldTokenNotice(client, rotation)}
               onClose={onClose}
             />

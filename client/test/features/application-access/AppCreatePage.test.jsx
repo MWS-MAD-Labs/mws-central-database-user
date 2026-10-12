@@ -161,6 +161,7 @@ describe('AppCreatePage', () => {
     expect(screen.getByLabelText('Application ID')).toBeDisabled()
     expect(screen.queryByLabelText('Launch URL')).toBeNull()
     expect(screen.queryByText('Hub Card')).toBeNull()
+    await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     const confirmDialog = await screen.findByRole('dialog', { name: 'Add the Hub' })
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
@@ -173,6 +174,7 @@ describe('AppCreatePage', () => {
         connect: true,
         scope_names: ['employees:read'],
         env_settings: { hub_access_mode: 'warn', hub_bypass_emails: [] },
+        hub_base_url: 'https://app.mws.web.id',
       })
     })
   })
@@ -391,6 +393,7 @@ describe('AppCreatePage', () => {
               application_id: 'demo',
               organization_id: 'org_demo_x',
               connection: {
+                hub_lines_missing: true,
                 token: 'mws_abc.secretsecretsecret',
                 env: [{ key: 'HUB_SSO_APP_ID', value: 'demo', secret: false, group: 0, line: 'HUB_SSO_APP_ID="demo"' }, { key: 'CENTRAL_DATA_API_TOKEN', value: 'mws_abc.secretsecretsecret', secret: true, group: 0, line: 'CENTRAL_DATA_API_TOKEN="mws_abc.secretsecretsecret"' }],
               },
@@ -406,6 +409,7 @@ describe('AppCreatePage', () => {
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     // The .env values are handed over first, the setup page follows once they are copied.
     expect(await screen.findByText('Connection Created')).toBeVisible()
+    expect(screen.getByText('The Hub lines are not here yet.')).toBeVisible()
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
       expect(JSON.parse(call[1].body)).toEqual({

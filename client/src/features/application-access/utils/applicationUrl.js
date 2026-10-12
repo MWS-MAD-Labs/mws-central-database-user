@@ -67,3 +67,10 @@ export function addressProblem(environment, rest, { required = false } = {}) {
 export function addressPlaceholder(environment, path) {
   return `${environment === 'local' ? 'localhost:3000' : 'exima.mws.web.id'}${path}`
 }
+
+// The address of the Hub is an origin: nothing after the host and port.
+export function hubAddressProblem(environment, rest) {
+  const text = rest.trim()
+  if (/[/?#]/.test(text)) return 'Use only the address, like app.mws.web.id, with nothing after it.'
+  return addressProblem(environment, text, { required: true })
+}

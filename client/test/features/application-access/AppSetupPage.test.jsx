@@ -531,6 +531,57 @@ describe('AppSetupPage', () => {
       await waitFor(() => expect(saved).toEqual([{ hub_access_mode: 'enforce', hub_bypass_emails: ['me@millennia21.id', 'boss@millennia21.id'] }]))
     })
 
+    it('saves the Hub address, makes and shows the secret, and rotates it only after asking', async () => {
+      const calls = []
+      const { user } = renderPage([
+        setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings, hub: { base_url: 'https://app.mws.web.id', secret_set: false } })),
+        {
+          path: '/api/admin/application-access/apps/demo/hub-address',
+          method: 'PATCH',
+          response: ({ options }) => {
+            calls.push(['address', JSON.parse(options.body)])
+            return jsonResponse({ data: { base_url: 'http://localhost:4001' } })
+          },
+        },
+        {
+          path: '/api/admin/application-access/apps/demo/hub-secret',
+          method: 'POST',
+          response: ({ options }) => {
+            calls.push(['secret', JSON.parse(options.body)])
+            return jsonResponse({ data: { secret_set: true } })
+          },
+        },
+        {
+          path: '/api/admin/application-access/apps/demo/hub-secret',
+          method: 'GET',
+          response: () => jsonResponse({ data: { secret: 'abc123secret' } }),
+        },
+      ])
+      expect(await screen.findByLabelText('Hub Address')).toHaveValue('app.mws.web.id')
+      expect(screen.getByRole('button', { name: 'Save Address' })).toBeDisabled()
+      await user.click(screen.getByRole('radio', { name: 'Hub Local' }))
+      await user.clear(screen.getByLabelText('Hub Address'))
+      await user.type(screen.getByLabelText('Hub Address'), 'localhost:4001')
+      await user.click(screen.getByRole('button', { name: 'Save Address' }))
+      await waitFor(() => expect(calls).toContainEqual(['address', { hub_base_url: 'http://localhost:4001' }]))
+
+      expect(screen.getByText('Not generated yet')).toBeVisible()
+      await user.click(screen.getByRole('button', { name: 'Generate Secret' }))
+      await waitFor(() => expect(calls).toContainEqual(['secret', {}]))
+    })
+
+    it('shows the Hub secret only after it is asked for', async () => {
+      const { user } = renderPage([
+        setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings, hub: { base_url: 'https://app.mws.web.id', secret_set: true } })),
+        { path: '/api/admin/application-access/apps/demo/hub-secret', method: 'GET', response: () => jsonResponse({ data: { secret: 'abc123secret' } }) },
+      ])
+      await user.click(await screen.findByRole('button', { name: 'Show Secret' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Hub Secret' })
+      expect(within(dialog).queryByText(/abc123secret/)).toBeNull()
+      await user.click(within(dialog).getByRole('button', { name: 'Reveal' }))
+      expect(await within(dialog).findByText('HUB_INTERNAL_SECRET="abc123secret"')).toBeVisible()
+    })
+
     it('shows the three sign-in lines first and copies them from the dialog', async () => {
       const { user } = renderPage([setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings }))])
       await screen.findByText('Hub Sign-in')

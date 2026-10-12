@@ -101,6 +101,15 @@ export function ConnectDialog({
           </div>
         ) : null}
 
+        {connection.hub_lines_missing ? (
+          <div role="note" className="rounded-xl border border-[#d8b45b] bg-[#fff8e8] p-3">
+            <p className="text-sm font-semibold text-[#745716]">The Hub lines are not here yet.</p>
+            <p className="mt-1 text-sm text-[#745716]">
+              Add the Hub's address and secret on the Hub's setup page. Rotate this token after that to get HUB_BASE_URL, HUB_SSO_JWKS_URL and HUB_INTERNAL_SECRET in the .env.
+            </p>
+          </div>
+        ) : null}
+
         {notice ? (
           <div
             role="note"

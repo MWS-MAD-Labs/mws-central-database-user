@@ -72,6 +72,22 @@ export const applicationAccessApi = {
   },
 
   // The Hub's sign-in settings, which go into its .env.
+  async setHubAddress(applicationId, hubBaseUrl) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/hub-address`, { method: 'PATCH', body: { hub_base_url: hubBaseUrl } })
+    return response.data
+  },
+
+  // No secret makes a new one, a secret given is kept as the one the Hub already runs with.
+  async setHubSecret(applicationId, secret) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/hub-secret`, { method: 'POST', body: secret ? { secret } : {} })
+    return response.data
+  },
+
+  async revealHubSecret(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/hub-secret`)
+    return response.data.secret
+  },
+
   async updateEnvSettings(applicationId, settings) {
     const response = await apiRequest(`${ACCESS}/apps/${applicationId}/env-settings`, { method: 'PATCH', body: settings })
     return response.data
