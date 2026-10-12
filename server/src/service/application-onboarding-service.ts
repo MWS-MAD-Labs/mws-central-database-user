@@ -199,6 +199,11 @@ async function envFor(
 }
 
 export class ApplicationOnboardingService {
+  // The address kept for the Hub, or nothing when there is none yet.
+  static async savedHubAddress(): Promise<string | null> {
+    return (await loadHubFacts(false)).baseUrl;
+  }
+
   static async get(admin: AdminUser, applicationId: string): Promise<ApplicationDetail> {
     assertSuperAdmin(admin);
     return toDetail(await findApplication(applicationId));

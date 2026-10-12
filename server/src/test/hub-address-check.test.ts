@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { checkHubAddress } from "../service/hub-address-check";
+import { checkHubAddress, checkHubSecret } from "../service/hub-address-check";
 import { AdminUserTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const ACCESS = "/api/admin/application-access";
@@ -76,6 +76,59 @@ describe("hub address check", () => {
 
       const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
       expect((await TestRequest.get(`${ACCESS}/hub-address-check?url=${encodeURIComponent(base())}`, other)).status).toBe(403);
+    });
+  });
+
+  describe("hub secret check", () => {
+    const SECRET = "a".repeat(32);
+    let hub: ReturnType<typeof Bun.serve>;
+    beforeAll(() => {
+      hub = Bun.serve({
+        port: 0,
+        fetch(request) {
+          const path = new URL(request.url).pathname;
+          if (path !== "/sso/secret-check") return new Response("nope", { status: 404 });
+          return request.headers.get("x-hub-internal-secret") === SECRET ? Response.json({ data: { ok: true } }) : new Response("no", { status: 401 });
+        },
+      });
+    });
+    afterAll(() => hub.stop(true));
+    const at = () => `http://127.0.0.1:${hub.port}`;
+
+    it("says ok, wrong, no_check, unreachable or refused", async () => {
+      expect(await checkHubSecret(at(), SECRET)).toBe("ok");
+      expect(await checkHubSecret(at(), "b".repeat(32))).toBe("wrong");
+      expect(await checkHubSecret(base(), SECRET)).toBe("no_check");
+      const closed = Bun.serve({ port: 0, fetch: () => new Response("x") });
+      const port = closed.port;
+      closed.stop(true);
+      expect(await checkHubSecret(`http://127.0.0.1:${port}`, SECRET)).toBe("unreachable");
+      expect(await checkHubSecret("http://169.254.169.254", SECRET)).toBe("refused");
+    });
+
+    it("POST /hub-secret-check gives only the verdict, to a Super Admin only, and cleans a pasted line", async () => {
+      await AdminUserTest.delete();
+      await MasterDataTest.delete();
+      await MasterDataTest.create();
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        const ask = async (body: object) => {
+          const response = await TestRequest.post(`${ACCESS}/hub-secret-check`, body, accessToken);
+          return { status: response.status, body: await response.json() };
+        };
+        const ok = await ask({ address: at(), secret: `HUB_INTERNAL_SECRET="${SECRET}"` });
+        expect(ok.body).toEqual({ data: { verdict: "ok" } });
+        expect((await ask({ address: at(), secret: "c".repeat(32) })).body).toEqual({ data: { verdict: "wrong" } });
+        // Another line of the .env is turned away before anything is asked.
+        expect((await ask({ address: at(), secret: 'CENTRAL_API_TOKEN="mws_abc.def"' })).status).toBe(400);
+        expect(JSON.stringify(ok.body)).not.toContain(SECRET);
+
+        const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
+        expect((await TestRequest.post(`${ACCESS}/hub-secret-check`, { address: at(), secret: SECRET }, other)).status).toBe(403);
+      } finally {
+        await AdminUserTest.delete();
+        await MasterDataTest.delete();
+      }
     });
   });
 });

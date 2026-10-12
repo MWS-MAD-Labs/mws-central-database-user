@@ -231,6 +231,21 @@ export class ApplicationValidation {
     action: z.enum(["own", "rotate"], { message: "Pick own or rotate" }),
   });
 
+  static readonly HUB_SECRET_CHECK = z.object({
+    address: hubAddress.optional(),
+    secret: z
+      .preprocess(
+        cleanPastedSecret,
+        z
+          .string()
+          .trim()
+          .min(16, "A secret is at least 16 characters")
+          .max(200, "A secret is at most 200 characters")
+          .regex(/^\S+$/, "A secret has no spaces")
+          .refine((v) => !NOT_A_HUB_SECRET.test(v), "That is another line of the .env, not HUB_INTERNAL_SECRET"),
+      ),
+  });
+
   static readonly HUB_SECRET = z.object({
     // An existing secret to keep. Left out, a new one is made.
     secret: z

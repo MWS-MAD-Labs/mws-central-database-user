@@ -29,6 +29,7 @@ applicationAccessRouter.get("/applications", (c) => ApplicationAccessController.
 applicationAccessRouter.post("/applications", (c) => ApplicationAccessController.createApplication(c));
 applicationAccessRouter.get("/apps/:applicationId/exceptions", (c) => ApplicationAccessController.exceptions(c));
 applicationAccessRouter.get("/hub-address-check", (c) => ApplicationAccessController.hubAddressCheck(c));
+applicationAccessRouter.post("/hub-secret-check", (c) => ApplicationAccessController.hubSecretCheck(c));
 applicationAccessRouter.get("/secrets-status", (c) => ApplicationAccessController.secretsStatus(c));
 applicationAccessRouter.get("/taxonomy", (c) => ApplicationAccessController.taxonomy(c));
 applicationAccessRouter.get("/scope-catalog", (c) => ApplicationAccessController.scopeCatalog(c));

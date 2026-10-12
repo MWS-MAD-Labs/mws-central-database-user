@@ -1,4 +1,4 @@
-import { checkHubAddress } from "../../service/hub-address-check";
+import { checkHubAddress, checkHubSecret } from "../../service/hub-address-check";
 import { keyReady } from "../../utils/secret-box";
 import { ApplicationTaxonomyService } from "../../service/application-taxonomy-service";
 import { ApplicationOnboardingService } from "../../service/application-onboarding-service";
@@ -17,6 +17,7 @@ import type {
 } from "../../model/application-entitlement-model";
 import { ApplicationPermissionService } from "../../service/application-permission-service";
 import { ResponseError } from "../../error/response-error";
+import { Validation } from "../../validation/validation";
 import { ApplicationValidation } from "../../validation/application-entitlement-validation";
 import {
   ApplicationAccessRuleService,
@@ -341,6 +342,15 @@ export class ApplicationAccessController {
     const parsed = ApplicationValidation.HUB_ADDRESS.safeParse({ hub_base_url: address });
     if (!parsed.success) return c.json({ data: { verdict: "refused" } });
     return c.json({ data: { verdict: await checkHubAddress(parsed.data.hub_base_url as string) } });
+  }
+
+  static async hubSecretCheck(c: Context<{ Variables: AdminVariables }>) {
+    if (c.var.admin.role !== "SUPER_ADMIN") throw new ResponseError(403, "Forbidden: Only Super Admin can manage applications");
+    const body = Validation.validate(ApplicationValidation.HUB_SECRET_CHECK, await c.req.json().catch(() => ({}))) as { address?: string; secret: string };
+    // While the Hub is being added the address is in the request. Otherwise it is the one kept.
+    const address = body.address ?? (await ApplicationOnboardingService.savedHubAddress());
+    if (!address) return c.json({ data: { verdict: "refused" } });
+    return c.json({ data: { verdict: await checkHubSecret(address, body.secret) } });
   }
 
   static async secretsStatus(c: Context<{ Variables: AdminVariables }>) {
