@@ -182,7 +182,7 @@ const EMPLOYMENT_TYPES = Object.values(EmploymentType) as [EmploymentType, ...Em
 const envSettings = z.object({
   hub_access_mode: z.enum(["off", "warn", "enforce"], { message: "Pick off, warn or enforce" }),
   hub_bypass_emails: z
-    .array(z.string().trim().toLowerCase().max(LIMITS.EMAIL_MAX, `Email can have up to ${LIMITS.EMAIL_MAX} characters`).pipe(z.email("Use a valid email")))
+    .array(z.string().trim().toLowerCase().max(LIMITS.EMAIL_MAX, `Email can have up to ${LIMITS.EMAIL_MAX} characters`).pipe(z.email("Use a valid email")).refine((email) => email.endsWith(`@${LIMITS.EMAIL_DOMAIN}`), `Only ${LIMITS.EMAIL_DOMAIN} emails`))
     .max(10, "At most 10 emails")
     .refine((emails) => new Set(emails).size === emails.length, "Each email only once"),
 });

@@ -1,13 +1,13 @@
-import { Check, X } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
-import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
+import { Field } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { cn } from "../../../lib/cn.js";
 import { LIMITS } from "../../../lib/limits.js";
-import { HUB_MODES, MAX_BYPASS_EMAILS, emailsProblem, parseEmails } from "../utils/hubSettings.js";
+import { HUB_MODES, MAX_BYPASS_EMAILS, emailName, emailsProblem, parseEmails } from "../utils/hubSettings.js";
 
-// How strictly the Hub checks who may sign in, and who always gets in. Both go into the Hub's .env.
+// How strictly the Hub checks who may sign in, and who can always open it. Both go into the Hub's .env.
 // The parent keeps `value` as { hub_access_mode, hub_bypass_emails } and is told of each change.
 export function HubAccessSettings({ value, onChange }) {
   const emails = value.hub_bypass_emails;
@@ -57,39 +57,49 @@ export function HubAccessSettings({ value, onChange }) {
         })}
       </div>
       <Field
-        label="Emails That Always Get In"
-        hint={`Up to ${MAX_BYPASS_EMAILS}. Keep yours here so a wrong setting cannot lock you out.`}
+        label="Emergency Sign-in"
+        hint={`Can always open the Hub, even if Central access is wrong or Central is down. Keep it to one or two admins. Up to ${MAX_BYPASS_EMAILS}. Used in Enforce mode only.`}
         error={draftProblem ?? undefined}
       >
         <div className="flex gap-2">
-          <TextInput
-            aria-label="Add an email that always gets in"
-            type="email"
-            maxLength={LIMITS.EMAIL_MAX}
-            value={draft}
-            invalid={Boolean(draftProblem)}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="name@millennia21.id"
-            onChange={(event) => {
-              setDraft(event.target.value);
-              setDraftProblem(null);
-            }}
-            onBlur={add}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                add();
-              }
-            }}
-          />
-          <Button type="button" variant="secondary" onClick={add}>
+          <div
+            className={cn(
+              "flex h-11 min-w-0 flex-1 items-center overflow-hidden rounded-xl border bg-white focus-within:border-(--mws-burgundy)",
+              draftProblem ? "border-[#c75f64]" : "border-(--mws-line)",
+            )}
+          >
+            <input
+              aria-label="Add an email that always gets in"
+              maxLength={LIMITS.EMAIL_MAX}
+              value={draft}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="name"
+              className="h-full min-w-0 flex-1 bg-transparent px-3 text-sm text-(--mws-charcoal) outline-none placeholder:text-(--mws-muted)"
+              onChange={(event) => {
+                setDraft(event.target.value);
+                setDraftProblem(null);
+              }}
+              onBlur={add}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  add();
+                }
+              }}
+            />
+            <span className="h-full shrink-0 border-l border-(--mws-line) bg-(--mws-soft) px-3 text-sm leading-[2.75rem] text-(--mws-muted)">
+              @{LIMITS.EMAIL_DOMAIN}
+            </span>
+          </div>
+          <Button type="button" className="h-11" onClick={add} disabled={!draft.trim()}>
+            <Plus size={16} aria-hidden="true" />
             Add
           </Button>
         </div>
       </Field>
       {emails.length === 0 ? (
-        <p className="text-xs text-(--mws-muted)">No emails yet.</p>
+        <p className="text-xs text-(--mws-muted)">No one yet.</p>
       ) : (
         <ul className="flex flex-wrap gap-2">
           {emails.map((email) => (
@@ -97,12 +107,15 @@ export function HubAccessSettings({ value, onChange }) {
               key={email}
               className="inline-flex items-center gap-1.5 rounded-full border border-(--mws-line) bg-(--mws-soft) py-1 pr-1 pl-3 text-xs text-(--mws-charcoal)"
             >
-              {email}
+              <span>
+                {emailName(email)}
+                <span className="text-(--mws-muted)">@{LIMITS.EMAIL_DOMAIN}</span>
+              </span>
               <button
                 type="button"
                 aria-label={`Remove ${email}`}
                 onClick={() => onChange({ ...value, hub_bypass_emails: emails.filter((item) => item !== email) })}
-                className="flex size-5 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) hover:bg-white hover:text-(--mws-burgundy)"
+                className="flex size-6 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) hover:bg-white hover:text-(--mws-burgundy)"
               >
                 <X size={12} aria-hidden="true" />
               </button>

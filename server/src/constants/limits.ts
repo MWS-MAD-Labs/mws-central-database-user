@@ -8,6 +8,8 @@ export const LIMITS = {
   APPLICATION_DESCRIPTION_MAX: 50,
   // A whole email address, the same cap as the email of an employee or student.
   EMAIL_MAX: 50,
+  // The only domain people sign in with.
+  EMAIL_DOMAIN: "millennia21.id",
   CLASS_CAPACITY_MAX: 100,
   JOB_POSITION_HOLDERS_MAX: 200,
   GRADE_LEVEL_MIN: -5,

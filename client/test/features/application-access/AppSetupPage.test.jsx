@@ -450,16 +450,27 @@ describe('AppSetupPage', () => {
       expect(screen.queryByText('Organization ID')).toBeNull()
 
       await user.click(screen.getByRole('radio', { name: /Enforce/ }))
-      await user.type(screen.getByLabelText('Add an email that always gets in'), 'Boss@Millennia21.id{Enter}')
+      await user.type(screen.getByLabelText('Add an email that always gets in'), 'Boss{Enter}')
       await user.click(screen.getByRole('button', { name: 'Save Settings' }))
       await waitFor(() => expect(saved).toEqual([{ hub_access_mode: 'enforce', hub_bypass_emails: ['me@millennia21.id', 'boss@millennia21.id'] }]))
+    })
+
+    it('copies the three sign-in lines without a new token', async () => {
+      const { user } = renderPage([setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings }))])
+      await screen.findByText('Hub Sign-in')
+      await user.click(screen.getByRole('button', { name: 'Copy Sign-in Lines' }))
+      await waitFor(async () => {
+        expect(await navigator.clipboard.readText()).toBe(
+          'HUB_CENTRAL_ACCESS_MODE="warn"\nHUB_CENTRAL_ACCESS_APP_ID="demo"\nHUB_CENTRAL_ACCESS_BYPASS_EMAILS="me@millennia21.id"',
+        )
+      })
     })
 
     it('refuses an email that is not one', async () => {
       const { user } = renderPage([setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings }))])
       await screen.findByText('Hub Sign-in')
-      await user.type(screen.getByLabelText('Add an email that always gets in'), 'nonsense{Enter}')
-      expect(screen.getByText('"nonsense" is not a valid email.')).toBeVisible()
+      await user.type(screen.getByLabelText('Add an email that always gets in'), 'nonsense@gmail.com{Enter}')
+      expect(screen.getByText(/Only millennia21.id emails/)).toBeVisible()
       expect(screen.getByRole('button', { name: 'Save Settings' })).toBeDisabled()
     })
 

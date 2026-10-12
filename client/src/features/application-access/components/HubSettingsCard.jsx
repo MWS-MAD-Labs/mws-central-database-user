@@ -3,11 +3,12 @@ import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { emailsProblem } from "../utils/hubSettings.js";
+import { copyText } from "../utils/copyText.js";
+import { emailsProblem, signInEnvLines } from "../utils/hubSettings.js";
 import { HubAccessSettings } from "./HubAccessSettings.jsx";
 
-// The Hub's sign-in settings on its setup page. They are written into its .env, so after saving the .env
-// is made again by rotating the token.
+// The Hub's sign-in settings on its setup page. They are written into its .env, so after saving the three
+// lines are copied again. The token stays as it is.
 export function HubSettingsCard({ settings, applicationId, onSaved }) {
   const [value, setValue] = useState(settings);
   const changed = JSON.stringify(value) !== JSON.stringify(settings);
@@ -16,7 +17,7 @@ export function HubSettingsCard({ settings, applicationId, onSaved }) {
     mutationFn: () => applicationAccessApi.updateEnvSettings(applicationId, value),
     onSuccess: () => {
       onSaved();
-      showSuccessToast("Saved. Rotate the token to get the .env lines with these settings.");
+      showSuccessToast("Saved. Copy the sign-in lines into the Hub's .env and restart it.");
     },
     onError: (error) => showErrorToast(error, "Could not save the sign-in settings."),
   });
@@ -28,7 +29,16 @@ export function HubSettingsCard({ settings, applicationId, onSaved }) {
         <p className="text-sm text-(--mws-muted)">How strictly the Hub checks who may sign in. These go into the Hub's .env.</p>
       </div>
       <HubAccessSettings value={value} onChange={setValue} />
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={changed}
+          title={changed ? "Save the settings first" : "The three sign-in lines for the Hub's .env. Restart the Hub after changing them."}
+          onClick={() => copyText(signInEnvLines(applicationId, settings))}
+        >
+          Copy Sign-in Lines
+        </Button>
         <Button type="button" loading={mutation.isPending} disabled={!changed || Boolean(problem)} onClick={() => mutation.mutate()}>
           Save Settings
         </Button>

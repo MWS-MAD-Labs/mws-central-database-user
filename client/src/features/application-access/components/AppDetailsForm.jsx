@@ -47,7 +47,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const [notes, setNotes] = useState({ launch: null, logout: null });
   const hub = isHub || hubChosen;
   // Safe to start with: people still get in, and the one setting it up always does.
-  const [hubSettings, setHubSettings] = useState({ hub_access_mode: "warn", hub_bypass_emails: adminEmail ? [adminEmail] : [] });
+  const [hubSettings, setHubSettings] = useState({ hub_access_mode: "warn", hub_bypass_emails: adminEmail.endsWith(`@${LIMITS.EMAIL_DOMAIN}`) ? [adminEmail] : [] });
   const hubSettingsProblem = layout === "page" && hubChosen ? emailsProblem(hubSettings.hub_bypass_emails) : null;
   const set = (key) => (event) => setValues((current) => ({ ...current, [key]: event.target.value }));
   const tidyOnBlur = (key) => () => setValues((current) => ({ ...current, [key]: tidyText(current[key]) }));
