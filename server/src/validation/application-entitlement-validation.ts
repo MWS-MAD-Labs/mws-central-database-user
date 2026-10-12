@@ -205,6 +205,9 @@ const hubAddress = z
   });
 
 // A line copied from a .env (HUB_INTERNAL_SECRET="abc") is reduced to the value.
+// A line for another variable (CENTRAL_API_TOKEN="...") or an API token is not the Hub secret.
+export const NOT_A_HUB_SECRET = /^[A-Z][A-Z0-9_]*\s*=|^mws_/;
+
 export function cleanPastedSecret(value: unknown): unknown {
   if (typeof value !== "string") return value;
   let text = value.trim();
@@ -235,7 +238,7 @@ export class ApplicationValidation {
       .trim()
       .min(16, "A secret is at least 16 characters")
       .max(200, "A secret is at most 200 characters")
-      .regex(/^\S+$/, "A secret has no spaces"))
+      .regex(/^\S+$/, "A secret has no spaces").refine((v) => !NOT_A_HUB_SECRET.test(v), "That is another line of the .env, not HUB_INTERNAL_SECRET"))
       .optional(),
   });
 
@@ -260,7 +263,7 @@ export class ApplicationValidation {
       env_settings: envSettings.optional(),
       hub_base_url: hubAddress.optional(),
       // The secret the Hub already runs with, kept instead of making a new one.
-      hub_secret: z.preprocess(cleanPastedSecret, z.string().trim().min(16, "A secret is at least 16 characters").max(200, "A secret is at most 200 characters").regex(/^\S+$/, "A secret has no spaces")).optional(),
+      hub_secret: z.preprocess(cleanPastedSecret, z.string().trim().min(16, "A secret is at least 16 characters").max(200, "A secret is at most 200 characters").regex(/^\S+$/, "A secret has no spaces").refine((v) => !NOT_A_HUB_SECRET.test(v), "That is another line of the .env, not HUB_INTERNAL_SECRET")).optional(),
     })
     .refine((value) => value.application_id || value.name, { message: "Name is required", path: ["name"] });
 

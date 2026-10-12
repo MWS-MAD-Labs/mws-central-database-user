@@ -121,6 +121,10 @@ describe("pasted Hub secret", () => {
     expect(cleanPastedSecret(`HUB_INTERNAL_SECRET="${raw}"`)).toBe(raw);
     expect(cleanPastedSecret(`  ${raw} `)).toBe(raw);
     expect(cleanPastedSecret(`HUB_INTERNAL_SECRET='${raw}'`)).toBe(raw);
+    const { NOT_A_HUB_SECRET } = await import("../validation/application-entitlement-validation");
+    expect(NOT_A_HUB_SECRET.test(`CENTRAL_API_TOKEN="mws_abc.def"`)).toBe(true);
+    expect(NOT_A_HUB_SECRET.test("mws_abc.def")).toBe(true);
+    expect(NOT_A_HUB_SECRET.test(raw)).toBe(false);
     // Wrapped again and again by earlier copies.
     expect(cleanPastedSecret(`HUB_INTERNAL_SECRET="HUB_INTERNAL_SECRET=\\"${raw}\\""`)).toBe(raw);
   });

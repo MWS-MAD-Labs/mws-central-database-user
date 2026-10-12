@@ -104,5 +104,6 @@ export function existingSecretProblem(value) {
   if (!clean) return null
   if (clean.length < MIN_SECRET) return `At least ${MIN_SECRET} characters.`
   if (/\s/.test(clean)) return 'No spaces.'
+  if (/^[A-Z][A-Z0-9_]*\s*=|^mws_/.test(clean)) return 'That is another line of the .env. Copy only the value of HUB_INTERNAL_SECRET.'
   return null
 }
