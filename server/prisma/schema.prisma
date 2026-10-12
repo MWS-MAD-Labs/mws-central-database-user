@@ -1644,6 +1644,11 @@ enum ApplicationLaunchMode {
 }
 
 // What an application looks like in the Hub, and whether the Hub may show it.
+enum HubSecretMode {
+  SHARED
+  OWN
+}
+
 model Application {
   id             String   @id @default(cuid())
   application_id String   @unique
@@ -1664,6 +1669,10 @@ model Application {
   hub_base_url        String?
   // Whether the .env of this application carries the Hub address and the shared secret.
   uses_hub            Boolean @default(true)
+  // SHARED: the application uses the Hub's master secret. OWN: a secret made from it for this application alone.
+  hub_secret_mode     HubSecretMode @default(SHARED)
+  // Goes up when the secret of this application is rotated.
+  hub_secret_version  Int @default(1)
   hub_internal_secret String?
   // sso: opened through the Hub's sign-in handoff. link: a plain address, nothing to connect.
   launch_mode    ApplicationLaunchMode @default(SSO)

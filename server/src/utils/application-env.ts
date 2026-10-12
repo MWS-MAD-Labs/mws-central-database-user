@@ -35,7 +35,9 @@ const HEADINGS = {
   central: "Connection to Central. Its own token. Changes when this application's token is rotated.",
   hubShared: "From the Hub, the same for every application. Changes only if the Hub's address changes.",
   hubSecret:
-    "From the Hub, shared by the Hub and every application. Changes only when the Hub secret is rotated, then every .env needs the new value.",
+    "From the Hub, shared with the other applications that have not moved to their own. Changes only when the Hub secret is rotated. Give this application its own secret.",
+  hubSecretOwn:
+    "From the Hub, for this application only. Changes when this application's Hub secret is rotated, or when the Hub secret is.",
   hubOwnCentral: "The Hub's own connection to Central. Changes when the Hub's token is rotated.",
   hubSignIn: "How the Hub checks who may sign in. Changes in the Hub setup wizard.",
   hubMaster: "The Hub's master secret. Never copy it into another application. Changes only when it is rotated here.",
@@ -63,6 +65,8 @@ type Facts = {
   hubSettings?: HubEnvSettings;
   // What the Hub shares with the applications. Missing until the Hub has its address and secret.
   hub?: HubFacts;
+  // The secret in `hub` was made for this application alone, not the Hub's master secret.
+  hubSecretOwn?: boolean;
 };
 
 export type HubFacts = { baseUrl: string | null; secret: string | null };
@@ -108,7 +112,7 @@ export function buildEnvItems(facts: Facts): EnvItem[] {
       item("CENTRAL_API_BASE_URL", `${facts.publicUrl}/api/internal`, 0, false, HEADINGS.central),
       item("CENTRAL_API_TOKEN", facts.token, 0, true),
       item("CENTRAL_ENTITLEMENT_ORGANIZATION_ID", facts.organizationId, 1, false, HEADINGS.daily),
-      ...hubLines(facts.hub, 2),
+      ...hubLines(facts.hub, 2, facts.hubSecretOwn ? HEADINGS.hubSecretOwn : HEADINGS.hubSecret),
     ];
   }
   return [
@@ -116,7 +120,7 @@ export function buildEnvItems(facts: Facts): EnvItem[] {
     item("CENTRAL_DATA_API_BASE_URL", facts.publicUrl, 1, false, HEADINGS.central),
     item("CENTRAL_DATA_API_TOKEN", facts.token, 1, true),
     item("CENTRAL_ORGANIZATION_ID", facts.organizationId, 1),
-    ...hubLines(facts.hub, 2),
+    ...hubLines(facts.hub, 2, facts.hubSecretOwn ? HEADINGS.hubSecretOwn : HEADINGS.hubSecret),
   ];
 }
 

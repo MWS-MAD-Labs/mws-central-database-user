@@ -1910,6 +1910,8 @@ export class ApplicationAccessService {
         logout_url: input.logout_url || null,
         launch_mode: input.launch_mode === "link" ? "LINK" : "SSO",
         uses_hub: input.uses_hub ?? true,
+        // A new application gets a Hub secret of its own, so one that leaks does not reach the others.
+        hub_secret_mode: parsed.is_hub || input.launch_mode === "link" ? "SHARED" : "OWN",
         // Only the Hub has settings for its .env.
         ...(parsed.is_hub && parsed.env_settings ? { env_settings: parsed.env_settings } : {}),
         // The Hub shares its address and a secret of its own making with every application.

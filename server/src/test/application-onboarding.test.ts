@@ -4,6 +4,7 @@ import { API_SCOPES } from "../constants/api-scopes";
 import { prismaClient } from "../lib/prisma";
 import { slugifyApplicationId } from "../utils/application-id";
 import { decryptSecret } from "../utils/secret-box";
+import { deriveAppSecret } from "../utils/hub-app-secret";
 import { AdminUserTest, ApiClientTest, EmployeeTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const ACCESS = "/api/admin/application-access";
@@ -225,6 +226,7 @@ describe("application onboarding", () => {
         launch_url: "https://onb.example.com/auth/sso",
         logout_url: "https://onb.example.com/auth/logout",
         launch_mode: "sso",
+        hub_secret: { mode: "shared", version: 1 },
       });
       expect(data.find((item: { id: string }) => item.id === draft)).toBeUndefined();
 
@@ -688,7 +690,8 @@ describe("application onboarding", () => {
         const byKey = Object.fromEntries(env.env.map((item: { key: string }) => [item.key, item]));
         expect(byKey.HUB_BASE_URL.value).toBe("https://hub.example.com");
         expect(byKey.HUB_SSO_JWKS_URL.value).toBe("https://hub.example.com/.well-known/jwks.json");
-        expect(byKey.HUB_INTERNAL_SECRET.value).toBe(secret);
+        // The application has a secret of its own, made from the master.
+        expect(byKey.HUB_INTERNAL_SECRET.value).toBe(deriveAppSecret(secret, other, 1));
         expect(byKey.HUB_INTERNAL_SECRET.secret).toBe(true);
         const otherKeys = (await (await TestRequest.get(`${ACCESS}/apps/${other}/setup`, accessToken)).json()).data.env_keys.map((item: { key: string }) => item.key);
         expect(otherKeys).toContain("HUB_INTERNAL_SECRET");
@@ -914,6 +917,65 @@ describe("application onboarding", () => {
           await prismaClient.application.createMany({
             data: kept.map(({ env_settings, ...row }) => (env_settings === null ? row : { ...row, env_settings })),
           });
+        }
+      }
+    });
+
+    it("gives a new application a Hub secret of its own, and lets an older one move to its own", async () => {
+      const other = `test-own-${randomBytes(3).toString("hex")}`;
+      const old = `test-old-${randomBytes(3).toString("hex")}`;
+      process.env.HUB_APPLICATION_ID = appId;
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        await create(accessToken, { is_hub: true, application_id: undefined, name: "HUB", hub_base_url: "https://hub.example.com", hub_secret: "master-secret-0123456789abcdef" });
+        const made = await create(accessToken, { application_id: other, name: "TEST_Own", connect: true });
+        const env = (await made.json()).data.connection.env as { key: string; value: string; heading?: string }[];
+        const secret = env.find((item) => item.key === "HUB_INTERNAL_SECRET")!;
+        // Made from the master for this application alone, not the master itself.
+        expect(secret.value).toBe(deriveAppSecret("master-secret-0123456789abcdef", other, 1));
+        expect(secret.value).not.toBe("master-secret-0123456789abcdef");
+        expect(secret.heading).toContain("for this application only");
+
+        // An application made before this still uses the master until it is moved.
+        await prismaClient.application.create({ data: { application_id: old, name: "TEST_Old", launch_url: "https://old.example.com", hub_secret_mode: "SHARED" } });
+        await TestRequest.post(`${ACCESS}/apps/${old}/connect`, {}, accessToken);
+        const oldSetup = (await (await TestRequest.get(`${ACCESS}/apps/${old}/setup`, accessToken)).json()).data;
+        expect(oldSetup.hub_secret).toEqual({ mode: "shared", version: 1, applies: true });
+        const rotatedOld = await TestRequest.post(`${ACCESS}/apps/${old}/rotate`, { immediate: true }, accessToken);
+        const shared = (await rotatedOld.json()).data.env.find((item: { key: string }) => item.key === "HUB_INTERNAL_SECRET");
+        expect(shared.value).toBe("master-secret-0123456789abcdef");
+        expect(shared.heading).toContain("Give this application its own secret");
+
+        const act = (id: string, action: string) => TestRequest.post(`${ACCESS}/apps/${id}/hub-app-secret`, { action }, accessToken);
+        expect((await act(old, "rotate")).status).toBe(400);
+        expect((await act(other, "own")).status).toBe(400);
+        const moved = await act(old, "own");
+        expect(moved.status).toBe(200);
+        expect((await moved.json()).data).toEqual({ secret: deriveAppSecret("master-secret-0123456789abcdef", old, 1), version: 1 });
+        const rotated = await act(old, "rotate");
+        expect((await rotated.json()).data).toEqual({ secret: deriveAppSecret("master-secret-0123456789abcdef", old, 2), version: 2 });
+        expect((await TestRequest.post(`${ACCESS}/apps/${old}/hub-app-secret`, { action: "nope" }, accessToken)).status).toBe(400);
+        expect((await act(appId, "own")).status).toBe(400);
+
+        // The Hub is told the mode and the version of each published application.
+        await prismaClient.application.updateMany({ where: { application_id: { in: [old, other] } }, data: { published: true } });
+        const { token } = await ApiClientTest.createWithToken({ scopeNames: [API_SCOPES.APPLICATION_ENTITLEMENTS_READ] });
+        const list = (await (await TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${token}` })).json()).data;
+        expect(list.find((row: { id: string }) => row.id === old).hub_secret).toEqual({ mode: "own", version: 2 });
+        expect(list.find((row: { id: string }) => row.id === other).hub_secret).toEqual({ mode: "own", version: 1 });
+
+        // Nothing logged carries a secret.
+        const logs = JSON.stringify(await prismaClient.auditLog.findMany({ where: { entity_type: "Application" } }));
+        expect(logs).not.toContain("v2.");
+        expect(logs).not.toContain("master-secret-0123456789abcdef");
+      } finally {
+        delete process.env.HUB_APPLICATION_ID;
+        for (const id of [other, old]) {
+          await prismaClient.applicationRole.deleteMany({ where: { application_id: id } });
+          await prismaClient.applicationOrganization.deleteMany({ where: { application_id: id } });
+          await prismaClient.application.deleteMany({ where: { application_id: id } });
+          await prismaClient.apiClient.deleteMany({ where: { profile: { code: id } } });
+          await prismaClient.applicationIntegrationProfile.deleteMany({ where: { code: id } });
         }
       }
     });

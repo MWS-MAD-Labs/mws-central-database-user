@@ -207,6 +207,10 @@ const hubAddress = z
 export class ApplicationValidation {
   static readonly HUB_ADDRESS = z.object({ hub_base_url: hubAddress });
 
+  static readonly HUB_APP_SECRET = z.object({
+    action: z.enum(["own", "rotate"], { message: "Pick own or rotate" }),
+  });
+
   static readonly HUB_SECRET = z.object({
     // An existing secret to keep. Left out, a new one is made.
     secret: z

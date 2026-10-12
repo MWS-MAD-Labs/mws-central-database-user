@@ -1,4 +1,4 @@
-import { AdminRole, ApiCredentialStatus, ApplicationLaunchMode, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
+import { AdminRole, ApiCredentialStatus, HubSecretMode, ApplicationLaunchMode, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
 import type { AdminUser } from "../generated/prisma/client";
 import { API_SCOPES } from "../constants/api-scopes";
 import { ApplicationTaxonomyService } from "./application-taxonomy-service";
@@ -11,6 +11,7 @@ import type { ApplicationSummary, CreateApplicationRequest, UpdateApplicationReq
 import { ApplicationValidation } from "../validation/application-entitlement-validation";
 import { Validation } from "../validation/validation";
 import { buildEnvItems, hubLinesMissing, resolveHubSettings, type EnvItem, type HubEnvSettings, type HubFacts } from "../utils/application-env";
+import { deriveAppSecret } from "../utils/hub-app-secret";
 import { decryptSecret, encryptSecret, keyReady, newSecret } from "../utils/secret-box";
 import { addressProblem } from "../utils/application-id";
 import { evaluateRemoval, usedRecently } from "../utils/application-removal";
@@ -65,6 +66,8 @@ export type SetupStatus = {
   env_settings: HubEnvSettings | null;
   // The Hub's address and whether it has a secret. The secret itself is never in the setup.
   hub: { base_url: string | null; secret_set: boolean; key_ready: boolean } | null;
+  // How an application gets the Hub secret. Null for the Hub, which holds the master.
+  hub_secret: { mode: "shared" | "own"; version: number; applies: boolean } | null;
   // The names this application reads in its .env, so the guides can name them.
   env_keys: { key: string; secret: boolean }[];
 };
@@ -160,7 +163,7 @@ async function loadHubFacts(reveal = true): Promise<HubFacts> {
 
 // The .env of an application, made from what Central knows about it.
 async function envFor(
-  app: { application_id: string; env_settings: unknown; uses_hub?: boolean },
+  app: { application_id: string; env_settings: unknown; uses_hub?: boolean; hub_secret_mode?: HubSecretMode; hub_secret_version?: number },
   organizationId: string,
   publicUrl: string,
   token: string,
@@ -170,7 +173,13 @@ async function envFor(
   const isHub = app.application_id === hubApplicationId();
   // An application that does not sign in through the Hub gets none of its lines.
   const usesHub = isHub || app.uses_hub !== false;
-  const hub = usesHub ? await loadHubFacts(reveal) : undefined;
+  const master = usesHub ? await loadHubFacts(reveal) : undefined;
+  // An application with its own secret gets one made from the master. The Hub's block carries the master itself.
+  const own = !isHub && app.hub_secret_mode === HubSecretMode.OWN;
+  const hub =
+    master && own && master.secret && reveal
+      ? { ...master, secret: deriveAppSecret(master.secret, app.application_id, app.hub_secret_version ?? 1) }
+      : master;
   const facts = {
     applicationId: app.application_id,
     organizationId,
@@ -179,6 +188,7 @@ async function envFor(
     isHub,
     hubSettings: isHub ? resolveHubSettings(app.env_settings, adminEmail) : undefined,
     hub,
+    hubSecretOwn: own,
   };
   return { env: buildEnvItems(facts), hub_lines_missing: usesHub && hubLinesMissing(facts) };
 }
@@ -276,6 +286,14 @@ export class ApplicationOnboardingService {
         applicationId === hubApplicationId()
           ? { base_url: app.hub_base_url, secret_set: Boolean(app.hub_internal_secret), key_ready: keyReady() }
           : null,
+      hub_secret:
+        applicationId === hubApplicationId()
+          ? null
+          : {
+              mode: app.hub_secret_mode === HubSecretMode.OWN ? "own" : "shared",
+              version: app.hub_secret_version,
+              applies: app.uses_hub && app.launch_mode === ApplicationLaunchMode.SSO,
+            },
       env_keys: (await envFor(app, organizationId, "", "", admin.email, false)).env.map((item) => ({ key: item.key, secret: item.secret })),
       application: toDetail(app),
       organization_id: organizationId,
@@ -442,6 +460,47 @@ export class ApplicationOnboardingService {
     });
     // A secret Central made is shown this once. One that was pasted is already in the hands of whoever pasted it.
     return { secret_set: true, ...(made ? { secret: made } : {}) };
+  }
+
+  // Gives an application a Hub secret of its own, or replaces the one it has. Shown once, like a token.
+  static async setHubAppSecret(
+    admin: AdminUser,
+    applicationId: string,
+    request: unknown,
+    context: AuditRequestContext = {},
+  ): Promise<{ secret: string; version: number }> {
+    assertSuperAdmin(admin);
+    const app = await findApplication(applicationId);
+    if (applicationId === hubApplicationId()) throw new ResponseError(400, "The Hub holds the master secret. Rotate it in the Hub setup");
+    const { action } = Validation.validate(ApplicationValidation.HUB_APP_SECRET, request) as { action: "own" | "rotate" };
+    if (app.launch_mode !== ApplicationLaunchMode.SSO || !app.uses_hub) {
+      throw new ResponseError(400, "This application does not sign in through the Hub");
+    }
+    const hub = await prismaClient.application.findUnique({
+      where: { application_id: hubApplicationId() },
+      select: { hub_internal_secret: true },
+    });
+    if (!hub?.hub_internal_secret) throw new ResponseError(400, "Make the Hub secret first, in the Hub setup");
+    if (action === "own" && app.hub_secret_mode === HubSecretMode.OWN) throw new ResponseError(400, "This application already has its own Hub secret. Rotate it instead");
+    if (action === "rotate" && app.hub_secret_mode !== HubSecretMode.OWN) throw new ResponseError(400, "Give this application its own Hub secret first");
+    const version = action === "rotate" ? app.hub_secret_version + 1 : app.hub_secret_version;
+    await prismaClient.application.update({
+      where: { id: app.id },
+      data: { hub_secret_mode: HubSecretMode.OWN, hub_secret_version: version },
+    });
+    // The value itself never goes into the log.
+    await AuditService.record({
+      action: AuditAction.APPLICATION_ROLE_UPDATE,
+      source: AuditSource.UI,
+      entity_type: "Application",
+      entity_id: app.id,
+      admin_id: admin.id,
+      old_values: { hub_secret_mode: app.hub_secret_mode, hub_secret_version: app.hub_secret_version },
+      new_values: { hub_secret_mode: "OWN", hub_secret_version: version },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+    return { secret: deriveAppSecret(decryptSecret(hub.hub_internal_secret), applicationId, version), version };
   }
 
   // The applications that take the Hub address and secret into their .env, so a change reaches them.
@@ -717,6 +776,8 @@ export class ApplicationOnboardingService {
       launch_url: row.launch_url,
       logout_url: row.logout_url,
       launch_mode: row.launch_mode === ApplicationLaunchMode.LINK ? "link" : "sso",
+      // How the Hub checks the secret this application sends, and which version is the current one.
+      hub_secret: { mode: row.hub_secret_mode === HubSecretMode.OWN ? "own" : "shared", version: row.hub_secret_version },
     }));
   }
 }

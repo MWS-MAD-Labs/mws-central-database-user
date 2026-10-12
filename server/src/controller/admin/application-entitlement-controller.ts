@@ -325,6 +325,13 @@ export class ApplicationAccessController {
     });
   }
 
+  static async setHubAppSecret(c: Context<{ Variables: AdminVariables }>) {
+    const body = await c.req.json().catch(() => ({}));
+    return c.json({
+      data: await ApplicationOnboardingService.setHubAppSecret(c.var.admin, requireApplicationId(c), body, getAuditRequestContext(c)),
+    });
+  }
+
   static async secretsStatus(c: Context<{ Variables: AdminVariables }>) {
     return c.json({ data: { key_ready: keyReady() } });
   }

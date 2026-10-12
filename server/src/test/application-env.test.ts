@@ -20,7 +20,10 @@ describe("application env", () => {
   it("writes where each group of lines comes from, so a rotation is clear", () => {
     const text = envText(buildEnvItems({ ...facts, applicationId: "exima", isHub: false, hub }));
     expect(text).toContain("# From the Hub, the same for every application. Changes only if the Hub's address changes.");
-    expect(text).toContain("# From the Hub, shared by the Hub and every application.");
+    expect(text).toContain("# From the Hub, shared with the other applications that have not moved to their own.");
+    expect(envText(buildEnvItems({ ...facts, applicationId: "exima", isHub: false, hub, hubSecretOwn: true }))).toContain(
+      "# From the Hub, for this application only.",
+    );
     const hubText = envText(buildEnvItems({ ...facts, applicationId: "hub", isHub: true, hub }));
     expect(hubText).toContain("# The Hub's master secret. Never copy it into another application.");
     // Every comment sits directly above its first line.
