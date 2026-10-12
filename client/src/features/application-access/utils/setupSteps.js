@@ -51,8 +51,11 @@ export function buildSteps(setup, now = Date.now()) {
       : "A group says who gets which role.",
     hub: app.published ? "Showing in the Hub for people a group covers." : "Make the application appear in the Hub.",
   };
-  // The Hub itself is not listed in the Hub.
-  const ids = setup.is_hub ? STEP_IDS.filter((id) => id !== "hub") : STEP_IDS;
+  // The Hub itself is not listed in the Hub, and a plain link has no connection or permissions.
+  const skipped = new Set();
+  if (setup.is_hub) skipped.add("hub");
+  if (app.launch_mode === "link") ["connect", "permissions"].forEach((id) => skipped.add(id));
+  const ids = STEP_IDS.filter((id) => !skipped.has(id));
   const firstOpen = ids.find((id) => !done[id]);
   return ids.map((id) => ({
     id,

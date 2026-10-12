@@ -40,6 +40,16 @@ describe('buildSteps', () => {
     ])
   })
 
+  it('leaves out Connect and Permissions for a plain link', () => {
+    const link = setup({ application: { name: 'Demo', launch_url: 'https://demo.example.com', published: false, launch_mode: 'link' } })
+    expect(statuses(buildSteps(link, NOW))).toEqual([
+      'about:done',
+      'roles:current',
+      'groups:locked',
+      'hub:locked',
+    ])
+  })
+
   it('waits for the application after the connection is created', () => {
     const steps = buildSteps(setup({ connection: { created: true, last_used_at: null } }), NOW)
     expect(steps[1].status).toBe('current')

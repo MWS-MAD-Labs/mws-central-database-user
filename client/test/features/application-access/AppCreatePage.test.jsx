@@ -270,9 +270,35 @@ describe('AppCreatePage', () => {
         category: '',
         launch_url: 'https://demo.example.com/auth/sso',
         logout_url: '',
+        launch_mode: 'sso',
         connect: true,
         scope_names: ['employees:read', 'students:read'],
       })
+    })
+  })
+
+  it('adds a plain link without a connection or data access', async () => {
+    const fetchMock = createFetchRouter([
+      SCOPES,
+      {
+        path: '/api/admin/application-access/applications',
+        method: 'POST',
+        response: () => jsonResponse({ data: { application_id: 'sheet', organization_id: 'org_sheet_x', connection: null } }),
+      },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await user.type(screen.getByLabelText('Name'), 'Sheet')
+    await user.type(screen.getByLabelText('Launch URL'), 'docs.example.com/sheet')
+    await user.selectOptions(screen.getByLabelText('How It Opens'), 'link')
+    expect(screen.queryByText('Data Access')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Add Application' }))
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
+      const body = JSON.parse(call[1].body)
+      expect(body.launch_mode).toBe('link')
+      expect(body.connect).toBeUndefined()
+      expect(body.scope_names).toBeUndefined()
     })
   })
 })

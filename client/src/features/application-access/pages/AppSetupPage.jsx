@@ -223,7 +223,7 @@ export function AppSetupPage() {
     }
   }
 
-  const waiting = setup.connection.created && steps[1].status === "current";
+  const waiting = setup.connection.created && steps.find((step) => step.id === "connect")?.status === "current";
   const stalled =
     waiting && setup.connection.created_at && now - new Date(setup.connection.created_at).getTime() > STALLED_MS;
 

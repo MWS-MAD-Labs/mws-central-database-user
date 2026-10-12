@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
-import { CheckboxField, Field, SearchableSelect, TextAreaInput, TextInput } from "../../../components/ui/FormControls.jsx";
+import { CheckboxField, Field, SearchableSelect, SelectInput, TextAreaInput, TextInput } from "../../../components/ui/FormControls.jsx";
 import { cn } from "../../../lib/cn.js";
 import { LIMITS } from "../../../lib/limits.js";
 import { DEFAULT_SCOPES } from "../utils/connectionScopes.js";
@@ -39,6 +39,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const [launchRest, setLaunchRest] = useState(launch.rest);
   const [logoutRest, setLogoutRest] = useState(logout.rest);
   const [attempted, setAttempted] = useState(false);
+  const [launchMode, setLaunchMode] = useState(initial?.launch_mode ?? "sso");
   const [scopeNames, setScopeNames] = useState(DEFAULT_SCOPES);
   const [hubChosen, setHubChosen] = useState(false);
   // What a pasted address started with, so a clash with the environment can be said out loud.
@@ -119,8 +120,9 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       category: values.category,
       launch_url: joinAddress(environment, launchRest),
       logout_url: joinAddress(environment, logoutRest),
-      // On the page layout the connection is made together with the application.
-      ...(layout === "page" ? { connect: true, scope_names: scopeNames } : {}),
+      launch_mode: launchMode,
+      // On the page layout the connection is made together with the application, unless it is a plain link.
+      ...(layout === "page" && launchMode === "sso" ? { connect: true, scope_names: scopeNames } : {}),
     });
   }
 
@@ -172,6 +174,19 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
             onChange={set("description")}
             onBlur={tidyOnBlur("description")}
           />
+        </Field>
+        <Field
+          label="How It Opens"
+          hint={
+            launchMode === "link"
+              ? "A plain link just opens the address. Central still decides who sees the card, but nothing connects."
+              : "People sign in through Central and the application reads their access."
+          }
+        >
+          <SelectInput aria-label="How It Opens" value={launchMode} onChange={(event) => setLaunchMode(event.target.value)}>
+            <option value="sso">Single sign-on</option>
+            <option value="link">Plain link</option>
+          </SelectInput>
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Category" hint="Where the Hub groups the card.">
@@ -256,7 +271,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
           <HubAccessSettings value={hubSettings} onChange={setHubSettings} attempted={attempted} />
         </Section>
       ) : null}
-      {layout === "page" ? (
+      {layout === "page" && launchMode === "sso" ? (
         <Section title="Data Access">
           <p className="text-xs leading-5 text-(--mws-muted)">
             Pick what the application may read from Central. You get its token and .env values as soon as you add it.
