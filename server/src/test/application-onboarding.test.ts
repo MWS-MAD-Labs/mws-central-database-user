@@ -716,6 +716,34 @@ describe("application onboarding", () => {
       await prismaClient.applicationIntegrationProfile.deleteMany({ where: { code: other } });
     });
 
+    it("keeps the secret the Hub already runs with when the Hub is added, and tells whether Central can keep one", async () => {
+      await asHub(async (accessToken) => {
+        const status = await TestRequest.get(`${ACCESS}/secrets-status`, accessToken);
+        expect((await status.json()).data).toEqual({ key_ready: true });
+
+        const short = await TestRequest.post(`${ACCESS}/applications`, { name: "HUB", is_hub: true, hub_secret: "short" }, accessToken);
+        expect(short.status).toBe(400);
+        const response = await TestRequest.post(
+          `${ACCESS}/applications`,
+          { name: "HUB", is_hub: true, hub_base_url: "https://hub.example.com", hub_secret: "kept-from-the-hub-env-0123456789" },
+          accessToken,
+        );
+        expect(response.status).toBe(200);
+        const shown = await TestRequest.get(`${ACCESS}/apps/${appId}/hub-secret`, accessToken);
+        expect((await shown.json()).data.secret).toBe("kept-from-the-hub-env-0123456789");
+
+        const original = process.env.APP_SECRETS_KEY;
+        delete process.env.APP_SECRETS_KEY;
+        try {
+          expect((await (await TestRequest.get(`${ACCESS}/secrets-status`, accessToken)).json()).data).toEqual({ key_ready: false });
+          const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+          expect(setup.hub.key_ready).toBe(false);
+        } finally {
+          process.env.APP_SECRETS_KEY = original;
+        }
+      });
+    });
+
     it("changes the settings, validates them, and uses them on the next rotation", async () => {
       await asHub(async (accessToken) => {
         await TestRequest.post(`${ACCESS}/applications`, { name: "HUB", is_hub: true, connect: true }, accessToken);

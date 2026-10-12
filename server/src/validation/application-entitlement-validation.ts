@@ -238,6 +238,8 @@ export class ApplicationValidation {
       is_hub: z.boolean().optional(),
       env_settings: envSettings.optional(),
       hub_base_url: hubAddress.optional(),
+      // The secret the Hub already runs with, kept instead of making a new one.
+      hub_secret: z.string().trim().min(16, "A secret is at least 16 characters").max(200, "A secret is at most 200 characters").regex(/^\S+$/, "A secret has no spaces").optional(),
     })
     .refine((value) => value.application_id || value.name, { message: "Name is required", path: ["name"] });
 

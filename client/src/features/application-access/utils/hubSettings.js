@@ -78,3 +78,14 @@ export function signInEnvLines(applicationId, settings) {
     `HUB_CENTRAL_ACCESS_BYPASS_EMAILS=${quote(settings.hub_bypass_emails.join(','))}`,
   ].join('\n')
 }
+
+export const MIN_SECRET = 16
+
+// A secret the Hub already runs with, pasted to be kept. Empty is not a problem yet, just not ready.
+export function existingSecretProblem(value) {
+  const clean = value.trim()
+  if (!clean) return null
+  if (clean.length < MIN_SECRET) return `At least ${MIN_SECRET} characters.`
+  if (/\s/.test(clean)) return 'No spaces.'
+  return null
+}

@@ -83,6 +83,17 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  async secretsStatus() {
+    const response = await apiRequest(`${ACCESS}/secrets-status`)
+    return response.data
+  },
+
+  // Which applications take the Hub address and secret into their .env.
+  async hubSecretImpact(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/hub-secret-impact`)
+    return response.data.applications
+  },
+
   async revealHubSecret(applicationId) {
     const response = await apiRequest(`${ACCESS}/apps/${applicationId}/hub-secret`)
     return response.data.secret

@@ -1,75 +1,99 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
-import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
-import { useConfirm } from "../../../components/ui/useConfirm.js";
-import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import { showErrorToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { copyText } from "../utils/copyText.js";
+import { existingSecretProblem } from "../utils/hubSettings.js";
 
-// The secret the Hub shares with the applications. It is made here, kept encrypted, and shown only when asked for.
-export function HubSecretControls({ applicationId, secretSet }) {
-  const queryClient = useQueryClient();
-  const confirm = useConfirm();
-  const [showing, setShowing] = useState(false);
-  const [existing, setExisting] = useState(false);
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["application-access", "setup", applicationId] });
-
-  const make = useMutation({
-    mutationFn: (secret) => applicationAccessApi.setHubSecret(applicationId, secret),
-    onSuccess: () => {
-      refresh();
-      setExisting(false);
-      showSuccessToast("Hub secret saved.");
-    },
-    onError: (error) => showErrorToast(error, "Could not save the Hub secret."),
-  });
-
-  async function rotate() {
-    const confirmed = await confirm({
-      title: "Rotate Hub Secret",
-      description: "Every application that uses the Hub secret has to get the new value in its .env, and so does the Hub. Until then they cannot call each other.",
-      confirmLabel: "Rotate",
-      tone: "danger",
-    });
-    if (confirmed) make.mutate(undefined);
-  }
-
+// Used when the key that keeps the secret encrypted is missing from Central's .env.
+export function SecretsKeyWarning() {
   return (
-    <Field label="Hub Secret" hint="Shared by the Hub and every application so they can call each other. It goes into each .env for you.">
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge tone={secretSet ? "green" : "amber"}>{secretSet ? "Generated" : "Not generated yet"}</StatusBadge>
-        {secretSet ? (
-          <>
-            <Button type="button" size="sm" variant="secondary" onClick={() => setShowing(true)}>
-              Show Secret
-            </Button>
-            <Button type="button" size="sm" variant="secondary" loading={make.isPending} onClick={rotate}>
-              Rotate Secret
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button type="button" size="sm" loading={make.isPending} onClick={() => make.mutate(undefined)}>
-              Generate Secret
-            </Button>
-            <Button type="button" size="sm" variant="secondary" onClick={() => setExisting(true)}>
-              Use The Hub's Current One
-            </Button>
-          </>
-        )}
-      </div>
-      {showing ? <ShowSecretDialog applicationId={applicationId} onClose={() => setShowing(false)} /> : null}
-      {existing ? (
-        <ExistingSecretDialog saving={make.isPending} onSave={(value) => make.mutate(value)} onClose={() => setExisting(false)} />
-      ) : null}
-    </Field>
+    <div role="note" className="rounded-xl border border-[#d8b45b] bg-[#fff8e8] p-3 text-sm text-[#745716]">
+      <p className="font-semibold">Central cannot keep a secret yet.</p>
+      <p className="mt-1">
+        Add APP_SECRETS_KEY to the .env of Central and restart it. Make the line with <code className="font-mono">bun run secrets:key</code> in the server folder.
+      </p>
+    </div>
   );
 }
 
-function ShowSecretDialog({ applicationId, onClose }) {
+// The applications a change to the secret reaches, from what is set up now.
+export function ImpactList({ applicationId }) {
+  const query = useQuery({
+    queryKey: ["application-access", "hub-secret-impact", applicationId],
+    queryFn: () => applicationAccessApi.hubSecretImpact(applicationId),
+    enabled: Boolean(applicationId),
+  });
+  if (!applicationId) return <p className="text-sm text-(--mws-muted)">No application signs in through the Hub yet.</p>;
+  if (query.isLoading) return <p className="text-sm text-(--mws-muted)">Looking up the applications…</p>;
+  const apps = query.data ?? [];
+  if (apps.length === 0) return <p className="text-sm text-(--mws-muted)">No application signs in through the Hub yet.</p>;
+  return (
+    <div>
+      <p className="text-sm font-semibold text-(--mws-charcoal)">
+        {apps.length} {apps.length === 1 ? "application takes" : "applications take"} this into their .env
+      </p>
+      <ul className="mt-1 flex flex-wrap gap-1.5">
+        {apps.map((app) => (
+          <li key={app.application_id} className="rounded-full border border-(--mws-line) bg-(--mws-soft) px-2.5 py-0.5 text-xs text-(--mws-charcoal)">
+            {app.name}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const COPY = {
+  generate: {
+    title: "Generate Hub Secret",
+    text: "This makes the secret that the Hub and the applications below share. It goes into each of their .env files. Nothing that is running changes until the new value is put there.",
+    action: "Generate",
+  },
+  existing: {
+    title: "Use The Hub's Current Secret",
+    text: "The secret you paste is kept as the shared one, so nothing that already uses it has to change. It goes into the .env of the applications below from now on.",
+    action: "Use This Secret",
+  },
+  rotate: {
+    title: "Rotate Hub Secret",
+    text: "The old secret stops working for new .env blocks. The Hub and every application below must get the new value, and until then they cannot call each other.",
+    action: "Rotate",
+  },
+};
+
+// Asks before the shared secret is made, pasted or replaced, and says whom it reaches.
+export function SecretConfirmDialog({ kind, applicationId, saving, onConfirm, onClose }) {
+  const copy = COPY[kind];
+  const [value, setValue] = useState("");
+  const problem = kind === "existing" ? existingSecretProblem(value) : null;
+  const blocked = kind === "existing" && (!value.trim() || Boolean(problem));
+  return (
+    <CrudDialog title={copy.title} description={copy.text} onClose={onClose}>
+      <div className="space-y-4">
+        {kind === "existing" ? (
+          <Field label="Secret" error={problem || undefined}>
+            <TextInput aria-label="Existing Hub secret" type="password" autoComplete="off" value={value} invalid={Boolean(problem)} onChange={(event) => setValue(event.target.value)} />
+          </Field>
+        ) : null}
+        <ImpactList applicationId={applicationId} />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" variant={kind === "rotate" ? "danger" : undefined} loading={saving} disabled={blocked} onClick={() => onConfirm(kind === "existing" ? value.trim() : undefined)}>
+            {copy.action}
+          </Button>
+        </div>
+      </div>
+    </CrudDialog>
+  );
+}
+
+export function ShowSecretDialog({ applicationId, onClose }) {
   const [secret, setSecret] = useState(null);
   const reveal = useMutation({
     mutationFn: () => applicationAccessApi.revealHubSecret(applicationId),
@@ -95,29 +119,6 @@ function ShowSecretDialog({ applicationId, onClose }) {
               Reveal
             </Button>
           )}
-        </div>
-      </div>
-    </CrudDialog>
-  );
-}
-
-function ExistingSecretDialog({ saving, onSave, onClose }) {
-  const [value, setValue] = useState("");
-  const clean = value.trim();
-  const problem = clean && (clean.length < 16 ? "At least 16 characters." : /\s/.test(clean) ? "No spaces." : null);
-  return (
-    <CrudDialog title="Use The Hub's Current Secret" description="Paste the HUB_INTERNAL_SECRET the Hub runs with now, so nothing that uses it has to change." onClose={onClose}>
-      <div className="space-y-4">
-        <Field label="Secret" error={problem || undefined}>
-          <TextInput aria-label="Existing Hub secret" type="password" autoComplete="off" value={value} invalid={Boolean(problem)} onChange={(event) => setValue(event.target.value)} />
-        </Field>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" loading={saving} disabled={!clean || Boolean(problem)} onClick={() => onSave(clean)}>
-            Save
-          </Button>
         </div>
       </div>
     </CrudDialog>

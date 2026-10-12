@@ -1,3 +1,4 @@
+import { keyReady } from "../../utils/secret-box";
 import { ApplicationTaxonomyService } from "../../service/application-taxonomy-service";
 import { ApplicationOnboardingService } from "../../service/application-onboarding-service";
 import type { Context } from "hono";
@@ -328,6 +329,10 @@ export class ApplicationAccessController {
     return c.json({
       data: await ApplicationOnboardingService.revealHubSecret(c.var.admin, requireApplicationId(c), getAuditRequestContext(c)),
     });
+  }
+
+  static async secretsStatus(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: { key_ready: keyReady() } });
   }
 
   static async hubSecretImpact(c: Context<{ Variables: AdminVariables }>) {

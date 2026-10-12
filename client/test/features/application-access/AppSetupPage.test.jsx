@@ -513,35 +513,20 @@ describe('AppSetupPage', () => {
   describe('the Hub sign-in settings', () => {
     const hubSettings = { hub_access_mode: 'warn', hub_bypass_emails: ['me@millennia21.id'] }
 
-    it('shows them on the Hub only, and saves a change', async () => {
-      const saved = []
-      const { user } = renderPage([
-        setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings })),
-        {
-          path: '/api/admin/application-access/apps/demo/env-settings',
-          method: 'PATCH',
-          response: ({ options }) => {
-            saved.push(JSON.parse(options.body))
-            return jsonResponse({ data: JSON.parse(options.body) })
-          },
-        },
-      ])
-      expect(await screen.findByText('Hub Sign-in')).toBeVisible()
-      expect(screen.getByRole('radio', { name: /Warn/ })).toHaveAttribute('aria-checked', 'true')
-      expect(screen.getByRole('button', { name: 'Save Settings' })).toBeDisabled()
-      // The Hub has no organization id to copy.
-      expect(screen.queryByText('Organization ID')).toBeNull()
+    const HUB = { base_url: 'https://app.mws.web.id', secret_set: true, key_ready: true }
+    const wizard = async (user) => {
+      await user.click(await screen.findByRole('button', { name: /^(Open Setup Wizard|Finish Setup)$/ }))
+    }
+    const IMPACT = {
+      path: '/api/admin/application-access/apps/demo/hub-secret-impact',
+      response: () => jsonResponse({ data: { applications: [{ application_id: 'exima', name: 'Exima' }, { application_id: 'daily-checkin', name: 'Daily Check-in' }] } }),
+    }
 
-      await user.click(screen.getByRole('radio', { name: /Enforce/ }))
-      await user.type(screen.getByLabelText('Add an email that always gets in'), 'Boss{Enter}')
-      await user.click(screen.getByRole('button', { name: 'Save Settings' }))
-      await waitFor(() => expect(saved).toEqual([{ hub_access_mode: 'enforce', hub_bypass_emails: ['me@millennia21.id', 'boss@millennia21.id'] }]))
-    })
-
-    it('saves the Hub address, makes and shows the secret, and rotates it only after asking', async () => {
+    it('shows a summary on the Hub only, and the steps in a wizard that saves each one', async () => {
       const calls = []
       const { user } = renderPage([
-        setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings, hub: { base_url: 'https://app.mws.web.id', secret_set: false } })),
+        setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings, hub: HUB })),
+        IMPACT,
         {
           path: '/api/admin/application-access/apps/demo/hub-address',
           method: 'PATCH',
@@ -551,38 +536,121 @@ describe('AppSetupPage', () => {
           },
         },
         {
-          path: '/api/admin/application-access/apps/demo/hub-secret',
-          method: 'POST',
+          path: '/api/admin/application-access/apps/demo/env-settings',
+          method: 'PATCH',
           response: ({ options }) => {
-            calls.push(['secret', JSON.parse(options.body)])
-            return jsonResponse({ data: { secret_set: true } })
+            calls.push(['settings', JSON.parse(options.body)])
+            return jsonResponse({ data: JSON.parse(options.body) })
           },
         },
-        {
-          path: '/api/admin/application-access/apps/demo/hub-secret',
-          method: 'GET',
-          response: () => jsonResponse({ data: { secret: 'abc123secret' } }),
-        },
       ])
-      expect(await screen.findByLabelText('Hub Address')).toHaveValue('app.mws.web.id')
-      expect(screen.getByRole('button', { name: 'Save Address' })).toBeDisabled()
+      expect(await screen.findByText('Hub Sign-in')).toBeVisible()
+      expect(screen.getByText('https://app.mws.web.id')).toBeVisible()
+      // The Hub has no organization id to copy.
+      expect(screen.queryByText('Organization ID')).toBeNull()
+      await wizard(user)
+
+      // 1. Address. Nothing to save until it changes.
+      expect(screen.getByLabelText('Hub Address')).toHaveValue('app.mws.web.id')
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
       await user.click(screen.getByRole('radio', { name: 'Hub Local' }))
       await user.clear(screen.getByLabelText('Hub Address'))
       await user.type(screen.getByLabelText('Hub Address'), 'localhost:4001')
-      await user.click(screen.getByRole('button', { name: 'Save Address' }))
+      await user.click(screen.getByRole('button', { name: 'Save and Continue' }))
       await waitFor(() => expect(calls).toContainEqual(['address', { hub_base_url: 'http://localhost:4001' }]))
 
-      expect(screen.getByText('Not generated yet')).toBeVisible()
+      // 2. Secret is there already, with the applications it reaches.
+      expect(await screen.findByText('2 applications take this into their .env')).toBeVisible()
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+      // 3. Sign-in.
+      expect(screen.getByRole('radio', { name: /Warn/ })).toHaveAttribute('aria-checked', 'true')
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
+      await user.click(screen.getByRole('radio', { name: /Enforce/ }))
+      await user.type(screen.getByLabelText('Add an email that always gets in'), 'Boss{Enter}')
+      await user.click(screen.getByRole('button', { name: 'Save and Continue' }))
+      await waitFor(() =>
+        expect(calls).toContainEqual(['settings', { hub_access_mode: 'enforce', hub_bypass_emails: ['me@millennia21.id', 'boss@millennia21.id'] }]),
+      )
+
+      // 4. Review.
+      expect(await screen.findByText('Put the sign-in lines and the secret in the Hub\'s .env, then restart the Hub.')).toBeVisible()
+    })
+
+    it('asks before it makes the Hub secret, naming the applications it reaches', async () => {
+      const calls = []
+      const { user } = renderPage([
+        setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings, hub: { base_url: 'https://app.mws.web.id', secret_set: false, key_ready: true } })),
+        IMPACT,
+        {
+          path: '/api/admin/application-access/apps/demo/hub-secret',
+          method: 'POST',
+          response: ({ options }) => {
+            calls.push(JSON.parse(options.body))
+            return jsonResponse({ data: { secret_set: true } })
+          },
+        },
+      ])
+      await wizard(user)
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
       await user.click(screen.getByRole('button', { name: 'Generate Secret' }))
-      await waitFor(() => expect(calls).toContainEqual(['secret', {}]))
+      const dialog = await screen.findByRole('dialog', { name: 'Generate Hub Secret' })
+      expect(await within(dialog).findByText('Exima')).toBeVisible()
+      expect(within(dialog).getByText('Daily Check-in')).toBeVisible()
+      // Nothing is made until it is confirmed.
+      expect(calls).toEqual([])
+      await user.click(within(dialog).getByRole('button', { name: 'Generate' }))
+      await waitFor(() => expect(calls).toEqual([{}]))
+    })
+
+    it('keeps an existing secret behind a dialog and rotates with a stronger warning', async () => {
+      const calls = []
+      const { user } = renderPage([
+        setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings, hub: { ...HUB, secret_set: false } })),
+        IMPACT,
+        {
+          path: '/api/admin/application-access/apps/demo/hub-secret',
+          method: 'POST',
+          response: ({ options }) => {
+            calls.push(JSON.parse(options.body))
+            return jsonResponse({ data: { secret_set: true } })
+          },
+        },
+      ])
+      await wizard(user)
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+      await user.click(screen.getByRole('button', { name: "Use The Hub's Current One" }))
+      const dialog = await screen.findByRole('dialog', { name: "Use The Hub's Current Secret" })
+      expect(within(dialog).getByRole('button', { name: 'Use This Secret' })).toBeDisabled()
+      await user.type(within(dialog).getByLabelText('Existing Hub secret'), 'short')
+      expect(within(dialog).getByText('At least 16 characters.')).toBeVisible()
+      await user.clear(within(dialog).getByLabelText('Existing Hub secret'))
+      await user.type(within(dialog).getByLabelText('Existing Hub secret'), 'kept-from-the-hub-env-0123')
+      await user.click(within(dialog).getByRole('button', { name: 'Use This Secret' }))
+      await waitFor(() => expect(calls).toEqual([{ secret: 'kept-from-the-hub-env-0123' }]))
+    })
+
+    it('says so and blocks the secret when Central has no key to keep it with', async () => {
+      const { user } = renderPage([
+        setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings, hub: { base_url: 'https://app.mws.web.id', secret_set: false, key_ready: false } })),
+        IMPACT,
+      ])
+      await wizard(user)
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+      expect(screen.getByText('Central cannot keep a secret yet.')).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Generate Secret' })).toBeDisabled()
     })
 
     it('shows the Hub secret only after it is asked for', async () => {
       const { user } = renderPage([
-        setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings, hub: { base_url: 'https://app.mws.web.id', secret_set: true } })),
+        setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings, hub: HUB })),
+        IMPACT,
         { path: '/api/admin/application-access/apps/demo/hub-secret', method: 'GET', response: () => jsonResponse({ data: { secret: 'abc123secret' } }) },
       ])
-      await user.click(await screen.findByRole('button', { name: 'Show Secret' }))
+      await wizard(user)
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+      await user.click(screen.getByRole('button', { name: 'Show Secret' }))
       const dialog = await screen.findByRole('dialog', { name: 'Hub Secret' })
       expect(within(dialog).queryByText(/abc123secret/)).toBeNull()
       await user.click(within(dialog).getByRole('button', { name: 'Reveal' }))
@@ -605,8 +673,10 @@ describe('AppSetupPage', () => {
     })
 
     it('refuses an email that is not one', async () => {
-      const { user } = renderPage([setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings }))])
-      await screen.findByText('Hub Sign-in')
+      const { user } = renderPage([setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings, hub: HUB })), IMPACT])
+      await wizard(user)
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
       await user.click(screen.getByRole('radio', { name: /Enforce/ }))
       await user.click(screen.getByLabelText('Add an email that always gets in'))
       await user.paste('nonsense@gmail.com')

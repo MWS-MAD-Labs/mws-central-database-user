@@ -1913,7 +1913,7 @@ export class ApplicationAccessService {
         // Only the Hub has settings for its .env.
         ...(parsed.is_hub && parsed.env_settings ? { env_settings: parsed.env_settings } : {}),
         // The Hub shares its address and a secret of its own making with every application.
-        ...(parsed.is_hub ? { hub_internal_secret: encryptSecret(newSecret()), hub_base_url: parsed.hub_base_url ?? null } : {}),
+        ...(parsed.is_hub ? { hub_internal_secret: encryptSecret(parsed.hub_secret ?? newSecret()), hub_base_url: parsed.hub_base_url ?? null } : {}),
       },
     });
     if (!options.skipAudit) await AuditService.record({

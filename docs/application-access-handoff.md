@@ -113,3 +113,13 @@ The .env block of an application also carries what it needs from the Hub: `HUB_B
 3. Create the connection of each application. Its block now includes the Hub lines. An application made before the Hub had an address shows a note and gets the lines after its token is rotated.
 
 The secret is kept encrypted with `APP_SECRETS_KEY` in Central's `.env`. Make one with `openssl rand -base64 32` and set it on every Central deploy before adding the Hub. Without it the secret cannot be made or read, and the page says so. Do not change the key afterwards, or the stored secret cannot be read any more (paste it again to fix that). "Rotate Secret" makes a new one; the Hub and every application need the new value. Looking at the secret and changing it are written to the audit log, never the value.
+
+## The Hub wizard, and who takes the Hub lines
+
+The Hub's address, its shared secret and its sign-in settings depend on each other, so they are one wizard: Address, Secret, Sign-in, Review. It runs when the Hub is added and can be opened again from the Hub's setup page ("Open Setup Wizard"), where each step saves as you go. Making, replacing or pasting the secret always asks first and lists the applications it reaches.
+
+The address and the secret are one value for everything. Whether an application takes them is its own choice: "Signs in through the Hub" in its details. Turn it off for an application that does not use the Hub's sign-in and its .env will not carry the three Hub lines.
+
+If the page says Central cannot keep a secret, `APP_SECRETS_KEY` is missing from Central's `.env`. Run `bun run secrets:key` in the server folder, put the line in `.env` and restart Central. In Docker, `docker-compose.yml` passes it through from the host environment.
+
+The Hub can be retired and deleted once it is the only application left in Central. While others exist, it waits for them.

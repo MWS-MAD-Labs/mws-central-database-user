@@ -11,8 +11,7 @@ import { AddressInput } from "./AddressInput.jsx";
 import { AppCardPreview } from "./AppCardPreview.jsx";
 import { IconPicker } from "./IconPicker.jsx";
 import { NextStepsCard } from "./NextStepsCard.jsx";
-import { HubAccessSettings } from "./HubAccessSettings.jsx";
-import { HubAddressField } from "./HubAddressField.jsx";
+import { HubSetupWizard } from "./HubSetupWizard.jsx";
 import { ScopePicker } from "./ScopePicker.jsx";
 import { emailsProblem } from "../utils/hubSettings.js";
 import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.js";
@@ -59,7 +58,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const [customPaths, setCustomPaths] = useState(!startsStandard);
   const [hostRest, setHostRest] = useState(startsStandard && initial?.launch_url ? launch.rest.slice(0, -STANDARD_PATHS.launch.length) : "");
   const [scopeNames, setScopeNames] = useState(DEFAULT_SCOPES);
-  const [hubBaseUrl, setHubBaseUrl] = useState("");
+  // What the Hub wizard has gathered while the Hub is being added.
+  const [hubWizard, setHubWizard] = useState({ address: "", settings: null, secret: undefined });
   const [hubChosen, setHubChosen] = useState(false);
   // What a pasted address started with, so a clash with the environment can be said out loud.
   const [pasted, setPasted] = useState({ launch: null, logout: null });
@@ -70,8 +70,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const scopeOptions = [{ value: "", label: "No scope" }, ...taxonomy.scopes.map((item) => ({ value: item.key, label: item.name }))];
   const hub = isHub || hubChosen;
   // Safe to start with: people still get in, and the one setting it up always does.
-  const [hubSettings, setHubSettings] = useState({ hub_access_mode: "warn", hub_bypass_emails: adminEmail.endsWith(`@${LIMITS.EMAIL_DOMAIN}`) ? [adminEmail] : [] });
-  const hubSettingsProblem = layout === "page" && hubChosen ? emailsProblem(hubSettings.hub_bypass_emails) : null;
+  const hubSettingsProblem = layout === "page" && hubChosen && hubWizard.settings ? emailsProblem(hubWizard.settings.hub_bypass_emails) : null;
   const set = (key) => (event) => setValues((current) => ({ ...current, [key]: event.target.value }));
   const tidyOnBlur = (key) => () => setValues((current) => ({ ...current, [key]: tidyText(current[key]) }));
 
@@ -144,13 +143,24 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
 
   function submit(event) {
     event.preventDefault();
+    // Adding the Hub is done from the last step of its wizard, not by an Enter key on an earlier one.
+    if (layout === "page" && hubChosen && event.nativeEvent?.submitter?.dataset?.hubAdd !== "true") return;
     setAttempted(true);
     if (!valid) return;
     if (hub) {
       onSubmit({
         ...(idLocked ? { application_id: applicationId } : {}),
         name: "HUB",
-        ...(layout === "page" ? { is_hub: true, connect: true, scope_names: scopeNames, env_settings: hubSettings, ...(hubBaseUrl ? { hub_base_url: hubBaseUrl } : {}) } : {}),
+        ...(layout === "page"
+          ? {
+              is_hub: true,
+              connect: true,
+              scope_names: scopeNames,
+              ...(hubWizard.settings ? { env_settings: hubWizard.settings } : {}),
+              ...(hubWizard.address ? { hub_base_url: hubWizard.address } : {}),
+              ...(hubWizard.secret ? { hub_secret: hubWizard.secret } : {}),
+            }
+          : {}),
       });
       return;
     }
@@ -352,15 +362,9 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       </Section>
       </>)}
       {layout === "page" && hubChosen ? (
-        <Section title="Hub Sign-in">
-          <p className="text-xs leading-5 text-(--mws-muted)">
-            How strictly the Hub checks who may sign in. These go into the Hub's .env with the token.
-          </p>
-          <HubAddressField value={hubBaseUrl} onChange={(next) => setHubBaseUrl(next)} />
-          <HubAccessSettings value={hubSettings} onChange={setHubSettings} />
-        </Section>
+        <HubSetupWizard mode="create" adminEmail={adminEmail.endsWith(`@${LIMITS.EMAIL_DOMAIN}`) ? adminEmail : ""} submitting={submitting} onChange={setHubWizard} />
       ) : null}
-      {layout === "page" && launchMode === "sso" ? (
+      {layout === "page" && launchMode === "sso" && !hubChosen ? (
         <Section title="Data Access">
           <p className="text-xs leading-5 text-(--mws-muted)">
             Pick what the application may read from Central. You get its token and .env values as soon as you add it.
@@ -402,7 +406,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
             {hub ? null : <AppCardPreview values={preview} />}
             <NextStepsCard hub={hub} />
-            {buttons}
+            {hubChosen ? null : buttons}
           </aside>
         </div>
       </form>

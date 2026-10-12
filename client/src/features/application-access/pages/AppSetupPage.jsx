@@ -365,11 +365,9 @@ export function AppSetupPage() {
 
       {setup.is_hub && setup.env_settings ? (
         <HubSettingsCard
-          key={JSON.stringify(setup.env_settings)}
           settings={setup.env_settings}
           hub={setup.hub}
           applicationId={applicationId}
-          onSaved={refresh}
         />
       ) : null}
 
