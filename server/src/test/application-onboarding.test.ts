@@ -44,7 +44,7 @@ describe("application onboarding", () => {
 
   it("creates an application with its details and a long random organization id", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const response = await create(accessToken, { description: "Test app", icon: "Wallet", category: "learnspace" });
+    const response = await create(accessToken, { description: "Test app", icon: "Wallet", category: "operations" });
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.data.name).toBe("TEST_Onboard");
@@ -52,7 +52,7 @@ describe("application onboarding", () => {
     expect(body.data.organization_id).toMatch(new RegExp(`^org_${appId.replace(/-/g, "_")}_[a-z2-7]{20}$`));
 
     const row = await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } });
-    expect(row).toMatchObject({ description: "Test app", icon: "Wallet", category: "learnspace", published: false });
+    expect(row).toMatchObject({ description: "Test app", icon: "Wallet", category: "operations", published: false });
 
     expect((await create(accessToken)).status).toBe(400);
     const badUrl = await TestRequest.post(
@@ -216,6 +216,7 @@ describe("application onboarding", () => {
         description: null,
         icon: "Wallet",
         category: null,
+        scope: null,
         launch_url: "https://onb.example.com/auth/sso",
         logout_url: "https://onb.example.com/auth/logout",
         launch_mode: "sso",
@@ -402,7 +403,7 @@ describe("application onboarding", () => {
       // The Hub only draws the icons it knows, so a made up name is refused.
       expect(await bad({ icon: "Cash" })).toBe(400);
       expect(await bad({ category: "Finance" })).toBe(400);
-      expect(await bad({ category: "reporting" })).toBe(400);
+      expect(await bad({ scope: "nowhere" })).toBe(400);
       // Extra spaces are tidied, not refused.
       const ok = await create(accessToken, { name: "  TEST   Spaced  Name ", description: "a   b\n c" });
       expect(ok.status).toBe(200);
@@ -533,7 +534,7 @@ describe("application onboarding", () => {
         const { accessToken } = await AdminUserTest.createSuperAdmin();
         const response = await TestRequest.post(
           `${ACCESS}/applications`,
-          { name: "TEST MWS Hub", is_hub: true, launch_url: "https://ignored.example.com", category: "learnspace", description: "x" },
+          { name: "TEST MWS Hub", is_hub: true, launch_url: "https://ignored.example.com", category: "operations", description: "x" },
           accessToken,
         );
         expect(response.status).toBe(200);

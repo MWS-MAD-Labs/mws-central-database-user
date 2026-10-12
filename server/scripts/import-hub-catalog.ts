@@ -6,7 +6,6 @@
 // Nothing that already exists in Central is touched. Applications start unpublished (unless --publish), so
 // they show in the Hub only after roles and groups are set up and they are published.
 import { readFileSync } from "fs";
-import { APPLICATION_CATEGORIES } from "../src/constants/application-categories";
 import { isHubIcon } from "../src/constants/hub-icons";
 import { prismaClient } from "../src/lib/prisma";
 import { resolveOrganizationId } from "../src/service/application-entitlement-service";
@@ -42,7 +41,10 @@ export type PlannedApplication = {
 const clip = (value: string, max: number) => (value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value);
 
 // What one Hub row becomes in Central, with a note for everything that had to change.
-export function planApplication(row: HubRow): PlannedApplication | { skipped: string } {
+// The categories the Hub always had. The import reads the real list from the master data.
+const HUB_CATEGORIES = ["reporting", "students", "workplace", "operations", "utilities"];
+
+export function planApplication(row: HubRow, knownCategories: string[] = HUB_CATEGORIES): PlannedApplication | { skipped: string } {
   const notes: string[] = [];
   const sso = Boolean(row.sso_app_id && row.sso_entry_url);
   // The application id is the one the Central access is under, so a card linked to Central keeps that id.
@@ -62,9 +64,9 @@ export function planApplication(row: HubRow): PlannedApplication | { skipped: st
     notes.push(`icon "${icon}" is not one the Hub can draw, default used`);
     icon = null;
   }
-  const known = Boolean(row.category) && (APPLICATION_CATEGORIES as readonly string[]).includes(row.category as string);
-  const category = known ? (row.category as string) : row.category ? "others" : null;
-  if (row.category && !known) notes.push(`category "${row.category}" is not a space, put under others`);
+  const known = Boolean(row.category) && knownCategories.includes(row.category as string);
+  const category = known ? (row.category as string) : row.category ? "utilities" : null;
+  if (row.category && !known) notes.push(`category "${row.category}" is not in the master data, put under utilities`);
 
   const address = (sso ? row.sso_entry_url : row.href) ?? null;
   let launchUrl = address?.trim() || null;
@@ -93,8 +95,9 @@ export function planApplication(row: HubRow): PlannedApplication | { skipped: st
 
 export async function importHubCatalog(rows: HubRow[], options: { publish?: boolean; dryRun?: boolean } = {}) {
   const report = { created: [] as string[], existing: [] as string[], skipped: [] as string[], notes: [] as string[] };
+  const knownCategories = (await prismaClient.applicationCategory.findMany({ select: { key: true } })).map((row) => row.key);
   for (const row of rows) {
-    const plan = planApplication(row);
+    const plan = planApplication(row, knownCategories);
     if ("skipped" in plan) {
       report.skipped.push(`${row.id}: ${plan.skipped}`);
       continue;

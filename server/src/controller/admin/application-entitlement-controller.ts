@@ -1,3 +1,4 @@
+import { ApplicationTaxonomyService } from "../../service/application-taxonomy-service";
 import { ApplicationOnboardingService } from "../../service/application-onboarding-service";
 import type { Context } from "hono";
 import type {
@@ -359,6 +360,10 @@ export class ApplicationAccessController {
       size: size ? Number(size) : undefined,
     });
     return c.json(response);
+  }
+
+  static async taxonomy(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: await ApplicationTaxonomyService.list() });
   }
 
   static async scopeCatalog(c: Context<{ Variables: AdminVariables }>) {

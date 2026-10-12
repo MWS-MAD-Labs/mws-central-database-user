@@ -1651,6 +1651,8 @@ model Application {
   description    String?
   icon           String?
   category       String?
+  // The product space, like Safespace. Optional. Both hold the key of a row in the master data.
+  scope          String?
   launch_url     String?
   logout_url     String?
   published      Boolean  @default(false)
@@ -1664,6 +1666,29 @@ model Application {
   updated_at     DateTime @updatedAt
 
   @@map("applications")
+}
+
+// The kind of tool an application is, like Reporting. Kept as master data so more can be added.
+model ApplicationCategory {
+  id         String   @id @default(cuid())
+  // Made from the name when it is created and never changed, applications and the Hub refer to it.
+  key        String   @unique
+  name       String   @unique
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("application_categories")
+}
+
+// The product space an application belongs to, like Safespace.
+model ApplicationScope {
+  id         String   @id @default(cuid())
+  key        String   @unique
+  name       String   @unique
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("application_scopes")
 }
 
 // Allowed roles per application. Entitlement roles must match a row here exactly.

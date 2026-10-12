@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { ApplicationAudience, EmploymentType } from "../generated/prisma/client";
-import { APPLICATION_CATEGORIES } from "../constants/application-categories";
 import { LIMITS } from "../constants/limits";
 import { isHubIcon } from "../constants/hub-icons";
 import { addressProblem } from "../utils/application-id";
@@ -66,12 +65,9 @@ const applicationDetails = {
     .refine((value) => value === "" || isHubIcon(value), "Pick an icon from the list")
     .optional()
     .nullable(),
-  category: z
-    .string()
-    .trim()
-    .refine((value) => value === "" || (APPLICATION_CATEGORIES as readonly string[]).includes(value), "Pick a category from the list")
-    .optional()
-    .nullable(),
+  // Keys from the master data lists, checked against them when saved.
+  category: z.string().trim().max(64, "Category is too long").optional().nullable(),
+  scope: z.string().trim().max(64, "Scope is too long").optional().nullable(),
   launch_url: optionalUrl("Launch URL"),
   logout_url: optionalUrl("Logout URL"),
   // sso: opened through the Hub's sign-in handoff. link: a plain address.

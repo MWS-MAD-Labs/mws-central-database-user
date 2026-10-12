@@ -50,6 +50,14 @@ applicationPermissionApiRouter.get(
   (c) => ApplicationEntitlementApiController.registeredPermissions(c),
 );
 
+export const applicationTaxonomyApiRouter = new Hono<{ Variables: ApiClientVariables }>();
+
+applicationTaxonomyApiRouter.get(
+  "/",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.taxonomy(c),
+);
+
 export const applicationCatalogApiRouter = new Hono<{ Variables: ApiClientVariables }>();
 
 applicationCatalogApiRouter.get(

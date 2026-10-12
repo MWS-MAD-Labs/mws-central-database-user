@@ -41,7 +41,7 @@ export type SimpleMasterDataDelegate = {
     orderBy: Record<string, unknown>;
   }) => Promise<SimpleMasterDataEntity[]>;
   count: (args: { where: Record<string, unknown> }) => Promise<number>;
-  create: (args: { data: { name: string } }) => Promise<SimpleMasterDataEntity>;
+  create: (args: { data: { name: string; key?: string } }) => Promise<SimpleMasterDataEntity>;
   update: (args: {
     where: { id: string };
     data: { name?: string };
@@ -60,12 +60,14 @@ export type SimpleMasterDataServiceConfig = {
   // Build delegates from the transaction so writes and audits stay atomic.
   delegate: (client: PrismaClient | Prisma.TransactionClient) => SimpleMasterDataDelegate;
   referenceChecks: ReferenceCheck[];
+  // For lists that other data refers to by a key. The key is made from the name once and never changes.
+  keyFrom?: (name: string) => string;
 };
 
 export function createSimpleMasterDataService(
   config: SimpleMasterDataServiceConfig,
 ) {
-  const { entityLabel, entityType, delegate, referenceChecks } = config;
+  const { entityLabel, entityType, delegate, referenceChecks, keyFrom } = config;
   function rethrowAsFriendlyConflict(error: unknown): never {
     const fields = getUniqueConstraintFields(error);
     if (fields?.includes("name")) {
@@ -105,11 +107,26 @@ export function createSimpleMasterDataService(
         );
       }
 
+      let key: string | undefined;
+      if (keyFrom) {
+        key = keyFrom(createRequest.name);
+        if (!key) {
+          throw new ResponseError(400, `Use letters or numbers in the ${entityLabel} name`);
+        }
+        const sameKey = await delegate(prismaClient).findFirst({ where: { key } });
+        if (sameKey) {
+          throw new ResponseError(
+            400,
+            `A ${entityLabel} with a very similar name already exists (${sameKey.name})`,
+          );
+        }
+      }
+
       let entity;
       try {
         entity = await prismaClient.$transaction(async (tx) => {
           const newEntity = await delegate(tx).create({
-            data: { name: createRequest.name },
+            data: key ? { name: createRequest.name, key } : { name: createRequest.name },
           });
 
           await AuditService.record(

@@ -1,6 +1,7 @@
 import { AdminRole, ApiCredentialStatus, ApplicationLaunchMode, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
 import type { AdminUser } from "../generated/prisma/client";
 import { API_SCOPES } from "../constants/api-scopes";
+import { ApplicationTaxonomyService } from "./application-taxonomy-service";
 import { hubApplicationId } from "../constants/hub-application";
 import { ResponseError } from "../error/response-error";
 import { prismaClient } from "../lib/prisma";
@@ -33,6 +34,7 @@ export type ApplicationDetail = {
   description: string | null;
   icon: string | null;
   category: string | null;
+  scope: string | null;
   launch_url: string | null;
   logout_url: string | null;
   published: boolean;
@@ -89,6 +91,7 @@ function toDetail(row: {
   description: string | null;
   icon: string | null;
   category: string | null;
+  scope: string | null;
   launch_url: string | null;
   logout_url: string | null;
   published: boolean;
@@ -101,6 +104,7 @@ function toDetail(row: {
     description: row.description,
     icon: row.icon,
     category: row.category,
+    scope: row.scope,
     launch_url: row.launch_url,
     logout_url: row.logout_url,
     published: row.published,
@@ -158,6 +162,7 @@ export class ApplicationOnboardingService {
     assertSuperAdmin(admin);
     const input = Validation.validate(ApplicationValidation.UPDATE, request);
     const before = await findApplication(input.application_id);
+    await ApplicationTaxonomyService.assertKnown(input);
     // The Hub is always called HUB. An older Hub row with another spelling can be put right, nothing else.
     if (input.application_id === hubApplicationId() && input.name !== undefined && input.name !== before.name && input.name !== "HUB") {
       throw new ResponseError(400, "The name of the Hub cannot change");
@@ -167,6 +172,7 @@ export class ApplicationOnboardingService {
       ...(input.description !== undefined && { description: input.description || null }),
       ...(input.icon !== undefined && { icon: input.icon || null }),
       ...(input.category !== undefined && { category: input.category || null }),
+      ...(input.scope !== undefined && { scope: input.scope || null }),
       ...(input.launch_url !== undefined && { launch_url: input.launch_url || null }),
       ...(input.launch_mode !== undefined && { launch_mode: input.launch_mode === "link" ? ApplicationLaunchMode.LINK : ApplicationLaunchMode.SSO }),
       ...(input.logout_url !== undefined && { logout_url: input.logout_url || null }),
@@ -591,6 +597,7 @@ export class ApplicationOnboardingService {
       description: row.description,
       icon: row.icon,
       category: row.category,
+      scope: row.scope,
       launch_url: row.launch_url,
       logout_url: row.logout_url,
       launch_mode: row.launch_mode === ApplicationLaunchMode.LINK ? "link" : "sso",

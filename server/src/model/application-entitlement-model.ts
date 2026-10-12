@@ -172,6 +172,7 @@ export type ApplicationDetails = {
   description?: string | null;
   icon?: string | null;
   category?: string | null;
+  scope?: string | null;
   launch_url?: string | null;
   logout_url?: string | null;
   launch_mode?: "sso" | "link";
@@ -186,6 +187,7 @@ export type ApplicationSummary = {
   can_remove: boolean;
   retire_available: boolean;
   launch_mode: "sso" | "link";
+  scope: string | null;
   connection_created: boolean;
   connection_last_used_at: string | null;
   permission_count: number;

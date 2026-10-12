@@ -15,6 +15,7 @@ import {
 import { evaluateRemoval, usedRecently } from "../utils/application-removal";
 import { hubApplicationId } from "../constants/hub-application";
 import { slugifyApplicationId } from "../utils/application-id";
+import { ApplicationTaxonomyService } from "./application-taxonomy-service";
 import { ResponseError } from "../error/response-error";
 import { prismaClient } from "../lib/prisma";
 import type { AuditRequestContext } from "../model/audit-log-model";
@@ -1800,6 +1801,7 @@ export class ApplicationAccessService {
           // The Hub is always called HUB, whatever an older row says.
           name: applicationId === hubApplicationId() ? "HUB" : (app?.name ?? applicationId),
           launch_mode: app?.launch_mode === "LINK" ? "link" : "sso",
+          scope: app?.scope ?? null,
           published: app?.published ?? false,
           retired: Boolean(app?.retired_at),
           is_hub: applicationId === hubApplicationId(),
@@ -1876,7 +1878,7 @@ export class ApplicationAccessService {
     if (applicationId === "me") throw new ResponseError(400, "This name makes a reserved id. Pick another name");
     // The Hub has no card and no address.
     const input = parsed.is_hub
-      ? { ...parsed, application_id: applicationId, name: "HUB", description: null, icon: null, category: null, launch_url: null, logout_url: null }
+      ? { ...parsed, application_id: applicationId, name: "HUB", description: null, icon: null, category: null, scope: null, launch_url: null, logout_url: null }
       : { ...parsed, application_id: applicationId };
     const [organization, roles, rules, entitlements, existing] = await Promise.all([
       prismaClient.applicationOrganization.count({ where: { application_id: input.application_id } }),
@@ -1888,6 +1890,7 @@ export class ApplicationAccessService {
     if (organization + roles + rules + entitlements + existing > 0) {
       throw new ResponseError(400, parsed.is_hub ? "The Hub is already added" : `An application with the id ${input.application_id} already exists`);
     }
+    await ApplicationTaxonomyService.assertKnown(input);
     await resolveOrganizationId(input.application_id);
     const organizationRow = await prismaClient.applicationOrganization.findUniqueOrThrow({
       where: { application_id: input.application_id },
@@ -1899,6 +1902,7 @@ export class ApplicationAccessService {
         description: input.description || null,
         icon: input.icon || null,
         category: input.category || null,
+        scope: input.scope || null,
         launch_url: input.launch_url || null,
         logout_url: input.logout_url || null,
         launch_mode: input.launch_mode === "link" ? "LINK" : "SSO",
@@ -1929,6 +1933,7 @@ export class ApplicationAccessService {
       can_remove: applicationId !== hubApplicationId(),
       retire_available: false,
       launch_mode: input.launch_mode === "link" ? "link" : "sso",
+      scope: input.scope || null,
       connection_created: false,
       connection_last_used_at: null,
       permission_count: 0,

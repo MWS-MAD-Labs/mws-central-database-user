@@ -1,3 +1,4 @@
+import { ApplicationTaxonomyService } from "../../service/application-taxonomy-service";
 import { ApplicationOnboardingService } from "../../service/application-onboarding-service";
 import type { Context } from "hono";
 import { ResponseError } from "../../error/response-error";
@@ -55,6 +56,10 @@ export class ApplicationEntitlementApiController {
 
   static async publishedApplications(c: Context<{ Variables: ApiClientVariables }>) {
     return c.json({ success: true, data: await ApplicationOnboardingService.listPublished() });
+  }
+
+  static async taxonomy(c: Context<{ Variables: ApiClientVariables }>) {
+    return c.json({ success: true, data: await ApplicationTaxonomyService.list() });
   }
 
   static async syncPermissions(c: Context<{ Variables: ApiClientVariables }>) {
