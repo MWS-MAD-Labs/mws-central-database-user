@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, Eye, EyeOff, KeyRound, Pencil, RotateCw, ShieldCheck } from "lucide-react";
+import { ArrowLeft, BookOpen, ShieldCheck } from "lucide-react";
 import { Link, Navigate, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
+import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
+import { ToggleChip } from "../../../components/ui/FormControls.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
@@ -16,24 +18,22 @@ import { buildSteps, stepsDone, timeAgo } from "../utils/setupSteps.js";
 
 const CARD_STATUS_LABEL = { active: "Active", maintenance: "Maintenance", coming_soon: "Coming Soon", new: "New" };
 
-function Card({ title, description, actions, children }) {
+// One bar of the panel: a title, the one action that belongs to it, and what is below.
+function Part({ title, action, children }) {
   return (
-    <section className="space-y-3 rounded-2xl border border-(--mws-line) bg-white p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="font-display text-base font-bold text-(--mws-charcoal)">{title}</h2>
-          {description ? <p className="text-sm text-(--mws-muted)">{description}</p> : null}
-        </div>
-        {actions ? <div className="flex flex-wrap items-center gap-3">{actions}</div> : null}
+    <section className="space-y-3 px-5 py-4">
+      <div className="flex min-h-6 flex-wrap items-center justify-between gap-3">
+        <h2 className="font-display text-sm font-bold text-(--mws-charcoal)">{title}</h2>
+        {action}
       </div>
       {children}
     </section>
   );
 }
 
-function Facts({ rows }) {
+function Rows({ rows }) {
   return (
-    <dl className="grid gap-2 text-sm sm:grid-cols-[10rem_1fr]">
+    <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[9rem_1fr]">
       {rows.map(([label, value]) => (
         <div key={label} className="contents">
           <dt className="text-(--mws-muted)">{label}</dt>
@@ -44,8 +44,8 @@ function Facts({ rows }) {
   );
 }
 
-// What can still change once an application is set up: its details, connection, card in the Hub and removal. The setup
-// steps are only for the first time. The guide stays one click away for anyone who forgot how a part works.
+// What can still change once an application is set up. The setup steps were for the first time. One panel, one way to
+// edit the details, and the guide one click away for anyone who forgot how a part works.
 export function AppSettingsPage() {
   const { user } = useAuth();
   const { applicationId } = useParams();
@@ -80,6 +80,7 @@ export function AppSettingsPage() {
   const link = app.launch_mode === "link";
   const endpointCount = countFor(setup.data_access.scope_names);
   const { setEditing, setRotating, setDataAccess, setRemoving, setRemovalGuide, restoreMutation, publishMutation, connectMutation, appSecretMutation, retire, changeAppSecret } = mgmt;
+  const canShow = setup.can_publish && Boolean(app.launch_url);
 
   return (
     <div className="min-w-0 space-y-5">
@@ -100,21 +101,66 @@ export function AppSettingsPage() {
                 Setup Guide
               </Link>
             </Button>
+            {setup.is_hub && !retired && !setup.removal.retire_available && !setup.removal.can_remove ? null : (
+              <ActionsMenu label="More actions">
+                {(closeMenu) => (
+                  <>
+                    <ActionsMenuItem
+                      onClick={() => {
+                        closeMenu();
+                        setRemovalGuide(true);
+                      }}
+                    >
+                      How Removing Works
+                    </ActionsMenuItem>
+                    <div className="my-1 border-t border-(--mws-line)" />
+                    {retired ? (
+                      <ActionsMenuItem
+                        tone="success"
+                        onClick={() => {
+                          closeMenu();
+                          restoreMutation.mutate();
+                        }}
+                      >
+                        Restore Application
+                      </ActionsMenuItem>
+                    ) : !setup.is_hub || setup.removal.retire_available ? (
+                      <ActionsMenuItem
+                        tone="warning"
+                        onClick={() => {
+                          closeMenu();
+                          retire();
+                        }}
+                      >
+                        Retire Application
+                      </ActionsMenuItem>
+                    ) : null}
+                    {retired || setup.removal.can_remove ? (
+                      <ActionsMenuItem
+                        tone="danger"
+                        onClick={() => {
+                          closeMenu();
+                          setRemoving(true);
+                        }}
+                      >
+                        Delete Application
+                      </ActionsMenuItem>
+                    ) : null}
+                  </>
+                )}
+              </ActionsMenu>
+            )}
           </>
         }
       />
 
       {retired ? (
-        <div role="note" className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#e3a2a5] bg-[#fff0f1] px-5 py-3 text-sm text-[#a43c41]">
+        <div role="note" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl border border-[#e3a2a5] bg-[#fff0f1] px-5 py-3 text-sm text-[#a43c41]">
           <span className="font-semibold">Retired</span>
           <span>Its token is revoked, it is hidden from the Hub and nobody has access. Nothing was deleted.</span>
-          <span className="ml-auto flex gap-2">
-            <Button type="button" variant="secondary" size="sm" loading={restoreMutation.isPending} onClick={() => restoreMutation.mutate()}>
-              Restore
-            </Button>
-            <Button type="button" variant="danger" size="sm" onClick={() => setRemoving(true)}>
-              Delete
-            </Button>
+          <span className="ml-auto flex gap-4">
+            <TextAction onClick={() => restoreMutation.mutate()}>Restore</TextAction>
+            <TextAction onClick={() => setRemoving(true)}>Delete</TextAction>
           </span>
         </div>
       ) : null}
@@ -129,148 +175,101 @@ export function AppSettingsPage() {
           </div>
           {setup.env_settings ? <HubSettingsCard settings={setup.env_settings} hub={setup.hub} applicationId={applicationId} /> : null}
         </>
-      ) : (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-(--mws-line) bg-white px-5 py-3 text-sm">
-          <span className="font-semibold text-(--mws-charcoal)">Organization ID</span>
-          <CopyableId value={setup.organization_id} />
-        </div>
-      )}
+      ) : null}
 
-      <Card
-        title="Details"
-        description="What the card shows and where it opens."
-        actions={
-          retired ? null : (
-            <TextAction icon={Pencil} onClick={() => setEditing(true)}>
-              Edit Details
-            </TextAction>
-          )
-        }
-      >
-        <Facts
-          rows={[
-            ["Name", app.name],
-            ...(setup.is_hub ? [] : [["Address", <span className="font-mono text-xs">{app.launch_url || "Not set"}</span>]]),
-            ...(app.category ? [["Category", app.category]] : []),
-            ...(app.scope ? [["Scope", app.scope]] : []),
-          ]}
-        />
-      </Card>
+      <div className="divide-y divide-(--mws-line) rounded-2xl border border-(--mws-line) bg-white">
+        <Part
+          title="Details"
+          action={
+            retired ? null : (
+              <TextAction onClick={() => setEditing(true)}>Edit</TextAction>
+            )
+          }
+        >
+          <Rows
+            rows={[
+              ["Name", app.name],
+              ...(setup.is_hub ? [] : [["Address", <span key="a" className="font-mono text-xs">{app.launch_url || "Not set"}</span>]]),
+              ...(setup.is_hub ? [] : [["Organization ID", <CopyableId key="o" value={setup.organization_id} />]]),
+              ...(app.category ? [["Category", app.category]] : []),
+              ...(app.scope ? [["Scope", app.scope]] : []),
+              ...(setup.is_hub ? [] : [["Card", `${CARD_STATUS_LABEL[app.hub_status] ?? "Active"}${(app.hub_keywords ?? []).length > 0 ? `, ${app.hub_keywords.join(", ")}` : ""}`]]),
+            ]}
+          />
+        </Part>
 
-      {link ? null : (
-        <Card
-          title="Connection"
-          description="How the application talks to Central."
-          actions={
-            retired ? null : setup.connection.created ? (
-              <>
-                {endpointsLoaded && setup.data_access.editable ? (
-                  <TextAction icon={ShieldCheck} onClick={() => setDataAccess(true)}>
-                    {`Data Access, ${endpointCount} endpoint${endpointCount === 1 ? "" : "s"}`}
-                  </TextAction>
-                ) : null}
+        {setup.is_hub ? null : (
+          <Part
+            title="Shown in the Hub"
+            action={
+              <ToggleChip
+                checked={app.published}
+                disabled={retired || publishMutation.isPending || (!app.published && !canShow)}
+                onChange={(next) => publishMutation.mutate(next)}
+              >
+                {app.published ? "Shown" : "Hidden"}
+              </ToggleChip>
+            }
+          >
+            <p className="text-sm text-(--mws-muted)">
+              {app.published ? "People a group covers see its card." : canShow ? "Nobody sees its card." : "Finish the groups and the address before it can be shown."}
+            </p>
+          </Part>
+        )}
+
+        {link ? null : (
+          <Part
+            title="Connection"
+            action={
+              retired || setup.connection.created ? null : (
+                <TextAction loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
+                  Create Connection
+                </TextAction>
+              )
+            }
+          >
+            <Rows
+              rows={[
+                ["Last call", setup.connection.last_used_at ? `${timeAgo(setup.connection.last_used_at)} ago` : "Never"],
+                ["Permissions", `${setup.permissions.count}${setup.permissions.synced_at ? `, received ${timeAgo(setup.permissions.synced_at)} ago` : ""}`],
+                ...(setup.hub_secret?.applies ? [["Hub secret", setup.hub_secret.mode === "own" ? `Its own, version ${setup.hub_secret.version}` : "The Hub's shared secret"]] : []),
+              ]}
+            />
+            {retired || !setup.connection.created ? null : (
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                <TextAction onClick={() => setRotating(true)}>Rotate Token</TextAction>
                 {setup.hub_secret?.applies ? (
-                  <TextAction icon={KeyRound} loading={appSecretMutation.isPending} onClick={changeAppSecret}>
+                  <TextAction loading={appSecretMutation.isPending} onClick={changeAppSecret}>
                     {setup.hub_secret.mode === "own" ? "Rotate Hub Secret" : "Give Its Own Hub Secret"}
                   </TextAction>
                 ) : null}
-                <TextAction icon={RotateCw} onClick={() => setRotating(true)}>
-                  Rotate Token
-                </TextAction>
-                <TextAction asChild icon={BookOpen}>
+                {endpointsLoaded && setup.data_access.editable ? (
+                  <TextAction onClick={() => setDataAccess(true)}>{`Data Access, ${endpointCount} endpoint${endpointCount === 1 ? "" : "s"}`}</TextAction>
+                ) : null}
+                <TextAction asChild>
                   <Link to={`${guide}?part=rotate`}>Rotation Guide</Link>
                 </TextAction>
-              </>
-            ) : (
-              <Button type="button" loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
-                Create Connection
-              </Button>
-            )
-          }
-        >
-          <Facts
-            rows={[
-              ["Last call", setup.connection.last_used_at ? `${timeAgo(setup.connection.last_used_at)} ago` : "Never"],
-              ["Permissions", `${setup.permissions.count}${setup.permissions.synced_at ? `, received ${timeAgo(setup.permissions.synced_at)} ago` : ""}`],
-              ...(setup.hub_secret?.applies ? [["Hub secret", setup.hub_secret.mode === "own" ? `Its own, version ${setup.hub_secret.version}` : "The Hub's shared secret"]] : []),
-            ]}
-          />
-        </Card>
-      )}
+              </div>
+            )}
+          </Part>
+        )}
 
-      {setup.is_hub ? null : (
-        <Card
-          title="Hub Card"
-          description="Whether people see this application in the Hub."
-          actions={
-            retired ? null : app.published ? (
-              <TextAction icon={EyeOff} loading={publishMutation.isPending} onClick={() => publishMutation.mutate(false)}>
-                Hide From Hub
-              </TextAction>
-            ) : (
-              <Button type="button" loading={publishMutation.isPending} disabled={!setup.can_publish || !app.launch_url} onClick={() => publishMutation.mutate(true)}>
-                <Eye size={16} />
-                Show In Hub
-              </Button>
-            )
-          }
-        >
-          <p className="text-sm text-(--mws-charcoal)">
-            {app.published ? "Showing in the Hub for people a group covers." : "Hidden. Nobody sees its card in the Hub."}
-          </p>
-          <Facts
-            rows={[
-              ["Status", CARD_STATUS_LABEL[app.hub_status] ?? "Active"],
-              ["Keywords", (app.hub_keywords ?? []).length > 0 ? app.hub_keywords.join(", ") : "None"],
-            ]}
-          />
-          {retired ? null : (
-            <TextAction icon={Pencil} onClick={() => setEditing(true)}>
-              Change Status Or Keywords
-            </TextAction>
-          )}
-        </Card>
-      )}
-
-      <Card title="Access" description="Who may use it, and with which role.">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <TextAction asChild>
-            <Link to={base}>{`${setup.groups.active_count} active group${setup.groups.active_count === 1 ? "" : "s"}`}</Link>
-          </TextAction>
-          <TextAction asChild>
-            <Link to={`${base}?tab=roles`}>{`${setup.roles.active_count} role${setup.roles.active_count === 1 ? "" : "s"}`}</Link>
-          </TextAction>
-          {link ? null : (
+        <Part title="Access">
+          <div className="flex flex-wrap gap-x-5 gap-y-2">
             <TextAction asChild>
-              <Link to={`${base}?tab=permissions`}>{`${setup.permissions.count} permission${setup.permissions.count === 1 ? "" : "s"}`}</Link>
+              <Link to={base}>{`${setup.groups.active_count} active group${setup.groups.active_count === 1 ? "" : "s"}`}</Link>
             </TextAction>
-          )}
-        </div>
-      </Card>
-
-      {setup.is_hub && !retired && !setup.removal.retire_available && !setup.removal.can_remove ? null : (
-        <Card
-          title="Remove"
-          description="Retire it to stop it without deleting anything. Delete only when nobody uses it."
-          actions={
-            <>
-              <TextAction icon={BookOpen} onClick={() => setRemovalGuide(true)}>
-                How Removing Works
+            <TextAction asChild>
+              <Link to={`${base}?tab=roles`}>{`${setup.roles.active_count} role${setup.roles.active_count === 1 ? "" : "s"}`}</Link>
+            </TextAction>
+            {link ? null : (
+              <TextAction asChild>
+                <Link to={`${base}?tab=permissions`}>{`${setup.permissions.count} permission${setup.permissions.count === 1 ? "" : "s"}`}</Link>
               </TextAction>
-              {retired ? null : !setup.is_hub || setup.removal.retire_available ? (
-                <Button type="button" variant="secondary" onClick={retire}>
-                  Retire Application
-                </Button>
-              ) : null}
-              {retired || setup.removal.can_remove ? (
-                <Button type="button" variant="danger" onClick={() => setRemoving(true)}>
-                  Delete Application
-                </Button>
-              ) : null}
-            </>
-          }
-        />
-      )}
+            )}
+          </div>
+        </Part>
+      </div>
 
       <ApplicationManagementDialogs applicationId={applicationId} setup={setup} mgmt={mgmt} />
     </div>

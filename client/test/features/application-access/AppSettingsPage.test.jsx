@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Route, Routes } from "react-router";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { AuthContext } from "../../../src/features/auth/context/authContext.js";
 import { ConfirmProvider } from "../../../src/components/ui/ConfirmDialog.jsx";
 import { AppSettingsPage } from "../../../src/features/application-access/pages/AppSettingsPage.jsx";
@@ -63,22 +63,60 @@ function renderPage(data) {
 }
 
 describe("AppSettingsPage", () => {
-  it("shows what can still change, with the guide one click away", async () => {
+  it("shows one panel, with one Edit for the details and the guide one click away", async () => {
     renderPage(setup());
     expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
     expect(screen.getByRole("link", { name: /Setup Guide/ })).toHaveAttribute("href", "/application-access/apps/demo/guide?part=local");
-    expect(screen.getByRole("button", { name: "Edit Details" })).toBeVisible();
+    // Status and keywords are part of the details, so there is one way to change them.
+    expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
+    expect(screen.queryByText(/Change Status/)).toBeNull();
+    expect(screen.getByText("Maintenance, checkin, daily")).toBeVisible();
     expect(screen.getByRole("button", { name: "Rotate Token" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Hide From Hub" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Retire Application" })).toBeVisible();
     expect(screen.getByText("1 active group")).toBeVisible();
-    expect(screen.getByText("Maintenance")).toBeVisible();
-    expect(screen.getByText("checkin, daily")).toBeVisible();
+    // Retire and delete are not buttons on the page.
+    expect(screen.queryByRole("button", { name: "Retire Application" })).toBeNull();
   });
 
-  it("offers Show In Hub for an application that was hidden again, still without the setup steps", async () => {
+  it("opens the details form with the status and keywords in it", async () => {
+    const { user } = renderPage(setup());
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    expect(await screen.findByLabelText("Keywords")).toHaveValue("checkin, daily");
+  });
+
+  it("shows and hides the card with one switch", async () => {
+    const calls = [];
+    globalThis.fetch = createFetchRouter([
+      { path: "/api/admin/application-access/apps/demo/setup", response: () => jsonResponse({ data: setup() }) },
+      { path: /internal-endpoints|data-access/, response: () => jsonResponse({ data: [] }) },
+      {
+        path: "/api/admin/application-access/apps/demo/unpublish",
+        method: "POST",
+        response: () => {
+          calls.push("unpublish");
+          return jsonResponse({ data: APP });
+        },
+      },
+    ]);
+    const { user } = renderWithProviders(
+      <AuthContext.Provider value={{ user: { role: "SUPER_ADMIN" } }}>
+        <ConfirmProvider>
+          <Routes>
+            <Route path="/application-access/apps/:applicationId/settings" element={<AppSettingsPage />} />
+          </Routes>
+        </ConfirmProvider>
+      </AuthContext.Provider>,
+      { route: "/application-access/apps/demo/settings" },
+    );
+    const toggle = await screen.findByRole("switch", { name: "Shown" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    await user.click(toggle);
+    await waitFor(() => expect(calls).toEqual(["unpublish"]));
+  });
+
+  it("offers the switch off for an application that was hidden again, still without the setup steps", async () => {
     renderPage(setup({ application: { ...APP, published: false } }));
-    expect(await screen.findByRole("button", { name: "Show In Hub" })).toBeEnabled();
+    const toggle = await screen.findByRole("switch", { name: "Hidden" });
+    expect(toggle).toBeEnabled();
     expect(screen.queryByText("Setup steps")).toBeNull();
   });
 
@@ -87,7 +125,7 @@ describe("AppSettingsPage", () => {
     expect(await screen.findByText("Setup steps")).toBeVisible();
   });
 
-  it("has no connection card for a plain link", async () => {
+  it("has no connection part for a plain link", async () => {
     renderPage(setup({ application: { ...APP, launch_mode: "link" }, connection: { client_id: null, created: false, last_used_at: null }, permissions: { count: 0, synced_at: null } }));
     expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
     expect(screen.queryByText("Connection")).toBeNull();
