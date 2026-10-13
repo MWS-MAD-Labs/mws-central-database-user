@@ -197,3 +197,10 @@ Every application except the Hub gets the same block from Central, only its id, 
 | `HUB_BASE_URL`, `HUB_SSO_JWKS_URL`, `HUB_INTERNAL_SECRET` | the Hub lines |
 
 Before this, Exima read `CENTRAL_DATA_API_BASE_URL` (no `/api/internal`) and `CENTRAL_DATA_API_TOKEN`, and Daily Check-in read `CENTRAL_ENTITLEMENT_ORGANIZATION_ID`. Both still read their old names as a fallback, so deploy the application first, then copy the new block and move the GitHub secrets. A new application only needs the block. The Hub keeps `CENTRAL_API_*` plus its own `HUB_CENTRAL_ACCESS_*` lines.
+
+## Roles in bulk, Settings, and the Hub card in Central
+
+- **Add Roles** (`/application-access/apps/:id/roles/bulk`, also `roles/new`) is a matrix: one column per new role, one row per permission, saved together. Role labels are plain words (letters, numbers, single spaces) and the key is made from the label.
+- **Settings** (`/application-access/apps/:id/settings`) is what a finished application opens instead of the setup steps: details, connection (token, Hub secret, data access), the Hub card, access shortcuts and removal, with the Setup Guide one click away. `Application.setup_completed_at` is set the first time the application is shown in the Hub and is not taken back by hiding it again. `/setup` redirects to Settings once it is set or every step is done.
+- **Hub card**: `hub_status` (active, maintenance, coming_soon, new) and `hub_keywords` are set in Central on the form and in Settings and reach the Hub in `/api/internal/applications` as `status` and `keywords`. The Hub's own App Display page and table are gone.
+- Migrations to run on every Central: `20261017090000_application_setup_completed` and `20261018090000_application_hub_card`. Until they are applied, `/api/internal/applications` fails with a 500 because the new columns are missing, and the Hub shows no cards from Central. Run them before the Hub is pointed at this Central.
