@@ -473,7 +473,7 @@ describe('Access role change summary', () => {
     const { user } = renderAccess({ role: 'SUPER_ADMIN' })
     await screen.findByText('dummystaff@millennia21.id')
 
-    expect(screen.queryByRole('button', { name: 'History' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'History' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Demote' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Actions for dummystaff@millennia21.id' }))
     expect(screen.getByRole('button', { name: /History/ })).toBeVisible()

@@ -12,6 +12,7 @@ import {
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../../components/ui/Button.jsx";
+import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { DateField, SearchableSelect } from "../../../components/ui/FormControls.jsx";
@@ -48,15 +49,9 @@ export function DataTransferActions({
 
   return (
     <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-      <Button
-        type="button"
-        variant="secondary"
-        disabled={!canImport}
-        onClick={() => setIsImportOpen(true)}
-      >
-        <Upload size={16} />
+      <TextAction size="md" icon={Upload} disabled={!canImport} onClick={() => setIsImportOpen(true)}>
         Import
-      </Button>
+      </TextAction>
       <ExportMenu
         entity={entity}
         exportParams={exportParams}
@@ -106,16 +101,9 @@ function ExportMenu({ entity, exportParams, canExport, canExportSensitive }) {
       label="Export"
       disabled={!canExport || exportMutation.isPending}
       renderTrigger={({ onClick }) => (
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={!canExport}
-          loading={exportMutation.isPending}
-          onClick={onClick}
-        >
-          <Download size={16} />
+        <TextAction size="md" icon={Download} disabled={!canExport} loading={exportMutation.isPending} onClick={onClick}>
           Export
-        </Button>
+        </TextAction>
       )}
     >
       {(closeMenu) => (

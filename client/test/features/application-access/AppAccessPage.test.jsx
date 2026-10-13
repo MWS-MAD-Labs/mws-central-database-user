@@ -1037,11 +1037,11 @@ describe("AppAccessPage", () => {
       const { user } = renderPage();
       await openExceptions(user);
       await screen.findByText("Dummy Staff");
-      await user.click(screen.getByRole("button", { name: "Roles" }));
+      await user.click(screen.getByRole("tab", { name: "Roles" }));
       expect(
         await screen.findByRole("button", { name: "Add Roles" }),
       ).toBeVisible();
-      await user.click(screen.getByRole("button", { name: "Access" }));
+      await user.click(screen.getByRole("tab", { name: "Access" }));
       expect(await screen.findAllByRole("heading", { level: 2 })).toHaveLength(
         2,
       );

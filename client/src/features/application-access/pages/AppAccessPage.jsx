@@ -3,6 +3,8 @@ import { ArrowLeft, Plus, Settings } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
+import { TextAction } from "../../../components/ui/TextAction.jsx";
+import { Tabs } from "../../../components/ui/Tabs.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { DebouncedSearchInput, FilterSelect } from "../../../components/ui/FormControls.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
@@ -108,18 +110,12 @@ export function AppAccessPage() {
         description="Roles are defined here. Group access says who can use this application and with which role, and exceptions give someone inside a group a different role."
         actions={
           <>
-            <Button asChild variant="secondary">
-              <Link to={BACK}>
-                <ArrowLeft size={16} />
-                Back
-              </Link>
-            </Button>
-            <Button asChild variant="secondary">
-              <Link to={`/application-access/apps/${applicationId}/settings`}>
-                <Settings size={16} />
-                Settings
-              </Link>
-            </Button>
+            <TextAction asChild size="md" icon={ArrowLeft}>
+              <Link to={BACK}>Back</Link>
+            </TextAction>
+            <TextAction asChild size="md" icon={Settings}>
+              <Link to={`/application-access/apps/${applicationId}/settings`}>Settings</Link>
+            </TextAction>
             {activeTab === "access" ? (
               <Button
                 type="button"
@@ -159,18 +155,7 @@ export function AppAccessPage() {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((tab) => (
-          <Button
-            key={tab.id}
-            type="button"
-            variant={activeTab === tab.id ? "primary" : "secondary"}
-            onClick={() => setSearchParams({ tab: tab.id })}
-          >
-            {tab.label}
-          </Button>
-        ))}
-      </div>
+      <Tabs label="Application access" tabs={tabs} active={activeTab} onChange={(id) => setSearchParams({ tab: id })} />
 
       {activeTab === "roles" ? (
         <AppRolesTab applicationId={applicationId} roles={roles} />

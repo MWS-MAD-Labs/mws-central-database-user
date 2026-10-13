@@ -15,6 +15,7 @@ import {
   ActionsMenuItem,
 } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
+import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
@@ -262,14 +263,9 @@ export function StudentsPage() {
               }
             />
             {canManagePhotos ? (
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setBulkPhotoDialogOpen(true)}
-              >
-                <ImagePlus size={16} />
+              <TextAction size="md" icon={ImagePlus} onClick={() => setBulkPhotoDialogOpen(true)}>
                 Bulk Photo Upload
-              </Button>
+              </TextAction>
             ) : null}
             {canWrite ? (
               <Button asChild>

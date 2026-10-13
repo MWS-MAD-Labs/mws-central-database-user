@@ -157,12 +157,9 @@ function Editor({ applicationId, roles, options }) {
         title={`Add Roles to ${applicationId}`}
         description="Add the roles, then pick what each may do. They are saved together."
         actions={
-          <Button asChild variant="secondary">
-            <Link to={back}>
-              <ArrowLeft size={16} />
-              Back
-            </Link>
-          </Button>
+          <TextAction asChild size="md" icon={ArrowLeft}>
+            <Link to={back}>Back</Link>
+          </TextAction>
         }
       />
       <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
