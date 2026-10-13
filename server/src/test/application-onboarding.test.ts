@@ -1117,7 +1117,12 @@ describe("application onboarding", () => {
       const retired = await TestRequest.post(`${ACCESS}/apps/${appId}/retire`, {}, accessToken);
       expect(retired.status).toBe(200);
       expect((await retired.json()).data.retired_at).not.toBeNull();
-      expect((await gone(token)).status).toBe(401);
+      const stopped = await gone(token);
+      expect(stopped.status).toBe(403);
+      expect((await stopped.json()).code).toBe("application_retired");
+      // A wrong secret stays a plain 401, so a mistyped token never reads as a retirement.
+      const prefix = token.slice(0, token.indexOf("."));
+      expect((await gone(`${prefix}.wrong-secret`)).status).toBe(401);
       const row = await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } });
       expect(row.published).toBe(false);
       expect(await prismaClient.applicationRole.count({ where: { application_id: appId } })).toBe(1);
