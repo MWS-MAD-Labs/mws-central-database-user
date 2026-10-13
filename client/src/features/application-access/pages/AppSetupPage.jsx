@@ -1,33 +1,22 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, BookOpen, KeyRound, ShieldCheck, Check, Circle, Eye, EyeOff, Loader2, Lock, Pencil, Plus, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
-import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
-import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
-import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { isPendingFor } from "../../../lib/mutationState.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { AppDetailsForm } from "../components/AppDetailsForm.jsx";
-import { ConnectDialog } from "../components/ConnectDialog.jsx";
-import { DataAccessDialog } from "../components/DataAccessDialog.jsx";
+import { ApplicationManagementDialogs } from "../components/ApplicationManagementDialogs.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
-import { oldTokenNotice } from "../../api-clients/utils/oldTokenNotice.js";
-import { RotateTokenFlow } from "../../api-clients/components/RotateTokenFlow.jsx";
-import { HubSecretShownDialog } from "../components/HubSecretControls.jsx";
 import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
-import { RemovalGuideDialog } from "../components/RemovalGuideDialog.jsx";
-import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
+import { useApplicationManagement } from "../hooks/useApplicationManagement.js";
 import { useInternalEndpoints } from "../hooks/useInternalEndpoints.js";
-import { rotationSteps } from "../utils/setupGuide.js";
 import { buildSteps, stepsDone } from "../utils/setupSteps.js";
 
-const BACK = "/application-access";
 const POLL_MS = 5000;
 const STALLED_MS = 10 * 60 * 1000;
 const TITLES = {
@@ -42,25 +31,6 @@ const TITLES = {
 export function AppSetupPage() {
   const { user } = useAuth();
   const { applicationId } = useParams();
-  const queryClient = useQueryClient();
-  const [editing, setEditing] = useState(false);
-  const navigate = useNavigate();
-  const [connection, setConnection] = useState(null);
-  const [removing, setRemoving] = useState(false);
-  const confirm = useConfirm();
-  // A Hub secret made for this application. Shown once.
-  const [appSecret, setAppSecret] = useState(null);
-  const appSecretMutation = useMutation({
-    mutationFn: (action) => applicationAccessApi.setHubAppSecret(applicationId, action),
-    onSuccess: (result) => {
-      refresh();
-      setAppSecret(result.secret);
-    },
-    onError: (error) => showErrorToast(error, "Could not make the Hub secret."),
-  });
-  const [removalGuide, setRemovalGuide] = useState(false);
-  const [rotating, setRotating] = useState(false);
-  const [dataAccess, setDataAccess] = useState(false);
   const { countFor, loaded: endpointsLoaded } = useInternalEndpoints();
   // Ticks so the ten minute note can appear without a reload.
   const [now, setNow] = useState(() => Date.now());
@@ -80,50 +50,9 @@ export function AppSetupPage() {
       return data.connection.created && data.permissions.count === 0 ? POLL_MS : false;
     },
   });
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["application-access"] });
   const guideBase = `/application-access/apps/${applicationId}/guide`;
-
-  const connectMutation = useMutation({
-    mutationFn: () => applicationAccessApi.connect(applicationId),
-    onSuccess: (response) => {
-      setConnection(response);
-      refresh();
-    },
-    onError: (error) => showErrorToast(error, "Could not create the connection."),
-  });
-  const updateMutation = useMutation({
-    mutationFn: (payload) => applicationAccessApi.updateDetails(applicationId, payload),
-    onSuccess: () => {
-      setEditing(false);
-      refresh();
-      showSuccessToast("Details saved.");
-    },
-    onError: (error) => showErrorToast(error, "Could not save the details."),
-  });
-  const retireMutation = useMutation({
-    mutationFn: () => applicationAccessApi.retireApplication(applicationId),
-    onSuccess: () => {
-      refresh();
-      showSuccessToast("Application retired.");
-    },
-    onError: (error) => showErrorToast(error, "Could not retire this application."),
-  });
-  const restoreMutation = useMutation({
-    mutationFn: () => applicationAccessApi.restoreApplication(applicationId),
-    onSuccess: () => {
-      refresh();
-      showSuccessToast("Application restored. Create a new connection to use it again.");
-    },
-    onError: (error) => showErrorToast(error, "Could not restore this application."),
-  });
-  const publishMutation = useMutation({
-    mutationFn: (publish) => (publish ? applicationAccessApi.publish(applicationId) : applicationAccessApi.unpublish(applicationId)),
-    onSuccess: (_data, publish) => {
-      refresh();
-      showSuccessToast(publish ? "The application will now show in the Hub." : "The application is hidden from the Hub.");
-    },
-    onError: (error) => showErrorToast(error, "Could not change this."),
-  });
+  const mgmt = useApplicationManagement(applicationId, setupQuery.data);
+  const { setEditing, setRotating, setDataAccess, setRemoving, setRemovalGuide, navigate, restoreMutation, publishMutation, connectMutation, appSecretMutation, retire, changeAppSecret } = mgmt;
 
   if (user?.role !== "SUPER_ADMIN") {
     return (
@@ -140,7 +69,6 @@ export function AppSetupPage() {
 
   const setup = setupQuery.data;
   const steps = buildSteps(setup);
-  const rotationHelp = rotationSteps({ keys: setup.env_keys ?? [], environment: setup.environment });
   const endpointCount = countFor(setup.data_access.scope_names);
   const finished = stepsDone(steps);
   const base = `/application-access/apps/${applicationId}`;
@@ -148,29 +76,6 @@ export function AppSetupPage() {
 
   // One main button, on the step that is next. Everything else is a quiet text button.
   const retired = Boolean(setup.application.retired_at);
-
-  async function retire() {
-    const confirmed = await confirm({
-      title: "Retire Application",
-      description: `${setup.application.name} will stop working: its token is revoked, it disappears from the Hub and nobody has access. Nothing is deleted, and you can restore it later.`,
-      confirmLabel: "Retire",
-      tone: "danger",
-    });
-    if (confirmed) retireMutation.mutate();
-  }
-
-  async function changeAppSecret() {
-    const own = setup.hub_secret.mode === "own";
-    const confirmed = await confirm({
-      title: own ? "Rotate Hub Secret" : "Give Its Own Hub Secret",
-      description: own
-        ? `${setup.application.name} and the Hub stop trusting each other until its .env has the new value. Other applications are not affected.`
-        : `${setup.application.name} gets a Hub secret that only it has, so one that leaks does not reach the others. Put the new value in its .env. Until then it keeps working with the Hub's own secret.`,
-      confirmLabel: own ? "Rotate" : "Give Its Own",
-      tone: own ? "danger" : undefined,
-    });
-    if (confirmed) appSecretMutation.mutate(own ? "rotate" : "own");
-  }
 
   function actions(step) {
     if (retired || step.status === "locked") return null;
@@ -461,62 +366,7 @@ export function AppSetupPage() {
         ))}
       </ol>
 
-      {rotating ? (
-        <RotateTokenFlow
-          title={setup.application.name}
-          rotate={(options) => applicationAccessApi.rotateConnection(applicationId, options)}
-          onRotated={refresh}
-          renderResult={({ client, rotation, onClose }) => (
-            <ConnectDialog
-              title="Rotated Credentials"
-              description="Put these lines in the .env of the application, then deploy it."
-              connection={{ env: client.env, hub_lines_missing: client.hub_lines_missing }}
-              notice={oldTokenNotice(client, rotation)}
-              nextSteps={{ items: rotationHelp.short, href: `${guideBase}?part=rotate` }}
-              onClose={onClose}
-            />
-          )}
-          onClose={() => setRotating(false)}
-        />
-      ) : null}
-      {dataAccess ? (
-        <DataAccessDialog
-          applicationId={applicationId}
-          current={setup.data_access.scope_names}
-          onClose={() => setDataAccess(false)}
-        />
-      ) : null}
-      {removalGuide ? <RemovalGuideDialog onClose={() => setRemovalGuide(false)} /> : null}
-
-      {removing ? (
-        <RemoveApplicationDialog
-          applicationId={applicationId}
-          onClose={() => setRemoving(false)}
-          onRemoved={() => navigate(BACK)}
-        />
-      ) : null}
-      {connection ? <ConnectDialog connection={connection} onClose={() => setConnection(null)} /> : null}
-      {appSecret ? (
-        <HubSecretShownDialog
-          secret={appSecret}
-          applicationName={setup.application.name}
-          nextSteps={{ items: rotationHelp.appSecret.slice(1), href: `${guideBase}?part=rotate` }}
-          onClose={() => setAppSecret(null)}
-        />
-      ) : null}
-      {editing ? (
-        <CrudDialog title="Edit Details" onClose={() => setEditing(false)}>
-          <AppDetailsForm
-            idLocked
-            isHub={setup.is_hub}
-            initial={setup.application}
-            submitLabel="Save"
-            submitting={updateMutation.isPending}
-            onSubmit={(payload) => updateMutation.mutate(payload)}
-            onCancel={() => setEditing(false)}
-          />
-        </CrudDialog>
-      ) : null}
+      <ApplicationManagementDialogs applicationId={applicationId} setup={setup} mgmt={mgmt} />
     </div>
   );
 }
