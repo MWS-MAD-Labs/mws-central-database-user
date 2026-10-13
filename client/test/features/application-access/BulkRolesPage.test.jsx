@@ -38,6 +38,9 @@ function renderPage(user = { role: 'SUPER_ADMIN' }) {
   )
 }
 
+// The row's name carries its description too, so it is found by where it starts.
+const perm = (key) => screen.getByLabelText(new RegExp(`^${key.replace(/\./g, '\\.')}`))
+
 describe('bulk role helpers', () => {
   it('makes a key from a name', () => {
     expect(keyFromLabel('Support Staff')).toBe('SUPPORT_STAFF')
@@ -55,23 +58,21 @@ describe('bulk role helpers', () => {
 })
 
 describe('BulkRolesPage', () => {
-  it('adds several roles at once from one matrix', async () => {
+  it('adds several roles at once from the list and the permissions of each', async () => {
     const fetchMock = createFetchRouter(
       routes([{ path: '/api/admin/application-roles', method: 'POST', response: () => jsonResponse({ data: { id: 'new' } }) }]),
     )
     globalThis.fetch = fetchMock
     const { user } = renderPage()
 
-    await user.type(await screen.findByLabelText('Role 1 name'), 'Cashier')
-    await user.click(screen.getByLabelText('Role 1 pos.checkout'))
+    await user.type(await screen.findByLabelText('Role name'), 'Cashier')
+    await user.click(perm('pos.checkout'))
     // What the permission needs comes along.
-    expect(screen.getByLabelText('Role 1 pos.catalog.read')).toBeChecked()
-    expect(screen.getByLabelText('Role 1 pos.catalog.read')).toBeDisabled()
+    expect(perm('pos.catalog.read')).toBeChecked()
 
     await user.click(screen.getByRole('button', { name: 'Add Another Role' }))
-    await user.type(screen.getByLabelText('Role 2 name'), 'Store Admin')
-    await user.click(screen.getByLabelText('Role 2 all permissions'))
-    await user.selectOptions(screen.getByLabelText('Role 2 is for'), 'both')
+    await user.type(screen.getByLabelText('Role name'), 'Store Admin')
+    await user.click(screen.getByLabelText(/Select all 3 matching permission/))
 
     await user.click(screen.getByRole('button', { name: 'Add 2 Roles' }))
     await waitFor(() => {
@@ -79,19 +80,59 @@ describe('BulkRolesPage', () => {
       expect(posts).toHaveLength(2)
       expect(JSON.parse(posts[0][1].body)).toMatchObject({ key: 'CASHIER', label: 'Cashier', allows_employees: true, allows_students: false })
       expect(JSON.parse(posts[0][1].body).permissions.sort()).toEqual(['pos.catalog.read', 'pos.checkout'])
-      expect(JSON.parse(posts[1][1].body)).toMatchObject({ key: 'STORE_ADMIN', allows_employees: true, allows_students: true })
+      expect(JSON.parse(posts[1][1].body)).toMatchObject({ key: 'STORE_ADMIN' })
+      expect(JSON.parse(posts[1][1].body).permissions).toHaveLength(3)
     })
     expect(await screen.findByText('App page')).toBeVisible()
+  })
+
+  it('moves between the new roles and keeps what each one has', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    await user.type(await screen.findByLabelText('Role name'), 'Cashier')
+    await user.click(perm('pos.catalog.read'))
+    await user.click(screen.getByRole('button', { name: 'Add Another Role' }))
+    expect(screen.getByLabelText('Role name')).toHaveValue('')
+    expect(perm('pos.catalog.read')).not.toBeChecked()
+    await user.click(screen.getByRole('button', { name: /^Cashier/ }))
+    expect(screen.getByLabelText('Role name')).toHaveValue('Cashier')
+    expect(perm('pos.catalog.read')).toBeChecked()
+  })
+
+  it('pages the list of new roles when there are many', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    await screen.findByLabelText('Role name')
+    for (let i = 0; i < 7; i += 1) await user.click(screen.getByRole('button', { name: 'Add Another Role' }))
+    // Eight roles are two pages of six, and the newest is on the last one.
+    expect(screen.getByText('2 / 2')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Previous roles' }))
+    expect(screen.getByText('1 / 2')).toBeVisible()
+    expect(screen.getAllByRole('button', { name: /Untitled role/ }).length).toBeGreaterThan(0)
+  })
+
+  it('copies the permissions of another role', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    await user.type(await screen.findByLabelText('Role name'), 'Cashier')
+    await user.click(perm('pos.catalog.read'))
+    await user.click(screen.getByRole('button', { name: 'Add Another Role' }))
+    await user.type(screen.getByLabelText('Role name'), 'Counter')
+    await user.click(screen.getByRole('button', { name: 'Select a role' }))
+    await user.click(await screen.findByRole('option', { name: 'Cashier' }))
+    expect(perm('pos.catalog.read')).toBeChecked()
+    // The same permissions as Cashier, so it is told to change them.
+    expect(await screen.findByText(/CASHIER already has exactly these permissions/)).toBeVisible()
   })
 
   it('refuses a name that exists and permissions another role already has', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
-    await user.type(await screen.findByLabelText('Role 1 name'), 'Staff')
+    await user.type(await screen.findByLabelText('Role name'), 'Staff')
     expect(await screen.findByText('STAFF already exists.')).toBeVisible()
-    await user.clear(screen.getByLabelText('Role 1 name'))
-    await user.type(screen.getByLabelText('Role 1 name'), 'Counter')
-    await user.click(screen.getByLabelText('Role 1 store.use'))
+    await user.clear(screen.getByLabelText('Role name'))
+    await user.type(screen.getByLabelText('Role name'), 'Counter')
+    await user.click(perm('store.use'))
     expect(await screen.findByText(/STAFF already has exactly these permissions/)).toBeVisible()
   })
 
@@ -110,14 +151,14 @@ describe('BulkRolesPage', () => {
       ]),
     )
     const { user } = renderPage()
-    await user.type(await screen.findByLabelText('Role 1 name'), 'Cashier')
-    await user.click(screen.getByLabelText('Role 1 pos.catalog.read'))
+    await user.type(await screen.findByLabelText('Role name'), 'Cashier')
+    await user.click(perm('pos.catalog.read'))
     await user.click(screen.getByRole('button', { name: 'Add Another Role' }))
-    await user.type(screen.getByLabelText('Role 2 name'), 'Counter')
-    await user.click(screen.getByLabelText('Role 2 pos.checkout'))
+    await user.type(screen.getByLabelText('Role name'), 'Counter')
+    await user.click(perm('pos.checkout'))
     await user.click(screen.getByRole('button', { name: 'Add 2 Roles' }))
     expect(await screen.findByText('Role key already exists')).toBeVisible()
-    expect(screen.getByLabelText('Role 1 name')).toHaveValue('Counter')
+    expect(screen.getByLabelText('Role name')).toHaveValue('Counter')
     expect(screen.queryByText('App page')).toBeNull()
   })
 

@@ -1,5 +1,3 @@
-import { groupPermissions } from './groupSummary.js'
-
 // SUPPORT STAFF becomes SUPPORT_STAFF. A name that starts with a number gets ROLE_ in front, keys start with a letter.
 export function keyFromLabel(label) {
   const key = label
@@ -43,16 +41,7 @@ export function togglePermission(value, key, closure) {
   return [...new Set([...value, key, ...closure(key)])]
 }
 
-// The permissions grouped by area for the rows of the matrix.
-export function matrixAreas(options) {
-  const descriptions = new Map(options.map((option) => [option.key, option.description]))
-  return groupPermissions(options.map((option) => option.key)).map((group) => ({
-    area: group.area,
-    rows: group.items.map((key) => ({ key, description: descriptions.get(key) || null })),
-  }))
-}
-
-// What is wrong with each column, by column id: a name problem, a name taken by another column or an existing role,
+// What is wrong with each new role, by role id: a name problem, a name taken by another column or an existing role,
 // or the same permissions as another role. Columns that are fine are left out.
 export function columnProblems(columns, existingRoles, labelProblem) {
   const problems = {}
@@ -68,12 +57,13 @@ export function columnProblems(columns, existingRoles, labelProblem) {
     else if (seen.has(key)) problems[column.id] = { name: 'Another new role has this name.' }
     seen.set(key, column.id)
   }
-  for (const column of columns) {
-    if (problems[column.id]) continue
+  // The later of two roles with the same permissions is the one told to change them.
+  columns.forEach((column, index) => {
+    if (problems[column.id] || column.permissions.length === 0) return
     const twin =
       existingRoles.find((role) => role.is_active && sameSet(role.permissions, column.permissions)) ||
-      columns.find((other) => other.id !== column.id && !problems[other.id] && sameSet(other.permissions, column.permissions))
-    if (twin && column.permissions.length > 0) problems[column.id] = { twin: twin.key || keyFromLabel(twin.label) }
-  }
+      columns.slice(0, index).find((other) => !problems[other.id] && sameSet(other.permissions, column.permissions))
+    if (twin) problems[column.id] = { twin: twin.key || keyFromLabel(twin.label) }
+  })
   return problems
 }

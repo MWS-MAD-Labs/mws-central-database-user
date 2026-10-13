@@ -1,20 +1,23 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
-import { TextInput } from "../../../components/ui/FormControls.jsx";
+import { ChecklistPicker } from "../../../components/ui/ChecklistPicker.jsx";
+import { Field, SearchableSelect, TextInput } from "../../../components/ui/FormControls.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
+import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { useApplicationPermissions } from "../hooks/useApplicationPermissions.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
-import { AUDIENCES, columnProblems, keyFromLabel, matrixAreas, newColumn, requiredBy, togglePermission } from "../utils/bulkRoles.js";
+import { AUDIENCES, columnProblems, keyFromLabel, newColumn, requiredBy, togglePermission } from "../utils/bulkRoles.js";
 import { cleanLabelInput, labelProblem } from "../utils/roleLabel.js";
 
-const capital = (word) => word.charAt(0).toUpperCase() + word.slice(1);
+const LIST_PAGE = 6;
+const AUDIENCE_OPTIONS = AUDIENCES.map((item) => ({ value: item.value, label: item.label }));
 
 export function BulkRolesPage() {
   const { user } = useAuth();
@@ -33,49 +36,101 @@ export function BulkRolesPage() {
   if (rolesQuery.isLoading || permissionsQuery.isLoading) return <PanelMessage>Loading…</PanelMessage>;
   if (permissionsQuery.isError) return <PanelMessage tone="error">The permissions of this application could not be loaded.</PanelMessage>;
   const roles = (rolesQuery.data || []).filter((role) => role.application_id === applicationId);
-  const options = (permissionsQuery.data?.permissions || []).filter((item) => !item.deprecated);
-  return <Matrix applicationId={applicationId} roles={roles} options={options} />;
+  const options = (permissionsQuery.data?.permissions || []).filter((item) => !item.deprecated).sort((left, right) => left.key.localeCompare(right.key));
+  return <Editor applicationId={applicationId} roles={roles} options={options} />;
 }
 
-function Matrix({ applicationId, roles, options }) {
+// The new roles are a short list on the left, the permissions of the chosen one are on the right.
+function Editor({ applicationId, roles, options }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [params] = useSearchParams();
   const back = params.get("from") === "setup" ? `/application-access/apps/${applicationId}/setup` : `/application-access/apps/${applicationId}?tab=roles`;
-  const [columns, setColumns] = useState(() => [newColumn()]);
+  const [items, setItems] = useState(() => [newColumn()]);
+  const [selectedId, setSelectedId] = useState(items[0].id);
+  const [listPage, setListPage] = useState(1);
+  const [permissionPage, setPermissionPage] = useState(1);
+  const [search, setSearch] = useState("");
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [attempted, setAttempted] = useState(false);
 
   const closure = requiredBy(options);
-  const areas = matrixAreas(options);
-  const problems = columnProblems(columns, roles, labelProblem);
+  const problems = columnProblems(items, roles, labelProblem);
+  const selected = items.find((item) => item.id === selectedId) ?? items[0];
+  const listPages = Math.max(Math.ceil(items.length / LIST_PAGE), 1);
+  const currentListPage = Math.min(listPage, listPages);
+  const shown = items.slice((currentListPage - 1) * LIST_PAGE, currentListPage * LIST_PAGE);
 
-  const update = (id, patch) => setColumns((current) => current.map((column) => (column.id === id ? { ...column, ...patch } : column)));
-  const allTicked = (column) => options.length > 0 && options.every((option) => column.permissions.includes(option.key));
+  const update = (id, patch) => setItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+
+  function addRole() {
+    const next = newColumn();
+    setItems((current) => [...current, next]);
+    setSelectedId(next.id);
+    setListPage(Math.ceil((items.length + 1) / LIST_PAGE));
+    setPermissionPage(1);
+    setSearch("");
+  }
+
+  function removeRole(id) {
+    const rest = items.filter((item) => item.id !== id);
+    setItems(rest);
+    if (id === selectedId) setSelectedId(rest[0].id);
+  }
+
+  function select(id) {
+    setSelectedId(id);
+    setPermissionPage(1);
+    setSearch("");
+  }
+
+  const needle = search.trim().toLowerCase();
+  const visible = options.filter((option) => !needle || option.key.toLowerCase().includes(needle) || (option.description || "").toLowerCase().includes(needle));
+  const checklist = visible.map((option) => ({ id: option.key, label: option.key, sublabel: option.description || undefined, labelClassName: "font-mono text-xs text-(--mws-burgundy)" }));
+
+  function toggleAll(checked) {
+    const keys = visible.map((option) => option.key);
+    const next = checked ? [...new Set([...selected.permissions, ...keys])] : selected.permissions.filter((key) => !keys.includes(key));
+    // What a ticked permission needs stays ticked.
+    update(selected.id, { permissions: [...new Set([...next, ...next.flatMap((key) => [...closure(key)])])] });
+  }
+
+  const copyOptions = [
+    ...items.filter((item) => item.id !== selected.id && item.permissions.length > 0).map((item) => ({ value: item.id, label: item.label.trim() || "Untitled role" })),
+    ...roles.filter((role) => role.is_active).map((role) => ({ value: `existing:${role.id}`, label: role.key })),
+  ];
+  function copyFrom(value) {
+    const source = value.startsWith("existing:") ? roles.find((role) => role.id === value.slice(9)) : items.find((item) => item.id === value);
+    if (source) update(selected.id, { permissions: [...source.permissions] });
+  }
 
   async function save() {
     setAttempted(true);
-    if (Object.keys(problems).length > 0) return;
+    if (Object.keys(problems).length > 0) {
+      const first = items.find((item) => problems[item.id]);
+      if (first) select(first.id);
+      return;
+    }
     setSaving(true);
     const failed = {};
     const left = [];
     let added = 0;
-    for (const column of columns) {
-      const audience = AUDIENCES.find((item) => item.value === column.audience);
+    for (const item of items) {
+      const audience = AUDIENCES.find((entry) => entry.value === item.audience);
       try {
         await applicationAccessApi.createRole({
           application_id: applicationId,
-          key: keyFromLabel(column.label),
-          label: column.label.trim(),
-          permissions: column.permissions,
+          key: keyFromLabel(item.label),
+          label: item.label.trim(),
+          permissions: item.permissions,
           allows_employees: audience.allows_employees,
           allows_students: audience.allows_students,
         });
         added += 1;
       } catch (error) {
-        failed[column.id] = error instanceof Error ? error.message : "Could not add this role.";
-        left.push(column);
+        failed[item.id] = error instanceof Error ? error.message : "Could not add this role.";
+        left.push(item);
       }
     }
     setSaving(false);
@@ -85,16 +140,21 @@ function Matrix({ applicationId, roles, options }) {
       navigate(back);
       return;
     }
-    setColumns(left);
+    setItems(left);
+    setSelectedId(left[0].id);
+    setListPage(1);
     setErrors(failed);
     showErrorToast(new Error("Some roles could not be added."), "Some roles could not be added.");
   }
+
+  const problem = problems[selected.id];
+  const nameError = attempted || selected.label ? problem?.name : undefined;
 
   return (
     <div className="min-w-0">
       <PageHeader
         title={`Add Roles to ${applicationId}`}
-        description="One column for each role. Name it, pick who it is for, and tick what it may do. All of them are saved together."
+        description="Add the roles, then pick what each may do. They are saved together."
         actions={
           <Button asChild variant="secondary">
             <Link to={back}>
@@ -104,141 +164,101 @@ function Matrix({ applicationId, roles, options }) {
           </Button>
         }
       />
-      <div className="mws-scrollbar overflow-x-auto rounded-2xl border border-(--mws-line) bg-white">
-        <table className="w-full min-w-max border-collapse text-sm">
-          <thead>
-            <tr className="align-bottom">
-              <th scope="col" className="sticky left-0 z-10 min-w-64 bg-white p-3 text-left text-xs font-bold uppercase tracking-wide text-(--mws-muted)">
-                Permission
-              </th>
-              {columns.map((column, index) => {
-                const problem = problems[column.id];
-                const shownName = attempted || column.label ? problem?.name : undefined;
-                return (
-                  <th key={column.id} scope="col" className="min-w-44 border-l border-(--mws-line) p-3 text-left align-top font-normal">
-                    <div className="space-y-2">
-                      <div className="flex items-start gap-1.5">
-                        <TextInput
-                          aria-label={`Role ${index + 1} name`}
-                          value={column.label}
-                          maxLength={64}
-                          placeholder="Role name"
-                          invalid={Boolean(shownName)}
-                          onChange={(event) => update(column.id, { label: cleanLabelInput(event.target.value) })}
-                        />
-                        {columns.length > 1 ? (
-                          <button
-                            type="button"
-                            aria-label={`Remove role ${index + 1}`}
-                            onClick={() => setColumns((current) => current.filter((item) => item.id !== column.id))}
-                            className="mt-2 cursor-pointer text-(--mws-muted) hover:text-(--mws-rose)"
-                          >
-                            <X size={16} />
-                          </button>
-                        ) : null}
-                      </div>
-                      <p className="font-mono text-[11px] text-(--mws-muted)">{keyFromLabel(column.label) || "KEY"}</p>
-                      <select
-                        aria-label={`Role ${index + 1} is for`}
-                        value={column.audience}
-                        onChange={(event) => update(column.id, { audience: event.target.value })}
-                        className="h-8 w-full rounded-lg border border-(--mws-line) bg-white px-2 text-xs"
-                      >
-                        {AUDIENCES.map((item) => (
-                          <option key={item.value} value={item.value}>
-                            For {item.label.toLowerCase()}
-                          </option>
-                        ))}
-                      </select>
-                      {shownName ? <p className="text-xs text-[#a43c41]">{shownName}</p> : null}
-                      {problem?.twin ? <p className="text-xs text-[#a43c41]">{problem.twin} already has exactly these permissions. Change them.</p> : null}
-                      {errors[column.id] ? <p className="text-xs font-semibold text-[#a43c41]">{errors[column.id]}</p> : null}
-                    </div>
-                  </th>
-                );
-              })}
-              <td className="border-l border-(--mws-line) p-3 align-top">
-                <Button type="button" variant="secondary" size="sm" onClick={() => setColumns((current) => [...current, newColumn()])}>
-                  <Plus size={14} />
-                  Add Another Role
-                </Button>
-              </td>
-            </tr>
-            <tr className="border-t border-(--mws-line) bg-(--mws-soft)">
-              <th scope="row" className="sticky left-0 z-10 bg-(--mws-soft) p-3 text-left text-xs font-bold text-(--mws-charcoal)">
-                All Permissions
-              </th>
-              {columns.map((column, index) => (
-                <td key={column.id} className="border-l border-(--mws-line) p-3">
-                  <input
-                    type="checkbox"
-                    aria-label={`Role ${index + 1} all permissions`}
-                    checked={allTicked(column)}
-                    onChange={(event) => update(column.id, { permissions: event.target.checked ? options.map((option) => option.key) : [] })}
-                    className="h-4 w-4 cursor-pointer accent-(--mws-burgundy)"
-                  />
-                </td>
-              ))}
-              <td className="border-l border-(--mws-line)" />
-            </tr>
-          </thead>
-          <tbody>
-            {areas.map((area) => (
-              <AreaRows key={area.area} area={area} columns={columns} closure={closure} update={update} />
-            ))}
-          </tbody>
-        </table>
+      <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <section aria-label="Roles" className="min-w-0 self-start rounded-2xl border border-(--mws-line) bg-white">
+          <h2 className="border-b border-(--mws-line) px-4 py-3 font-display text-sm font-bold text-(--mws-charcoal)">Roles</h2>
+          <ul className="divide-y divide-(--mws-line)">
+            {shown.map((item) => {
+              const bad = (attempted || item.label) && problems[item.id];
+              return (
+                <li key={item.id} className={`flex items-center gap-2 px-4 py-2.5 ${item.id === selected.id ? "bg-(--mws-soft)" : ""}`}>
+                  <button type="button" aria-current={item.id === selected.id} onClick={() => select(item.id)} className="min-w-0 flex-1 cursor-pointer text-left">
+                    <span className={`block truncate text-sm font-semibold ${item.label ? "text-(--mws-charcoal)" : "text-(--mws-muted)"}`}>{item.label || "Untitled role"}</span>
+                    <span className="block truncate text-xs text-(--mws-muted)">
+                      {AUDIENCES.find((entry) => entry.value === item.audience)?.label}, {item.permissions.length} permission{item.permissions.length === 1 ? "" : "s"}
+                      {bad || errors[item.id] ? <span className="text-[#a43c41]"> · Needs a look</span> : null}
+                    </span>
+                  </button>
+                  {items.length > 1 ? (
+                    <button type="button" aria-label={`Remove ${item.label || "untitled role"}`} onClick={() => removeRole(item.id)} className="cursor-pointer text-(--mws-muted) hover:text-(--mws-rose)">
+                      <X size={15} />
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+          <div className="flex items-center justify-between border-t border-(--mws-line) px-4 py-2.5">
+            <TextAction onClick={addRole}>Add Another Role</TextAction>
+            {listPages > 1 ? (
+              <span className="flex items-center gap-1 text-xs text-(--mws-muted)">
+                <button type="button" aria-label="Previous roles" disabled={currentListPage <= 1} onClick={() => setListPage(currentListPage - 1)} className="cursor-pointer disabled:opacity-40">
+                  <ChevronLeft size={15} />
+                </button>
+                {currentListPage} / {listPages}
+                <button type="button" aria-label="Next roles" disabled={currentListPage >= listPages} onClick={() => setListPage(currentListPage + 1)} className="cursor-pointer disabled:opacity-40">
+                  <ChevronRight size={15} />
+                </button>
+              </span>
+            ) : null}
+          </div>
+        </section>
+
+        <section aria-label="Role details" className="min-w-0 space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Name" error={nameError}>
+              <TextInput aria-label="Role name" value={selected.label} maxLength={64} placeholder="Role name" invalid={Boolean(nameError)} onChange={(event) => update(selected.id, { label: cleanLabelInput(event.target.value) })} />
+              <p className="mt-1 font-mono text-[11px] text-(--mws-muted)">{keyFromLabel(selected.label) || "KEY"}</p>
+            </Field>
+            <Field label="For">
+              <SearchableSelect value={selected.audience} onChange={(value) => update(selected.id, { audience: value || "employees" })} options={AUDIENCE_OPTIONS} placeholder="Select who it is for" />
+            </Field>
+          </div>
+          {copyOptions.length > 0 ? (
+            <Field label="Copy Permissions From" hint="Start from the permissions of another role, then change them.">
+              <SearchableSelect value="" onChange={copyFrom} options={copyOptions} placeholder="Select a role" searchPlaceholder="Search role" />
+            </Field>
+          ) : null}
+          {problem?.twin ? <p className="text-sm font-semibold text-[#a43c41]">{problem.twin} already has exactly these permissions. Change them.</p> : null}
+          {errors[selected.id] ? <p className="text-sm font-semibold text-[#a43c41]">{errors[selected.id]}</p> : null}
+          {options.length === 0 ? (
+            <PanelMessage>This application has not sent its permissions yet.</PanelMessage>
+          ) : (
+            <div className="space-y-2">
+              {options.length > 12 ? (
+                <TextInput
+                  aria-label="Search permissions"
+                  value={search}
+                  placeholder="Search permissions"
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setPermissionPage(1);
+                  }}
+                />
+              ) : null}
+              <ChecklistPicker
+                items={checklist}
+                selectedIds={selected.permissions}
+                onToggle={(key) => update(selected.id, { permissions: togglePermission(selected.permissions, key, closure) })}
+                onToggleAll={toggleAll}
+                page={permissionPage}
+                onPageChange={setPermissionPage}
+                pageSize={10}
+                itemLabel="permission"
+                emptyMessage="No permission matches."
+              />
+            </div>
+          )}
+        </section>
       </div>
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-(--mws-muted)">
-          A permission that needs another one ticks it too. {options.length === 0 ? "This application has not sent its permissions yet." : ""}
-        </p>
-        <div className="flex gap-2">
-          <Button asChild variant="secondary">
-            <Link to={back}>Cancel</Link>
-          </Button>
-          <Button type="button" loading={saving} disabled={columns.some((column) => !column.label.trim())} onClick={save}>
-            {columns.length === 1 ? "Add Role" : `Add ${columns.length} Roles`}
-          </Button>
-        </div>
+      <div className="mt-5 flex items-center justify-end gap-5">
+        <TextAction asChild>
+          <Link to={back}>Cancel</Link>
+        </TextAction>
+        <Button type="button" loading={saving} disabled={items.some((item) => !item.label.trim())} onClick={save}>
+          {items.length === 1 ? "Add Role" : `Add ${items.length} Roles`}
+        </Button>
       </div>
     </div>
-  );
-}
-
-function AreaRows({ area, columns, closure, update }) {
-  return (
-    <>
-      <tr className="border-t border-(--mws-line) bg-(--mws-soft)/60">
-        <th scope="rowgroup" colSpan={columns.length + 2} className="sticky left-0 p-2 pl-3 text-left text-xs font-bold uppercase tracking-wide text-(--mws-muted)">
-          {capital(area.area)}
-        </th>
-      </tr>
-      {area.rows.map((row) => (
-        <tr key={row.key} className="border-t border-(--mws-line)">
-          <th scope="row" className="sticky left-0 z-10 bg-white p-3 text-left font-normal">
-            <span className="block font-mono text-xs font-semibold text-(--mws-burgundy)">{row.key}</span>
-            {row.description ? <span className="block text-[11px] leading-4 text-(--mws-muted)">{row.description}</span> : null}
-          </th>
-          {columns.map((column, index) => {
-            const needed = column.permissions.some((item) => item !== row.key && closure(item).has(row.key)) && column.permissions.includes(row.key);
-            return (
-              <td key={column.id} className="border-l border-(--mws-line) p-3">
-                <input
-                  type="checkbox"
-                  aria-label={`Role ${index + 1} ${row.key}`}
-                  checked={column.permissions.includes(row.key)}
-                  disabled={needed}
-                  title={needed ? "Another ticked permission needs this one" : undefined}
-                  onChange={() => update(column.id, { permissions: togglePermission(column.permissions, row.key, closure) })}
-                  className="h-4 w-4 cursor-pointer accent-(--mws-burgundy) disabled:cursor-not-allowed"
-                />
-              </td>
-            );
-          })}
-          <td className="border-l border-(--mws-line)" />
-        </tr>
-      ))}
-    </>
   );
 }
