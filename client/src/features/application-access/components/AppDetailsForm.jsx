@@ -35,6 +35,13 @@ const LAUNCH_MODES = [
 
 // What the Hub card shows and where it sends people. Used to add an application and to edit it later.
 // On the page layout the id is made from the name. In the dialog the id is the one the application has.
+const CARD_STATUSES = [
+  { value: "active", label: "Active" },
+  { value: "maintenance", label: "Maintenance" },
+  { value: "coming_soon", label: "Coming Soon" },
+  { value: "new", label: "New" },
+];
+
 const ADDRESS_TEXTS = {
   found: "The application answers.",
   anyway: "Used as typed, not checked.",
@@ -56,6 +63,9 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     icon: HUB_ICON_NAMES.includes(initial?.icon) ? initial.icon : "",
     category: initial?.category ?? "",
     scope: initial?.scope ?? "",
+    hub_status: initial?.hub_status ?? "active",
+    // Typed as one line, words apart by commas.
+    hub_keywords: (initial?.hub_keywords ?? []).join(", "),
   });
   const [environment, setEnvironment] = useState(initial?.launch_url ? launch.environment : logout.environment);
   const [launchRest, setLaunchRest] = useState(launch.rest);
@@ -211,6 +221,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       icon: values.icon.trim(),
       category: values.category,
       scope: values.scope,
+      hub_status: values.hub_status,
+      hub_keywords: values.hub_keywords.split(",").map((word) => word.trim()).filter(Boolean),
       launch_url: joinAddress(environment, effectiveLaunch),
       logout_url: joinAddress(environment, effectiveLogout),
       launch_mode: launchMode,
@@ -303,6 +315,23 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
           </Field>
           <Field label="Icon" hint="The picture on the Hub card.">
             <IconPicker value={values.icon} onChange={(icon) => setValues((current) => ({ ...current, icon }))} />
+          </Field>
+          <Field label="Status" hint="Maintenance and Coming Soon keep the card from opening and say why.">
+            <SearchableSelect
+              value={values.hub_status}
+              onChange={(value) => setValues((current) => ({ ...current, hub_status: value || "active" }))}
+              options={CARD_STATUSES}
+              placeholder="Active"
+            />
+          </Field>
+          <Field label="Keywords" hint="Words that help people find the card, apart by commas. Optional.">
+            <TextInput
+              aria-label="Keywords"
+              value={values.hub_keywords}
+              maxLength={300}
+              autoComplete="off"
+              onChange={(event) => setValues((current) => ({ ...current, hub_keywords: event.target.value }))}
+            />
           </Field>
         </div>
       </Section>

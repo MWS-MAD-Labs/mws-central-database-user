@@ -549,6 +549,8 @@ describe('AppCreatePage', () => {
       expect(JSON.parse(call[1].body)).toEqual({
         name: 'Demo App',
         description: '',
+        hub_keywords: [],
+        hub_status: 'active',
         icon: '',
         category: '',
         launch_url: 'https://demo.example.com/auth/sso',

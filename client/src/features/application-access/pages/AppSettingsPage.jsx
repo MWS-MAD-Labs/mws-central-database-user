@@ -14,6 +14,8 @@ import { useApplicationManagement } from "../hooks/useApplicationManagement.js";
 import { useInternalEndpoints } from "../hooks/useInternalEndpoints.js";
 import { buildSteps, stepsDone, timeAgo } from "../utils/setupSteps.js";
 
+const CARD_STATUS_LABEL = { active: "Active", maintenance: "Maintenance", coming_soon: "Coming Soon", new: "New" };
+
 function Card({ title, description, actions, children }) {
   return (
     <section className="space-y-3 rounded-2xl border border-(--mws-line) bg-white p-5">
@@ -216,6 +218,17 @@ export function AppSettingsPage() {
           <p className="text-sm text-(--mws-charcoal)">
             {app.published ? "Showing in the Hub for people a group covers." : "Hidden. Nobody sees its card in the Hub."}
           </p>
+          <Facts
+            rows={[
+              ["Status", CARD_STATUS_LABEL[app.hub_status] ?? "Active"],
+              ["Keywords", (app.hub_keywords ?? []).length > 0 ? app.hub_keywords.join(", ") : "None"],
+            ]}
+          />
+          {retired ? null : (
+            <TextAction icon={Pencil} onClick={() => setEditing(true)}>
+              Change Status Or Keywords
+            </TextAction>
+          )}
         </Card>
       )}
 

@@ -18,6 +18,8 @@ const APP = {
   published: true,
   retired_at: null,
   launch_mode: "sso",
+  hub_status: "maintenance",
+  hub_keywords: ["checkin", "daily"],
 };
 
 function setup(overrides = {}) {
@@ -70,6 +72,8 @@ describe("AppSettingsPage", () => {
     expect(screen.getByRole("button", { name: "Hide From Hub" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Retire Application" })).toBeVisible();
     expect(screen.getByText("1 active group")).toBeVisible();
+    expect(screen.getByText("Maintenance")).toBeVisible();
+    expect(screen.getByText("checkin, daily")).toBeVisible();
   });
 
   it("offers Show In Hub for an application that was hidden again, still without the setup steps", async () => {
