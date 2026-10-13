@@ -1,5 +1,6 @@
 import { AdminRole, ApiCredentialStatus, HubSecretMode, ApplicationLaunchMode, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
 import type { AdminUser } from "../generated/prisma/client";
+import type { HubCardStatus } from "../generated/prisma/client";
 import { API_SCOPES } from "../constants/api-scopes";
 import { ApplicationTaxonomyService } from "./application-taxonomy-service";
 import { hubApplicationId } from "../constants/hub-application";
@@ -45,6 +46,8 @@ export type ApplicationDetail = {
   // Whether its .env carries the Hub address and the shared secret.
   uses_hub: boolean;
   launch_mode: "sso" | "link";
+  hub_status: "active" | "maintenance" | "coming_soon" | "new";
+  hub_keywords: string[];
 };
 
 export type SetupStatus = {
@@ -103,6 +106,11 @@ function assertSuperAdmin(admin: AdminUser) {
   }
 }
 
+const CARD_STATUS = { ACTIVE: "active", MAINTENANCE: "maintenance", COMING_SOON: "coming_soon", NEW: "new" } as const;
+function cardStatus(status: HubCardStatus): ApplicationDetail["hub_status"] {
+  return CARD_STATUS[status];
+}
+
 function toDetail(row: {
   application_id: string;
   name: string;
@@ -116,6 +124,8 @@ function toDetail(row: {
   retired_at: Date | null;
   launch_mode: ApplicationLaunchMode;
   uses_hub: boolean;
+  hub_status: HubCardStatus;
+  hub_keywords: string[];
 }): ApplicationDetail {
   return {
     application_id: row.application_id,
@@ -130,6 +140,8 @@ function toDetail(row: {
     retired_at: row.retired_at ? row.retired_at.toISOString() : null,
     uses_hub: row.uses_hub,
     launch_mode: row.launch_mode === ApplicationLaunchMode.LINK ? "link" : "sso",
+    hub_status: cardStatus(row.hub_status),
+    hub_keywords: row.hub_keywords,
   };
 }
 
@@ -231,6 +243,8 @@ export class ApplicationOnboardingService {
       ...(input.category !== undefined && { category: input.category || null }),
       ...(input.scope !== undefined && { scope: input.scope || null }),
       ...(input.uses_hub !== undefined && { uses_hub: input.uses_hub }),
+      ...(input.hub_status !== undefined && { hub_status: input.hub_status.toUpperCase() as HubCardStatus }),
+      ...(input.hub_keywords !== undefined && { hub_keywords: input.hub_keywords }),
       ...(input.launch_url !== undefined && { launch_url: input.launch_url || null }),
       ...(input.launch_mode !== undefined && { launch_mode: input.launch_mode === "link" ? ApplicationLaunchMode.LINK : ApplicationLaunchMode.SSO }),
       ...(input.logout_url !== undefined && { logout_url: input.logout_url || null }),
@@ -801,6 +815,8 @@ export class ApplicationOnboardingService {
       launch_url: row.launch_url,
       logout_url: row.logout_url,
       launch_mode: row.launch_mode === ApplicationLaunchMode.LINK ? "link" : "sso",
+      status: cardStatus(row.hub_status),
+      keywords: row.hub_keywords,
       // How the Hub checks the secret this application sends, and which version is the current one.
       hub_secret: { mode: row.hub_secret_mode === HubSecretMode.OWN ? "own" : "shared", version: row.hub_secret_version },
     }));

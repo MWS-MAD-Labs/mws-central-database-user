@@ -177,6 +177,8 @@ export type ApplicationDetails = {
   logout_url?: string | null;
   launch_mode?: "sso" | "link";
   uses_hub?: boolean;
+  hub_status?: "active" | "maintenance" | "coming_soon" | "new";
+  hub_keywords?: string[];
 };
 
 export type ApplicationSummary = {

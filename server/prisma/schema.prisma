@@ -1643,7 +1643,14 @@ enum ApplicationLaunchMode {
   LINK
 }
 
-// What an application looks like in the Hub, and whether the Hub may show it.
+// How the card of an application is shown in the Hub.
+enum HubCardStatus {
+  ACTIVE
+  MAINTENANCE
+  COMING_SOON
+  NEW
+}
+
 enum HubSecretMode {
   SHARED
   OWN
@@ -1665,6 +1672,9 @@ model Application {
   retired_at     DateTime?
   // Set the first time it is shown in the Hub, which is the last step. After that it is managed from Settings.
   setup_completed_at DateTime?
+  // How its card looks in the Hub: a status, and words people can find it by.
+  hub_status     HubCardStatus @default(ACTIVE)
+  hub_keywords   String[] @default([])
   // Settings that go into the .env of the application, for now only the Hub's sign-in settings.
   env_settings   Json?
   // Only on the Hub's own row. Its public address, and the secret it shares with the applications (encrypted).

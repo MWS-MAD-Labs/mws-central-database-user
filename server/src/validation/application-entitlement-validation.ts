@@ -74,6 +74,13 @@ const applicationDetails = {
   launch_mode: z.enum(["sso", "link"], { message: "Pick sso or link" }).optional(),
   // Whether the .env of the application carries the Hub address and the shared secret.
   uses_hub: z.boolean().optional(),
+  // How the card looks in the Hub.
+  hub_status: z.enum(["active", "maintenance", "coming_soon", "new"], { message: "Pick active, maintenance, coming_soon or new" }).optional(),
+  hub_keywords: z
+    .array(z.string().trim().toLowerCase().min(1).max(40, "A keyword is at most 40 characters"))
+    .max(20, "At most 20 keywords")
+    .transform((words) => [...new Set(words)])
+    .optional(),
 };
 
 const nonemptyId = (label: string) =>

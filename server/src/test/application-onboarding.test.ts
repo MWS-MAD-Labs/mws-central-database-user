@@ -200,6 +200,22 @@ describe("application onboarding", () => {
     expect((await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data.setup_completed).toBe(true);
   });
 
+  it("keeps the status and keywords of the card, in clean form", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await create(accessToken);
+    const saved = await TestRequest.patch(
+      `${ACCESS}/apps/${appId}/details`,
+      { hub_status: "coming_soon", hub_keywords: [" Check In ", "check in", "Daily"] },
+      accessToken,
+    );
+    expect(saved.status).toBe(200);
+    const row = await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } });
+    expect(row.hub_status).toBe("COMING_SOON");
+    expect(row.hub_keywords).toEqual(["check in", "daily"]);
+    const bad = await TestRequest.patch(`${ACCESS}/apps/${appId}/details`, { hub_status: "gone" }, accessToken);
+    expect(bad.status).toBe(400);
+  });
+
   it("serves published applications to the Hub and nothing else", async () => {
     await prismaClient.application.create({
       data: {
@@ -209,6 +225,8 @@ describe("application onboarding", () => {
         launch_url: "https://onb.example.com/auth/sso",
         logout_url: "https://onb.example.com/auth/logout",
         published: true,
+        hub_status: "MAINTENANCE",
+        hub_keywords: ["checkin", "daily"],
       },
     });
     const draft = `${appId}-draft`;
@@ -230,6 +248,8 @@ describe("application onboarding", () => {
         launch_url: "https://onb.example.com/auth/sso",
         logout_url: "https://onb.example.com/auth/logout",
         launch_mode: "sso",
+        status: "maintenance",
+        keywords: ["checkin", "daily"],
         hub_secret: { mode: "shared", version: 1 },
       });
       expect(data.find((item: { id: string }) => item.id === draft)).toBeUndefined();
