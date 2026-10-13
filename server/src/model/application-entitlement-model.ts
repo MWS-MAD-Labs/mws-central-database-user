@@ -189,6 +189,8 @@ export type ApplicationSummary = {
   is_hub: boolean;
   can_remove: boolean;
   retire_available: boolean;
+  // Finished its setup once: it opens Settings instead of the setup steps.
+  setup_completed: boolean;
   launch_mode: "sso" | "link";
   scope: string | null;
   connection_created: boolean;

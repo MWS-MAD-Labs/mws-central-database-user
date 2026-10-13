@@ -1817,6 +1817,7 @@ export class ApplicationAccessService {
           updated_at: latest ? latest.toISOString() : null,
           can_remove: false,
           retire_available: false,
+          setup_completed: Boolean(app?.setup_completed_at),
           connection_created: false,
           connection_last_used_at: null,
           permission_count: 0,
@@ -1839,6 +1840,12 @@ export class ApplicationAccessService {
       const own = clients.filter((client) => client.profile?.code === row.application_id);
       row.permission_count = permissionCounts.find((item) => item.application_id === row.application_id)?._count._all ?? 0;
       row.connection_created = own.length > 0;
+      // The Hub is never shown in the Hub, so for it "finished" is every step done.
+      if (row.is_hub) {
+        const hubRow = catalog.find((item) => item.application_id === row.application_id);
+        row.setup_completed =
+          Boolean(hubRow?.hub_base_url && hubRow.hub_internal_secret) && row.connection_created && row.permission_count > 0 && row.role_count > 0 && row.active_group_count > 0;
+      }
       const used = own
         .flatMap((client) => [client.last_used_at, ...client.credentials.map((credential) => credential.last_used_at)])
         .filter((date): date is Date => Boolean(date))
@@ -1945,6 +1952,7 @@ export class ApplicationAccessService {
       is_hub: applicationId === hubApplicationId(),
       can_remove: applicationId !== hubApplicationId(),
       retire_available: false,
+      setup_completed: false,
       launch_mode: input.launch_mode === "link" ? "link" : "sso",
       scope: input.scope || null,
       connection_created: false,

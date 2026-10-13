@@ -198,6 +198,9 @@ describe("application onboarding", () => {
     expect((await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } })).published).toBe(false);
     // Hiding it again does not take the setup back: from here on it is managed from Settings.
     expect((await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data.setup_completed).toBe(true);
+    // The list knows too, so it can offer Settings instead of the setup steps.
+    const listed = (await (await TestRequest.get(`${ACCESS}/applications?search=${appId}`, accessToken)).json()).data;
+    expect(listed.find((row: { application_id: string }) => row.application_id === appId)?.setup_completed).toBe(true);
   });
 
   it("keeps the status and keywords of the card, in clean form", async () => {
