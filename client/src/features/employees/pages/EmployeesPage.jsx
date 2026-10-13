@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
+  ImagePlus,
   PencilLine,
+  Plus,
   RotateCcw,
   Trash2,
 } from "lucide-react";
@@ -13,8 +15,7 @@ import {
   ActionsMenuItem,
 } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
-import { ActionDivider } from "../../../components/ui/ActionDivider.jsx";
-import { TextAction } from "../../../components/ui/TextAction.jsx";
+import { Button } from "../../../components/ui/Button.jsx";
 import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
 import { RestoreConfirmationDialog } from "../../../components/ui/RestoreConfirmationDialog.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
@@ -342,23 +343,27 @@ export function EmployeesPage() {
               }
             />
             {canManagePhotos ? (
-              <>
-                <ActionDivider />
-                <TextAction size="md" onClick={() => setBulkPhotoDialogOpen(true)}>
-                  Bulk Photo Upload
-                </TextAction>
-              </>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setBulkPhotoDialogOpen(true)}
+              >
+                <ImagePlus size={16} />
+                Bulk Photo Upload
+              </Button>
             ) : null}
             {canWrite ? (
-              <TextAction size="md" tone="primary" asChild>
+              <Button asChild>
                 <Link to="/employees/new">
+                  <Plus size={16} />
                   New Employee
                 </Link>
-              </TextAction>
+              </Button>
             ) : (
-              <TextAction size="md" tone="primary" disabled>
+              <Button type="button" disabled>
+                <Plus size={16} />
                 New Employee
-              </TextAction>
+              </Button>
             )}
           </>
         }

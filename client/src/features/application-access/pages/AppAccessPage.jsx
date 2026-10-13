@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Plus, Settings } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
-import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { Tabs } from "../../../components/ui/Tabs.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { DebouncedSearchInput, FilterSelect } from "../../../components/ui/FormControls.jsx";
@@ -109,20 +109,28 @@ export function AppAccessPage() {
         description="Roles are defined here. Group access says who can use this application and with which role, and exceptions give someone inside a group a different role."
         actions={
           <>
-            <TextAction asChild size="md">
-              <Link to={BACK}>Back</Link>
-            </TextAction>
-            <TextAction asChild size="md">
-              <Link to={`/application-access/apps/${applicationId}/settings`}>Settings</Link>
-            </TextAction>
+            <Button asChild variant="secondary">
+              <Link to={BACK}>
+                <ArrowLeft size={16} />
+                Back
+              </Link>
+            </Button>
+            <Button asChild variant="secondary">
+              <Link to={`/application-access/apps/${applicationId}/settings`}>
+                <Settings size={16} />
+                Settings
+              </Link>
+            </Button>
             {activeTab === "access" ? (
-              <TextAction size="md" tone="primary"
+              <Button
+                type="button"
                 disabled={!hasActiveRole}
                 title={hasActiveRole ? undefined : "Add a role first"}
                 onClick={() => navigate(`/application-access/apps/${applicationId}/groups/new`)}
               >
+                <Plus size={16} />
                 Add Group
-              </TextAction>
+              </Button>
             ) : null}
           </>
         }

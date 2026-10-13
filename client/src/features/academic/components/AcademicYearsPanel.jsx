@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Layers, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
-import { TextAction } from "../../../components/ui/TextAction.jsx";
+import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
@@ -279,15 +279,23 @@ export function AcademicYearsPanel() {
       isFetching={yearsQuery.isFetching}
       action={
         <>
-          <TextAction size="md" disabled={!canWrite} onClick={() => setBulkDialogOpen(true)}>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={!canWrite}
+            onClick={() => setBulkDialogOpen(true)}
+          >
+            <Layers size={16} />
             Bulk Create
-          </TextAction>
-          <TextAction size="md" tone="primary"
+          </Button>
+          <Button
+            type="button"
             disabled={!canWrite}
             onClick={() => setDialog({ mode: "create" })}
           >
+            <Plus size={16} />
             New Year
-          </TextAction>
+          </Button>
         </>
       }
       toolbar={

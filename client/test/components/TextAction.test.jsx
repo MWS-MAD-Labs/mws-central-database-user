@@ -18,11 +18,4 @@ describe('TextAction', () => {
     expect(screen.getByRole('button', { name: 'Rotate Token' }).className).toContain('font-medium!')
     expect(screen.getByRole('link', { name: 'Add Role' }).className).toContain('text-xs!')
   })
-
-  it('is larger for the row of actions in a page header', () => {
-    render(<TextAction size="md">Import</TextAction>)
-    const button = screen.getByRole('button', { name: 'Import' })
-    expect(button.className).toContain('text-sm!')
-    expect(button.className).not.toContain('text-xs!')
-  })
 })

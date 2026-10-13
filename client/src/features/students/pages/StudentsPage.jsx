@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ImagePlus,
+  Plus,
   RotateCcw,
   Trash2,
   UserCheck,
@@ -13,8 +15,7 @@ import {
   ActionsMenuItem,
 } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
-import { ActionDivider } from "../../../components/ui/ActionDivider.jsx";
-import { TextAction } from "../../../components/ui/TextAction.jsx";
+import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
@@ -261,23 +262,27 @@ export function StudentsPage() {
               }
             />
             {canManagePhotos ? (
-              <>
-                <ActionDivider />
-                <TextAction size="md" onClick={() => setBulkPhotoDialogOpen(true)}>
-                  Bulk Photo Upload
-                </TextAction>
-              </>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setBulkPhotoDialogOpen(true)}
+              >
+                <ImagePlus size={16} />
+                Bulk Photo Upload
+              </Button>
             ) : null}
             {canWrite ? (
-              <TextAction size="md" tone="primary" asChild>
+              <Button asChild>
                 <Link to="/students/new">
+                  <Plus size={16} />
                   New Student
                 </Link>
-              </TextAction>
+              </Button>
             ) : (
-              <TextAction size="md" tone="primary" disabled>
+              <Button type="button" disabled>
+                <Plus size={16} />
                 New Student
-              </TextAction>
+              </Button>
             )}
           </>
         }

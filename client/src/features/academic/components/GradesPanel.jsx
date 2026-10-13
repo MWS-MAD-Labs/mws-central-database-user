@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers3 } from "lucide-react";
+import { Layers3, Plus } from "lucide-react";
 import { useState } from "react";
-import { TextAction } from "../../../components/ui/TextAction.jsx";
+import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PageHint } from "../../../components/ui/PageHint.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
@@ -94,12 +94,14 @@ export function GradesPanel() {
       icon={Layers3}
       isFetching={gradesQuery.isFetching}
       action={
-        <TextAction size="md" tone="primary"
+        <Button
+          type="button"
           disabled={!canWrite}
           onClick={() => setDialog({ mode: "create" })}
         >
+          <Plus size={16} />
           New Grade
-        </TextAction>
+        </Button>
       }
       toolbar={
         <>

@@ -6,6 +6,7 @@ import {
   GraduationCap,
   HeartHandshake,
   LogOut,
+  Plus,
   Repeat,
   RotateCcw,
   Undo2,
@@ -19,7 +20,6 @@ import { cn } from "../../../lib/cn.js";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
-import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
@@ -865,15 +865,17 @@ export function ClassDetailPage() {
               Students
             </h2>
             {canWrite ? (
-              <TextAction
-                tone="primary"
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
                 aria-label="Enroll student"
                 title="Enroll student"
                 disabled={optionsQuery.isLoading}
                 onClick={() => setEnrollDialogOpen(true)}
               >
-                Enroll Student
-              </TextAction>
+                <Plus size={16} />
+              </Button>
             ) : null}
           </div>
           <div className="mb-4 flex flex-wrap items-center gap-2">

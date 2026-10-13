@@ -1,9 +1,10 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import { ArrowLeft, BookOpen, ShieldCheck } from "lucide-react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
+import { Button } from "../../../components/ui/Button.jsx";
 import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
 import { ToggleChip } from "../../../components/ui/FormControls.jsx";
 import { NameList } from "../../../components/ui/NameList.jsx";
@@ -124,16 +125,22 @@ export function AppSettingsPage() {
         description={app.application_id}
         actions={
           <>
-            <TextAction asChild size="md">
-              <Link to={base}>Back</Link>
-            </TextAction>
-            <TextAction asChild size="md">
-              <Link to={`${guide}?part=local`}>Setup Guide</Link>
-            </TextAction>
+            <Button asChild variant="secondary">
+              <Link to={base}>
+                <ArrowLeft size={16} />
+                Back
+              </Link>
+            </Button>
+            <Button asChild variant="secondary">
+              <Link to={`${guide}?part=local`}>
+                <BookOpen size={16} />
+                Setup Guide
+              </Link>
+            </Button>
             {retired ? null : (
-              <TextAction size="md" tone="primary" onClick={() => setEditing(true)}>
+              <Button type="button" onClick={() => setEditing(true)}>
                 Edit Details
-              </TextAction>
+              </Button>
             )}
             {setup.is_hub && !retired && !setup.removal.retire_available && !setup.removal.can_remove ? null : (
               <ActionsMenu label="More actions">

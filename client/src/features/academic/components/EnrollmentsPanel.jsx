@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
   GraduationCap,
+  Plus,
   Repeat,
   LogOut,
   RotateCcw,
@@ -16,7 +17,6 @@ import {
 } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
-import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
@@ -348,12 +348,14 @@ export function EnrollmentsPanel() {
       icon={GraduationCap}
       isFetching={enrollmentsQuery.isFetching || optionsQuery.isFetching}
       action={
-        <TextAction size="md" tone="primary"
+        <Button
+          type="button"
           disabled={!canWrite || optionsQuery.isLoading}
           onClick={() => setDialog({ mode: "create" })}
         >
+          <Plus size={16} />
           New Enrollment
-        </TextAction>
+        </Button>
       }
       toolbar={
         <>

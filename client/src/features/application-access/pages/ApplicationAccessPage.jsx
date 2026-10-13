@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Lock } from "lucide-react";
+import { Lock, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
@@ -7,7 +7,7 @@ import {
   ActionsMenuItem,
 } from "../../../components/ui/ActionsMenu.jsx";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
-import { TextAction } from "../../../components/ui/TextAction.jsx";
+import { Button } from "../../../components/ui/Button.jsx";
 import {
   DenseTable,
   denseCellClass,
@@ -107,11 +107,13 @@ export function ApplicationAccessPage() {
         title="Application Access"
         description="Who can open each application and with which role. Open an application to manage its roles, groups and exceptions."
         actions={
-          <TextAction size="md" tone="primary"
+          <Button
+            type="button"
             onClick={() => navigate("/application-access/apps/new")}
           >
+            <Plus size={16} />
             Add Application
-          </TextAction>
+          </Button>
         }
       />
 

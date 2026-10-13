@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RotateCcw, Trash2 } from "lucide-react";
+import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
-import { TextAction } from "../../../components/ui/TextAction.jsx";
+import { Button } from "../../../components/ui/Button.jsx";
 import {
   ActionsMenu,
   ActionsMenuItem,
@@ -192,15 +192,17 @@ export function InternsPage() {
         description="Manage intern records: unit, position, and internship period."
         actions={
           canWrite ? (
-            <TextAction size="md" tone="primary" asChild>
+            <Button asChild>
               <Link to="/interns/new">
+                <Plus size={16} />
                 New Intern
               </Link>
-            </TextAction>
+            </Button>
           ) : (
-            <TextAction size="md" tone="primary" disabled>
+            <Button type="button" disabled>
+              <Plus size={16} />
               New Intern
-            </TextAction>
+            </Button>
           )
         }
       />

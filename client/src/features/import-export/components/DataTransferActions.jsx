@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Download,
   RefreshCw,
   RotateCcw,
   Upload,
@@ -11,8 +12,6 @@ import {
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../../components/ui/Button.jsx";
-import { ActionDivider } from "../../../components/ui/ActionDivider.jsx";
-import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { DateField, SearchableSelect } from "../../../components/ui/FormControls.jsx";
@@ -49,10 +48,15 @@ export function DataTransferActions({
 
   return (
     <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-      <TextAction size="md" disabled={!canImport} onClick={() => setIsImportOpen(true)}>
+      <Button
+        type="button"
+        variant="secondary"
+        disabled={!canImport}
+        onClick={() => setIsImportOpen(true)}
+      >
+        <Upload size={16} />
         Import
-      </TextAction>
-      <ActionDivider />
+      </Button>
       <ExportMenu
         entity={entity}
         exportParams={exportParams}
@@ -102,9 +106,16 @@ function ExportMenu({ entity, exportParams, canExport, canExportSensitive }) {
       label="Export"
       disabled={!canExport || exportMutation.isPending}
       renderTrigger={({ onClick }) => (
-        <TextAction size="md" disabled={!canExport} loading={exportMutation.isPending} onClick={onClick}>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={!canExport}
+          loading={exportMutation.isPending}
+          onClick={onClick}
+        >
+          <Download size={16} />
           Export
-        </TextAction>
+        </Button>
       )}
     >
       {(closeMenu) => (

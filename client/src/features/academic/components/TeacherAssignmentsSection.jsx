@@ -3,6 +3,7 @@ import {
   CalendarOff,
   GraduationCap,
   MoveRight,
+  Plus,
   RotateCcw,
   Trash2,
 } from "lucide-react";
@@ -14,7 +15,6 @@ import {
   ActionsMenuItem,
 } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
-import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
@@ -345,9 +345,16 @@ export function TeacherAssignmentsSection({
           Teachers
         </h3>
         {canWrite ? (
-          <TextAction tone="primary" aria-label="Assign teacher" title="Assign teacher" onClick={() => setAssignOpen(true)}>
-            Assign Teacher
-          </TextAction>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            aria-label="Assign teacher"
+            title="Assign teacher"
+            onClick={() => setAssignOpen(true)}
+          >
+            <Plus size={16} />
+          </Button>
         ) : null}
       </div>
 
@@ -637,6 +644,7 @@ export function TeacherAssignmentsSection({
                 disabled={picked.size === 0 || !startDate}
                 loading={isAssigning}
               >
+                <Plus size={16} />
                 {picked.size > 1 ? `Add ${picked.size} assignments` : "Add assignment"}
               </Button>
             </>

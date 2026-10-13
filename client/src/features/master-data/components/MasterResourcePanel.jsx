@@ -2,12 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../auth/hooks/useAuth";
 import { useState } from "react";
 import { defaultPaging } from "../utils/params";
-import { Edit, Trash2 } from "lucide-react";
+import { Edit, Plus, Trash2 } from "lucide-react";
 import {
   ActionsMenu,
   ActionsMenuItem,
 } from "../../../components/ui/ActionsMenu.jsx";
-import { TextAction } from "../../../components/ui/TextAction.jsx";
+import { Button } from "../../../components/ui/Button";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
@@ -129,12 +129,14 @@ export function MasterResourcePanel({ resource }) {
       icon={resource.icon}
       isFetching={query.isFetching}
       action={
-        <TextAction size="md" tone="primary"
+        <Button
+          type="button"
           disabled={!canWrite}
           onClick={() => setDialog({ mode: "create" })}
         >
+          <Plus size={16} />
           New {resource.singular}
-        </TextAction>
+        </Button>
       }
       toolbar={
         <div className="w-full space-y-4">
