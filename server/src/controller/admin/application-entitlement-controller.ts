@@ -257,6 +257,10 @@ export class ApplicationAccessController {
     return c.json({ data: response });
   }
 
+  static async settings(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: await ApplicationOnboardingService.settings(c.var.admin, requireApplicationId(c)) });
+  }
+
   static async getApplication(c: Context<{ Variables: AdminVariables }>) {
     return c.json({ data: await ApplicationOnboardingService.get(c.var.admin, requireApplicationId(c)) });
   }

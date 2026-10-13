@@ -35,6 +35,7 @@ applicationAccessRouter.get("/secrets-status", (c) => ApplicationAccessControlle
 applicationAccessRouter.get("/taxonomy", (c) => ApplicationAccessController.taxonomy(c));
 applicationAccessRouter.get("/scope-catalog", (c) => ApplicationAccessController.scopeCatalog(c));
 applicationAccessRouter.get("/apps/:applicationId/role-options", (c) => ApplicationAccessController.roleOptions(c));
+applicationAccessRouter.get("/apps/:applicationId/settings", (c) => ApplicationAccessController.settings(c));
 applicationAccessRouter.get("/apps/:applicationId/details", (c) => ApplicationAccessController.getApplication(c));
 applicationAccessRouter.patch("/apps/:applicationId/details", (c) => ApplicationAccessController.updateApplication(c));
 applicationAccessRouter.patch("/apps/:applicationId/connection-scopes", (c) => ApplicationAccessController.updateConnectionScopes(c));

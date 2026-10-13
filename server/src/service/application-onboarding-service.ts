@@ -82,6 +82,67 @@ export type SetupStatus = {
   env_keys: { key: string; secret: boolean }[];
 };
 
+
+// What the Settings page shows beyond the setup status: when it was made, the token, who has access through which role,
+// and the latest changes.
+export type ApplicationSettings = {
+  created_at: string;
+  updated_at: string;
+  token: { prefix: string; created_at: string; last_used_at: string | null; environment: string | null } | null;
+  access: {
+    groups: number;
+    people: number;
+    exceptions: number;
+    blocked: number;
+    roles: { id: string; key: string; label: string; is_active: boolean; permission_count: number; people: number; groups: number }[];
+  };
+  activity: { id: string; at: string; by: string | null; summary: string }[];
+};
+
+const ACTIVITY_LABEL: Partial<Record<AuditAction, string>> = {
+  [AuditAction.APPLICATION_CREATE]: "Added the application",
+  [AuditAction.APPLICATION_RETIRE]: "Retired the application",
+  [AuditAction.APPLICATION_RESTORE]: "Restored the application",
+  [AuditAction.APPLICATION_DELETE]: "Deleted the application",
+  [AuditAction.API_TOKEN_ROTATE]: "Rotated the token",
+  [AuditAction.API_TOKEN_CREATE]: "Made the connection",
+  [AuditAction.API_TOKEN_REVOKE]: "Revoked the token",
+  [AuditAction.API_TOKEN_UPDATE_SCOPES]: "Changed the data access",
+};
+const FIELD_LABEL: Record<string, string> = {
+  name: "name",
+  description: "description",
+  icon: "icon",
+  category: "category",
+  scope: "scope",
+  launch_url: "address",
+  logout_url: "logout address",
+  launch_mode: "way it opens",
+  uses_hub: "Hub lines",
+  hub_status: "card status",
+  hub_keywords: "keywords",
+  hub_base_url: "Hub address",
+  env_settings: "Hub sign-in settings",
+  hub_internal_secret: "Hub secret",
+  hub_secret_mode: "Hub secret",
+  hub_secret_version: "Hub secret",
+};
+
+// A line about what a change did: shown or hidden in the Hub, or which details were changed.
+function describeChange(action: AuditAction, before: unknown, after: unknown): string {
+  const fixed = ACTIVITY_LABEL[action];
+  if (fixed) return fixed;
+  const oldValues = (before ?? {}) as Record<string, unknown>;
+  const newValues = (after ?? {}) as Record<string, unknown>;
+  if (oldValues.published !== undefined && oldValues.published !== newValues.published) {
+    return newValues.published ? "Showed it in the Hub" : "Hid it from the Hub";
+  }
+  // Only what both snapshots have is compared, a partial snapshot says nothing about the rest.
+  const changed = Object.keys(FIELD_LABEL).filter((key) => key in oldValues && key in newValues && JSON.stringify(oldValues[key]) !== JSON.stringify(newValues[key]));
+  const names = [...new Set(changed.map((key) => FIELD_LABEL[key]))];
+  return names.length > 0 ? `Changed the ${names.join(", ")}` : "Updated the application";
+}
+
 export type RemovalPlan = {
   can_remove: boolean;
   blockers: string[];
@@ -263,6 +324,59 @@ export class ApplicationOnboardingService {
       user_agent: context.user_agent,
     });
     return toDetail(after);
+  }
+
+  static async settings(admin: AdminUser, applicationId: string): Promise<ApplicationSettings> {
+    assertSuperAdmin(admin);
+    const app = await findApplication(applicationId);
+    const client = await findConnectionClient(applicationId);
+    const [detail, roles, entitlementCounts, logs] = await Promise.all([
+      ApplicationAccessService.application(admin, applicationId),
+      prismaClient.applicationRole.findMany({ where: { application_id: applicationId }, orderBy: { rank: "asc" } }),
+      prismaClient.applicationEntitlement.groupBy({ by: ["role"], where: { application_id: applicationId, is_active: true }, _count: { _all: true } }),
+      prismaClient.auditLog.findMany({
+        where: { OR: [{ entity_type: "Application", entity_id: app.id }, ...(client ? [{ entity_type: "ApiClient", entity_id: client.id }] : [])] },
+        orderBy: { created_at: "desc" },
+        take: 10,
+        include: { admin: { select: { full_name: true, email: true } } },
+      }),
+    ]);
+    const active = detail.groups.filter((group) => group.is_active);
+    const peopleByRole = new Map<string, number>();
+    const groupsByRole = new Map<string, number>();
+    for (const row of entitlementCounts) peopleByRole.set(row.role, row._count._all);
+    for (const group of active) {
+      peopleByRole.set(group.default_role_key, (peopleByRole.get(group.default_role_key) ?? 0) + group.own_count);
+      groupsByRole.set(group.default_role_key, (groupsByRole.get(group.default_role_key) ?? 0) + 1);
+    }
+    return {
+      created_at: app.created_at.toISOString(),
+      updated_at: app.updated_at.toISOString(),
+      token: client
+        ? { prefix: client.token_prefix, created_at: client.created_at.toISOString(), last_used_at: client.last_used_at ? client.last_used_at.toISOString() : null, environment: client.environment ?? null }
+        : null,
+      access: {
+        groups: active.length,
+        people: active.reduce((sum, group) => sum + group.own_count, 0),
+        exceptions: detail.groups.reduce((sum, group) => sum + group.exception_count, 0),
+        blocked: detail.groups.reduce((sum, group) => sum + group.blocked_count, 0),
+        roles: roles.map((role) => ({
+          id: role.id,
+          key: role.key,
+          label: role.label,
+          is_active: role.is_active,
+          permission_count: role.permissions.length,
+          people: peopleByRole.get(role.key) ?? 0,
+          groups: groupsByRole.get(role.key) ?? 0,
+        })),
+      },
+      activity: logs.map((log) => ({
+        id: log.id,
+        at: log.created_at.toISOString(),
+        by: log.admin ? log.admin.full_name || log.admin.email : null,
+        summary: describeChange(log.action, log.old_values, log.new_values),
+      })),
+    };
   }
 
   // Progress is read from the data, so nothing is stored about which step a person is on.

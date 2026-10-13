@@ -219,6 +219,30 @@ describe("application onboarding", () => {
     expect(bad.status).toBe(400);
   });
 
+  it("tells the Settings page about the token, the roles and the latest changes", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await create(accessToken);
+    const none = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/settings`, accessToken)).json()).data;
+    expect(none.token).toBeNull();
+    expect(none.access).toMatchObject({ groups: 0, people: 0, roles: [] });
+
+    await prismaClient.applicationPermission.create({ data: { application_id: appId, key: "app.use", source: "MANIFEST", synced_at: new Date() } });
+    await TestRequest.post(ROLES, { application_id: appId, key: "STAFF", label: "staff", permissions: ["app.use"], allows_employees: true }, accessToken);
+    await TestRequest.patch(`${ACCESS}/apps/${appId}/details`, { hub_status: "maintenance" }, accessToken);
+    const connected = await TestRequest.post(`${ACCESS}/apps/${appId}/connect`, {}, accessToken);
+    expect(connected.status).toBe(200);
+
+    const data = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/settings`, accessToken)).json()).data;
+    expect(data.token.prefix).toMatch(/^mws_/);
+    expect(data.access.roles).toEqual([expect.objectContaining({ key: "STAFF", label: "Staff", permission_count: 1, people: 0, groups: 0 })]);
+    expect(data.activity.map((item: { summary: string }) => item.summary)).toEqual(expect.arrayContaining(["Changed the card status", "Added the application"]));
+    expect(data.activity[0].by).toBeTruthy();
+    expect(data.activity.every((item: { summary: string }) => !item.summary.includes("undefined"))).toBe(true);
+
+    const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
+    expect((await TestRequest.get(`${ACCESS}/apps/${appId}/settings`, other)).status).toBe(403);
+  });
+
   it("serves published applications to the Hub and nothing else", async () => {
     await prismaClient.application.create({
       data: {
