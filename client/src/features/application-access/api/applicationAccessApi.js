@@ -28,6 +28,12 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  // What the Settings page adds to the setup: the token, who has access through which role, the latest changes.
+  async getSettings(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/settings`)
+    return response.data
+  },
+
   // What is done and what is still missing, worked out from the data.
   async getSetup(applicationId) {
     const response = await apiRequest(`${ACCESS}/apps/${applicationId}/setup`)

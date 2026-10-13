@@ -1,39 +1,33 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, BookOpen, ShieldCheck } from "lucide-react";
-import { Link, Navigate, useParams } from "react-router";
+import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
+import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
 import { ToggleChip } from "../../../components/ui/FormControls.jsx";
+import { NameList } from "../../../components/ui/NameList.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
+import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
+import { formatDate, formatDateTime } from "../../../lib/format.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { AppCardPreview } from "../components/AppCardPreview.jsx";
 import { ApplicationManagementDialogs } from "../components/ApplicationManagementDialogs.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
 import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
 import { useApplicationManagement } from "../hooks/useApplicationManagement.js";
+import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.js";
 import { useInternalEndpoints } from "../hooks/useInternalEndpoints.js";
 import { buildSteps, stepsDone, timeAgo } from "../utils/setupSteps.js";
+import { titleCase } from "../utils/roleLabel.js";
 
 const CARD_STATUS_LABEL = { active: "Active", maintenance: "Maintenance", coming_soon: "Coming Soon", new: "New" };
 
-// One bar of the panel: a title, the one action that belongs to it, and what is below.
-function Part({ title, action, children }) {
-  return (
-    <section className="space-y-3 px-5 py-4">
-      <div className="flex min-h-6 flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-sm font-bold text-(--mws-charcoal)">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-
 function Rows({ rows }) {
   return (
-    <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[9rem_1fr]">
+    <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-[11rem_1fr]">
       {rows.map(([label, value]) => (
         <div key={label} className="contents">
           <dt className="text-(--mws-muted)">{label}</dt>
@@ -44,22 +38,32 @@ function Rows({ rows }) {
   );
 }
 
-// What can still change once an application is set up. The setup steps were for the first time. One panel, one way to
-// edit the details, and the guide one click away for anyone who forgot how a part works.
+const mono = (value) => <span className="font-mono text-xs">{value}</span>;
+
+// What can still change once an application is set up, and what is known about it. A summary on top and a tab for each
+// kind of thing. There is one way to edit the details (the button in the header), the tabs only show.
 export function AppSettingsPage() {
   const { user } = useAuth();
   const { applicationId } = useParams();
+  const [params, setParams] = useSearchParams();
+  const superAdmin = user?.role === "SUPER_ADMIN";
   const setupQuery = useQuery({
     queryKey: ["application-access", "setup", applicationId],
     queryFn: () => applicationAccessApi.getSetup(applicationId),
-    enabled: user?.role === "SUPER_ADMIN",
+    enabled: superAdmin,
+  });
+  const settingsQuery = useQuery({
+    queryKey: ["application-access", "settings", applicationId],
+    queryFn: () => applicationAccessApi.getSettings(applicationId),
+    enabled: superAdmin,
   });
   const mgmt = useApplicationManagement(applicationId, setupQuery.data);
   const { countFor, loaded: endpointsLoaded } = useInternalEndpoints();
+  const taxonomy = useApplicationTaxonomy();
   const base = `/application-access/apps/${applicationId}`;
   const guide = `${base}/guide`;
 
-  if (user?.role !== "SUPER_ADMIN") {
+  if (!superAdmin) {
     return (
       <div className="min-w-0">
         <PageHeader title={applicationId} />
@@ -67,10 +71,11 @@ export function AppSettingsPage() {
       </div>
     );
   }
-  if (setupQuery.isLoading) return <PanelMessage>Loading settings…</PanelMessage>;
+  if (setupQuery.isLoading || settingsQuery.isLoading) return <PanelMessage>Loading settings…</PanelMessage>;
   if (setupQuery.isError || !setupQuery.data) return <PanelMessage tone="error">This application could not be found.</PanelMessage>;
 
   const setup = setupQuery.data;
+  const more = settingsQuery.data;
   const steps = buildSteps(setup);
   // An application that was never finished still has its steps to do.
   if (!setup.setup_completed && stepsDone(steps) < steps.length) return <Navigate to={`${base}/setup`} replace />;
@@ -82,11 +87,22 @@ export function AppSettingsPage() {
   const { setEditing, setRotating, setDataAccess, setRemoving, setRemovalGuide, restoreMutation, publishMutation, connectMutation, appSecretMutation, retire, changeAppSecret } = mgmt;
   const canShow = setup.can_publish && Boolean(app.launch_url);
 
+  const tabs = [
+    { id: "overview", label: "Overview" },
+    ...(setup.is_hub ? [{ id: "hub", label: "Hub Sign-in" }] : link ? [] : [{ id: "connection", label: "Connection" }]),
+    ...(setup.is_hub ? [] : [{ id: "card", label: "Hub Card" }]),
+    { id: "access", label: "Access" },
+    { id: "activity", label: "Activity" },
+  ];
+  const wanted = params.get("tab");
+  const active = tabs.some((tab) => tab.id === wanted) ? wanted : "overview";
+  const connected = Boolean(setup.connection.last_used_at);
+
   return (
     <div className="min-w-0 space-y-5">
       <PageHeader
         title={`${app.name} Settings`}
-        description="Change how this application is set up. The setup steps were for the first time, the guide explains each part again."
+        description={app.application_id}
         actions={
           <>
             <Button asChild variant="secondary">
@@ -101,6 +117,11 @@ export function AppSettingsPage() {
                 Setup Guide
               </Link>
             </Button>
+            {retired ? null : (
+              <Button type="button" onClick={() => setEditing(true)}>
+                Edit Details
+              </Button>
+            )}
             {setup.is_hub && !retired && !setup.removal.retire_available && !setup.removal.can_remove ? null : (
               <ActionsMenu label="More actions">
                 {(closeMenu) => (
@@ -165,111 +186,185 @@ export function AppSettingsPage() {
         </div>
       ) : null}
 
-      {setup.is_hub ? (
-        <>
-          <div role="note" className="flex items-center gap-3 rounded-2xl border border-[#d9a9ac] bg-[#7E15180D] px-5 py-3 text-sm text-(--mws-burgundy)">
-            <ShieldCheck size={18} aria-hidden="true" className="shrink-0" />
-            <span>
-              <span className="font-semibold">This is the Hub itself.</span> Every other application signs in through it.
-            </span>
-          </div>
-          {setup.env_settings ? <HubSettingsCard settings={setup.env_settings} hub={setup.hub} applicationId={applicationId} /> : null}
-        </>
-      ) : null}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-(--mws-line) bg-white px-5 py-3 text-sm">
+        {retired ? <StatusBadge tone="red">Retired</StatusBadge> : setup.is_hub ? <StatusBadge tone="neutral">Hub</StatusBadge> : <StatusBadge tone={app.published ? "green" : "amber"}>{app.published ? "Shown in the Hub" : "Hidden from the Hub"}</StatusBadge>}
+        {link ? (
+          <span className="text-(--mws-muted)">Plain link</span>
+        ) : (
+          <span className="text-(--mws-muted)">{connected ? `Connected, last call ${timeAgo(setup.connection.last_used_at)} ago` : setup.connection.created ? "Waiting for its first call" : "Not connected"}</span>
+        )}
+        {more ? <span className="text-(--mws-muted)">{`${more.access.people} ${more.access.people === 1 ? "person" : "people"} with access`}</span> : null}
+        {more ? <span className="text-(--mws-muted)">Created {formatDate(more.created_at)}</span> : null}
+      </div>
 
-      <div className="divide-y divide-(--mws-line) rounded-2xl border border-(--mws-line) bg-white">
-        <Part
-          title="Details"
-          action={
-            retired ? null : (
-              <TextAction onClick={() => setEditing(true)}>Edit</TextAction>
-            )
-          }
-        >
+      <div role="tablist" aria-label="Settings" className="flex flex-wrap gap-2">
+        {tabs.map((tab) => (
+          <Button key={tab.id} type="button" role="tab" aria-selected={active === tab.id} variant={active === tab.id ? "primary" : "secondary"} onClick={() => setParams({ tab: tab.id })}>
+            {tab.label}
+          </Button>
+        ))}
+      </div>
+
+      <section className="rounded-2xl border border-(--mws-line) bg-white p-5">
+        {active === "overview" ? (
           <Rows
             rows={[
               ["Name", app.name],
-              ...(setup.is_hub ? [] : [["Address", <span key="a" className="font-mono text-xs">{app.launch_url || "Not set"}</span>]]),
-              ...(setup.is_hub ? [] : [["Organization ID", <CopyableId key="o" value={setup.organization_id} />]]),
-              ...(app.category ? [["Category", app.category]] : []),
-              ...(app.scope ? [["Scope", app.scope]] : []),
-              ...(setup.is_hub ? [] : [["Card", `${CARD_STATUS_LABEL[app.hub_status] ?? "Active"}${(app.hub_keywords ?? []).length > 0 ? `, ${app.hub_keywords.join(", ")}` : ""}`]]),
+              ["Application ID", mono(app.application_id)],
+              ...(setup.is_hub ? [] : [["Organization ID", <CopyableId key="org" value={setup.organization_id} />]]),
+              ...(setup.is_hub ? [] : [["Address", mono(app.launch_url || "Not set")]]),
+              ...(setup.is_hub || link ? [] : [["Logout address", mono(app.logout_url || "None")]]),
+              ...(setup.is_hub ? [] : [["Opens as", link ? "A plain link, nobody signs in through the Hub" : "People sign in through the Hub"]]),
+              ...(app.category ? [["Category", nameOf(taxonomy.categories, app.category) || app.category]] : []),
+              ...(app.scope ? [["Scope", nameOf(taxonomy.scopes, app.scope) || app.scope]] : []),
+              ...(more ? [["Created", formatDateTime(more.created_at)], ["Last updated", `${formatDateTime(more.updated_at)}${more.activity[0]?.by ? ` by ${more.activity[0].by}` : ""}`]] : []),
             ]}
           />
-        </Part>
+        ) : null}
 
-        {setup.is_hub ? null : (
-          <Part
-            title="Shown in the Hub"
-            action={
-              <ToggleChip
-                checked={app.published}
-                disabled={retired || publishMutation.isPending || (!app.published && !canShow)}
-                onChange={(next) => publishMutation.mutate(next)}
-              >
-                {app.published ? "Shown" : "Hidden"}
-              </ToggleChip>
-            }
-          >
-            <p className="text-sm text-(--mws-muted)">
-              {app.published ? "People a group covers see its card." : canShow ? "Nobody sees its card." : "Finish the groups and the address before it can be shown."}
-            </p>
-          </Part>
-        )}
+        {active === "hub" && setup.env_settings ? <HubSettingsCard settings={setup.env_settings} hub={setup.hub} applicationId={applicationId} /> : null}
 
-        {link ? null : (
-          <Part
-            title="Connection"
-            action={
-              retired || setup.connection.created ? null : (
-                <TextAction loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
-                  Create Connection
-                </TextAction>
-              )
-            }
-          >
+        {active === "connection" ? (
+          <div className="space-y-4">
             <Rows
               rows={[
-                ["Last call", setup.connection.last_used_at ? `${timeAgo(setup.connection.last_used_at)} ago` : "Never"],
+                ["Token", more?.token ? <span key="t">{mono(`${more.token.prefix}…`)}<span className="text-(--mws-muted)">, made {formatDate(more.token.created_at)}</span></span> : "None yet"],
+                ["Environment", more?.token?.environment ? titleCase(more.token.environment.toLowerCase()) : setup.environment ? titleCase(setup.environment) : "-"],
+                ["Last call", setup.connection.last_used_at ? `${formatDateTime(setup.connection.last_used_at)} (${timeAgo(setup.connection.last_used_at)} ago)` : "Never"],
                 ["Permissions", `${setup.permissions.count}${setup.permissions.synced_at ? `, received ${timeAgo(setup.permissions.synced_at)} ago` : ""}`],
+                ["Data access", <span key="d" className="flex flex-wrap items-center gap-x-3"><NameList names={setup.data_access.scope_names} noun="scopes" title="Data access scopes" plain="None" />{endpointsLoaded ? <span className="text-(--mws-muted)">{`${endpointCount} endpoint${endpointCount === 1 ? "" : "s"}`}</span> : null}</span>],
                 ...(setup.hub_secret?.applies ? [["Hub secret", setup.hub_secret.mode === "own" ? `Its own, version ${setup.hub_secret.version}` : "The Hub's shared secret"]] : []),
+                ["Reads from .env", mono((setup.env_keys ?? []).map((item) => item.key).join(", ") || "-")],
               ]}
             />
-            {retired || !setup.connection.created ? null : (
-              <div className="flex flex-wrap gap-x-5 gap-y-2">
+            {retired ? null : setup.connection.created ? (
+              <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-(--mws-line) pt-4">
                 <TextAction onClick={() => setRotating(true)}>Rotate Token</TextAction>
                 {setup.hub_secret?.applies ? (
                   <TextAction loading={appSecretMutation.isPending} onClick={changeAppSecret}>
                     {setup.hub_secret.mode === "own" ? "Rotate Hub Secret" : "Give Its Own Hub Secret"}
                   </TextAction>
                 ) : null}
-                {endpointsLoaded && setup.data_access.editable ? (
-                  <TextAction onClick={() => setDataAccess(true)}>{`Data Access, ${endpointCount} endpoint${endpointCount === 1 ? "" : "s"}`}</TextAction>
-                ) : null}
+                {endpointsLoaded && setup.data_access.editable ? <TextAction onClick={() => setDataAccess(true)}>Change Data Access</TextAction> : null}
                 <TextAction asChild>
                   <Link to={`${guide}?part=rotate`}>Rotation Guide</Link>
                 </TextAction>
               </div>
-            )}
-          </Part>
-        )}
-
-        <Part title="Access">
-          <div className="flex flex-wrap gap-x-5 gap-y-2">
-            <TextAction asChild>
-              <Link to={base}>{`${setup.groups.active_count} active group${setup.groups.active_count === 1 ? "" : "s"}`}</Link>
-            </TextAction>
-            <TextAction asChild>
-              <Link to={`${base}?tab=roles`}>{`${setup.roles.active_count} role${setup.roles.active_count === 1 ? "" : "s"}`}</Link>
-            </TextAction>
-            {link ? null : (
-              <TextAction asChild>
-                <Link to={`${base}?tab=permissions`}>{`${setup.permissions.count} permission${setup.permissions.count === 1 ? "" : "s"}`}</Link>
-              </TextAction>
+            ) : (
+              <div className="border-t border-(--mws-line) pt-4">
+                <TextAction loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
+                  Create Connection
+                </TextAction>
+              </div>
             )}
           </div>
-        </Part>
-      </div>
+        ) : null}
+
+        {active === "card" ? (
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+            <div className="space-y-4">
+              <Rows
+                rows={[
+                  ["In the Hub", app.published ? "Showing for the people a group covers" : canShow ? "Hidden, nobody sees the card" : "Hidden, finish the groups and the address first"],
+                  ["Status", CARD_STATUS_LABEL[app.hub_status] ?? "Active"],
+                  ["Keywords", (app.hub_keywords ?? []).length > 0 ? app.hub_keywords.join(", ") : "None"],
+                ]}
+              />
+              <div className="flex flex-wrap items-center gap-3 border-t border-(--mws-line) pt-4">
+                <ToggleChip checked={app.published} disabled={retired || publishMutation.isPending || (!app.published && !canShow)} onChange={(next) => publishMutation.mutate(next)}>
+                  {app.published ? "Shown" : "Hidden"}
+                </ToggleChip>
+                <span className="text-xs text-(--mws-muted)">Status and keywords are changed with Edit Details.</span>
+              </div>
+            </div>
+            <AppCardPreview
+              values={{ ...app, category_name: nameOf(taxonomy.categories, app.category), scope_name: nameOf(taxonomy.scopes, app.scope) }}
+            />
+          </div>
+        ) : null}
+
+        {active === "access" ? (
+          <div className="space-y-5">
+            <Rows
+              rows={[
+                ["Groups", `${more?.access.groups ?? setup.groups.active_count} active`],
+                ["People", more ? `${more.access.people} reached by a group` : "-"],
+                ["Exceptions", more ? `${more.access.exceptions}${more.access.blocked > 0 ? `, ${more.access.blocked} blocked` : ""}` : "-"],
+              ]}
+            />
+            {more && more.access.roles.length > 0 ? (
+              <DenseTable
+                minWidth={620}
+                head={
+                  <>
+                    <th className="px-4 py-2.5">Name</th>
+                    <th className="px-4 py-2.5">Key</th>
+                    <th className="px-4 py-2.5 text-center">Permissions</th>
+                    <th className="px-4 py-2.5 text-center">People</th>
+                    <th className="px-4 py-2.5 text-center">Groups</th>
+                    <th className="px-4 py-2.5">Status</th>
+                  </>
+                }
+              >
+                {more.access.roles.map((role) => (
+                  <tr key={role.id} className={denseRowClass}>
+                    <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>{titleCase(role.label)}</td>
+                    <td className={`${denseCellClass} font-mono text-xs text-(--mws-muted)`}>{role.key}</td>
+                    <td className={`${denseCellClass} text-center`}>{role.permission_count}</td>
+                    <td className={`${denseCellClass} text-center`}>{role.people}</td>
+                    <td className={`${denseCellClass} text-center`}>{role.groups}</td>
+                    <td className={denseCellClass}>
+                      <StatusBadge tone={role.is_active ? "green" : "neutral"}>{role.is_active ? "Active" : "Inactive"}</StatusBadge>
+                    </td>
+                  </tr>
+                ))}
+              </DenseTable>
+            ) : (
+              <p className="text-sm text-(--mws-muted)">No roles yet.</p>
+            )}
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              <TextAction asChild>
+                <Link to={base}>Open Groups</Link>
+              </TextAction>
+              <TextAction asChild>
+                <Link to={`${base}?tab=roles`}>Open Roles</Link>
+              </TextAction>
+              {link ? null : (
+                <TextAction asChild>
+                  <Link to={`${base}?tab=permissions`}>Open Permissions</Link>
+                </TextAction>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {active === "activity" ? (
+          more && more.activity.length > 0 ? (
+            <ul className="divide-y divide-(--mws-line)">
+              {more.activity.map((item) => (
+                <li key={item.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5 first:pt-0 last:pb-0">
+                  <span className="text-sm text-(--mws-charcoal)">{item.summary}</span>
+                  <span className="text-xs text-(--mws-muted)">
+                    {item.by ? `${item.by}, ` : ""}
+                    {formatDateTime(item.at)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-(--mws-muted)">No changes recorded yet.</p>
+          )
+        ) : null}
+      </section>
+
+      {setup.is_hub ? (
+        <div role="note" className="flex items-center gap-3 rounded-2xl border border-[#d9a9ac] bg-[#7E15180D] px-5 py-3 text-sm text-(--mws-burgundy)">
+          <ShieldCheck size={18} aria-hidden="true" className="shrink-0" />
+          <span>
+            <span className="font-semibold">This is the Hub itself.</span> Every other application signs in through it.
+          </span>
+        </div>
+      ) : null}
 
       <ApplicationManagementDialogs applicationId={applicationId} setup={setup} mgmt={mgmt} />
     </div>

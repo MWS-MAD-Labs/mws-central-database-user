@@ -286,6 +286,10 @@ describe("AppSetupPage", () => {
           }),
       },
       {
+        path: "/api/admin/application-access/apps/demo/settings",
+        response: () => jsonResponse({ data: { created_at: "2026-10-03T08:00:00.000Z", updated_at: "2026-10-03T08:00:00.000Z", token: null, access: { groups: 1, people: 0, exceptions: 0, blocked: 0, roles: [] }, activity: [] } }),
+      },
+      {
         path: "/api/admin/application-access/apps/demo/publish",
         method: "POST",
         response: () => {
@@ -310,6 +314,7 @@ describe("AppSetupPage", () => {
     );
     // Showing it in the Hub finishes the setup, so Settings takes over from here.
     expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
+    await user.click(await screen.findByRole("tab", { name: "Hub Card" }));
     await user.click(await screen.findByRole("switch", { name: "Shown" }));
     await waitFor(() => expect(calls).toEqual(["publish", "unpublish"]));
     // It stays on Settings after hiding, and showing it again is one click away.

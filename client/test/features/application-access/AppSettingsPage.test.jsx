@@ -12,7 +12,7 @@ const APP = {
   name: "Demo App",
   description: null,
   icon: null,
-  category: null,
+  category: "reporting",
   launch_url: "https://demo.example.com/auth/sso",
   logout_url: null,
   published: true,
@@ -44,11 +44,38 @@ function setup(overrides = {}) {
   };
 }
 
-function renderPage(data) {
-  globalThis.fetch = createFetchRouter([
+const SETTINGS = {
+  created_at: "2026-10-03T08:00:00.000Z",
+  updated_at: "2026-10-12T09:30:00.000Z",
+  token: { prefix: "mws_702f6901a3f1", created_at: "2026-10-03T08:05:00.000Z", last_used_at: null, environment: "DEVELOPMENT" },
+  access: {
+    groups: 1,
+    people: 128,
+    exceptions: 2,
+    blocked: 1,
+    roles: [
+      { id: "r1", key: "SUPPORT_STAFF", label: "support staff", is_active: true, permission_count: 3, people: 120, groups: 1 },
+      { id: "r2", key: "ADMIN", label: "Admin", is_active: true, permission_count: 4, people: 8, groups: 0 },
+    ],
+  },
+  activity: [
+    { id: "a1", at: "2026-10-12T09:30:00.000Z", by: "Test Super Admin", summary: "Changed the card status" },
+    { id: "a2", at: "2026-10-03T08:00:00.000Z", by: "Test Super Admin", summary: "Added the application" },
+  ],
+};
+
+export function routesFor(data, extra = []) {
+  return [
     { path: "/api/admin/application-access/apps/demo/setup", response: () => jsonResponse({ data }) },
+    { path: "/api/admin/application-access/apps/demo/settings", response: () => jsonResponse({ data: SETTINGS }) },
+    { path: /\/api\/admin\/application-access\/taxonomy/, response: () => jsonResponse({ data: { categories: [{ key: "reporting", name: "Reporting" }], scopes: [] } }) },
     { path: /internal-endpoints|data-access/, response: () => jsonResponse({ data: [] }) },
-  ]);
+    ...extra,
+  ];
+}
+
+function renderPage(data, route = "/application-access/apps/demo/settings") {
+  globalThis.fetch = createFetchRouter(routesFor(data));
   return renderWithProviders(
     <AuthContext.Provider value={{ user: { role: "SUPER_ADMIN" } }}>
       <ConfirmProvider>
@@ -58,45 +85,55 @@ function renderPage(data) {
         </Routes>
       </ConfirmProvider>
     </AuthContext.Provider>,
-    { route: "/application-access/apps/demo/settings" },
+    { route },
   );
 }
 
 describe("AppSettingsPage", () => {
-  it("shows one panel, with one Edit for the details and the guide one click away", async () => {
+  it("summarises the application on top and opens on the overview", async () => {
     renderPage(setup());
     expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
+    expect(screen.getByText("Shown in the Hub")).toBeVisible();
+    expect(screen.getByText(/Connected, last call/)).toBeVisible();
+    expect(screen.getByText("128 people with access")).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("https://demo.example.com/auth/sso")).toBeVisible();
+    expect(screen.getByText("Reporting")).toBeVisible();
     expect(screen.getByRole("link", { name: /Setup Guide/ })).toHaveAttribute("href", "/application-access/apps/demo/guide?part=local");
-    // Status and keywords are part of the details, so there is one way to change them.
-    expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
-    expect(screen.queryByText(/Change Status/)).toBeNull();
-    expect(screen.getByText("Maintenance, checkin, daily")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Rotate Token" })).toBeVisible();
-    expect(screen.getByText("1 active group")).toBeVisible();
-    // Retire and delete are not buttons on the page.
+    // One way to edit, and retiring is not a button on the page.
+    expect(screen.getAllByRole("button", { name: /Edit/ })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Retire Application" })).toBeNull();
   });
 
   it("opens the details form with the status and keywords in it", async () => {
     const { user } = renderPage(setup());
-    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    await user.click(await screen.findByRole("button", { name: "Edit Details" }));
     expect(await screen.findByLabelText("Keywords")).toHaveValue("checkin, daily");
   });
 
-  it("shows and hides the card with one switch", async () => {
+  it("shows the token, data access and the names it reads on the connection tab", async () => {
+    const { user } = renderPage(setup());
+    await user.click(await screen.findByRole("tab", { name: "Connection" }));
+    expect(screen.getByText("mws_702f6901a3f1…")).toBeVisible();
+    expect(screen.getByText("Development")).toBeVisible();
+    expect(screen.getByText("application_entitlements:read")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Rotate Token" })).toBeVisible();
+  });
+
+  it("shows the card, its status and the switch on the Hub card tab, and hides it with one click", async () => {
     const calls = [];
-    globalThis.fetch = createFetchRouter([
-      { path: "/api/admin/application-access/apps/demo/setup", response: () => jsonResponse({ data: setup() }) },
-      { path: /internal-endpoints|data-access/, response: () => jsonResponse({ data: [] }) },
-      {
-        path: "/api/admin/application-access/apps/demo/unpublish",
-        method: "POST",
-        response: () => {
-          calls.push("unpublish");
-          return jsonResponse({ data: APP });
+    globalThis.fetch = createFetchRouter(
+      routesFor(setup(), [
+        {
+          path: "/api/admin/application-access/apps/demo/unpublish",
+          method: "POST",
+          response: () => {
+            calls.push("unpublish");
+            return jsonResponse({ data: APP });
+          },
         },
-      },
-    ]);
+      ]),
+    );
     const { user } = renderWithProviders(
       <AuthContext.Provider value={{ user: { role: "SUPER_ADMIN" } }}>
         <ConfirmProvider>
@@ -105,16 +142,31 @@ describe("AppSettingsPage", () => {
           </Routes>
         </ConfirmProvider>
       </AuthContext.Provider>,
-      { route: "/application-access/apps/demo/settings" },
+      { route: "/application-access/apps/demo/settings?tab=card" },
     );
-    const toggle = await screen.findByRole("switch", { name: "Shown" });
-    expect(toggle).toHaveAttribute("aria-checked", "true");
-    await user.click(toggle);
+    expect(await screen.findByText("Maintenance")).toBeVisible();
+    expect(screen.getByText("checkin, daily")).toBeVisible();
+    expect(screen.getByText("Preview")).toBeVisible();
+    await user.click(screen.getByRole("switch", { name: "Shown" }));
     await waitFor(() => expect(calls).toEqual(["unpublish"]));
   });
 
-  it("offers the switch off for an application that was hidden again, still without the setup steps", async () => {
-    renderPage(setup({ application: { ...APP, published: false } }));
+  it("lists the roles with a name that has capitals and its own key column", async () => {
+    renderPage(setup(), "/application-access/apps/demo/settings?tab=access");
+    expect(await screen.findByRole("columnheader", { name: "Key" })).toBeVisible();
+    expect(screen.getByText("Support Staff")).toBeVisible();
+    expect(screen.getByText("SUPPORT_STAFF")).toBeVisible();
+    expect(screen.getByText("2, 1 blocked")).toBeVisible();
+  });
+
+  it("lists the latest changes on the activity tab", async () => {
+    renderPage(setup(), "/application-access/apps/demo/settings?tab=activity");
+    expect(await screen.findByText("Changed the card status")).toBeVisible();
+    expect(screen.getByText("Added the application")).toBeVisible();
+  });
+
+  it("keeps the switch on for an application that was hidden again, without the setup steps", async () => {
+    renderPage(setup({ application: { ...APP, published: false } }), "/application-access/apps/demo/settings?tab=card");
     const toggle = await screen.findByRole("switch", { name: "Hidden" });
     expect(toggle).toBeEnabled();
     expect(screen.queryByText("Setup steps")).toBeNull();
@@ -125,9 +177,10 @@ describe("AppSettingsPage", () => {
     expect(await screen.findByText("Setup steps")).toBeVisible();
   });
 
-  it("has no connection part for a plain link", async () => {
+  it("has no connection tab for a plain link", async () => {
     renderPage(setup({ application: { ...APP, launch_mode: "link" }, connection: { client_id: null, created: false, last_used_at: null }, permissions: { count: 0, synced_at: null } }));
     expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
-    expect(screen.queryByText("Connection")).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Connection" })).toBeNull();
+    expect(screen.getByText("Plain link")).toBeVisible();
   });
 });
