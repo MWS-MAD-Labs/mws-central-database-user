@@ -83,10 +83,10 @@ export function AppRolesTab({ applicationId, roles }) {
         </h2>
         <button
           type="button"
-          aria-label="Add Role"
-          title="Add Role"
+          aria-label="Add Roles"
+          title="Add Roles"
           onClick={() =>
-            navigate(`/application-access/apps/${applicationId}/roles/new`)
+            navigate(`/application-access/apps/${applicationId}/roles/bulk`)
           }
           className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) transition-colors hover:bg-(--mws-soft) hover:text-(--mws-burgundy) focus-visible:outline-2 focus-visible:outline-(--mws-burgundy)"
         >
@@ -95,7 +95,7 @@ export function AppRolesTab({ applicationId, roles }) {
       </div>
       {roles.length === 0 ? (
         <PanelMessage>
-          No roles yet. Add the first role of {applicationId}.
+          No roles yet. Add the first roles of {applicationId}.
         </PanelMessage>
       ) : (
         <DenseTable

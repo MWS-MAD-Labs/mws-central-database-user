@@ -219,10 +219,10 @@ export function AppSetupPage() {
           <>
             {current ? (
               <Button asChild>
-                <Link to={`${base}/roles/new`}>Add Role</Link>
+                <Link to={`${base}/roles/bulk?from=setup`}>Add Roles</Link>
               </Button>
             ) : (
-              quiet(`${base}/roles/new`, "Add Role", Plus)
+              quiet(`${base}/roles/bulk?from=setup`, "Add Roles", Plus)
             )}
           </>
         );

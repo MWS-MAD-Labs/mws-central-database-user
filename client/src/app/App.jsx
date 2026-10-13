@@ -23,6 +23,7 @@ const GroupAccessEditPage = lazy(() => import('../features/application-access/pa
 const AppCreatePage = lazy(() => import('../features/application-access/pages/AppCreatePage.jsx').then((module) => ({ default: module.AppCreatePage })))
 const AppGuidePage = lazy(() => import('../features/application-access/pages/AppGuidePage.jsx').then((module) => ({ default: module.AppGuidePage })))
 const AppSetupPage = lazy(() => import('../features/application-access/pages/AppSetupPage.jsx').then((module) => ({ default: module.AppSetupPage })))
+const BulkRolesPage = lazy(() => import('../features/application-access/pages/BulkRolesPage.jsx').then((module) => ({ default: module.BulkRolesPage })))
 const RoleFormPage = lazy(() => import('../features/application-access/pages/RoleFormPage.jsx').then((module) => ({ default: module.RoleFormPage })))
 const ApplicationAccessPage = lazy(() => import('../features/application-access/pages/ApplicationAccessPage.jsx').then((module) => ({ default: module.ApplicationAccessPage })))
 const AuditLogsPage = lazy(() => import('../features/audit/pages/AuditLogsPage.jsx').then((module) => ({ default: module.AuditLogsPage })))
@@ -98,7 +99,8 @@ export default function App() {
           <Route path="application-access/apps/:applicationId/groups/new" element={<GroupFormPage />} />
           <Route path="application-access/apps/:applicationId/groups/:ruleId" element={<GroupAccessEditPage />} />
           <Route path="application-access/apps/:applicationId/groups/:ruleId/exceptions/new" element={<ExceptionAddPage />} />
-          <Route path="application-access/apps/:applicationId/roles/new" element={<RoleFormPage />} />
+          <Route path="application-access/apps/:applicationId/roles/new" element={<BulkRolesPage />} />
+          <Route path="application-access/apps/:applicationId/roles/bulk" element={<BulkRolesPage />} />
           <Route path="application-access/apps/:applicationId/roles/:roleId" element={<RoleFormPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route element={<CapabilityRoute allowed={(user) => Boolean(user?.is_employee_identifier_change_approver)} title="Approver Access Required" description="Only change request approvers can review requests." />}>

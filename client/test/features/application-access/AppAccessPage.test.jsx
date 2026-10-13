@@ -157,7 +157,7 @@ function renderPage(
             element={<div>Applications list</div>}
           />
           <Route
-            path="/application-access/apps/:applicationId/roles/new"
+            path="/application-access/apps/:applicationId/roles/bulk"
             element={<div>New role page</div>}
           />
           <Route
@@ -999,7 +999,7 @@ describe("AppAccessPage", () => {
         "/application-access/apps/exima?tab=roles",
       );
       await screen.findByText("ADMIN");
-      await user.click(screen.getByRole("button", { name: "Add Role" }));
+      await user.click(screen.getByRole("button", { name: "Add Roles" }));
       expect(await screen.findByText("New role page")).toBeVisible();
     });
 
@@ -1036,7 +1036,7 @@ describe("AppAccessPage", () => {
       await screen.findByText("Dummy Staff");
       await user.click(screen.getByRole("button", { name: "Roles" }));
       expect(
-        await screen.findByRole("button", { name: "Add Role" }),
+        await screen.findByRole("button", { name: "Add Roles" }),
       ).toBeVisible();
       await user.click(screen.getByRole("button", { name: "Access" }));
       expect(await screen.findAllByRole("heading", { level: 2 })).toHaveLength(
