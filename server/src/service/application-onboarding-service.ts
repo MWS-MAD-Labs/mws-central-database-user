@@ -55,6 +55,8 @@ export type SetupStatus = {
   roles: { active_count: number };
   groups: { active_count: number };
   can_publish: boolean;
+  // True once the application was shown in the Hub. It is then managed from Settings instead of the setup steps.
+  setup_completed: boolean;
   missing: string[];
   // The Hub itself has no "show in Hub" step.
   is_hub: boolean;
@@ -320,6 +322,7 @@ export class ApplicationOnboardingService {
       roles: { active_count: roles },
       groups: { active_count: groups },
       can_publish: missing.length === 0 && applicationId !== hubApplicationId(),
+      setup_completed: Boolean(app.setup_completed_at),
       missing,
       is_hub: applicationId === hubApplicationId(),
       data_access: {
@@ -585,7 +588,10 @@ export class ApplicationOnboardingService {
     context: AuditRequestContext,
   ): Promise<ApplicationDetail> {
     const before = await findApplication(applicationId);
-    await prismaClient.application.update({ where: { id: before.id }, data: { published } });
+    await prismaClient.application.update({
+      where: { id: before.id },
+      data: { published, ...(published && !before.setup_completed_at ? { setup_completed_at: new Date() } : {}) },
+    });
     const after = await findApplication(applicationId);
     await AuditService.record({
       action: AuditAction.APPLICATION_ROLE_UPDATE,

@@ -175,6 +175,8 @@ describe("application onboarding", () => {
     expect(message).toContain("roles");
     expect(message).toContain("groups");
     expect(message).toContain("launch URL");
+    // Not finished: the setup steps are still what the page shows.
+    expect((await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data.setup_completed).toBe(false);
 
     await prismaClient.applicationPermission.create({
       data: { application_id: appId, key: "app.use", source: "MANIFEST", synced_at: new Date() },
@@ -194,6 +196,8 @@ describe("application onboarding", () => {
     const hidden = await TestRequest.post(`${ACCESS}/apps/${appId}/unpublish`, {}, accessToken);
     expect(hidden.status).toBe(200);
     expect((await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } })).published).toBe(false);
+    // Hiding it again does not take the setup back: from here on it is managed from Settings.
+    expect((await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data.setup_completed).toBe(true);
   });
 
   it("serves published applications to the Hub and nothing else", async () => {
