@@ -10,6 +10,7 @@ import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 const applications = [
   {
     application_id: 'exima',
+    setup_completed: true,
     name: 'Exima',
     can_remove: false,
     retire_available: true,
@@ -140,13 +141,16 @@ describe('ApplicationAccessPage', () => {
     expect(within(hubRow).getByText('Core')).toBeVisible()
     expect(within(hubRow).getByTitle('The Hub itself. It cannot be retired or deleted.')).toBeVisible()
     await user.click(within(hubRow).getByRole('button', { name: 'Actions for hub' }))
-    expect(await screen.findByRole('button', { name: 'Setup Steps' })).toBeVisible()
+    expect(await screen.findByRole('button', { name: 'Continue Setup' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Setup Steps' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Delete Application' })).toBeNull()
     await user.keyboard('{Escape}')
     await user.click(document.body)
     const eximaRow = screen.getByRole('button', { name: 'Actions for exima' }).closest('tr')
     await user.click(within(eximaRow).getByRole('button', { name: 'Actions for exima' }))
     expect(await screen.findByRole('button', { name: 'Retire Application' })).toBeVisible()
+    // An application that finished its setup opens Settings.
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeVisible()
   })
 
   describe('the row menu offers what applies', () => {

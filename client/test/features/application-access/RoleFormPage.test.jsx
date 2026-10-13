@@ -259,4 +259,19 @@ describe('RoleFormPage', () => {
     renderPage('/application-access/apps/exima/roles/new', { role: 'DATABASE_ADMIN' })
     expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
   })
+
+  it('refuses to save a role with no permission left', async () => {
+    // Earlier tests leave the registry as they last set it.
+    registry = { ...registry, permissions: [{ key: 'store.use', description: null, source: 'MANUAL', deprecated: false, role_count: 2 }] }
+    const fetchMock = createFetchRouter(routes([
+      { path: '/api/admin/application-roles/role-staff', method: 'PATCH', response: () => jsonResponse({ data: roles[1] }) },
+    ]))
+    globalThis.fetch = fetchMock
+    const { user } = renderPage('/application-access/apps/exima/roles/role-staff')
+    await screen.findByText('Edit STAFF')
+    await user.click(await screen.findByLabelText('store.use'))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText(/Pick at least one permission/)).toBeVisible()
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(false)
+  })
 })

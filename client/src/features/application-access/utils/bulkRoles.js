@@ -43,7 +43,7 @@ export function togglePermission(value, key, closure) {
 
 // What is wrong with each new role, by role id: a name problem, a name taken by another column or an existing role,
 // or the same permissions as another role. Columns that are fine are left out.
-export function columnProblems(columns, existingRoles, labelProblem) {
+export function columnProblems(columns, existingRoles, labelProblem, { needsPermission = false } = {}) {
   const problems = {}
   const taken = new Map(existingRoles.map((role) => [role.key, role.key]))
   const seen = new Map()
@@ -65,5 +65,11 @@ export function columnProblems(columns, existingRoles, labelProblem) {
       columns.slice(0, index).find((other) => !problems[other.id] && sameSet(other.permissions, column.permissions))
     if (twin) problems[column.id] = { twin: twin.key || keyFromLabel(twin.label) }
   })
+  // The application has permissions to pick from, so a role without any grants nothing.
+  if (needsPermission) {
+    for (const column of columns) {
+      if (column.permissions.length === 0) problems[column.id] = { ...problems[column.id], permissions: 'Pick at least one permission.' }
+    }
+  }
   return problems
 }

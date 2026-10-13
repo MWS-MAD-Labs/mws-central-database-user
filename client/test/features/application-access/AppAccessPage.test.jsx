@@ -999,6 +999,9 @@ describe("AppAccessPage", () => {
         "/application-access/apps/exima?tab=roles",
       );
       await screen.findByText("ADMIN");
+      // The name and the key each have their own column.
+      expect(screen.getByRole("columnheader", { name: "Name" })).toBeVisible();
+      expect(screen.getByRole("columnheader", { name: "Key" })).toBeVisible();
       await user.click(screen.getByRole("button", { name: "Add Roles" }));
       expect(await screen.findByText("New role page")).toBeVisible();
     });

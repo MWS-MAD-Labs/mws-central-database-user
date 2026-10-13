@@ -56,7 +56,7 @@ function Editor({ applicationId, roles, options }) {
   const [attempted, setAttempted] = useState(false);
 
   const closure = requiredBy(options);
-  const problems = columnProblems(items, roles, labelProblem);
+  const problems = columnProblems(items, roles, labelProblem, { needsPermission: options.length > 0 });
   const selected = items.find((item) => item.id === selectedId) ?? items[0];
   const listPages = Math.max(Math.ceil(items.length / LIST_PAGE), 1);
   const currentListPage = Math.min(listPage, listPages);
@@ -219,6 +219,7 @@ function Editor({ applicationId, roles, options }) {
               <SearchableSelect value="" onChange={copyFrom} options={copyOptions} placeholder="Select a role" searchPlaceholder="Search role" />
             </Field>
           ) : null}
+          {problem?.permissions && (attempted || selected.label) ? <p className="text-sm font-semibold text-[#a43c41]">{problem.permissions}</p> : null}
           {problem?.twin ? <p className="text-sm font-semibold text-[#a43c41]">{problem.twin} already has exactly these permissions. Change them.</p> : null}
           {errors[selected.id] ? <p className="text-sm font-semibold text-[#a43c41]">{errors[selected.id]}</p> : null}
           {options.length === 0 ? (

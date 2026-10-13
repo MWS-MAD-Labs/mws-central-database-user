@@ -19,6 +19,7 @@ import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { NameList } from "../../../components/ui/NameList.jsx";
+import { titleCase } from "../utils/roleLabel.js";
 import { PermissionPopover } from "./PermissionPopover.jsx";
 import { Tip } from "./Tip.jsx";
 
@@ -103,8 +104,8 @@ export function AppRolesTab({ applicationId, roles }) {
           head={
             <>
               <th className="px-4 py-2.5">Order</th>
-              <th className="px-4 py-2.5">Role</th>
-              <th className="px-4 py-2.5">Label</th>
+              <th className="px-4 py-2.5">Name</th>
+              <th className="px-4 py-2.5">Key</th>
               <th className="px-4 py-2.5">For</th>
               <th className="px-4 py-2.5 text-center">Permissions</th>
               <th className="px-4 py-2.5 text-center">In Use</th>
@@ -166,9 +167,9 @@ export function AppRolesTab({ applicationId, roles }) {
                 <td
                   className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}
                 >
-                  {role.key}
+                  {titleCase(role.label)}
                 </td>
-                <td className={denseCellClass}>{role.label}</td>
+                <td className={`${denseCellClass} font-mono text-xs text-(--mws-muted)`}>{role.key}</td>
                 <td className={denseCellClass}>
                   {[
                     role.allows_employees ? "Employees" : null,

@@ -132,6 +132,7 @@ function RoleForm({ applicationId, role, roles }) {
     setAttempted(true);
     if (!allowsEmployees && !allowsStudents) return;
     if (twin || labelProblem(label) || (!isEdit && !key.trim())) return;
+    if (options.length > 0 && permissions.length === 0) return;
     mutation.mutate();
   }
 
@@ -176,6 +177,9 @@ function RoleForm({ applicationId, role, roles }) {
                   registering={register.isPending}
                 />
               )}
+              {attempted && options.length > 0 && permissions.length === 0 ? (
+                <p className="text-sm font-semibold text-[#a43c41]">Pick at least one permission.</p>
+              ) : null}
               {twin ? (
                 <p className="text-sm font-semibold text-[#a43c41]">
                   {twin.key} already has exactly these permissions. Reuse it, or change the permissions.

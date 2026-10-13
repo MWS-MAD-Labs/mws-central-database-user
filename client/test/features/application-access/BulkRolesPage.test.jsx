@@ -162,6 +162,22 @@ describe('BulkRolesPage', () => {
     expect(screen.queryByText('App page')).toBeNull()
   })
 
+  it('will not save a role that has no permission', async () => {
+    const fetchMock = createFetchRouter(routes([{ path: '/api/admin/application-roles', method: 'POST', response: () => jsonResponse({ data: { id: 'new' } }) }]))
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await user.type(await screen.findByLabelText('Role name'), 'cashier')
+    // The name is written with a capital as it is typed.
+    expect(screen.getByLabelText('Role name')).toHaveValue('Cashier')
+    await user.click(screen.getByRole('button', { name: 'Add Role' }))
+    expect(await screen.findByText('Pick at least one permission.')).toBeVisible()
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+    await user.click(perm('pos.catalog.read'))
+    await waitFor(() => expect(screen.queryByText('Pick at least one permission.')).toBeNull())
+    await user.click(screen.getByRole('button', { name: 'Add Role' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(true))
+  })
+
   it('is for Super Admin only', async () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage({ role: 'DATABASE_ADMIN' })
