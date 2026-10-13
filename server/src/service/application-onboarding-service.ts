@@ -97,6 +97,7 @@ export type ApplicationSettings = {
     roles: { id: string; key: string; label: string; is_active: boolean; permission_count: number; people: number; groups: number }[];
   };
   activity: { id: string; at: string; by: string | null; summary: string }[];
+  activity_paging: { current_page: number; total_page: number; total_item: number; size: number };
 };
 
 const ACTIVITY_LABEL: Partial<Record<AuditAction, string>> = {
@@ -326,18 +327,25 @@ export class ApplicationOnboardingService {
     return toDetail(after);
   }
 
-  static async settings(admin: AdminUser, applicationId: string): Promise<ApplicationSettings> {
+  static async settings(admin: AdminUser, applicationId: string, paging: { page?: number; size?: number } = {}): Promise<ApplicationSettings> {
     assertSuperAdmin(admin);
     const app = await findApplication(applicationId);
     const client = await findConnectionClient(applicationId);
+    const size = Math.min(Math.max(Math.trunc(paging.size ?? 10) || 10, 1), 100);
+    const requested = Math.max(Math.trunc(paging.page ?? 1) || 1, 1);
+    const where = { OR: [{ entity_type: "Application", entity_id: app.id }, ...(client ? [{ entity_type: "ApiClient", entity_id: client.id }] : [])] };
+    const totalLogs = await prismaClient.auditLog.count({ where });
+    const totalPage = Math.max(Math.ceil(totalLogs / size), 1);
+    const page = Math.min(requested, totalPage);
     const [detail, roles, entitlementCounts, logs] = await Promise.all([
       ApplicationAccessService.application(admin, applicationId),
       prismaClient.applicationRole.findMany({ where: { application_id: applicationId }, orderBy: { rank: "asc" } }),
       prismaClient.applicationEntitlement.groupBy({ by: ["role"], where: { application_id: applicationId, is_active: true }, _count: { _all: true } }),
       prismaClient.auditLog.findMany({
-        where: { OR: [{ entity_type: "Application", entity_id: app.id }, ...(client ? [{ entity_type: "ApiClient", entity_id: client.id }] : [])] },
+        where,
         orderBy: { created_at: "desc" },
-        take: 10,
+        skip: (page - 1) * size,
+        take: size,
         include: { admin: { select: { full_name: true, email: true } } },
       }),
     ]);
@@ -376,6 +384,7 @@ export class ApplicationOnboardingService {
         by: log.admin ? log.admin.full_name || log.admin.email : null,
         summary: describeChange(log.action, log.old_values, log.new_values),
       })),
+      activity_paging: { current_page: page, total_page: totalPage, total_item: totalLogs, size },
     };
   }
 

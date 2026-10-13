@@ -239,6 +239,15 @@ describe("application onboarding", () => {
     expect(data.activity[0].by).toBeTruthy();
     expect(data.activity.every((item: { summary: string }) => !item.summary.includes("undefined"))).toBe(true);
 
+    // The changes come a page at a time, newest first.
+    expect(data.activity_paging).toMatchObject({ current_page: 1, size: 10 });
+    const small = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/settings?page=2&size=1`, accessToken)).json()).data;
+    expect(small.activity).toHaveLength(1);
+    expect(small.activity_paging).toMatchObject({ current_page: 2, size: 1 });
+    expect(small.activity_paging.total_item).toBeGreaterThanOrEqual(3);
+    const past = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/settings?page=99&size=1`, accessToken)).json()).data;
+    expect(past.activity_paging.current_page).toBe(past.activity_paging.total_page);
+
     const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
     expect((await TestRequest.get(`${ACCESS}/apps/${appId}/settings`, other)).status).toBe(403);
   });
