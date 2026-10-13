@@ -4,6 +4,7 @@ import type { HubCardStatus } from "../generated/prisma/client";
 import { API_SCOPES } from "../constants/api-scopes";
 import { ApplicationTaxonomyService } from "./application-taxonomy-service";
 import { hubApplicationId } from "../constants/hub-application";
+import { notifyHubAppRetired } from "./hub-retire-notice";
 import { ResponseError } from "../error/response-error";
 import { prismaClient } from "../lib/prisma";
 import type { ApiClientCreatedResponse } from "../model/api-client-model";
@@ -797,6 +798,7 @@ export class ApplicationOnboardingService {
     }
     await prismaClient.application.update({ where: { id: before.id }, data: { published: false, retired_at: new Date() } });
     clearActiveSnapshot(applicationId);
+    await notifyHubAppRetired(applicationId);
     const after = await findApplication(applicationId);
     await AuditService.record({
       action: AuditAction.APPLICATION_RETIRE,
