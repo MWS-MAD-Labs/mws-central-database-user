@@ -19,11 +19,11 @@ const statuses = (steps) => steps.map((step) => `${step.id}:${step.status}`)
 
 describe('timeAgo', () => {
   it('reads like a person would say it', () => {
-    expect(timeAgo(new Date(NOW - 10_000), NOW)).toBe('just now')
-    expect(timeAgo(new Date(NOW - 60_000), NOW)).toBe('1 minute ago')
-    expect(timeAgo(new Date(NOW - 5 * 60_000), NOW)).toBe('5 minutes ago')
-    expect(timeAgo(new Date(NOW - 3 * 3_600_000), NOW)).toBe('3 hours ago')
-    expect(timeAgo(new Date(NOW - 2 * 86_400_000), NOW)).toBe('2 days ago')
+    expect(timeAgo(new Date(NOW - 10_000), NOW)).toBe('Just Now')
+    expect(timeAgo(new Date(NOW - 60_000), NOW)).toBe('1 Minute')
+    expect(timeAgo(new Date(NOW - 5 * 60_000), NOW)).toBe('5 Minutes')
+    expect(timeAgo(new Date(NOW - 3 * 3_600_000), NOW)).toBe('3 Hours')
+    expect(timeAgo(new Date(NOW - 2 * 86_400_000), NOW)).toBe('2 Days')
     expect(timeAgo(null, NOW)).toBe('')
   })
 })
@@ -61,7 +61,7 @@ describe('buildSteps', () => {
       setup({ connection: { created: true, last_used_at: new Date(NOW - 120_000).toISOString() } }),
       NOW,
     )
-    expect(steps[1]).toMatchObject({ done: true, note: 'Connected, last call 2 minutes ago.' })
+    expect(steps[1]).toMatchObject({ done: true, note: 'Connected, last call 2 Minutes.' })
     expect(steps[2].status).toBe('current')
   })
 
@@ -74,7 +74,7 @@ describe('buildSteps', () => {
       NOW,
     )
     expect(steps[1].done).toBe(true)
-    expect(steps[2]).toMatchObject({ done: true, note: '12 permissions received, 1 minute ago.' })
+    expect(steps[2]).toMatchObject({ done: true, note: '12 permissions received, 1 Minute.' })
     expect(steps[3].status).toBe('current')
   })
 

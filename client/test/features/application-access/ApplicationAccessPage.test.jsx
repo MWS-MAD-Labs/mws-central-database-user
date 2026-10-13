@@ -91,7 +91,7 @@ describe('ApplicationAccessPage', () => {
     const exima = (await screen.findByText('exima')).closest('tr')
     expect(within(exima).getByText('Exima')).toBeVisible()
     expect(await within(exima).findByText('Safespace')).toBeVisible()
-    expect(within(exima).getByText(/2 hours ago/)).toBeVisible()
+    expect(within(exima).getByText(/2 Hours/)).toBeVisible()
     expect(within(exima).getByText('7')).toBeVisible()
     expect(within(exima).getByText('3')).toBeVisible()
     expect(within(exima).getByText('2')).toBeVisible()
