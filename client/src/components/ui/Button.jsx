@@ -4,23 +4,23 @@ import { cva } from 'class-variance-authority'
 import { cn } from '../../lib/cn.js'
 
 const buttonVariants = cva(
-  'relative inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-full font-display text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-60',
+  'relative inline-flex cursor-pointer items-center justify-center gap-2 rounded-full font-display text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-60',
   {
     variants: {
       variant: {
         primary:
-          'bg-(--mws-burgundy) px-5 text-white shadow-sm hover:bg-(--mws-burgundy-dark) focus-visible:outline-(--mws-burgundy)',
+          'bg-(--mws-burgundy) px-4 text-white shadow-sm hover:bg-(--mws-burgundy-dark) focus-visible:outline-(--mws-burgundy)',
         secondary:
-          'border border-(--mws-line) bg-white px-5 text-(--mws-charcoal) hover:border-(--mws-burgundy) hover:bg-(--mws-soft) hover:text-(--mws-burgundy) focus-visible:outline-(--mws-burgundy)',
+          'border border-(--mws-line) bg-white px-4 text-(--mws-charcoal) hover:border-(--mws-burgundy) hover:bg-(--mws-soft) hover:text-(--mws-burgundy) focus-visible:outline-(--mws-burgundy)',
         ghost:
-          'px-4 text-(--mws-muted) hover:bg-(--mws-soft) hover:text-(--mws-charcoal) focus-visible:outline-(--mws-burgundy)',
+          'px-3 text-(--mws-muted) hover:bg-(--mws-soft) hover:text-(--mws-charcoal) focus-visible:outline-(--mws-burgundy)',
         danger:
-          'bg-(--mws-rose) px-5 text-white hover:bg-[#9f3d41] focus-visible:outline-(--mws-rose)',
+          'bg-(--mws-rose) px-4 text-white hover:bg-[#9f3d41] focus-visible:outline-(--mws-rose)',
       },
       size: {
         sm: 'h-8 px-3 text-xs',
-        md: 'h-10',
-        icon: 'h-10 w-10 min-w-10 shrink-0 aspect-square px-0',
+        md: 'h-9',
+        icon: 'h-9 w-9 min-w-9 shrink-0 aspect-square px-0',
       },
     },
     defaultVariants: {
