@@ -162,20 +162,34 @@ describe('BulkRolesPage', () => {
     expect(screen.queryByText('App page')).toBeNull()
   })
 
-  it('will not save a role that has no permission', async () => {
+  it('keeps the button off until every role is complete, and says what is missing', async () => {
     const fetchMock = createFetchRouter(routes([{ path: '/api/admin/application-roles', method: 'POST', response: () => jsonResponse({ data: { id: 'new' } }) }]))
     globalThis.fetch = fetchMock
     const { user } = renderPage()
-    await user.type(await screen.findByLabelText('Role name'), 'cashier')
-    // The name is written with a capital as it is typed.
+    const add = await screen.findByRole('button', { name: 'Add Role' })
+    // No name yet.
+    expect(add).toBeDisabled()
+    await user.type(screen.getByLabelText('Role name'), 'cashier')
+    // The name is written with a capital as it is typed, and a role needs a permission.
     expect(screen.getByLabelText('Role name')).toHaveValue('Cashier')
-    await user.click(screen.getByRole('button', { name: 'Add Role' }))
     expect(await screen.findByText('Pick at least one permission.')).toBeVisible()
-    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+    expect(screen.getByText('1 role is not complete')).toBeVisible()
+    expect(add).toBeDisabled()
     await user.click(perm('pos.catalog.read'))
-    await waitFor(() => expect(screen.queryByText('Pick at least one permission.')).toBeNull())
-    await user.click(screen.getByRole('button', { name: 'Add Role' }))
+    await waitFor(() => expect(add).toBeEnabled())
+    expect(screen.queryByText(/not complete/)).toBeNull()
+    await user.click(add)
     await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(true))
+  })
+
+  it('has Cancel as a button beside the one that saves, going back', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage()
+    const cancel = await screen.findByRole('link', { name: 'Cancel' })
+    expect(cancel).toHaveAttribute('href', '/application-access/apps/exima?tab=roles')
+    // The same shape as the save button: a bordered button, not a bare text link.
+    expect(cancel.className).toContain('border')
+    expect(cancel.className).toContain('rounded')
   })
 
   it('is for Super Admin only', async () => {

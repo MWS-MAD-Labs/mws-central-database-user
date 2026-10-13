@@ -286,7 +286,7 @@ describe("AppSetupPage", () => {
           }),
       },
       {
-        path: "/api/admin/application-access/apps/demo/settings",
+        path: /\/api\/admin\/application-access\/apps\/demo\/settings/,
         response: () => jsonResponse({ data: { created_at: "2026-10-03T08:00:00.000Z", updated_at: "2026-10-03T08:00:00.000Z", token: null, access: { groups: 1, people: 0, exceptions: 0, blocked: 0, roles: [] }, activity: [] } }),
       },
       {

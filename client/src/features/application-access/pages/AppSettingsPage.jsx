@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { ArrowLeft, BookOpen, ShieldCheck } from "lucide-react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -7,7 +8,9 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
 import { ToggleChip } from "../../../components/ui/FormControls.jsx";
 import { NameList } from "../../../components/ui/NameList.jsx";
+import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
+import { Tabs } from "../../../components/ui/Tabs.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { formatDate, formatDateTime } from "../../../lib/format.js";
@@ -38,6 +41,20 @@ function Rows({ rows }) {
   );
 }
 
+// A few figures at a glance: the figure large, what it counts small under it.
+function Stats({ items }) {
+  return (
+    <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {items.map(([label, value]) => (
+        <div key={label} className="rounded-xl bg-(--mws-soft) px-4 py-3">
+          <dd className="font-display text-xl font-bold leading-tight text-(--mws-charcoal)">{value}</dd>
+          <dt className="mt-0.5 text-xs text-(--mws-muted)">{label}</dt>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 const mono = (value) => <span className="font-mono text-xs">{value}</span>;
 
 // What can still change once an application is set up, and what is known about it. A summary on top and a tab for each
@@ -52,10 +69,13 @@ export function AppSettingsPage() {
     queryFn: () => applicationAccessApi.getSetup(applicationId),
     enabled: superAdmin,
   });
+  const [activityPage, setActivityPage] = useState(1);
+  const [activitySize, setActivitySize] = useState(10);
   const settingsQuery = useQuery({
-    queryKey: ["application-access", "settings", applicationId],
-    queryFn: () => applicationAccessApi.getSettings(applicationId),
+    queryKey: ["application-access", "settings", applicationId, activityPage, activitySize],
+    queryFn: () => applicationAccessApi.getSettings(applicationId, { page: activityPage, size: activitySize }),
     enabled: superAdmin,
+    placeholderData: keepPreviousData,
   });
   const mgmt = useApplicationManagement(applicationId, setupQuery.data);
   const { countFor, loaded: endpointsLoaded } = useInternalEndpoints();
@@ -189,21 +209,15 @@ export function AppSettingsPage() {
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-(--mws-line) bg-white px-5 py-3 text-sm">
         {retired ? <StatusBadge tone="red">Retired</StatusBadge> : setup.is_hub ? <StatusBadge tone="neutral">Hub</StatusBadge> : <StatusBadge tone={app.published ? "green" : "amber"}>{app.published ? "Shown in the Hub" : "Hidden from the Hub"}</StatusBadge>}
         {link ? (
-          <span className="text-(--mws-muted)">Plain link</span>
+          <span className="text-(--mws-muted)">Plain Link</span>
         ) : (
-          <span className="text-(--mws-muted)">{connected ? `Connected, last call ${timeAgo(setup.connection.last_used_at)} ago` : setup.connection.created ? "Waiting for its first call" : "Not connected"}</span>
+          <span className="text-(--mws-muted)">{connected ? `Connected, Last Call ${timeAgo(setup.connection.last_used_at)} Ago` : setup.connection.created ? "Waiting For Its First Call" : "Not Connected"}</span>
         )}
-        {more ? <span className="text-(--mws-muted)">{`${more.access.people} ${more.access.people === 1 ? "person" : "people"} with access`}</span> : null}
+        {more ? <span className="text-(--mws-muted)">{`${more.access.people} ${more.access.people === 1 ? "Person" : "People"} With Access`}</span> : null}
         {more ? <span className="text-(--mws-muted)">Created {formatDate(more.created_at)}</span> : null}
       </div>
 
-      <div role="tablist" aria-label="Settings" className="flex flex-wrap gap-2">
-        {tabs.map((tab) => (
-          <Button key={tab.id} type="button" role="tab" aria-selected={active === tab.id} variant={active === tab.id ? "primary" : "secondary"} onClick={() => setParams({ tab: tab.id })}>
-            {tab.label}
-          </Button>
-        ))}
-      </div>
+      <Tabs label="Settings" tabs={tabs} active={active} onChange={(id) => setParams({ tab: id })} />
 
       <section className="rounded-2xl border border-(--mws-line) bg-white p-5">
         {active === "overview" ? (
@@ -226,15 +240,22 @@ export function AppSettingsPage() {
 
         {active === "connection" ? (
           <div className="space-y-4">
+            <Stats
+              items={[
+                ["Permissions", setup.permissions.count],
+                ["Scopes", setup.data_access.scope_names.length],
+                ...(endpointsLoaded ? [["Endpoints", endpointCount]] : []),
+                ["Last Call", setup.connection.last_used_at ? `${timeAgo(setup.connection.last_used_at)} Ago` : "Never"],
+              ]}
+            />
             <Rows
               rows={[
                 ["Token", more?.token ? <span key="t">{mono(`${more.token.prefix}…`)}<span className="text-(--mws-muted)">, made {formatDate(more.token.created_at)}</span></span> : "None yet"],
                 ["Environment", more?.token?.environment ? titleCase(more.token.environment.toLowerCase()) : setup.environment ? titleCase(setup.environment) : "-"],
-                ["Last call", setup.connection.last_used_at ? `${formatDateTime(setup.connection.last_used_at)} (${timeAgo(setup.connection.last_used_at)} ago)` : "Never"],
-                ["Permissions", `${setup.permissions.count}${setup.permissions.synced_at ? `, received ${timeAgo(setup.permissions.synced_at)} ago` : ""}`],
-                ["Data access", <span key="d" className="flex flex-wrap items-center gap-x-3"><NameList names={setup.data_access.scope_names} noun="scopes" title="Data access scopes" plain="None" />{endpointsLoaded ? <span className="text-(--mws-muted)">{`${endpointCount} endpoint${endpointCount === 1 ? "" : "s"}`}</span> : null}</span>],
-                ...(setup.hub_secret?.applies ? [["Hub secret", setup.hub_secret.mode === "own" ? `Its own, version ${setup.hub_secret.version}` : "The Hub's shared secret"]] : []),
-                ["Reads from .env", mono((setup.env_keys ?? []).map((item) => item.key).join(", ") || "-")],
+                ["Permissions Received", setup.permissions.synced_at ? `${formatDateTime(setup.permissions.synced_at)} (${timeAgo(setup.permissions.synced_at)} Ago)` : "Not yet"],
+                ["Data Access", <NameList key="d" names={setup.data_access.scope_names} noun="scopes" title="Data access scopes" plain="None" />],
+                ...(setup.hub_secret?.applies ? [["Hub Secret", setup.hub_secret.mode === "own" ? `Its own, version ${setup.hub_secret.version}` : "The Hub's shared secret"]] : []),
+                ["Reads From .env", mono((setup.env_keys ?? []).map((item) => item.key).join(", ") || "-")],
               ]}
             />
             {retired ? null : setup.connection.created ? (
@@ -263,11 +284,17 @@ export function AppSettingsPage() {
         {active === "card" ? (
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
             <div className="space-y-4">
+              <Stats
+                items={[
+                  ["In The Hub", app.published ? "Shown" : "Hidden"],
+                  ["Status", CARD_STATUS_LABEL[app.hub_status] ?? "Active"],
+                  ["Keywords", (app.hub_keywords ?? []).length],
+                ]}
+              />
               <Rows
                 rows={[
-                  ["In the Hub", app.published ? "Showing for the people a group covers" : canShow ? "Hidden, nobody sees the card" : "Hidden, finish the groups and the address first"],
-                  ["Status", CARD_STATUS_LABEL[app.hub_status] ?? "Active"],
                   ["Keywords", (app.hub_keywords ?? []).length > 0 ? app.hub_keywords.join(", ") : "None"],
+                  ...(app.published || canShow ? [] : [["Before It Can Show", "Finish the groups and the address first"]]),
                 ]}
               />
               <div className="flex flex-wrap items-center gap-3 border-t border-(--mws-line) pt-4">
@@ -285,11 +312,12 @@ export function AppSettingsPage() {
 
         {active === "access" ? (
           <div className="space-y-5">
-            <Rows
-              rows={[
-                ["Groups", `${more?.access.groups ?? setup.groups.active_count} active`],
-                ["People", more ? `${more.access.people} reached by a group` : "-"],
-                ["Exceptions", more ? `${more.access.exceptions}${more.access.blocked > 0 ? `, ${more.access.blocked} blocked` : ""}` : "-"],
+            <Stats
+              items={[
+                ["Active Groups", more?.access.groups ?? setup.groups.active_count],
+                ["People Reached", more ? more.access.people : "-"],
+                ["Exceptions", more ? more.access.exceptions : "-"],
+                ["Blocked", more ? more.access.blocked : "-"],
               ]}
             />
             {more && more.access.roles.length > 0 ? (
@@ -340,17 +368,33 @@ export function AppSettingsPage() {
 
         {active === "activity" ? (
           more && more.activity.length > 0 ? (
-            <ul className="divide-y divide-(--mws-line)">
-              {more.activity.map((item) => (
-                <li key={item.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5 first:pt-0 last:pb-0">
-                  <span className="text-sm text-(--mws-charcoal)">{item.summary}</span>
-                  <span className="text-xs text-(--mws-muted)">
-                    {item.by ? `${item.by}, ` : ""}
-                    {formatDateTime(item.at)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-3">
+              <ul className="divide-y divide-(--mws-line)">
+                {more.activity.map((item) => (
+                  <li key={item.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5 first:pt-0 last:pb-0">
+                    <span className="text-sm text-(--mws-charcoal)">{item.summary}</span>
+                    <span className="text-xs text-(--mws-muted)">
+                      {item.by ? `${item.by}, ` : ""}
+                      {formatDateTime(item.at)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl">
+                <PaginationBar
+                  paging={more.activity_paging}
+                  itemLabel="changes"
+                  isLoading={settingsQuery.isFetching}
+                  onPrevious={() => setActivityPage(Math.max(more.activity_paging.current_page - 1, 1))}
+                  onNext={() => setActivityPage(more.activity_paging.current_page + 1)}
+                  onPageChange={setActivityPage}
+                  onPageSizeChange={(next) => {
+                    setActivitySize(next);
+                    setActivityPage(1);
+                  }}
+                />
+              </div>
+            </div>
           ) : (
             <p className="text-sm text-(--mws-muted)">No changes recorded yet.</p>
           )

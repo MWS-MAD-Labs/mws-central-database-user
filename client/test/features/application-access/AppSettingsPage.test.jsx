@@ -62,12 +62,13 @@ const SETTINGS = {
     { id: "a1", at: "2026-10-12T09:30:00.000Z", by: "Test Super Admin", summary: "Changed the card status" },
     { id: "a2", at: "2026-10-03T08:00:00.000Z", by: "Test Super Admin", summary: "Added the application" },
   ],
+  activity_paging: { current_page: 1, total_page: 2, total_item: 12, size: 10 },
 };
 
 export function routesFor(data, extra = []) {
   return [
     { path: "/api/admin/application-access/apps/demo/setup", response: () => jsonResponse({ data }) },
-    { path: "/api/admin/application-access/apps/demo/settings", response: () => jsonResponse({ data: SETTINGS }) },
+    { path: /\/api\/admin\/application-access\/apps\/demo\/settings/, response: () => jsonResponse({ data: SETTINGS }) },
     { path: /\/api\/admin\/application-access\/taxonomy/, response: () => jsonResponse({ data: { categories: [{ key: "reporting", name: "Reporting" }], scopes: [] } }) },
     { path: /internal-endpoints|data-access/, response: () => jsonResponse({ data: [] }) },
     ...extra,
@@ -94,8 +95,8 @@ describe("AppSettingsPage", () => {
     renderPage(setup());
     expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
     expect(screen.getByText("Shown in the Hub")).toBeVisible();
-    expect(screen.getByText(/Connected, last call/)).toBeVisible();
-    expect(screen.getByText("128 people with access")).toBeVisible();
+    expect(screen.getByText(/Connected, Last Call/)).toBeVisible();
+    expect(screen.getByText("128 People With Access")).toBeVisible();
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("https://demo.example.com/auth/sso")).toBeVisible();
     expect(screen.getByText("Reporting")).toBeVisible();
@@ -116,6 +117,9 @@ describe("AppSettingsPage", () => {
     await user.click(await screen.findByRole("tab", { name: "Connection" }));
     expect(screen.getByText("mws_702f6901a3f1…")).toBeVisible();
     expect(screen.getByText("Development")).toBeVisible();
+    expect(screen.getByText("Permissions").previousElementSibling).toHaveTextContent("4");
+    expect(screen.getByText("Scopes").previousElementSibling).toHaveTextContent("1");
+    expect(screen.getByText("Last Call")).toBeVisible();
     expect(screen.getByText("application_entitlements:read")).toBeVisible();
     expect(screen.getByRole("button", { name: "Rotate Token" })).toBeVisible();
   });
@@ -144,7 +148,8 @@ describe("AppSettingsPage", () => {
       </AuthContext.Provider>,
       { route: "/application-access/apps/demo/settings?tab=card" },
     );
-    expect(await screen.findByText("Maintenance")).toBeVisible();
+    expect(await screen.findAllByText("Maintenance")).not.toHaveLength(0);
+    expect(screen.getByText("In The Hub").previousElementSibling).toHaveTextContent("Shown");
     expect(screen.getByText("checkin, daily")).toBeVisible();
     expect(screen.getByText("Preview")).toBeVisible();
     await user.click(screen.getByRole("switch", { name: "Shown" }));
@@ -156,13 +161,21 @@ describe("AppSettingsPage", () => {
     expect(await screen.findByRole("columnheader", { name: "Key" })).toBeVisible();
     expect(screen.getByText("Support Staff")).toBeVisible();
     expect(screen.getByText("SUPPORT_STAFF")).toBeVisible();
-    expect(screen.getByText("2, 1 blocked")).toBeVisible();
+    // Figures first, what they count under them.
+    expect(screen.getByText("Active Groups").previousElementSibling).toHaveTextContent("1");
+    expect(screen.getByText("People Reached").previousElementSibling).toHaveTextContent("128");
+    expect(screen.getByText("Exceptions").previousElementSibling).toHaveTextContent("2");
+    expect(screen.getByText("Blocked").previousElementSibling).toHaveTextContent("1");
   });
 
   it("lists the latest changes on the activity tab", async () => {
     renderPage(setup(), "/application-access/apps/demo/settings?tab=activity");
     expect(await screen.findByText("Changed the card status")).toBeVisible();
     expect(screen.getByText("Added the application")).toBeVisible();
+    // The changes come a page at a time.
+    expect(screen.getByText(/Page 1 of 2 \/ 12 changes/)).toBeVisible();
+    expect(screen.getByRole("button", { name: /Next/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Prev/ })).toBeDisabled();
   });
 
   it("keeps the switch on for an application that was hidden again, without the setup steps", async () => {
@@ -181,6 +194,6 @@ describe("AppSettingsPage", () => {
     renderPage(setup({ application: { ...APP, launch_mode: "link" }, connection: { client_id: null, created: false, last_used_at: null }, permissions: { count: 0, synced_at: null } }));
     expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
     expect(screen.queryByRole("tab", { name: "Connection" })).toBeNull();
-    expect(screen.getByText("Plain link")).toBeVisible();
+    expect(screen.getByText("Plain Link")).toBeVisible();
   });
 });

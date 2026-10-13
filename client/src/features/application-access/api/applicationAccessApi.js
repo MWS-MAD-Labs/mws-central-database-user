@@ -29,8 +29,8 @@ export const applicationAccessApi = {
   },
 
   // What the Settings page adds to the setup: the token, who has access through which role, the latest changes.
-  async getSettings(applicationId) {
-    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/settings`)
+  async getSettings(applicationId, { page = 1, size = 10 } = {}) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/settings?page=${page}&size=${size}`)
     return response.data
   },
 

@@ -149,6 +149,7 @@ function Editor({ applicationId, roles, options }) {
 
   const problem = problems[selected.id];
   const nameError = attempted || selected.label ? problem?.name : undefined;
+  const incomplete = items.filter((item) => problems[item.id] || !item.label.trim()).length;
 
   return (
     <div className="min-w-0">
@@ -219,7 +220,7 @@ function Editor({ applicationId, roles, options }) {
               <SearchableSelect value="" onChange={copyFrom} options={copyOptions} placeholder="Select a role" searchPlaceholder="Search role" />
             </Field>
           ) : null}
-          {problem?.permissions && (attempted || selected.label) ? <p className="text-sm font-semibold text-[#a43c41]">{problem.permissions}</p> : null}
+          {problem?.permissions && selected.label ? <p className="text-sm font-semibold text-[#a43c41]">{problem.permissions}</p> : null}
           {problem?.twin ? <p className="text-sm font-semibold text-[#a43c41]">{problem.twin} already has exactly these permissions. Change them.</p> : null}
           {errors[selected.id] ? <p className="text-sm font-semibold text-[#a43c41]">{errors[selected.id]}</p> : null}
           {options.length === 0 ? (
@@ -252,11 +253,12 @@ function Editor({ applicationId, roles, options }) {
           )}
         </section>
       </div>
-      <div className="mt-5 flex items-center justify-end gap-5">
-        <TextAction asChild>
+      <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
+        {incomplete > 0 ? <p className="mr-auto text-xs text-(--mws-muted)">{`${incomplete} ${incomplete === 1 ? "role is" : "roles are"} not complete`}</p> : null}
+        <Button asChild variant="secondary">
           <Link to={back}>Cancel</Link>
-        </TextAction>
-        <Button type="button" loading={saving} disabled={items.some((item) => !item.label.trim())} onClick={save}>
+        </Button>
+        <Button type="button" loading={saving} disabled={incomplete > 0} onClick={save}>
           {items.length === 1 ? "Add Role" : `Add ${items.length} Roles`}
         </Button>
       </div>
