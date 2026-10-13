@@ -3,6 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes } from "react-router";
 import { ConfirmProvider } from "../../../src/components/ui/ConfirmDialog.jsx";
 import { AuthContext } from "../../../src/features/auth/context/authContext.js";
+import { AppSettingsPage } from "../../../src/features/application-access/pages/AppSettingsPage.jsx";
 import { AppSetupPage } from "../../../src/features/application-access/pages/AppSetupPage.jsx";
 import { renderWithProviders } from "../../helpers/render.jsx";
 import { createFetchRouter, jsonResponse } from "../../helpers/http.js";
@@ -51,6 +52,10 @@ function renderPage(routes, user = { role: "SUPER_ADMIN" }) {
           <Route
             path="/application-access/apps/:applicationId/setup"
             element={<AppSetupPage />}
+          />
+          <Route
+            path="/application-access/apps/:applicationId/settings"
+            element={<AppSettingsPage />}
           />
         </Routes>
       </ConfirmProvider>
@@ -270,13 +275,14 @@ describe("AppSetupPage", () => {
       missing: [],
     });
     let published = false;
+    let completed = false;
     const calls = [];
     const { user } = renderPage([
       {
         path: "/api/admin/application-access/apps/demo/setup",
         response: () =>
           jsonResponse({
-            data: { ...ready, application: { ...APP, published } },
+            data: { ...ready, setup_completed: completed, application: { ...APP, published } },
           }),
       },
       {
@@ -284,6 +290,7 @@ describe("AppSetupPage", () => {
         method: "POST",
         response: () => {
           published = true;
+          completed = true;
           calls.push("publish");
           return jsonResponse({ data: { ...APP, published: true } });
         },
@@ -301,11 +308,13 @@ describe("AppSetupPage", () => {
     await user.click(
       await screen.findByRole("button", { name: "Show In Hub" }),
     );
+    // Showing it in the Hub finishes the setup, so Settings takes over from here.
+    expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
     await user.click(
       await screen.findByRole("button", { name: "Hide From Hub" }),
     );
     await waitFor(() => expect(calls).toEqual(["publish", "unpublish"]));
-    // The button is usable again after the first action finished.
+    // It stays on Settings after hiding, and showing it again is one click away.
     expect(
       await screen.findByRole("button", { name: "Show In Hub" }),
     ).toBeEnabled();

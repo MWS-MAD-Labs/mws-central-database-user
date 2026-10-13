@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, BookOpen, KeyRound, ShieldCheck, Check, Circle, Eye, EyeOff, Loader2, Lock, Pencil, Plus, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, Navigate, useParams } from "react-router";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -69,6 +69,8 @@ export function AppSetupPage() {
 
   const setup = setupQuery.data;
   const steps = buildSteps(setup);
+  // The steps are for the first time. Once the application was shown in the Hub, or every step is done, Settings takes over.
+  if (setup.setup_completed || stepsDone(steps) === steps.length) return <Navigate to={`/application-access/apps/${applicationId}/settings`} replace />;
   const endpointCount = countFor(setup.data_access.scope_names);
   const finished = stepsDone(steps);
   const base = `/application-access/apps/${applicationId}`;

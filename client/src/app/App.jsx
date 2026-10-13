@@ -23,6 +23,7 @@ const GroupAccessEditPage = lazy(() => import('../features/application-access/pa
 const AppCreatePage = lazy(() => import('../features/application-access/pages/AppCreatePage.jsx').then((module) => ({ default: module.AppCreatePage })))
 const AppGuidePage = lazy(() => import('../features/application-access/pages/AppGuidePage.jsx').then((module) => ({ default: module.AppGuidePage })))
 const AppSetupPage = lazy(() => import('../features/application-access/pages/AppSetupPage.jsx').then((module) => ({ default: module.AppSetupPage })))
+const AppSettingsPage = lazy(() => import('../features/application-access/pages/AppSettingsPage.jsx').then((module) => ({ default: module.AppSettingsPage })))
 const BulkRolesPage = lazy(() => import('../features/application-access/pages/BulkRolesPage.jsx').then((module) => ({ default: module.BulkRolesPage })))
 const RoleFormPage = lazy(() => import('../features/application-access/pages/RoleFormPage.jsx').then((module) => ({ default: module.RoleFormPage })))
 const ApplicationAccessPage = lazy(() => import('../features/application-access/pages/ApplicationAccessPage.jsx').then((module) => ({ default: module.ApplicationAccessPage })))
@@ -95,6 +96,7 @@ export default function App() {
           <Route path="application-access/apps/new" element={<AppCreatePage />} />
           <Route path="application-access/apps/:applicationId" element={<AppAccessPage />} />
           <Route path="application-access/apps/:applicationId/setup" element={<AppSetupPage />} />
+          <Route path="application-access/apps/:applicationId/settings" element={<AppSettingsPage />} />
           <Route path="application-access/apps/:applicationId/guide" element={<AppGuidePage />} />
           <Route path="application-access/apps/:applicationId/groups/new" element={<GroupFormPage />} />
           <Route path="application-access/apps/:applicationId/groups/:ruleId" element={<GroupAccessEditPage />} />

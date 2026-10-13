@@ -292,11 +292,11 @@ export function ApplicationAccessPage() {
                         onClick={() => {
                           closeMenu();
                           navigate(
-                            `/application-access/apps/${row.application_id}/setup`,
+                            `/application-access/apps/${row.application_id}/${row.published ? "settings" : "setup"}`,
                           );
                         }}
                       >
-                        Setup Steps
+                        {row.published ? "Settings" : "Setup Steps"}
                       </ActionsMenuItem>
                       {row.organization_id ? (
                         <ActionsMenuItem

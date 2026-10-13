@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, Settings } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -114,6 +114,12 @@ export function AppAccessPage() {
                 Back
               </Link>
             </Button>
+            <Button asChild variant="secondary">
+              <Link to={`/application-access/apps/${applicationId}/settings`}>
+                <Settings size={16} />
+                Settings
+              </Link>
+            </Button>
             {activeTab === "access" ? (
               <Button
                 type="button"
@@ -129,7 +135,7 @@ export function AppAccessPage() {
         }
       />
 
-      {setupQuery.data && stepsDone(buildSteps(setupQuery.data)) < buildSteps(setupQuery.data).length ? (
+      {setupQuery.data && !setupQuery.data.setup_completed && stepsDone(buildSteps(setupQuery.data)) < buildSteps(setupQuery.data).length ? (
         <div role="note" className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#d8b45b] bg-[#fff8e8] px-5 py-3 text-sm text-[#745716]">
           <span className="font-semibold">
             Finish setup ({stepsDone(buildSteps(setupQuery.data))} of {buildSteps(setupQuery.data).length})
