@@ -80,6 +80,7 @@ import { AuditService } from "./audit-service";
 import {
   assertPermissionDependencies,
   assertPermissionsRegistered,
+  assertRoleCarriesPermission,
   loadRequires,
   loadRequiresByApplication,
   missingDependencies,
@@ -1025,6 +1026,7 @@ export class ApplicationRoleService {
     if (existing) {
       throw new ResponseError(400, `Role ${input.key} already exists for ${input.application_id}`);
     }
+    await assertRoleCarriesPermission(input.application_id, input.permissions);
     await assertPermissionsRegistered(input.application_id, input.permissions);
     await assertPermissionDependencies(input.application_id, input.permissions);
     await assertDistinctPermissions(input.application_id, input.permissions);
@@ -1220,6 +1222,7 @@ export class ApplicationRoleService {
     }
 
     if (input.permissions !== undefined) {
+      await assertRoleCarriesPermission(existing.application_id, input.permissions);
       await assertPermissionsRegistered(existing.application_id, input.permissions, existing.permissions);
       // An old role that already misses something may keep its permissions as they are.
       const sameSet =

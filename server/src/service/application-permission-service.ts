@@ -59,6 +59,14 @@ export async function assertPermissionsRegistered(
   );
 }
 
+// A role has to carry something once the application has permissions to carry. An application with none yet, like a
+// plain link, has nothing to pick from, so its roles may be empty.
+export async function assertRoleCarriesPermission(applicationId: string, wanted: string[]) {
+  if (new Set(wanted).size > 0) return;
+  const registered = await prismaClient.applicationPermission.count({ where: { application_id: applicationId, deprecated_at: null } });
+  if (registered > 0) throw new ResponseError(400, "A role needs at least one permission");
+}
+
 type RequiresMap = Map<string, string[]>;
 
 // Everything a permission needs, directly or through the ones it needs.

@@ -94,6 +94,11 @@ const permissions = z
     "Permissions must be unique",
   );
 
+// "support staff" becomes "Support Staff": the first letter of every word is a capital, the rest stays as typed.
+export function titleCaseLabel(text: string): string {
+  return text.replace(/(^|\s)(\p{L})/gu, (_match, space: string, letter: string) => space + letter.toUpperCase());
+}
+
 // A role label is plain words: letters, numbers and single spaces.
 export const ROLE_LABEL_PATTERN = /^[\p{L}\p{N}]+( [\p{L}\p{N}]+)*$/u;
 const roleLabel = z
@@ -101,7 +106,9 @@ const roleLabel = z
   .trim()
   .min(1, "Label is required")
   .max(64, "Label is too long")
-  .regex(ROLE_LABEL_PATTERN, "A label can only have letters, numbers and single spaces");
+  .regex(ROLE_LABEL_PATTERN, "A label can only have letters, numbers and single spaces")
+  .transform(titleCaseLabel);
+
 
 // Role keys are exact: uppercase letters, digits and underscores.
 const roleKey = z

@@ -14,7 +14,7 @@ describe("application role registry", () => {
     appId = `test-app-${randomBytes(4).toString("hex")}`;
     masterData = await MasterDataTest.create();
     await prismaClient.applicationPermission.createMany({
-      data: ["a.read", "a.write", "top.use", "middle.use", "bottom.use"].map((key) => ({ application_id: appId, key })),
+      data: ["a.read", "a.write", "top.use", "middle.use", "bottom.use", "given.use", "held.use", "safe.use", "other.use"].map((key) => ({ application_id: appId, key })),
     });
   });
 
@@ -67,7 +67,7 @@ describe("application role registry", () => {
       }),
     ).not.toBeNull();
 
-    const duplicate = await TestRequest.post(BASE, { application_id: appId, key: "LEAD", label: "Lead", permissions: [] }, accessToken);
+    const duplicate = await TestRequest.post(BASE, { application_id: appId, key: "LEAD", label: "Lead", permissions: ["a.read"] }, accessToken);
     expect(duplicate.status).toBe(400);
   });
 
@@ -108,7 +108,8 @@ describe("application role registry", () => {
   });
 
   describe("deleting a role", () => {
-    const post = (accessToken: string, key: string, permissions: string[] = []) =>
+    // Every role carries a permission of its own, so no two are the same.
+    const post = (accessToken: string, key: string, permissions: string[] = [`${key.toLowerCase()}.use`]) =>
       TestRequest.post(BASE, { application_id: appId, key, label: key, permissions }, accessToken);
 
     it("deletes a role nobody used, closes the gap in the order and audits it", async () => {
@@ -186,7 +187,7 @@ describe("application role registry", () => {
 
   it("creates the organization of a new application together with its first role", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    await TestRequest.post(BASE, { application_id: appId, key: "LEAD", label: "Lead", permissions: [] }, accessToken);
+    await TestRequest.post(BASE, { application_id: appId, key: "LEAD", label: "Lead", permissions: ["a.read"] }, accessToken);
     const organization = await prismaClient.applicationOrganization.findUnique({ where: { application_id: appId } });
     expect(organization?.organization_id).toMatch(/^org_/);
   });
@@ -233,24 +234,36 @@ describe("application role registry", () => {
       TestRequest.post(BASE, { application_id: appId, key, label: key, permissions }, accessToken);
     const admin = (await (await post("ADMIN", ["a.read", "a.write"])).json()).data;
 
-    // Same set in another order, and the empty set, count as duplicates.
+    // Same set in another order counts as a duplicate, and a role with nothing in it is refused.
     const twin = await post("BOSS", ["a.write", "a.read"]);
     expect(twin.status).toBe(400);
     expect((await twin.json()).errors).toContain("ADMIN");
-    const empty = (await (await post("NONE", [])).json()).data;
-    expect((await post("VOID", [])).status).toBe(400);
+    const nothing = await post("NONE", []);
+    expect(nothing.status).toBe(400);
+    expect((await nothing.json()).errors).toContain("at least one permission");
 
     // Editing into a duplicate is refused, keeping or relabelling is fine.
     const staff = (await (await post("STAFF", ["a.read"])).json()).data;
     const patch = (id: string, body: object) => TestRequest.patch(`${BASE}/${id}`, body, accessToken);
     expect((await patch(staff.id, { permissions: ["a.write", "a.read"] })).status).toBe(400);
     expect((await patch(staff.id, { label: "Staff member", permissions: ["a.read"] })).status).toBe(200);
+    // Taking every permission out is refused too.
+    expect((await patch(staff.id, { permissions: [] })).status).toBe(400);
 
     // An inactive role does not block, but bringing it back into a clash does.
-    expect((await patch(empty.id, { is_active: false })).status).toBe(200);
-    expect((await post("VOID", [])).status).toBe(200);
-    expect((await patch(empty.id, { is_active: true })).status).toBe(400);
+    expect((await patch(staff.id, { is_active: false })).status).toBe(200);
+    expect((await post("COPY", ["a.read"])).status).toBe(200);
+    expect((await patch(staff.id, { is_active: true })).status).toBe(400);
     expect(admin.key).toBe("ADMIN");
+  });
+
+  it("writes the label of a role with a capital on every word", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const created = await TestRequest.post(BASE, { application_id: appId, key: "LEAD", label: "support staff IT", permissions: ["a.read"] }, accessToken);
+    const role = (await created.json()).data;
+    expect(role.label).toBe("Support Staff IT");
+    const renamed = await TestRequest.patch(`${BASE}/${role.id}`, { label: "team lead" }, accessToken);
+    expect((await renamed.json()).data.label).toBe("Team Lead");
   });
 
   it("keeps a role on while an active group still hands it out", async () => {
