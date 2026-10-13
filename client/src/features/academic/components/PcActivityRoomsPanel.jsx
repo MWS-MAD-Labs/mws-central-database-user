@@ -5,7 +5,6 @@ import {
   CalendarOff,
   Eye,
   MoveRight,
-  Plus,
   Puzzle,
   RotateCcw,
   Trash2,
@@ -17,6 +16,7 @@ import {
   ActionsMenuItem,
 } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
+import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
@@ -260,14 +260,11 @@ export function PcActivityRoomsPanel() {
       }
       action={
         canWrite ? (
-          <Button
-            type="button"
-            size="sm"
+          <TextAction size="md" tone="primary"
             onClick={() => setFormDialog({ mode: "create" })}
           >
-            <Plus size={16} />
             Create Room
-          </Button>
+          </TextAction>
         ) : null
       }
       notice={
@@ -2237,7 +2234,6 @@ function AddMentorDialog({ room, existingMentorIds, onClose, onAdded }) {
             disabled={!targetValue || atCap}
             loading={assignMutation.isPending}
           >
-            <Plus size={16} />
             Add assignment
           </Button>
         </>

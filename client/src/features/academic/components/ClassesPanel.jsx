@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, Plus } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { Button } from "../../../components/ui/Button.jsx";
+import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
@@ -120,14 +120,12 @@ export function ClassesPanel() {
       icon={BookOpen}
       isFetching={classesQuery.isFetching || optionsQuery.isFetching}
       action={
-        <Button
-          type="button"
+        <TextAction size="md" tone="primary"
           disabled={!canWrite || optionsQuery.isLoading}
           onClick={() => setDialog({ mode: "create" })}
         >
-          <Plus size={16} />
           New Class
-        </Button>
+        </TextAction>
       }
       toolbar={
         <>

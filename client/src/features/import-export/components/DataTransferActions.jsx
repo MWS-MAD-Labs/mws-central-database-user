@@ -3,7 +3,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Download,
   RefreshCw,
   RotateCcw,
   Upload,
@@ -12,6 +11,7 @@ import {
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../../components/ui/Button.jsx";
+import { ActionDivider } from "../../../components/ui/ActionDivider.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -49,9 +49,10 @@ export function DataTransferActions({
 
   return (
     <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-      <TextAction size="md" icon={Upload} disabled={!canImport} onClick={() => setIsImportOpen(true)}>
+      <TextAction size="md" disabled={!canImport} onClick={() => setIsImportOpen(true)}>
         Import
       </TextAction>
+      <ActionDivider />
       <ExportMenu
         entity={entity}
         exportParams={exportParams}
@@ -101,7 +102,7 @@ function ExportMenu({ entity, exportParams, canExport, canExportSensitive }) {
       label="Export"
       disabled={!canExport || exportMutation.isPending}
       renderTrigger={({ onClick }) => (
-        <TextAction size="md" icon={Download} disabled={!canExport} loading={exportMutation.isPending} onClick={onClick}>
+        <TextAction size="md" disabled={!canExport} loading={exportMutation.isPending} onClick={onClick}>
           Export
         </TextAction>
       )}

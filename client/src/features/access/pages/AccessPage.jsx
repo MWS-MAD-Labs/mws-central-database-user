@@ -7,7 +7,6 @@ import {
   ChevronDown,
   Clock3,
   Eye,
-  Plus,
   RotateCcw,
   Trash2,
 } from "lucide-react";
@@ -19,6 +18,7 @@ import {
   ActionsMenuItem,
 } from "../../../components/ui/ActionsMenu.jsx";
 import { Tabs } from "../../../components/ui/Tabs.jsx";
+import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -511,10 +511,9 @@ function AdminUsersPanel() {
               visible={hasActiveFilters}
               onReset={resetFilters}
             />
-            <Button type="button" onClick={() => setPromoteOpen(true)}>
-              <Plus size={16} />
+            <TextAction size="md" tone="primary" onClick={() => setPromoteOpen(true)}>
               Promote
-            </Button>
+            </TextAction>
           </div>
         </div>
 
@@ -1078,10 +1077,9 @@ function WorkingDaysPanel() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <LiveIndicator isSyncing={workingDaysQuery.isFetching} />
-          <Button type="button" onClick={() => setCreateOpen(true)}>
-            <Plus size={16} />
-            Saturday
-          </Button>
+          <TextAction size="md" tone="primary" onClick={() => setCreateOpen(true)}>
+            New Saturday
+          </TextAction>
         </div>
       </div>
 

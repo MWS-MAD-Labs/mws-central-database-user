@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Settings } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -110,22 +109,20 @@ export function AppAccessPage() {
         description="Roles are defined here. Group access says who can use this application and with which role, and exceptions give someone inside a group a different role."
         actions={
           <>
-            <TextAction asChild size="md" icon={ArrowLeft}>
+            <TextAction asChild size="md">
               <Link to={BACK}>Back</Link>
             </TextAction>
-            <TextAction asChild size="md" icon={Settings}>
+            <TextAction asChild size="md">
               <Link to={`/application-access/apps/${applicationId}/settings`}>Settings</Link>
             </TextAction>
             {activeTab === "access" ? (
-              <Button
-                type="button"
+              <TextAction size="md" tone="primary"
                 disabled={!hasActiveRole}
                 title={hasActiveRole ? undefined : "Add a role first"}
                 onClick={() => navigate(`/application-access/apps/${applicationId}/groups/new`)}
               >
-                <Plus size={16} />
                 Add Group
-              </Button>
+              </TextAction>
             ) : null}
           </>
         }

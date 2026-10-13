@@ -1,9 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
-  ImagePlus,
   PencilLine,
-  Plus,
   RotateCcw,
   Trash2,
 } from "lucide-react";
@@ -15,8 +13,8 @@ import {
   ActionsMenuItem,
 } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
+import { ActionDivider } from "../../../components/ui/ActionDivider.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
-import { Button } from "../../../components/ui/Button.jsx";
 import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
 import { RestoreConfirmationDialog } from "../../../components/ui/RestoreConfirmationDialog.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
@@ -344,22 +342,23 @@ export function EmployeesPage() {
               }
             />
             {canManagePhotos ? (
-              <TextAction size="md" icon={ImagePlus} onClick={() => setBulkPhotoDialogOpen(true)}>
-                Bulk Photo Upload
-              </TextAction>
+              <>
+                <ActionDivider />
+                <TextAction size="md" onClick={() => setBulkPhotoDialogOpen(true)}>
+                  Bulk Photo Upload
+                </TextAction>
+              </>
             ) : null}
             {canWrite ? (
-              <Button asChild>
+              <TextAction size="md" tone="primary" asChild>
                 <Link to="/employees/new">
-                  <Plus size={16} />
                   New Employee
                 </Link>
-              </Button>
+              </TextAction>
             ) : (
-              <Button type="button" disabled>
-                <Plus size={16} />
+              <TextAction size="md" tone="primary" disabled>
                 New Employee
-              </Button>
+              </TextAction>
             )}
           </>
         }

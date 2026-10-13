@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -157,7 +157,7 @@ function Editor({ applicationId, roles, options }) {
         title={`Add Roles to ${applicationId}`}
         description="Add the roles, then pick what each may do. They are saved together."
         actions={
-          <TextAction asChild size="md" icon={ArrowLeft}>
+          <TextAction asChild size="md">
             <Link to={back}>Back</Link>
           </TextAction>
         }
