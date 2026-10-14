@@ -270,7 +270,7 @@ export function InternsPage() {
                     );
                   }}
                 >
-                  <RotateCcw size={15} /> Restore selected
+                  <RotateCcw size={15} /> Restore Selected
                 </ActionsMenuItem>
               ) : (
                 <ActionsMenuItem
@@ -280,7 +280,7 @@ export function InternsPage() {
                     runBulkAction("delete");
                   }}
                 >
-                  <Trash2 size={15} /> Archive selected
+                  <Trash2 size={15} /> Archive Selected
                 </ActionsMenuItem>
               )
             }

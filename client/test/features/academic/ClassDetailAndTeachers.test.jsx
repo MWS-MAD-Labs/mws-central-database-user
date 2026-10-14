@@ -490,7 +490,7 @@ describe('TeacherAssignmentsSection', () => {
 
     await user.click(screen.getAllByRole('checkbox', { name: 'Select Hana Homeroom' })[0])
     await user.click(screen.getByRole('button', { name: 'Bulk Actions' }))
-    await user.click(screen.getByRole('button', { name: 'End selected' }))
+    await user.click(screen.getByRole('button', { name: 'End Selected' }))
     const endDialog = screen.getByRole('dialog', { name: 'End Assignments' })
     expect(within(endDialog).getByText('1 assignment(s) will end on the selected date.')).toBeVisible()
     await user.click(within(endDialog).getByRole('button', { name: 'End' }))
@@ -501,7 +501,7 @@ describe('TeacherAssignmentsSection', () => {
 
     await user.click(screen.getAllByRole('checkbox', { name: 'Select Hana Homeroom' })[0])
     await user.click(screen.getByRole('button', { name: 'Bulk Actions' }))
-    await user.click(screen.getByRole('button', { name: 'Remove selected' }))
+    await user.click(screen.getByRole('button', { name: 'Remove Selected' }))
     const removeDialog = screen.getByRole('dialog', { name: 'Remove assignments' })
     await user.click(within(removeDialog).getByRole('button', { name: 'Remove' }))
     expect(onBulkRemove).toHaveBeenCalledWith(['assignment-1'])
@@ -528,7 +528,7 @@ describe('TeacherAssignmentsSection', () => {
 
     await user.click(screen.getAllByRole('checkbox', { name: 'Select Hana Homeroom' })[0])
     await user.click(screen.getByRole('button', { name: 'Bulk Actions' }))
-    await user.click(screen.getByRole('button', { name: 'Reopen selected' }))
+    await user.click(screen.getByRole('button', { name: 'Reopen Selected' }))
     const reopenDialog = screen.getByRole('dialog', { name: 'Reopen assignments' })
     await user.click(within(reopenDialog).getByRole('button', { name: 'Reopen' }))
     expect(onBulkReopen).toHaveBeenCalledWith(['assignment-1'])

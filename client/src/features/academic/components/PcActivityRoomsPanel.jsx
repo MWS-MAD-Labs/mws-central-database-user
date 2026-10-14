@@ -1146,7 +1146,7 @@ export function RoomStudentsSection({ room, canManage }) {
                 >
                   <span className="flex items-center gap-2">
                     <MoveRight size={15} />
-                    Move selected
+                    Move Selected
                   </span>
                 </ActionsMenuItem>
                 <ActionsMenuItem
@@ -1168,7 +1168,7 @@ export function RoomStudentsSection({ room, canManage }) {
                 >
                   <span className="flex items-center gap-2">
                     <CalendarOff size={15} />
-                    End selected
+                    End Selected
                   </span>
                 </ActionsMenuItem>
                 <ActionsMenuItem
@@ -1185,7 +1185,7 @@ export function RoomStudentsSection({ room, canManage }) {
                 >
                   <span className="flex items-center gap-2">
                     <RotateCcw size={15} />
-                    Reopen selected
+                    Reopen Selected
                   </span>
                 </ActionsMenuItem>
                 <div className="my-1 border-t border-(--mws-line)" />
@@ -1198,7 +1198,7 @@ export function RoomStudentsSection({ room, canManage }) {
                 >
                   <span className="flex items-center gap-2">
                     <Trash2 size={15} />
-                    Drop selected
+                    Drop Selected
                   </span>
                 </ActionsMenuItem>
               </>
@@ -1798,7 +1798,7 @@ export function RoomMentorsSection({ room, units, canManage }) {
                 >
                   <span className="flex items-center gap-2">
                     <MoveRight size={15} />
-                    Move selected
+                    Move Selected
                   </span>
                 </ActionsMenuItem>
                 <ActionsMenuItem
@@ -1826,7 +1826,7 @@ export function RoomMentorsSection({ room, units, canManage }) {
                 >
                   <span className="flex items-center gap-2">
                     <CalendarOff size={15} />
-                    End selected
+                    End Selected
                   </span>
                 </ActionsMenuItem>
                 <ActionsMenuItem
@@ -1843,7 +1843,7 @@ export function RoomMentorsSection({ room, units, canManage }) {
                 >
                   <span className="flex items-center gap-2">
                     <RotateCcw size={15} />
-                    Reopen selected
+                    Reopen Selected
                   </span>
                 </ActionsMenuItem>
                 <div className="my-1 border-t border-(--mws-line)" />
@@ -1856,7 +1856,7 @@ export function RoomMentorsSection({ room, units, canManage }) {
                 >
                   <span className="flex items-center gap-2">
                     <Trash2 size={15} />
-                    Remove selected
+                    Remove Selected
                   </span>
                 </ActionsMenuItem>
               </>

@@ -66,15 +66,15 @@ describe("PC activity room detail assignments", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Actions for Ari Student" }));
-    expect(screen.getByRole("button", { name: /Edit start date/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Edit Start Date/ })).toBeVisible();
     expect(screen.getByRole("button", { name: /^Move$/ })).toBeVisible();
-    expect(screen.getByRole("button", { name: /Promote to next year/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Promote To Next Year/ })).toBeVisible();
     expect(screen.getByRole("button", { name: /^End$/ })).toBeVisible();
     expect(screen.getByRole("button", { name: /Drop \/ remove/ })).toBeVisible();
 
     await user.click(screen.getByRole("checkbox", { name: "Select Ari Student" }));
     await user.click(screen.getByRole("button", { name: "Bulk Actions" }));
-    expect(screen.getByRole("button", { name: /Edit start date/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Edit Start Date/ })).toBeVisible();
 
     await user.click(screen.getByPlaceholderText("Search students"));
     await user.keyboard("ari");

@@ -466,7 +466,7 @@ export function EmployeesPage() {
                 >
                   <span className="flex items-center gap-2">
                     <RotateCcw size={15} />
-                    Restore selected
+                    Restore Selected
                   </span>
                 </ActionsMenuItem>
               )}
@@ -484,7 +484,7 @@ export function EmployeesPage() {
                   >
                     <span className="flex items-center gap-2">
                       <PencilLine size={15} />
-                      Bulk edit
+                      Bulk Edit
                     </span>
                   </ActionsMenuItem>
                   <div className="my-1 border-t border-(--mws-line)" />
@@ -497,7 +497,7 @@ export function EmployeesPage() {
                   >
                     <span className="flex items-center gap-2">
                       <CalendarClock size={15} />
-                      Extend contracts
+                      Extend Contracts
                     </span>
                   </ActionsMenuItem>
                   <div className="my-1 border-t border-(--mws-line)" />
@@ -515,7 +515,7 @@ export function EmployeesPage() {
                   >
                     <span className="flex items-center gap-2">
                       <Trash2 size={15} />
-                      Archive selected
+                      Archive Selected
                     </span>
                   </ActionsMenuItem>
                 </>

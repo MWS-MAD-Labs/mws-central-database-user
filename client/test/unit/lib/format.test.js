@@ -114,6 +114,8 @@ describe('format helpers', () => {
 
   it('formats enum labels and tones', () => {
     expect(formatStatus('student_api_id')).toBe('Student API ID')
+    expect(formatStatus('WFH')).toBe('WFH')
+    expect(formatStatus('PART_TIME')).toBe('Part Time')
     expect(formatStatus('')).toBe('-')
     expect(enumOptions(['ACTIVE', 'ON_LEAVE'])).toEqual([
       { value: 'ACTIVE', label: 'Active' },

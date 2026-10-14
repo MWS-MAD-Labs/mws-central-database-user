@@ -390,7 +390,7 @@ export function StudentsPage() {
                 >
                   <span className="flex items-center gap-2">
                     <RotateCcw size={15} />
-                    Restore selected
+                    Restore Selected
                   </span>
                 </ActionsMenuItem>
               )}
@@ -418,7 +418,7 @@ export function StudentsPage() {
                   >
                     <span className="flex items-center gap-2">
                       <UserX size={15} />
-                      Deactivate selected
+                      Deactivate Selected
                     </span>
                   </ActionsMenuItem>
                   <ActionsMenuItem
@@ -439,7 +439,7 @@ export function StudentsPage() {
                   >
                     <span className="flex items-center gap-2">
                       <UserCheck size={15} />
-                      Reactivate selected
+                      Reactivate Selected
                     </span>
                   </ActionsMenuItem>
                   <div className="my-1 border-t border-(--mws-line)" />
@@ -453,7 +453,7 @@ export function StudentsPage() {
                   >
                     <span className="flex items-center gap-2">
                       <Trash2 size={15} />
-                      Archive selected
+                      Archive Selected
                     </span>
                   </ActionsMenuItem>
                 </>

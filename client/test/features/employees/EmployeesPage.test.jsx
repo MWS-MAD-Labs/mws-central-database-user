@@ -60,9 +60,9 @@ describe('EmployeesPage', () => {
 
     await user.click(screen.getByRole('checkbox', { name: 'Select Ari Employee' }))
     await user.click(screen.getByRole('button', { name: 'Bulk Actions' }))
-    expect(screen.getByRole('button', { name: /Bulk edit/ })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /Extend contracts/ })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /Archive selected/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Bulk Edit/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Extend Contracts/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Archive Selected/ })).toBeEnabled()
   })
 
   it('renders a non-disclosing list error state', async () => {

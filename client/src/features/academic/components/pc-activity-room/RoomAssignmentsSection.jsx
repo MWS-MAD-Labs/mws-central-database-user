@@ -58,7 +58,7 @@ function AssignmentActions({ row, kind, onAction }) {
         <>
           {row.status !== "SCHEDULED" ? (
             <ActionsMenuItem onClick={() => { close(); onAction("date", row); }}>
-              <span className="flex items-center gap-2"><CalendarClock size={15} />Edit start date</span>
+              <span className="flex items-center gap-2"><CalendarClock size={15} />Edit Start Date</span>
             </ActionsMenuItem>
           ) : null}
           {!isEnded ? (
@@ -67,7 +67,7 @@ function AssignmentActions({ row, kind, onAction }) {
                 <span className="flex items-center gap-2"><MoveRight size={15} />Move</span>
               </ActionsMenuItem>
               <ActionsMenuItem onClick={() => { close(); onAction("promote", row); }}>
-                <span className="flex items-center gap-2"><MoveRight size={15} />Promote to next year</span>
+                <span className="flex items-center gap-2"><MoveRight size={15} />Promote To Next Year</span>
               </ActionsMenuItem>
               <ActionsMenuItem onClick={() => { close(); onAction("end", row); }}>
                 <span className="flex items-center gap-2"><CalendarOff size={15} />End</span>
@@ -237,19 +237,19 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
             {(close) => (
               <>
                 <ActionsMenuItem onClick={() => { close(); setDialog({ type: "date", rows: selectedRows }); }}>
-                  <span className="flex items-center gap-2"><CalendarClock size={15} />Edit start date</span>
+                  <span className="flex items-center gap-2"><CalendarClock size={15} />Edit Start Date</span>
                 </ActionsMenuItem>
                 <ActionsMenuItem onClick={() => { close(); setDialog({ type: "move", rows: selectedRows }); }}>
-                  <span className="flex items-center gap-2"><MoveRight size={15} />Move selected</span>
+                  <span className="flex items-center gap-2"><MoveRight size={15} />Move Selected</span>
                 </ActionsMenuItem>
                 <ActionsMenuItem onClick={() => { close(); setDialog({ type: "promote", rows: selectedRows }); }}>
-                  <span className="flex items-center gap-2"><MoveRight size={15} />Promote to next year</span>
+                  <span className="flex items-center gap-2"><MoveRight size={15} />Promote To Next Year</span>
                 </ActionsMenuItem>
                 <ActionsMenuItem onClick={() => { close(); runLifecycle("end", selectedRows); }}>
-                  <span className="flex items-center gap-2"><CalendarOff size={15} />End selected</span>
+                  <span className="flex items-center gap-2"><CalendarOff size={15} />End Selected</span>
                 </ActionsMenuItem>
                 <ActionsMenuItem disabled={!selectedRows.every((row) => row.status === "ENDED")} onClick={() => { close(); runLifecycle("reopen", selectedRows); }}>
-                  <span className="flex items-center gap-2"><RotateCcw size={15} />Reopen selected</span>
+                  <span className="flex items-center gap-2"><RotateCcw size={15} />Reopen Selected</span>
                 </ActionsMenuItem>
                 <div className="my-1 border-t border-(--mws-line)" />
                 <ActionsMenuItem tone="danger" onClick={() => { close(); runLifecycle("remove", selectedRows); }}>
