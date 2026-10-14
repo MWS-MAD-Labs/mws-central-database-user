@@ -1656,6 +1656,13 @@ enum HubSecretMode {
   OWN
 }
 
+// How an application knows who is signed in. SHARED: it reads the Hub's session (a cookie on the parent domain).
+// RELAY: the Hub hands it a one-time code and a relay token, and the application keeps its own session.
+enum ApplicationSessionMode {
+  RELAY
+  SHARED
+}
+
 model Application {
   id             String   @id @default(cuid())
   application_id String   @unique
@@ -1688,6 +1695,7 @@ model Application {
   hub_internal_secret String?
   // sso: opened through the Hub's sign-in handoff. link: a plain address, nothing to connect.
   launch_mode    ApplicationLaunchMode @default(SSO)
+  session_mode   ApplicationSessionMode @default(RELAY)
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 

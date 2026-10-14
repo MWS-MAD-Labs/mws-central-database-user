@@ -284,6 +284,7 @@ describe("application onboarding", () => {
         launch_url: "https://onb.example.com/auth/sso",
         logout_url: "https://onb.example.com/auth/logout",
         launch_mode: "sso",
+        session_mode: "relay",
         status: "maintenance",
         keywords: ["checkin", "daily"],
         hub_secret: { mode: "shared", version: 1 },
@@ -719,7 +720,7 @@ describe("application onboarding", () => {
       const other = `test-hubuse-${randomBytes(3).toString("hex")}`;
       await asHub(async (accessToken) => {
         // Without the Hub having an address, an application is told its Hub lines are missing.
-        const before = await create(accessToken, { application_id: other, name: "TEST_Other", connect: true });
+        const before = await create(accessToken, { application_id: other, name: "TEST_Other", connect: true, session_mode: "relay" });
         // The Hub is not added yet in this run, so there is nothing to share.
         expect((await before.json()).data.connection.hub_lines_missing).toBe(true);
         await prismaClient.application.deleteMany({ where: { application_id: other } });
@@ -744,7 +745,7 @@ describe("application onboarding", () => {
         // There is no way to read it back.
         expect((await TestRequest.get(`${ACCESS}/apps/${appId}/hub-secret`, accessToken)).status).toBe(404);
 
-        const created = await create(accessToken, { application_id: other, name: "TEST_Other", connect: true });
+        const created = await create(accessToken, { application_id: other, name: "TEST_Other", connect: true, session_mode: "relay" });
         const env = (await created.json()).data.connection;
         expect(env.hub_lines_missing).toBe(false);
         const byKey = Object.fromEntries(env.env.map((item: { key: string }) => [item.key, item]));
@@ -988,7 +989,7 @@ describe("application onboarding", () => {
       try {
         const { accessToken } = await AdminUserTest.createSuperAdmin();
         await create(accessToken, { is_hub: true, application_id: undefined, name: "HUB", hub_base_url: "https://hub.example.com", hub_secret: "master-secret-0123456789abcdef" });
-        const made = await create(accessToken, { application_id: other, name: "TEST_Own", connect: true });
+        const made = await create(accessToken, { application_id: other, name: "TEST_Own", connect: true, session_mode: "relay" });
         const env = (await made.json()).data.connection.env as { key: string; value: string; heading?: string }[];
         const secret = env.find((item) => item.key === "HUB_INTERNAL_SECRET")!;
         // Made from the master for this application alone, not the master itself.
@@ -1069,13 +1070,55 @@ describe("application onboarding", () => {
       }
     });
 
+    it("makes a new application read the Hub session by default, with a shorter .env and no Hub secret", async () => {
+      const shared = `test-shared-${randomBytes(3).toString("hex")}`;
+      process.env.HUB_APPLICATION_ID = appId;
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        await create(accessToken, { is_hub: true, application_id: undefined, name: "HUB", hub_base_url: "https://hub.example.com/", hub_secret: "master-secret-0123456789abcdef" });
+        const made = await create(accessToken, { application_id: shared, name: "TEST_Shared", connect: true });
+        const body = (await made.json()).data;
+        expect(body.connection.hub_lines_missing).toBe(false);
+        const keys = body.connection.env.map((item: { key: string }) => item.key);
+        expect(keys).toEqual(["HUB_SSO_APP_ID", "CENTRAL_API_BASE_URL", "CENTRAL_API_TOKEN", "CENTRAL_ORGANIZATION_ID", "HUB_BASE_URL"]);
+        expect(keys).not.toContain("HUB_INTERNAL_SECRET");
+        expect(keys).not.toContain("HUB_SSO_JWKS_URL");
+
+        const setup = (await (await TestRequest.get(`${ACCESS}/apps/${shared}/setup`, accessToken)).json()).data;
+        expect(setup.application.session_mode).toBe("shared");
+        expect(setup.hub_secret.applies).toBe(false);
+        expect((await TestRequest.post(`${ACCESS}/apps/${shared}/hub-app-secret`, { action: "own" }, accessToken)).status).toBe(400);
+
+        // The Hub reads the mode with the rest of the published details.
+        await prismaClient.application.update({ where: { application_id: shared }, data: { published: true } });
+        const { token } = await ApiClientTest.createWithToken({ scopeNames: [API_SCOPES.APPLICATION_ENTITLEMENTS_READ] });
+        const list = (await (await TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${token}` })).json()).data;
+        expect(list.find((row: { id: string }) => row.id === shared).session_mode).toBe("shared");
+
+        // Moving it to the older way brings the Hub secret lines back, and the change is in the activity.
+        const moved = await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { session_mode: "relay" }, accessToken);
+        expect(moved.status).toBe(200);
+        expect((await moved.json()).data.session_mode).toBe("relay");
+        const rotated = await TestRequest.post(`${ACCESS}/apps/${shared}/rotate`, { immediate: true }, accessToken);
+        expect((await rotated.json()).data.env.map((item: { key: string }) => item.key)).toContain("HUB_INTERNAL_SECRET");
+        expect((await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { session_mode: "teleport" }, accessToken)).status).toBe(400);
+      } finally {
+        delete process.env.HUB_APPLICATION_ID;
+        await prismaClient.applicationRole.deleteMany({ where: { application_id: shared } });
+        await prismaClient.applicationOrganization.deleteMany({ where: { application_id: shared } });
+        await prismaClient.application.deleteMany({ where: { application_id: shared } });
+        await prismaClient.apiClient.deleteMany({ where: { profile: { code: shared } } });
+        await prismaClient.applicationIntegrationProfile.deleteMany({ where: { code: shared } });
+      }
+    });
+
     it("leaves the Hub lines out of an application that does not sign in through the Hub", async () => {
       const other = `test-nohub-${randomBytes(3).toString("hex")}`;
       process.env.HUB_APPLICATION_ID = appId;
       try {
         const { accessToken } = await AdminUserTest.createSuperAdmin();
         await create(accessToken, { is_hub: true, application_id: undefined, name: "HUB", hub_base_url: "https://hub.example.com" });
-        const withHub = await create(accessToken, { application_id: other, name: "TEST_UsesHub", connect: true });
+        const withHub = await create(accessToken, { application_id: other, name: "TEST_UsesHub", connect: true, session_mode: "relay" });
         const keys = (await withHub.json()).data.connection.env.map((item: { key: string }) => item.key);
         expect(keys).toContain("HUB_INTERNAL_SECRET");
         const impact = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/hub-secret-impact`, accessToken)).json()).data;

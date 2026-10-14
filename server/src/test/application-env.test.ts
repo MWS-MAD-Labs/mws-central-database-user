@@ -30,6 +30,18 @@ describe("application env", () => {
     expect(text.split("\n").filter((line) => line.startsWith("#")).length).toBe(4);
   });
 
+  it("gives an application that reads the Hub session only the Hub address, with no secret and no keys address", () => {
+    const items = buildEnvItems({ ...facts, applicationId: "exima", isHub: false, hub, sessionMode: "shared" });
+    expect(items.map((item) => item.key)).toEqual(["HUB_SSO_APP_ID", "CENTRAL_API_BASE_URL", "CENTRAL_API_TOKEN", "CENTRAL_ORGANIZATION_ID", "HUB_BASE_URL"]);
+    expect(items.find((item) => item.key === "HUB_BASE_URL")!.line).toBe('HUB_BASE_URL="https://app.mws.web.id"');
+    expect(envText(items)).toContain("reads the Hub's session");
+    // Only the address is needed, so a missing secret is not a problem.
+    expect(hubLinesMissing({ isHub: false, hub: { baseUrl: "https://app.mws.web.id", secret: null }, sessionMode: "shared" })).toBe(false);
+    expect(hubLinesMissing({ isHub: false, hub: { baseUrl: null, secret: "s" }, sessionMode: "shared" })).toBe(true);
+    // The older way still needs both.
+    expect(hubLinesMissing({ isHub: false, hub: { baseUrl: "https://app.mws.web.id", secret: null }, sessionMode: "relay" })).toBe(true);
+  });
+
   it("leaves the Hub lines out and says so when the Hub has no address or secret yet", () => {
     const items = buildEnvItems({ ...facts, applicationId: "exima", isHub: false, hub: { baseUrl: null, secret: null } });
     expect(items.some((item) => item.key.startsWith("HUB_BASE") || item.key === "HUB_INTERNAL_SECRET")).toBe(false);

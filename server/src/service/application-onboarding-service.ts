@@ -1,4 +1,4 @@
-import { AdminRole, ApiCredentialStatus, HubSecretMode, ApplicationLaunchMode, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
+import { AdminRole, ApiCredentialStatus, HubSecretMode, ApplicationLaunchMode, ApplicationSessionMode, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
 import type { AdminUser } from "../generated/prisma/client";
 import type { HubCardStatus } from "../generated/prisma/client";
 import { API_SCOPES } from "../constants/api-scopes";
@@ -47,6 +47,8 @@ export type ApplicationDetail = {
   // Whether its .env carries the Hub address and the shared secret.
   uses_hub: boolean;
   launch_mode: "sso" | "link";
+  // shared: reads the Hub's session. relay: gets a one-time code and a token from the Hub.
+  session_mode: "relay" | "shared";
   hub_status: "active" | "maintenance" | "coming_soon" | "new";
   hub_keywords: string[];
 };
@@ -120,6 +122,7 @@ const FIELD_LABEL: Record<string, string> = {
   launch_url: "address",
   logout_url: "logout address",
   launch_mode: "way it opens",
+  session_mode: "sign-in way",
   uses_hub: "Hub lines",
   hub_status: "card status",
   hub_keywords: "keywords",
@@ -186,6 +189,7 @@ function toDetail(row: {
   published: boolean;
   retired_at: Date | null;
   launch_mode: ApplicationLaunchMode;
+  session_mode: ApplicationSessionMode;
   uses_hub: boolean;
   hub_status: HubCardStatus;
   hub_keywords: string[];
@@ -203,6 +207,7 @@ function toDetail(row: {
     retired_at: row.retired_at ? row.retired_at.toISOString() : null,
     uses_hub: row.uses_hub,
     launch_mode: row.launch_mode === ApplicationLaunchMode.LINK ? "link" : "sso",
+    session_mode: row.session_mode === ApplicationSessionMode.SHARED ? "shared" : "relay",
     hub_status: cardStatus(row.hub_status),
     hub_keywords: row.hub_keywords,
   };
@@ -245,7 +250,7 @@ async function loadHubFacts(reveal = true): Promise<HubFacts> {
 
 // The .env of an application, made from what Central knows about it.
 async function envFor(
-  app: { application_id: string; env_settings: unknown; uses_hub?: boolean; hub_secret_mode?: HubSecretMode; hub_secret_version?: number },
+  app: { application_id: string; env_settings: unknown; uses_hub?: boolean; hub_secret_mode?: HubSecretMode; hub_secret_version?: number; session_mode?: ApplicationSessionMode },
   organizationId: string,
   publicUrl: string,
   token: string,
@@ -262,7 +267,9 @@ async function envFor(
     master && own && master.secret && reveal
       ? { ...master, secret: deriveAppSecret(master.secret, app.application_id, app.hub_secret_version ?? 1) }
       : master;
+  const sessionMode = !isHub && app.session_mode === ApplicationSessionMode.SHARED ? ("shared" as const) : ("relay" as const);
   const facts = {
+    sessionMode,
     applicationId: app.application_id,
     organizationId,
     publicUrl,
@@ -310,6 +317,7 @@ export class ApplicationOnboardingService {
       ...(input.hub_keywords !== undefined && { hub_keywords: input.hub_keywords }),
       ...(input.launch_url !== undefined && { launch_url: input.launch_url || null }),
       ...(input.launch_mode !== undefined && { launch_mode: input.launch_mode === "link" ? ApplicationLaunchMode.LINK : ApplicationLaunchMode.SSO }),
+      ...(input.session_mode !== undefined && { session_mode: input.session_mode === "shared" ? ApplicationSessionMode.SHARED : ApplicationSessionMode.RELAY }),
       ...(input.logout_url !== undefined && { logout_url: input.logout_url || null }),
     };
     await prismaClient.application.update({ where: { id: before.id }, data });
@@ -445,7 +453,7 @@ export class ApplicationOnboardingService {
           : {
               mode: app.hub_secret_mode === HubSecretMode.OWN ? "own" : "shared",
               version: app.hub_secret_version,
-              applies: app.uses_hub && app.launch_mode === ApplicationLaunchMode.SSO,
+              applies: app.uses_hub && app.launch_mode === ApplicationLaunchMode.SSO && app.session_mode !== ApplicationSessionMode.SHARED,
             },
       env_keys: (await envFor(app, organizationId, "", "", admin.email, false)).env.map((item) => ({ key: item.key, secret: item.secret })),
       application: toDetail(app),
@@ -629,6 +637,9 @@ export class ApplicationOnboardingService {
     const { action } = Validation.validate(ApplicationValidation.HUB_APP_SECRET, request) as { action: "own" | "rotate" };
     if (app.launch_mode !== ApplicationLaunchMode.SSO || !app.uses_hub) {
       throw new ResponseError(400, "This application does not sign in through the Hub");
+    }
+    if (app.session_mode === ApplicationSessionMode.SHARED) {
+      throw new ResponseError(400, "This application reads the Hub session and has no Hub secret");
     }
     const hub = await prismaClient.application.findUnique({
       where: { application_id: hubApplicationId() },
@@ -940,6 +951,7 @@ export class ApplicationOnboardingService {
       launch_url: row.launch_url,
       logout_url: row.logout_url,
       launch_mode: row.launch_mode === ApplicationLaunchMode.LINK ? "link" : "sso",
+      session_mode: row.session_mode === ApplicationSessionMode.SHARED ? "shared" : "relay",
       status: cardStatus(row.hub_status),
       keywords: row.hub_keywords,
       // How the Hub checks the secret this application sends, and which version is the current one.

@@ -176,6 +176,7 @@ export type ApplicationDetails = {
   launch_url?: string | null;
   logout_url?: string | null;
   launch_mode?: "sso" | "link";
+  session_mode?: "relay" | "shared";
   uses_hub?: boolean;
   hub_status?: "active" | "maintenance" | "coming_soon" | "new";
   hub_keywords?: string[];

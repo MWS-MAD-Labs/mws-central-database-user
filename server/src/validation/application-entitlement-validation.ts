@@ -72,6 +72,8 @@ const applicationDetails = {
   logout_url: optionalUrl("Logout URL"),
   // sso: opened through the Hub's sign-in handoff. link: a plain address.
   launch_mode: z.enum(["sso", "link"], { message: "Pick sso or link" }).optional(),
+  // shared: the application reads the Hub's session. relay: the Hub hands it a one-time code and a token.
+  session_mode: z.enum(["relay", "shared"], { message: "Pick relay or shared" }).optional(),
   // Whether the .env of the application carries the Hub address and the shared secret.
   uses_hub: z.boolean().optional(),
   // How the card looks in the Hub.

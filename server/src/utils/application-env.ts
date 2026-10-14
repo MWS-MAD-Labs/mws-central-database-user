@@ -38,6 +38,8 @@ const HEADINGS = {
     "From the Hub, shared with the other applications that have not moved to their own. Changes only when the Hub secret is rotated. Give this application its own secret.",
   hubSecretOwn:
     "From the Hub, for this application only. Changes when this application's Hub secret is rotated, or when the Hub secret is.",
+  hubSession:
+    "From the Hub. This application reads the Hub's session, so it needs only the Hub's address and no secret. Changes only if the Hub's address changes.",
   hubOwnCentral: "The Hub's own connection to Central. Changes when the Hub's token is rotated.",
   hubSignIn: "How the Hub checks who may sign in. Changes in the Hub setup wizard.",
   hubMaster: "The Hub's master secret. Never copy it into another application. Changes only when it is rotated here.",
@@ -66,6 +68,8 @@ type Facts = {
   hub?: HubFacts;
   // The secret in `hub` was made for this application alone, not the Hub's master secret.
   hubSecretOwn?: boolean;
+  // shared: the application reads the Hub's session and needs neither a secret nor the Hub's keys address.
+  sessionMode?: "relay" | "shared";
 };
 
 export type HubFacts = { baseUrl: string | null; secret: string | null };
@@ -86,8 +90,10 @@ function hubLines(hub: HubFacts | undefined, group: number, secretHeading = HEAD
 }
 
 // Whether an application's block lacks the Hub lines, so the screen can say why.
-export function hubLinesMissing(facts: Pick<Facts, "isHub" | "hub">): boolean {
-  return !facts.isHub && !(facts.hub?.baseUrl && facts.hub?.secret);
+export function hubLinesMissing(facts: Pick<Facts, "isHub" | "hub" | "sessionMode">): boolean {
+  if (facts.isHub) return false;
+  if (facts.sessionMode === "shared") return !facts.hub?.baseUrl;
+  return !(facts.hub?.baseUrl && facts.hub?.secret);
 }
 
 // The lines an application needs in its .env. Every application gets the same names. The Hub also gets
@@ -111,7 +117,11 @@ export function buildEnvItems(facts: Facts): EnvItem[] {
     item("CENTRAL_API_BASE_URL", `${facts.publicUrl}/api/internal`, 1, false, HEADINGS.central),
     item("CENTRAL_API_TOKEN", facts.token, 1, true),
     item("CENTRAL_ORGANIZATION_ID", facts.organizationId, 1),
-    ...hubLines(facts.hub, 2, facts.hubSecretOwn ? HEADINGS.hubSecretOwn : HEADINGS.hubSecret),
+    ...(facts.sessionMode === "shared"
+      ? facts.hub?.baseUrl
+        ? [item("HUB_BASE_URL", facts.hub.baseUrl.replace(/\/+$/, ""), 2, false, HEADINGS.hubSession)]
+        : []
+      : hubLines(facts.hub, 2, facts.hubSecretOwn ? HEADINGS.hubSecretOwn : HEADINGS.hubSecret)),
   ];
 }
 

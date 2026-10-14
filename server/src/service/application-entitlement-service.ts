@@ -1919,6 +1919,8 @@ export class ApplicationAccessService {
         launch_url: input.launch_url || null,
         logout_url: input.logout_url || null,
         launch_mode: input.launch_mode === "link" ? "LINK" : "SSO",
+        // A new application reads the Hub's session unless it says otherwise. The Hub and a plain link do not.
+        session_mode: (input.session_mode ?? (parsed.is_hub || input.launch_mode === "link" ? "relay" : "shared")) === "shared" ? "SHARED" : "RELAY",
         uses_hub: input.uses_hub ?? true,
         hub_status: ((input.hub_status ?? "active").toUpperCase()) as "ACTIVE" | "MAINTENANCE" | "COMING_SOON" | "NEW",
         hub_keywords: input.hub_keywords ?? [],
