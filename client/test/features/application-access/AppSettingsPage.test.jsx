@@ -255,10 +255,10 @@ describe("AppSettingsPage", () => {
     ]);
     await user.click(await screen.findByRole("tab", { name: "Connection" }));
     await user.click(screen.getByRole("button", { name: "Change Sign-In Way" }));
-    expect(await screen.findByText(/not rotated/)).toBeVisible();
+    expect(await screen.findByText(/Update its code first/)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Switch To Code & Token" }));
-    expect(await screen.findByText("Add These .env Lines")).toBeVisible();
-    expect(screen.getByText(/no rotation needed/)).toBeVisible();
+    expect(await screen.findByText("Add To .env")).toBeVisible();
+    expect(screen.getByText(/Your Central token stays the same/)).toBeVisible();
     expect(screen.queryByText(/s3cret-value/)).toBeNull();
   });
 
@@ -273,8 +273,25 @@ describe("AppSettingsPage", () => {
     await user.click(await screen.findByRole("tab", { name: "Connection" }));
     await user.click(screen.getByRole("button", { name: "Change Sign-In Way" }));
     await user.click(await screen.findByRole("button", { name: "Switch To Shared Session" }));
-    expect(await screen.findByText("Remove These .env Lines")).toBeVisible();
+    expect(await screen.findByText("Remove From .env")).toBeVisible();
     expect(screen.getByText("HUB_INTERNAL_SECRET")).toBeVisible();
+    expect(screen.getByText(/In the .env of Demo App, delete/)).toBeVisible();
+  });
+
+  it("shows the Hub lines again on request, only while the app gets a code and token", async () => {
+    const line = (key, value, secret = false) => ({ key, value, secret, group: 0, line: `${key}="${value}"` });
+    const { user } = renderPage(setup(), "/application-access/apps/demo/settings", [
+      { path: "/api/admin/application-access/apps/demo/hub-lines", method: "GET", response: () => jsonResponse({ data: { env: [line("HUB_BASE_URL", "https://hub.example.com")] } }) },
+    ]);
+    await user.click(await screen.findByRole("tab", { name: "Connection" }));
+    await user.click(screen.getByRole("button", { name: "Show Hub Lines" }));
+    expect(await screen.findByText("Add To .env")).toBeVisible();
+  });
+
+  it("has no Show Hub Lines for a shared session", async () => {
+    const { user } = renderPage(setup({ application: { ...APP, session_mode: "shared" }, hub_secret: { mode: "shared", version: 1, applies: false } }));
+    await user.click(await screen.findByRole("tab", { name: "Connection" }));
+    expect(screen.queryByRole("button", { name: "Show Hub Lines" })).toBeNull();
   });
 
   it("does not offer to change the sign-in way for a plain link", async () => {

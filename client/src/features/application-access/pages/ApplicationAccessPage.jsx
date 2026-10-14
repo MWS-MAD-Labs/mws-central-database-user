@@ -205,6 +205,9 @@ export function ApplicationAccessPage() {
                   {row.launch_mode === "link" ? (
                     <StatusBadge tone="neutral">Plain Link</StatusBadge>
                   ) : null}
+                  {row.launch_mode !== "link" && row.session_mode === "shared" ? (
+                    <StatusBadge tone="neutral">Shared Session</StatusBadge>
+                  ) : null}
                   {row.scope ? (
                     <StatusBadge tone="neutral">
                       {nameOf(taxonomy.scopes, row.scope) || row.scope}

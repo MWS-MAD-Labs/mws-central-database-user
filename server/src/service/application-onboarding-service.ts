@@ -139,6 +139,7 @@ function describeChange(action: AuditAction, before: unknown, after: unknown): s
   if (fixed) return fixed;
   const oldValues = (before ?? {}) as Record<string, unknown>;
   const newValues = (after ?? {}) as Record<string, unknown>;
+  if (newValues.hub_lines_viewed !== undefined) return "Viewed the Hub lines";
   if (oldValues.published !== undefined && oldValues.published !== newValues.published) {
     return newValues.published ? "Showed it in the Hub" : "Hid it from the Hub";
   }
@@ -681,6 +682,31 @@ export class ApplicationOnboardingService {
       user_agent: context.user_agent,
     });
     return { secret: deriveAppSecret(decryptSecret(hub.hub_internal_secret), applicationId, version), version };
+  }
+
+  // The Hub lines of an application that gets a code and token from the Hub, for when they were not copied.
+  static async hubLines(admin: AdminUser, applicationId: string, context: AuditRequestContext = {}): Promise<{ env: EnvItem[] }> {
+    assertSuperAdmin(admin);
+    const app = await findApplication(applicationId);
+    if (applicationId === hubApplicationId() || app.launch_mode !== ApplicationLaunchMode.SSO || !app.uses_hub) {
+      throw new ResponseError(400, "This application does not sign in through the Hub");
+    }
+    if (app.session_mode === ApplicationSessionMode.SHARED) throw new ResponseError(400, "This application reads the Hub session and has no Hub secret");
+    const { add } = await envChangesFor(app);
+    if (!add.length) throw new ResponseError(400, "Add the Hub address and secret in the Hub setup first");
+    // The values themselves never go into the log.
+    await AuditService.record({
+      action: AuditAction.APPLICATION_ROLE_UPDATE,
+      source: AuditSource.UI,
+      entity_type: "Application",
+      entity_id: app.id,
+      admin_id: admin.id,
+      old_values: {},
+      new_values: { hub_lines_viewed: add.map((line) => line.key) },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+    return { env: add };
   }
 
   // The applications that take the Hub address and secret into their .env, so a change reaches them.

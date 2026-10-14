@@ -42,6 +42,7 @@ applicationAccessRouter.patch("/apps/:applicationId/connection-scopes", (c) => A
 applicationAccessRouter.post("/apps/:applicationId/rotate", (c) => ApplicationAccessController.rotateConnection(c));
 applicationAccessRouter.patch("/apps/:applicationId/hub-address", (c) => ApplicationAccessController.updateHubAddress(c));
 applicationAccessRouter.post("/apps/:applicationId/hub-secret", (c) => ApplicationAccessController.setHubSecret(c));
+applicationAccessRouter.get("/apps/:applicationId/hub-lines", (c) => ApplicationAccessController.hubLines(c));
 applicationAccessRouter.post("/apps/:applicationId/hub-app-secret", (c) => ApplicationAccessController.setHubAppSecret(c));
 applicationAccessRouter.get("/apps/:applicationId/hub-secret-impact", (c) => ApplicationAccessController.hubSecretImpact(c));
 applicationAccessRouter.patch("/apps/:applicationId/env-settings", (c) => ApplicationAccessController.updateEnvSettings(c));

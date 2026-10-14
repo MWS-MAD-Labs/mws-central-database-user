@@ -17,6 +17,7 @@ const applications = [
     retired: false,
     organization_id: 'org_exima_a1b2c3',
     launch_mode: 'sso',
+    session_mode: 'shared',
     scope: 'safespace',
     connection_created: true,
     connection_last_used_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
@@ -102,6 +103,13 @@ describe('ApplicationAccessPage', () => {
     expect(within(hub).getByText('HUB')).toBeVisible()
     expect(within(hub).getByText('Not Connected')).toBeVisible()
     expect(within(hub).getAllByText('None')).toHaveLength(3)
+  })
+
+  it('marks an application that reads the shared Hub session', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage()
+    await screen.findByText('Exima')
+    expect(screen.getAllByText('Shared Session')).toHaveLength(1)
   })
 
   it('has no Organization ID column and copies it from the menu', async () => {

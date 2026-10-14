@@ -95,6 +95,12 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  // The Hub lines of an application that gets a code and token from the Hub, for when they were not copied.
+  async getHubLines(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/hub-lines`)
+    return response.data
+  },
+
   // Whether a Hub answers at an address: 'ok', 'unreachable', 'not_hub' or 'refused'.
   async checkHubAddress(url) {
     const response = await apiRequest(`${ACCESS}/hub-address-check?url=${encodeURIComponent(url)}`)

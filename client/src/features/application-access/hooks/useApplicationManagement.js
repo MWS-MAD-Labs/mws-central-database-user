@@ -42,6 +42,11 @@ export function useApplicationManagement(applicationId, setup) {
     },
     onError: (error) => showErrorToast(error, "Could not change the sign-in way."),
   });
+  const hubLinesMutation = useMutation({
+    mutationFn: () => applicationAccessApi.getHubLines(applicationId),
+    onSuccess: (result) => setEnvChanges({ add: result.env, remove: [] }),
+    onError: (error) => showErrorToast(error, "Could not get the Hub lines."),
+  });
   const connectMutation = useMutation({
     mutationFn: () => applicationAccessApi.connect(applicationId),
     onSuccess: (response) => {
@@ -114,8 +119,8 @@ export function useApplicationManagement(applicationId, setup) {
     const confirmed = await confirm({
       title: toShared ? "Switch To Shared Hub Session" : "Switch To Hub Code & Token",
       description: toShared
-        ? `${name} will read the Hub's session and needs no Hub secret. Its code has to be the version that reads the shared session first, or people cannot open it. The Hub secret and keys address in its .env stop being used. The Central token stays the same, so nothing is rotated.`
-        : `${name} will get a one-time code and a token from the Hub again, and keeps its own session and sign-out. Its code has to be the version that handles them, and its .env needs the Hub secret and keys address. You get those lines right after, the Central token stays the same and is not rotated.`,
+        ? `${name} will read the Hub session. Update its code first.`
+        : `${name} will get a code and token from the Hub again. Update its code first.`,
       confirmLabel: toShared ? "Switch To Shared Session" : "Switch To Code & Token",
       tone: "danger",
     });
@@ -133,7 +138,7 @@ export function useApplicationManagement(applicationId, setup) {
     removalGuide, setRemovalGuide,
     rotating, setRotating,
     dataAccess, setDataAccess,
-    appSecretMutation, sessionModeMutation, connectMutation, updateMutation, retireMutation, restoreMutation, publishMutation,
+    appSecretMutation, sessionModeMutation, hubLinesMutation, connectMutation, updateMutation, retireMutation, restoreMutation, publishMutation,
     retire,
     changeAppSecret,
     changeSessionMode,

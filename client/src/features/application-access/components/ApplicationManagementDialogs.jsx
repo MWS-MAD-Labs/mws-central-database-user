@@ -46,8 +46,8 @@ export function ApplicationManagementDialogs({ applicationId, setup, mgmt }) {
       ) : null}
       {mgmt.envChanges?.add.length ? (
         <ConnectDialog
-          title="Add These .env Lines"
-          description="The Central token stays the same, no rotation needed. Add these lines to the .env of the application, then deploy it."
+          title="Add To .env"
+          description={`Add these to the .env of ${setup.application.name}. Your Central token stays the same.`}
           onceLabel="Secret Shown Once"
           connection={{ env: mgmt.envChanges.add }}
           onClose={() => mgmt.setEnvChanges(null)}
@@ -55,8 +55,8 @@ export function ApplicationManagementDialogs({ applicationId, setup, mgmt }) {
       ) : null}
       {mgmt.envChanges?.remove.length ? (
         <CrudDialog
-          title="Remove These .env Lines"
-          description="The Central token stays the same, no rotation needed. The application no longer reads these lines, so they can be removed."
+          title="Remove From .env"
+          description={`In the .env of ${setup.application.name}, delete:`}
           onClose={() => mgmt.setEnvChanges(null)}
         >
           <ul className="space-y-1 rounded-xl border border-(--mws-line) bg-(--mws-soft) px-3 py-3 font-mono text-xs text-(--mws-charcoal)">
@@ -64,6 +64,7 @@ export function ApplicationManagementDialogs({ applicationId, setup, mgmt }) {
               <li key={key}>{key}</li>
             ))}
           </ul>
+          <p className="mt-3 text-xs text-(--mws-muted)">Your Central token stays the same.</p>
           <div className="mt-4 flex justify-end">
             <Button type="button" onClick={() => mgmt.setEnvChanges(null)}>Done</Button>
           </div>
