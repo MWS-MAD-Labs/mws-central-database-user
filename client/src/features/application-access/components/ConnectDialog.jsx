@@ -166,17 +166,17 @@ export function ConnectDialog({
         ) : null}
 
         {confirmingClose ? (
-          <div role="alert" className="rounded-xl border border-[#d8b45b] bg-[#fff8e8] p-3">
-            <p className="text-sm font-semibold text-[#745716]">{proof ? "The application may stop working." : "The token will not be shown again."}</p>
-            <p className="mt-1 text-sm text-[#745716]">
-              {proof ? "These values are not in use yet. They are not shown again." : "You have not copied the values yet."}
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d8b45b] bg-[#fff8e8] px-3 py-2.5">
+            <p className="min-w-0 text-sm text-[#745716]">
+              <span className="font-semibold">{proof ? "Not in use yet." : "Not copied yet."}</span>{" "}
+              {proof ? "These values are not shown again." : "The values are not shown again."}
             </p>
-            <div className="mt-3 flex justify-end gap-2">
-              <Button type="button" variant="secondary" size="sm" onClick={() => setConfirmingClose(false)}>
-                Keep Open
-              </Button>
-              <Button type="button" variant="danger" size="sm" onClick={onClose}>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button type="button" variant="ghost" size="sm" onClick={onClose}>
                 Close Anyway
+              </Button>
+              <Button type="button" size="sm" onClick={() => setConfirmingClose(false)}>
+                Keep Open
               </Button>
             </div>
           </div>
