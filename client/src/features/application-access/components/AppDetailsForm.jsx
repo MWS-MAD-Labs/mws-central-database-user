@@ -20,6 +20,19 @@ import { emailsProblem } from "../utils/hubSettings.js";
 import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.js";
 const STANDARD_PATHS = { launch: "/auth/sso", logout: "/auth/logout" };
 
+const SESSION_MODES = [
+  {
+    value: "shared",
+    label: "Shared Hub Session",
+    hint: "The application reads the Hub's session. It has no sign-in or sign-out of its own, and signing out of the Hub signs out of every application. The Hub and the application must be on the same parent domain.",
+  },
+  {
+    value: "relay",
+    label: "Hub Code and Token",
+    hint: "The Hub gives the application a one-time code and a token, and the application keeps its own session and sign-out. For an application on another domain, or one that has not moved to the shared session yet.",
+  },
+];
+
 const LAUNCH_MODES = [
   {
     value: "sso",
@@ -73,6 +86,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const [attempted, setAttempted] = useState(false);
   const [launchMode, setLaunchMode] = useState(initial?.launch_mode ?? "sso");
   const [usesHub, setUsesHub] = useState(initial?.uses_hub ?? true);
+  // A new application reads the Hub's session. An existing one keeps the way it has.
+  const [sessionMode, setSessionMode] = useState(initial?.session_mode ?? "shared");
   // Every application signs in at /auth/sso and signs out at /auth/logout, so only the address is asked for.
   // An application that differs, or an address kept by hand, keeps its own paths.
   const startsStandard =
@@ -227,6 +242,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       logout_url: joinAddress(environment, effectiveLogout),
       launch_mode: launchMode,
       uses_hub: launchMode === "sso" ? usesHub : true,
+      session_mode: launchMode === "sso" && usesHub ? sessionMode : "relay",
       // On the page layout the connection is made together with the application, unless it is a plain link.
       ...(layout === "page" && launchMode === "sso" ? { connect: true, scope_names: scopeNames } : {}),
     });
@@ -295,6 +311,11 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
             checked={usesHub}
             onChange={(event) => setUsesHub(event.target.checked)}
           />
+        ) : null}
+        {launchMode === "sso" && usesHub && !hub ? (
+          <Field label="Sign-In Way" hint={SESSION_MODES.find((item) => item.value === sessionMode)?.hint}>
+            <SearchableSelect value={sessionMode} onChange={setSessionMode} options={SESSION_MODES} placeholder="Select how it signs in" />
+          </Field>
         ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Scope" hint="The product space it belongs to, like Safespace. Optional.">
@@ -447,7 +468,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   );
 
   // Editing: Save waits for something to change.
-  const snapshot = JSON.stringify({ values, environment, effectiveLaunch, effectiveLogout, launchMode, usesHub });
+  const snapshot = JSON.stringify({ values, environment, effectiveLaunch, effectiveLogout, launchMode, usesHub, sessionMode });
   const [baseline] = useState(snapshot);
   const unchanged = Boolean(initial) && snapshot === baseline;
 

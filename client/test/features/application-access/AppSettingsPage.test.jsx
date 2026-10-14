@@ -18,6 +18,8 @@ const APP = {
   published: true,
   retired_at: null,
   launch_mode: "sso",
+  session_mode: "relay",
+  uses_hub: true,
   hub_status: "maintenance",
   hub_keywords: ["checkin", "daily"],
 };
@@ -122,6 +124,19 @@ describe("AppSettingsPage", () => {
     expect(screen.getByText("Last Call")).toBeVisible();
     expect(screen.getByText("application_entitlements:read")).toBeVisible();
     expect(screen.getByRole("button", { name: "Rotate Token" })).toBeVisible();
+  });
+
+  it("says how the application signs in, and shows the Hub secret only for the code and token way", async () => {
+    const relay = renderPage(setup());
+    await relay.user.click(await screen.findByRole("tab", { name: "Connection" }));
+    expect(screen.getByText("Sign-In Way").nextElementSibling).toHaveTextContent("Hub code and token");
+    expect(screen.getByText("Hub Secret")).toBeVisible();
+    relay.unmount();
+
+    const shared = renderPage(setup({ application: { ...APP, session_mode: "shared" }, hub_secret: { mode: "shared", version: 1, applies: false } }));
+    await shared.user.click(await screen.findByRole("tab", { name: "Connection" }));
+    expect(screen.getByText("Sign-In Way").nextElementSibling).toHaveTextContent("Shared Hub session");
+    expect(screen.queryByText("Hub Secret")).toBeNull();
   });
 
   it("shows the card, its status and the switch on the Hub card tab, and hides it with one click", async () => {

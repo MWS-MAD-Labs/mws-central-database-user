@@ -473,6 +473,36 @@ describe('AppCreatePage', () => {
     })
   })
 
+  it('reads the Hub session by default, can choose the older way, and sends the choice', async () => {
+    const fetchMock = createFetchRouter([
+      SCOPES,
+      NO_HUB,
+      TAXONOMY,
+      APP_OK,
+      { path: '/api/admin/application-access/applications', method: 'POST', response: () => jsonResponse({ data: { application_id: 'modes', connection: null } }) },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await user.type(screen.getByLabelText('Name'), 'Modes')
+    await user.type(screen.getByLabelText('Application Address'), 'modes.example.com')
+    expect(await screen.findByText('The application answers.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Shared Hub Session' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Shared Hub Session' }))
+    await user.click(screen.getByRole('option', { name: /Hub Code and Token/ }))
+    await user.click(screen.getByRole('button', { name: 'Add Application' }))
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
+      expect(JSON.parse(call[1].body).session_mode).toBe('relay')
+    })
+  })
+
+  it('does not ask for a sign-in way when the application does not sign in through the Hub', async () => {
+    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
+    const { user } = renderPage()
+    await user.click(screen.getByRole('checkbox', { name: /Signs in through the Hub/ }))
+    expect(screen.queryByRole('button', { name: 'Shared Hub Session' })).toBeNull()
+  })
+
   it('hides the Hub choice once a Hub exists', async () => {
     globalThis.fetch = createFetchRouter([
       SCOPES,
@@ -558,6 +588,7 @@ describe('AppCreatePage', () => {
         scope: '',
         launch_mode: 'sso',
         uses_hub: true,
+        session_mode: 'shared',
         connect: true,
         scope_names: ['employees:read', 'students:read'],
       })
