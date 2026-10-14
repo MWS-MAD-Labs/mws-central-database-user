@@ -97,7 +97,9 @@ describe("AppSettingsPage", () => {
     renderPage(setup());
     expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
     expect(screen.getByText("Shown in the Hub")).toBeVisible();
-    expect(screen.getByText(/Connected, Last Call/)).toBeVisible();
+    expect(screen.getByText("Connected")).toBeVisible();
+    expect(screen.getByText(/Last Call/)).toBeVisible();
+    expect(screen.getByText(/Groups? · \d+ Exceptions? · \d+ Blocked/)).toBeVisible();
     expect(screen.getByText("128 People With Access")).toBeVisible();
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("https://demo.example.com/auth/sso")).toBeVisible();
@@ -182,6 +184,8 @@ describe("AppSettingsPage", () => {
     expect(await screen.findByRole("columnheader", { name: "Key" })).toBeVisible();
     expect(screen.getByText("Support Staff")).toBeVisible();
     expect(screen.getByText("SUPPORT_STAFF")).toBeVisible();
+    // Two roles need no pager.
+    expect(screen.queryByText(/ roles$/)).toBeNull();
     // Figures first, what they count under them.
     expect(screen.getByText("Active Groups").previousElementSibling).toHaveTextContent("1");
     expect(screen.getByText("People Reached").previousElementSibling).toHaveTextContent("128");
@@ -201,6 +205,30 @@ describe("AppSettingsPage", () => {
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
     expect(screen.getByText("This Month")).toBeVisible();
+  });
+
+  it("pages the roles of the Access tab when there are more than ten", async () => {
+    const original = SETTINGS.access.roles;
+    SETTINGS.access.roles = Array.from({ length: 12 }, (_, index) => ({
+      id: `r${index}`,
+      key: `ROLE_${String(index).padStart(2, "0")}`,
+      label: `Role ${String(index).padStart(2, "0")}`,
+      is_active: true,
+      permission_count: 1,
+      people: index,
+      groups: 0,
+    }));
+    try {
+      const { user } = renderPage(setup(), "/application-access/apps/demo/settings?tab=access");
+      expect(await screen.findByText("Role 00")).toBeVisible();
+      expect(screen.queryByText("Role 11")).toBeNull();
+      expect(screen.getByText(/Page 1 of 2 \/ 12 roles/)).toBeVisible();
+      await user.click(screen.getByRole("button", { name: /Next/ }));
+      expect(await screen.findByText("Role 11")).toBeVisible();
+      expect(screen.queryByText("Role 00")).toBeNull();
+    } finally {
+      SETTINGS.access.roles = original;
+    }
   });
 
   it("lists the latest changes in a table, and opens the details of one", async () => {

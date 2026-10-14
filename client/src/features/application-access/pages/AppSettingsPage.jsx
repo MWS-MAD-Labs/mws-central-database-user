@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, BookOpen, ShieldCheck } from "lucide-react";
+import { ArrowLeft, BookOpen, ShieldCheck, Users } from "lucide-react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
@@ -8,15 +8,16 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
 import { ToggleSwitch } from "../../../components/ui/FormControls.jsx";
 import { NameList } from "../../../components/ui/NameList.jsx";
+import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { Tabs } from "../../../components/ui/Tabs.jsx";
-import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { formatDate, formatDateTime } from "../../../lib/format.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { AppCardPreview } from "../components/AppCardPreview.jsx";
 import { ApplicationManagementDialogs } from "../components/ApplicationManagementDialogs.jsx";
+import { AppStatusStrip } from "../components/AppStatusStrip.jsx";
 import { SignInGuide } from "../components/SignInGuide.jsx";
 import { AppActivityTab } from "../components/AppActivityTab.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
@@ -58,6 +59,18 @@ function Stats({ items }) {
   );
 }
 
+const ROLES_PER_PAGE = 10;
+const rolePaging = (total, page) => ({
+  current_page: Math.min(page, Math.max(Math.ceil(total / ROLES_PER_PAGE), 1)),
+  total_page: Math.max(Math.ceil(total / ROLES_PER_PAGE), 1),
+  total_item: total,
+  size: ROLES_PER_PAGE,
+});
+const rolesOnPage = (roles, page) => {
+  const current = rolePaging(roles.length, page).current_page;
+  return roles.slice((current - 1) * ROLES_PER_PAGE, current * ROLES_PER_PAGE);
+};
+
 const mono = (value) => <span className="font-mono text-xs">{value}</span>;
 
 // What can still change once an application is set up, and what is known about it. A summary on top and a tab for each
@@ -82,6 +95,7 @@ export function AppSettingsPage() {
     queryFn: () => applicationAccessApi.getSetup(applicationId),
     enabled: superAdmin,
   });
+  const [rolesPage, setRolesPage] = useState(1);
   const [activityPage, setActivityPage] = useState(1);
   const [activitySize, setActivitySize] = useState(10);
   const [activityRange, setActivityRange] = useState({ preset: "this_month", ...computeDateRange("this_month") });
@@ -137,7 +151,6 @@ export function AppSettingsPage() {
   ];
   const wanted = params.get("tab");
   const active = tabs.some((tab) => tab.id === wanted) ? wanted : "overview";
-  const connected = Boolean(setup.connection.last_used_at);
 
   return (
     <div className="min-w-0 space-y-5">
@@ -251,16 +264,15 @@ export function AppSettingsPage() {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-(--mws-line) bg-white px-5 py-3 text-sm">
-        {retired ? <StatusBadge tone="red">Retired</StatusBadge> : setup.is_hub ? <StatusBadge tone="neutral">Hub</StatusBadge> : <StatusBadge tone={app.published ? "green" : "amber"}>{app.published ? "Shown in the Hub" : "Hidden from the Hub"}</StatusBadge>}
-        {link ? (
-          <span className="text-(--mws-muted)">Plain Link</span>
-        ) : (
-          <span className="text-(--mws-muted)">{connected ? `Connected, Last Call ${timeAgo(setup.connection.last_used_at)} Ago` : setup.connection.created ? "Waiting For Its First Call" : "Not Connected"}</span>
-        )}
-        {more ? <span className="text-(--mws-muted)">{`${more.access.people} ${more.access.people === 1 ? "Person" : "People"} With Access`}</span> : null}
-        {more ? <span className="text-(--mws-muted)">Created {formatDate(more.created_at)}</span> : null}
-      </div>
+      <AppStatusStrip
+        hubStatus={retired ? { tone: "red", label: "Retired" } : setup.is_hub ? { tone: "neutral", label: "Hub" } : { tone: app.published ? "green" : "amber", label: app.published ? "Shown in the Hub" : "Hidden from the Hub" }}
+        link={link}
+        health={health}
+        connection={setup.connection}
+        access={more?.access}
+        createdAt={more?.created_at}
+        groupsPath={base}
+      />
 
       <Tabs label="Settings" tabs={tabs} active={active} onChange={(id) => setParams({ tab: id })} />
 
@@ -376,6 +388,7 @@ export function AppSettingsPage() {
               ]}
             />
             {more && more.access.roles.length > 0 ? (
+              <div className="space-y-0">
               <DenseTable
                 minWidth={620}
                 head={
@@ -389,19 +402,37 @@ export function AppSettingsPage() {
                   </>
                 }
               >
-                {more.access.roles.map((role) => (
+                {rolesOnPage(more.access.roles, rolesPage).map((role) => (
                   <tr key={role.id} className={denseRowClass}>
                     <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>{titleCase(role.label)}</td>
                     <td className={`${denseCellClass} font-mono text-xs text-(--mws-muted)`}>{role.key}</td>
                     <td className={`${denseCellClass} text-center`}>{role.permission_count}</td>
-                    <td className={`${denseCellClass} text-center`}>{role.people}</td>
+                    <td className={`${denseCellClass} text-center`}>
+                      <span className={role.people === 0 ? "text-(--mws-muted)" : "inline-flex items-center justify-center gap-1"}>
+                        {role.people > 0 ? <Users size={13} aria-hidden="true" className="text-(--mws-muted)" /> : null}
+                        {role.people}
+                      </span>
+                    </td>
                     <td className={`${denseCellClass} text-center`}>{role.groups}</td>
                     <td className={denseCellClass}>
-                      <StatusBadge tone={role.is_active ? "green" : "neutral"}>{role.is_active ? "Active" : "Inactive"}</StatusBadge>
+                      <span className="inline-flex items-center gap-2 text-xs font-semibold text-(--mws-charcoal)">
+                        <span aria-hidden="true" className={`size-2 rounded-full ${role.is_active ? "bg-[#58a451]" : "bg-[#b8b0ad]"}`} />
+                        {role.is_active ? "Active" : "Inactive"}
+                      </span>
                     </td>
                   </tr>
                 ))}
               </DenseTable>
+              {more.access.roles.length > ROLES_PER_PAGE ? (
+                <PaginationBar
+                  paging={rolePaging(more.access.roles.length, rolesPage)}
+                  itemLabel="roles"
+                  onPrevious={() => setRolesPage(Math.max(rolesPage - 1, 1))}
+                  onNext={() => setRolesPage(rolesPage + 1)}
+                  onPageChange={setRolesPage}
+                />
+              ) : null}
+              </div>
             ) : (
               <p className="text-sm text-(--mws-muted)">No roles yet.</p>
             )}
