@@ -243,7 +243,10 @@ describe("POST /api/admin/admin-users/promote", () => {
   it("should reject if an active admin account already exists for the employee's email", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,
+      { plain: true },
     );
+    // Earlier tests listed this email as protected, this one needs it plain.
+    process.env.PROTECTED_SUPER_ADMIN_EMAILS = "";
 
     const person = await EmployeeTest.create({
       email: "test_superadmin@millennia21.id",

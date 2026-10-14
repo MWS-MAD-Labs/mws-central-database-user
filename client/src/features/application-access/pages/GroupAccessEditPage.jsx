@@ -25,6 +25,7 @@ import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { useScopeCatalog } from "../hooks/useScopeCatalog.js";
 import { AllowExceptionsField } from "../components/AllowExceptionsField.jsx";
 import { useRoleAvailability } from "../hooks/useRoleAvailability.js";
+import { canManageApplications } from "../utils/canManageApplications.js";
 
 export function GroupAccessEditPage() {
   const { user } = useAuth();
@@ -34,11 +35,11 @@ export function GroupAccessEditPage() {
     queryFn: () => applicationAccessApi.getRule(ruleId),
   });
 
-  if (user?.role !== "SUPER_ADMIN") {
+  if (!canManageApplications(user)) {
     return (
       <div className="min-w-0">
         <PageHeader title="Edit Group Access" />
-        <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
+        <PanelMessage>Only a protected Super Admin can manage application access.</PanelMessage>
       </div>
     );
   }

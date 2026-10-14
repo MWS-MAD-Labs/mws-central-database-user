@@ -43,7 +43,7 @@ function makeSetup(overrides = {}) {
   };
 }
 
-function renderPage(routes, user = { role: "SUPER_ADMIN" }) {
+function renderPage(routes, user = { role: "SUPER_ADMIN", is_protected: true }) {
   globalThis.fetch = createFetchRouter(routes);
   return renderWithProviders(
     <AuthContext.Provider value={{ user }}>
@@ -77,7 +77,7 @@ describe("AppSetupPage", () => {
     renderPage([], { role: "DATABASE_ADMIN" });
     expect(
       await screen.findByText(
-        "Only Super Admin can manage application access.",
+        "Only a protected Super Admin can manage application access.",
       ),
     ).toBeVisible();
   });
@@ -359,7 +359,7 @@ describe("AppSetupPage", () => {
       },
     ]);
     const { user } = renderWithProviders(
-      <AuthContext.Provider value={{ user: { role: "SUPER_ADMIN" } }}>
+      <AuthContext.Provider value={{ user: { role: "SUPER_ADMIN", is_protected: true } }}>
         <ConfirmProvider>
           <Routes>
             <Route

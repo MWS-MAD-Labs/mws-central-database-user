@@ -20,6 +20,7 @@ import { GroupCard } from "../components/GroupCard.jsx";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { buildSteps, stepsDone } from "../utils/setupSteps.js";
 import { groupScopeSummary, groupTitle } from "../utils/groupSummary.js";
+import { canManageApplications } from "../utils/canManageApplications.js";
 
 const BACK = "/application-access";
 const GROUP_PAGE_SIZE = 10;
@@ -49,7 +50,7 @@ export function AppAccessPage() {
   const setupQuery = useQuery({
     queryKey: ["application-access", "setup", applicationId],
     queryFn: () => applicationAccessApi.getSetup(applicationId),
-    enabled: user?.role === "SUPER_ADMIN",
+    enabled: canManageApplications(user),
   });
   const allRoles = useApplicationRoles().data || [];
   const roles = allRoles.filter((role) => role.application_id === applicationId);
@@ -73,11 +74,11 @@ export function AppAccessPage() {
     onError: (error) => showErrorToast(error, "Could not delete this group access."),
   });
 
-  if (user?.role !== "SUPER_ADMIN") {
+  if (!canManageApplications(user)) {
     return (
       <div className="min-w-0">
         <PageHeader title={applicationId} />
-        <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
+        <PanelMessage>Only a protected Super Admin can manage application access.</PanelMessage>
       </div>
     );
   }

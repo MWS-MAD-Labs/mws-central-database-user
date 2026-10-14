@@ -69,6 +69,15 @@ describe("application onboarding", () => {
     expect(badUrl.status).toBe(400);
   });
 
+  it("turns a regular Super Admin away from every application route", async () => {
+    const { accessToken: plain } = await AdminUserTest.createSuperAdmin(undefined, { id: "test-plain-super-id", email: "test_plain_super@millennia21.id", plain: true });
+    for (const path of ["application-access/applications", "application-roles", "application-permissions", "application-entitlements", "application-organizations", "application-integration-profiles"]) {
+      expect((await TestRequest.get(`/api/admin/${path}`, plain)).status).toBe(403);
+    }
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    expect((await TestRequest.get(`${ACCESS}/applications`, accessToken)).status).toBe(200);
+  });
+
   it("is Super Admin only", async () => {
     const { accessToken: dbAdmin } = await AdminUserTest.createDatabaseAdmin();
     expect((await create(dbAdmin)).status).toBe(403);
@@ -1118,18 +1127,10 @@ describe("application onboarding", () => {
         const back = await (await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { session_mode: "shared" }, accessToken)).json();
         expect(back.data.env_changes).toEqual({ add: [], remove: ["HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"] });
         expect((await (await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { name: "TEST_Shared2" }, accessToken)).json()).data.env_changes).toBeUndefined();
-        // Shared apps have no Hub lines to show. Back in the older way, they can be read again.
-        expect((await TestRequest.get(`${ACCESS}/apps/${shared}/hub-lines`, accessToken)).status).toBe(400);
         await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { session_mode: "relay" }, accessToken);
-        const again = await TestRequest.get(`${ACCESS}/apps/${shared}/hub-lines`, accessToken);
-        expect(again.status).toBe(200);
-        const againEnv = (await again.json()).data.env;
-        expect(againEnv.map((item: { key: string }) => item.key)).toEqual(["HUB_BASE_URL", "HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"]);
-        expect(againEnv.find((item: { key: string }) => item.key === "HUB_INTERNAL_SECRET").value).toBe(movedData.env_changes.add[2].value);
+        // The secret handed out once never reaches the log.
         const logs = await prismaClient.auditLog.findMany({ where: { entity_type: "Application" } });
         expect(JSON.stringify(logs.map((log) => [log.old_values, log.new_values]))).not.toContain(movedData.env_changes.add[2].value);
-        const { accessToken: plain } = await AdminUserTest.createDatabaseAdmin();
-        expect((await TestRequest.get(`${ACCESS}/apps/${shared}/hub-lines`, plain)).status).toBe(403);
         const rotated = await TestRequest.post(`${ACCESS}/apps/${shared}/rotate`, { immediate: true }, accessToken);
         expect((await rotated.json()).data.env.map((item: { key: string }) => item.key)).toContain("HUB_INTERNAL_SECRET");
         expect((await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { session_mode: "teleport" }, accessToken)).status).toBe(400);

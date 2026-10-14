@@ -335,10 +335,6 @@ export class ApplicationAccessController {
     });
   }
 
-  static async hubLines(c: Context<{ Variables: AdminVariables }>) {
-    return c.json({ data: await ApplicationOnboardingService.hubLines(c.var.admin, requireApplicationId(c), getAuditRequestContext(c)) });
-  }
-
   static async setHubAppSecret(c: Context<{ Variables: AdminVariables }>) {
     const body = await c.req.json().catch(() => ({}));
     return c.json({

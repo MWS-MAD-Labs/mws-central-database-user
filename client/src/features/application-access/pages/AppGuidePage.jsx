@@ -23,6 +23,7 @@ import {
   syncScript,
   workflowJob,
 } from "../utils/setupGuide.js";
+import { canManageApplications } from "../utils/canManageApplications.js";
 
 const GENERIC_KEYS = [
   { key: "HUB_SSO_APP_ID", secret: false },
@@ -49,14 +50,14 @@ export function AppGuidePage() {
   const setupQuery = useQuery({
     queryKey: ["application-access", "setup", applicationId],
     queryFn: () => applicationAccessApi.getSetup(applicationId),
-    enabled: user?.role === "SUPER_ADMIN",
+    enabled: canManageApplications(user),
   });
 
-  if (user?.role !== "SUPER_ADMIN") {
+  if (!canManageApplications(user)) {
     return (
       <div className="min-w-0">
         <PageHeader title="Setup Guide" />
-        <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
+        <PanelMessage>Only a protected Super Admin can manage application access.</PanelMessage>
       </div>
     );
   }
@@ -164,7 +165,7 @@ function StartPart({ setup, isHub }) {
         <SubHeading>What you need</SubHeading>
         <Steps
           items={[
-            "A Super Admin account here, which you already have.",
+            "A protected Super Admin account. A regular Super Admin cannot open this.",
             "The connection of this application, made on the setup page. Its block of .env lines is shown once, so keep it open or copied.",
             isHub
               ? "The Hub's code on your machine, since it already has the permission script."

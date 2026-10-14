@@ -11,6 +11,7 @@ import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { AppDetailsForm } from "../components/AppDetailsForm.jsx";
 import { ConnectDialog } from "../components/ConnectDialog.jsx";
+import { canManageApplications } from "../utils/canManageApplications.js";
 
 const BACK = "/application-access";
 
@@ -26,7 +27,7 @@ export function AppCreatePage() {
   const hubQuery = useQuery({
     queryKey: ["application-access", "hub-exists"],
     queryFn: () => applicationAccessApi.listApplications({ search: "hub", size: 20 }),
-    enabled: user?.role === "SUPER_ADMIN",
+    enabled: canManageApplications(user),
   });
   const hubExists = Boolean(hubQuery.data?.data?.some((row) => row.is_hub));
 
@@ -42,11 +43,11 @@ export function AppCreatePage() {
     onError: (error) => showErrorToast(error, "Could not add this application."),
   });
 
-  if (user?.role !== "SUPER_ADMIN") {
+  if (!canManageApplications(user)) {
     return (
       <div className="min-w-0">
         <PageHeader title="Add Application" />
-        <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
+        <PanelMessage>Only a protected Super Admin can manage application access.</PanelMessage>
       </div>
     );
   }

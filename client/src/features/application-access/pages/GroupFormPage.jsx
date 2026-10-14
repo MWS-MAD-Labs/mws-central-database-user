@@ -25,6 +25,7 @@ import {
   hasGroupFilterError,
   useGroupFilterState,
 } from "../utils/groupFilterState.js";
+import { canManageApplications } from "../utils/canManageApplications.js";
 
 // A new group for one application: who it covers and the role they get.
 export function GroupFormPage() {
@@ -75,11 +76,11 @@ export function GroupFormPage() {
     onError: (error) => showErrorToast(error, "Could not add this group access."),
   });
 
-  if (user?.role !== "SUPER_ADMIN") {
+  if (!canManageApplications(user)) {
     return (
       <div className="min-w-0">
         <PageHeader title="Add Group" />
-        <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
+        <PanelMessage>Only a protected Super Admin can manage application access.</PanelMessage>
       </div>
     );
   }

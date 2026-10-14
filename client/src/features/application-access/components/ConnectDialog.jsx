@@ -2,7 +2,6 @@ import { Check, Copy } from "lucide-react";
 import { Link } from "react-router";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
-import { CheckboxField } from "../../../components/ui/FormControls.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
@@ -21,11 +20,10 @@ export function ConnectDialog({
   nextSteps = null,
   description = "Put these lines in the .env of the application, then deploy it.",
   notice = null,
-  // Without it, the dialog closes by itself after the copy. With it, the dialog stays until the values
-  // are proven in use: { kind: "checkbox" } is ticked by the person, { kind: "used", used } comes from Central.
+  // Without it, the dialog closes by itself after the copy. With { used }, it stays until Central has seen
+  // the application use the new values.
   proof = null,
 }) {
-  const [ticked, setTicked] = useState(false);
   // The lines are written as they go in the .env, in quotes, with a blank line between groups.
   const startsGroup = (index) => index === 0 || connection.env[index - 1].group !== connection.env[index].group;
   const text = connection.env
@@ -37,7 +35,7 @@ export function ConnectDialog({
   const [copied, setCopied] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
-  const proven = proof ? (proof.kind === "used" ? Boolean(proof.used) : ticked) : copied;
+  const proven = proof ? Boolean(proof.used) : copied;
   const timer = useRef(null);
   const fallbackRef = useRef(null);
 
@@ -126,13 +124,9 @@ export function ConnectDialog({
 
         {proof ? (
           <div className="space-y-3 rounded-xl border border-(--mws-line) bg-white p-3">
-            {proof.kind === "used" ? (
-              <p className="text-sm text-(--mws-charcoal)">
-                {proof.used ? "The application called Central with the new token. You are done." : "Waiting for the application to call Central with the new token. Deploy it with the values above."}
-              </p>
-            ) : (
-              <CheckboxField label="I have updated the .env and deployed the application" checked={ticked} onChange={(event) => setTicked(event.target.checked)} />
-            )}
+            <p className="text-sm text-(--mws-charcoal)">
+              {proof.used ? "The application called Central with the new token. You are done." : "Waiting for the application to call Central with the new token. Deploy it with the values above."}
+            </p>
             <div className="flex justify-end">
               <Button type="button" disabled={!proven} onClick={onClose}>
                 Done

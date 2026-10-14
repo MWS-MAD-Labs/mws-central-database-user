@@ -46,7 +46,7 @@ const routes = (extra = []) => [
   },
 ]
 
-function renderPage(user = { role: 'SUPER_ADMIN' }, ruleId = 'rule-1') {
+function renderPage(user = { role: 'SUPER_ADMIN', is_protected: true }, ruleId = 'rule-1') {
   return renderWithProviders(
     <AuthContext.Provider value={{ user }}>
       <Routes>
@@ -62,12 +62,12 @@ describe('ExceptionAddPage', () => {
   it('refuses anyone who is not a Super Admin', async () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage({ role: 'DATABASE_ADMIN' })
-    expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
+    expect(await screen.findByText('Only a protected Super Admin can manage application access.')).toBeVisible()
   })
 
   it('says when the group does not exist', async () => {
     globalThis.fetch = createFetchRouter(routes())
-    renderPage({ role: 'SUPER_ADMIN' }, 'missing')
+    renderPage({ role: 'SUPER_ADMIN', is_protected: true }, 'missing')
     expect(await screen.findByText('This group could not be found.')).toBeVisible()
   })
 
@@ -156,7 +156,7 @@ describe('ExceptionAddPage', () => {
         { path: '/api/admin/application-entitlements/bulk', method: 'POST', response: () => jsonResponse({ data: { total_count: 1, success_count: 1, failed_count: 0, items: [] } }) },
       ]))
       globalThis.fetch = fetchMock
-      const { user } = renderPage({ role: 'SUPER_ADMIN' }, 'rule-s')
+      const { user } = renderPage({ role: 'SUPER_ADMIN', is_protected: true }, 'rule-s')
 
       expect(await screen.findByText('Citra Student')).toBeVisible()
       const table = screen.getByRole('table')
@@ -180,7 +180,7 @@ describe('ExceptionAddPage', () => {
     it('filters by grade and by the classes of the running year', async () => {
       const fetchMock = createFetchRouter(studentRoutes())
       globalThis.fetch = fetchMock
-      const { user } = renderPage({ role: 'SUPER_ADMIN' }, 'rule-s')
+      const { user } = renderPage({ role: 'SUPER_ADMIN', is_protected: true }, 'rule-s')
       await screen.findByText('Citra Student')
 
       await user.click(screen.getByRole('button', { name: 'All Classes' }))

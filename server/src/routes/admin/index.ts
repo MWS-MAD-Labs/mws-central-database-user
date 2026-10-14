@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { adminAuthMiddleware } from "../../middleware/admin-auth-middleware";
+import { requireProtectedSuperAdmin } from "../../middleware/protected-super-admin-middleware";
 import { adminLimiterMiddleware } from "../../middleware/rate-limiter";
 import { employeeRouter } from "./employee-router";
 import { internRouter } from "./intern-router";
@@ -38,6 +39,19 @@ export const adminRouter = new Hono();
 
 adminRouter.use("*", adminLimiterMiddleware);
 adminRouter.use("*", adminAuthMiddleware);
+
+// Everything that manages applications and who may open them.
+for (const prefix of [
+  "/application-entitlements",
+  "/application-roles",
+  "/application-permissions",
+  "/application-access-rules",
+  "/application-access",
+  "/application-organizations",
+  "/application-integration-profiles",
+]) {
+  adminRouter.use(`${prefix}/*`, requireProtectedSuperAdmin);
+}
 
 adminRouter.route("/employees", employeeRouter);
 adminRouter.route("/interns", internRouter);

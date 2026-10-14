@@ -30,6 +30,7 @@ import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { copyText } from "../utils/copyText.js";
 import { timeAgo } from "../utils/setupSteps.js";
 import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
+import { canManageApplications } from "../utils/canManageApplications.js";
 
 // Every application with how much access it has. Roles and groups are managed inside each one.
 export function ApplicationAccessPage() {
@@ -90,12 +91,12 @@ export function ApplicationAccessPage() {
   const rows = query.data?.data || [];
   const paging = query.data?.paging;
 
-  if (user?.role !== "SUPER_ADMIN") {
+  if (!canManageApplications(user)) {
     return (
       <div className="min-w-0">
         <PageHeader title="Application Access" />
         <PanelMessage>
-          Only Super Admin can manage application access.
+          Only a protected Super Admin can manage application access.
         </PanelMessage>
       </div>
     );

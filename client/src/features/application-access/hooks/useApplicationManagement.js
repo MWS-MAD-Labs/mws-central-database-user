@@ -42,11 +42,6 @@ export function useApplicationManagement(applicationId, setup) {
     },
     onError: (error) => showErrorToast(error, "Could not change the sign-in way."),
   });
-  const hubLinesMutation = useMutation({
-    mutationFn: () => applicationAccessApi.getHubLines(applicationId),
-    onSuccess: (result) => setEnvChanges({ add: result.env, remove: [] }),
-    onError: (error) => showErrorToast(error, "Could not get the Hub lines."),
-  });
   const connectMutation = useMutation({
     mutationFn: () => applicationAccessApi.connect(applicationId),
     onSuccess: (response) => {
@@ -149,7 +144,7 @@ export function useApplicationManagement(applicationId, setup) {
     removalGuide, setRemovalGuide,
     rotating, setRotating,
     dataAccess, setDataAccess,
-    appSecretMutation, sessionModeMutation, hubLinesMutation, connectMutation, updateMutation, retireMutation, restoreMutation, publishMutation,
+    appSecretMutation, sessionModeMutation, connectMutation, updateMutation, retireMutation, restoreMutation, publishMutation,
     retire,
     changeAppSecret,
     changeSessionMode,

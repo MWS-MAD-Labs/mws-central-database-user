@@ -33,7 +33,7 @@ function Where() {
   return <p data-testid="where">{location.search}</p>;
 }
 
-function renderGuide(query = "", setup = makeSetup(), user = { role: "SUPER_ADMIN" }) {
+function renderGuide(query = "", setup = makeSetup(), user = { role: "SUPER_ADMIN", is_protected: true }) {
   globalThis.fetch = createFetchRouter([
     { path: "/api/admin/application-access/apps/demo/setup", response: () => jsonResponse({ data: setup }) },
   ]);
@@ -53,7 +53,7 @@ const title = async () => (await screen.findByRole("heading", { level: 2 })).tex
 describe("AppGuidePage", () => {
   it("refuses anyone who is not a Super Admin", async () => {
     renderGuide("", makeSetup(), { role: "DATABASE_ADMIN" });
-    expect(await screen.findByText("Only Super Admin can manage application access.")).toBeVisible();
+    expect(await screen.findByText("Only a protected Super Admin can manage application access.")).toBeVisible();
   });
 
   it("shows one numbered part at a time, with Back and Next that keep the place in the address", async () => {

@@ -15,6 +15,7 @@ import { useApplicationPermissions } from "../hooks/useApplicationPermissions.js
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { AUDIENCES, columnProblems, keyFromLabel, newColumn, requiredBy, togglePermission } from "../utils/bulkRoles.js";
 import { cleanLabelInput, labelProblem } from "../utils/roleLabel.js";
+import { canManageApplications } from "../utils/canManageApplications.js";
 
 const LIST_PAGE = 6;
 const AUDIENCE_OPTIONS = AUDIENCES.map((item) => ({ value: item.value, label: item.label }));
@@ -25,11 +26,11 @@ export function BulkRolesPage() {
   const rolesQuery = useApplicationRoles();
   const permissionsQuery = useApplicationPermissions(applicationId);
 
-  if (user?.role !== "SUPER_ADMIN") {
+  if (!canManageApplications(user)) {
     return (
       <div className="min-w-0">
         <PageHeader title="Add Roles" />
-        <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
+        <PanelMessage>Only a protected Super Admin can manage application access.</PanelMessage>
       </div>
     );
   }

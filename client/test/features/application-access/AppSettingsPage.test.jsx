@@ -80,7 +80,7 @@ export function routesFor(data, extra = []) {
 function renderPage(data, route = "/application-access/apps/demo/settings", extra = []) {
   globalThis.fetch = createFetchRouter(routesFor(data, extra));
   return renderWithProviders(
-    <AuthContext.Provider value={{ user: { role: "SUPER_ADMIN" } }}>
+    <AuthContext.Provider value={{ user: { role: "SUPER_ADMIN", is_protected: true } }}>
       <ConfirmProvider>
         <Routes>
           <Route path="/application-access/apps/:applicationId/settings" element={<AppSettingsPage />} />
@@ -156,7 +156,7 @@ describe("AppSettingsPage", () => {
       ]),
     );
     const { user } = renderWithProviders(
-      <AuthContext.Provider value={{ user: { role: "SUPER_ADMIN" } }}>
+      <AuthContext.Provider value={{ user: { role: "SUPER_ADMIN", is_protected: true } }}>
         <ConfirmProvider>
           <Routes>
             <Route path="/application-access/apps/:applicationId/settings" element={<AppSettingsPage />} />
@@ -264,10 +264,6 @@ describe("AppSettingsPage", () => {
     expect(await screen.findByText("Add To .env")).toBeVisible();
     expect(screen.getByText(/Your Central token stays the same/)).toBeVisible();
     expect(screen.queryByText(/s3cret-value/)).toBeNull();
-    // Done waits for the person to say the .env is updated.
-    expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
-    await user.click(screen.getByRole("checkbox", { name: /updated the .env/ }));
-    expect(screen.getByRole("button", { name: "Done" })).toBeEnabled();
   });
 
   it("lists the lines to remove after moving to Shared Hub Session", async () => {
@@ -284,26 +280,8 @@ describe("AppSettingsPage", () => {
     expect(await screen.findByText("Remove From .env")).toBeVisible();
     expect(screen.getByText("HUB_INTERNAL_SECRET")).toBeVisible();
     expect(screen.getByText(/In the .env of Demo App, delete/)).toBeVisible();
-    expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
-    await user.click(screen.getByRole("checkbox", { name: /updated the .env/ }));
     await user.click(screen.getByRole("button", { name: "Done" }));
     await waitFor(() => expect(screen.queryByText("Remove From .env")).toBeNull());
-  });
-
-  it("shows the Hub lines again on request, only while the app gets a code and token", async () => {
-    const line = (key, value, secret = false) => ({ key, value, secret, group: 0, line: `${key}="${value}"` });
-    const { user } = renderPage(setup(), "/application-access/apps/demo/settings", [
-      { path: "/api/admin/application-access/apps/demo/hub-lines", method: "GET", response: () => jsonResponse({ data: { env: [line("HUB_BASE_URL", "https://hub.example.com")] } }) },
-    ]);
-    await user.click(await screen.findByRole("tab", { name: "Connection" }));
-    await user.click(screen.getByRole("button", { name: "Show Hub Lines" }));
-    expect(await screen.findByText("Add To .env")).toBeVisible();
-  });
-
-  it("has no Show Hub Lines for a shared session", async () => {
-    const { user } = renderPage(setup({ application: { ...APP, session_mode: "shared" }, hub_secret: { mode: "shared", version: 1, applies: false } }));
-    await user.click(await screen.findByRole("tab", { name: "Connection" }));
-    expect(screen.queryByRole("button", { name: "Show Hub Lines" })).toBeNull();
   });
 
   it("does not offer to change the sign-in way for a plain link", async () => {

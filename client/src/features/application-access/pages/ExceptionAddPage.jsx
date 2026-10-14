@@ -22,6 +22,7 @@ import { Tip } from "../components/Tip.jsx";
 import { PermissionPopover } from "../components/PermissionPopover.jsx";
 import { isRealUnit } from "../utils/legacyUnit.js";
 import { roleOptions } from "../utils/roleOptions.js";
+import { canManageApplications } from "../utils/canManageApplications.js";
 
 // Another role for people inside one group. Only people that group covers are listed.
 export function ExceptionAddPage() {
@@ -103,11 +104,11 @@ export function ExceptionAddPage() {
     onError: (error) => showErrorToast(error, "Could not add these exceptions."),
   });
 
-  if (user?.role !== "SUPER_ADMIN") {
+  if (!canManageApplications(user)) {
     return (
       <div className="min-w-0">
         <PageHeader title="Add Exception" />
-        <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
+        <PanelMessage>Only a protected Super Admin can manage application access.</PanelMessage>
       </div>
     );
   }

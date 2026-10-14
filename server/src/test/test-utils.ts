@@ -96,7 +96,7 @@ export class AdminUserTest {
 
   static async createSuperAdmin(
     unitId?: string,
-    options: { id?: string; email?: string } = {},
+    options: { id?: string; email?: string; plain?: boolean } = {},
   ): Promise<{
     accessToken: string;
     refreshToken: string;
@@ -104,6 +104,11 @@ export class AdminUserTest {
     const adminId = options.id ?? "test-super-admin-id";
     const email = options.email ?? "test_superadmin@millennia21.id";
     const resolvedUnitId = await this.resolveUnitId(unitId);
+    // Application management is for protected Super Admins, so the test ones are protected unless plain.
+    if (!options.plain) {
+      const listed = (process.env.PROTECTED_SUPER_ADMIN_EMAILS ?? "").split(",").map((item) => item.trim().toLowerCase());
+      if (!listed.includes(email)) process.env.PROTECTED_SUPER_ADMIN_EMAILS = [...listed.filter(Boolean), email].join(",");
+    }
 
     const { accessToken, refreshToken } = await generateTestTokens(
       adminId,

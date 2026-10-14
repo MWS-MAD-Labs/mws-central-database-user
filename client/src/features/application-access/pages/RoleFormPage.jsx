@@ -14,6 +14,7 @@ import { PermissionChecklist } from "../components/PermissionChecklist.jsx";
 import { useApplicationPermissions } from "../hooks/useApplicationPermissions.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { cleanLabelInput, labelProblem } from "../utils/roleLabel.js";
+import { canManageApplications } from "../utils/canManageApplications.js";
 
 
 // Keys are exact: capital letters, digits and underscores.
@@ -38,11 +39,11 @@ export function RoleFormPage() {
   const { applicationId, roleId } = useParams();
   const rolesQuery = useApplicationRoles();
 
-  if (user?.role !== "SUPER_ADMIN") {
+  if (!canManageApplications(user)) {
     return (
       <div className="min-w-0">
         <PageHeader title="Role" />
-        <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
+        <PanelMessage>Only a protected Super Admin can manage application access.</PanelMessage>
       </div>
     );
   }

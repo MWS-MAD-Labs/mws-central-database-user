@@ -141,7 +141,7 @@ function routes(
 }
 
 function renderPage(
-  user = { role: "SUPER_ADMIN" },
+  user = { role: "SUPER_ADMIN", is_protected: true },
   route = "/application-access/apps/exima",
 ) {
   return renderWithProviders(
@@ -203,7 +203,7 @@ describe("AppAccessPage", () => {
     renderPage({ role: "DATABASE_ADMIN" });
     expect(
       await screen.findByText(
-        "Only Super Admin can manage application access.",
+        "Only a protected Super Admin can manage application access.",
       ),
     ).toBeVisible();
   });
@@ -768,7 +768,7 @@ describe("AppAccessPage", () => {
 
     it("lists what the application publishes, what it opens and which are dropped", async () => {
       globalThis.fetch = createFetchRouter(routes(detail(), permissionRoutes(registry())));
-      renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=permissions");
+      renderPage({ role: "SUPER_ADMIN", is_protected: true }, "/application-access/apps/exima?tab=permissions");
       const row = (await screen.findByText("pos.checkout")).closest("tr");
       expect(within(row).getByText("Opens the cashier tab")).toBeVisible();
       expect(within(row).getByText("Current")).toBeVisible();
@@ -785,7 +785,7 @@ describe("AppAccessPage", () => {
         ],
       });
       globalThis.fetch = createFetchRouter(routes(detail(), permissionRoutes(many)));
-      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=permissions");
+      const { user } = renderPage({ role: "SUPER_ADMIN", is_protected: true }, "/application-access/apps/exima?tab=permissions");
       const manage = (await screen.findByText("inv.manage", { selector: "td" })).closest("tr");
       expect(within(manage).queryByText("inv.list")).not.toBeInTheDocument();
       await user.click(within(manage).getByRole("button", { name: /3 permissions/ }));
@@ -805,7 +805,7 @@ describe("AppAccessPage", () => {
         role_count: 0,
       }));
       globalThis.fetch = createFetchRouter(routes(detail(), permissionRoutes(registry({ permissions }))));
-      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=permissions");
+      const { user } = renderPage({ role: "SUPER_ADMIN", is_protected: true }, "/application-access/apps/exima?tab=permissions");
       expect(await screen.findByText("area.item00")).toBeVisible();
       expect(screen.queryByText("area.item10")).not.toBeInTheDocument();
       await user.type(screen.getByPlaceholderText("Search permissions"), "report");
@@ -817,7 +817,7 @@ describe("AppAccessPage", () => {
       globalThis.fetch = createFetchRouter(
         routes(detail(), permissionRoutes(registry({ has_manifest: false, last_synced_at: null }))),
       );
-      renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=permissions");
+      renderPage({ role: "SUPER_ADMIN", is_protected: true }, "/application-access/apps/exima?tab=permissions");
       expect(await screen.findByText(/has not published its permissions/)).toBeVisible();
     });
   });
@@ -834,7 +834,7 @@ describe("AppAccessPage", () => {
     it("lists the roles highest first with their usage and opens the role pages", async () => {
       globalThis.fetch = createFetchRouter(routes(detail(), orderRoutes));
       const { user } = renderPage(
-        { role: "SUPER_ADMIN" },
+        { role: "SUPER_ADMIN", is_protected: true },
         "/application-access/apps/exima?tab=roles",
       );
       const admin = (await screen.findByText("ADMIN")).closest("tr");
@@ -860,7 +860,7 @@ describe("AppAccessPage", () => {
         ]),
       );
       globalThis.fetch = fetchMock;
-      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      const { user } = renderPage({ role: "SUPER_ADMIN", is_protected: true }, "/application-access/apps/exima?tab=roles");
       await screen.findByText("STAFF");
       await user.click(screen.getByRole("button", { name: "Actions for exima STAFF" }));
       await user.click(screen.getByRole("button", { name: "Delete" }));
@@ -881,7 +881,7 @@ describe("AppAccessPage", () => {
         ...routes(detail(), orderRoutes).filter((item) => item.path !== "/api/admin/application-roles"),
         { path: "/api/admin/application-roles", response: () => jsonResponse({ data: inactive }) },
       ]);
-      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      const { user } = renderPage({ role: "SUPER_ADMIN", is_protected: true }, "/application-access/apps/exima?tab=roles");
       await screen.findByText("STAFF");
       await user.click(screen.getByRole("button", { name: "Actions for exima STAFF" }));
       expect(screen.getByRole("button", { name: "Activate" })).toHaveClass("text-[#476b43]");
@@ -890,7 +890,7 @@ describe("AppAccessPage", () => {
 
     it("keeps Delete off for a role that people still hold", async () => {
       globalThis.fetch = createFetchRouter(routes(detail(), orderRoutes));
-      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      const { user } = renderPage({ role: "SUPER_ADMIN", is_protected: true }, "/application-access/apps/exima?tab=roles");
       await screen.findByText("ADMIN");
       await user.click(screen.getByRole("button", { name: "Actions for exima ADMIN" }));
       const remove = screen.getByRole("button", { name: "Delete" });
@@ -910,7 +910,7 @@ describe("AppAccessPage", () => {
         ]),
       );
       globalThis.fetch = fetchMock;
-      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      const { user } = renderPage({ role: "SUPER_ADMIN", is_protected: true }, "/application-access/apps/exima?tab=roles");
       await screen.findByText("STAFF");
       await user.click(screen.getByRole("button", { name: "Actions for exima STAFF" }));
       await user.click(screen.getByRole("button", { name: "Delete" }));
@@ -925,7 +925,7 @@ describe("AppAccessPage", () => {
     it("opens the permissions of a role from its count", async () => {
       globalThis.fetch = createFetchRouter(routes(detail(), orderRoutes));
       const { user } = renderPage(
-        { role: "SUPER_ADMIN" },
+        { role: "SUPER_ADMIN", is_protected: true },
         "/application-access/apps/exima?tab=roles",
       );
       await screen.findByText("ADMIN");
@@ -945,7 +945,7 @@ describe("AppAccessPage", () => {
         ...routes(detail(), orderRoutes).filter((item) => item.path !== "/api/admin/application-roles"),
         { path: "/api/admin/application-roles", response: () => jsonResponse({ data: withGroups }) },
       ]);
-      renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      renderPage({ role: "SUPER_ADMIN", is_protected: true }, "/application-access/apps/exima?tab=roles");
       const admin = (await screen.findByText("ADMIN")).closest("tr");
       expect(within(admin).getByText("+ 2 Groups")).toBeVisible();
     });
@@ -956,7 +956,7 @@ describe("AppAccessPage", () => {
         ...routes(detail(), orderRoutes).filter((item) => item.path !== "/api/admin/application-roles"),
         { path: "/api/admin/application-roles", response: () => jsonResponse({ data: incomplete }) },
       ]);
-      renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      renderPage({ role: "SUPER_ADMIN", is_protected: true }, "/application-access/apps/exima?tab=roles");
       const admin = (await screen.findByText("ADMIN")).closest("tr");
       expect(within(admin).getByText("Missing")).toBeVisible();
       expect(within(admin).getByText("store.read")).toBeVisible();
@@ -970,7 +970,7 @@ describe("AppAccessPage", () => {
         ...routes(detail(), orderRoutes).filter((item) => item.path !== "/api/admin/application-roles"),
         { path: "/api/admin/application-roles", response: () => jsonResponse({ data: incomplete }) },
       ]);
-      const { user } = renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      const { user } = renderPage({ role: "SUPER_ADMIN", is_protected: true }, "/application-access/apps/exima?tab=roles");
       const admin = (await screen.findByText("ADMIN")).closest("tr");
       expect(within(admin).queryByText("a.read")).not.toBeInTheDocument();
       await user.click(within(admin).getByRole("button", { name: /3 permissions/ }));
@@ -985,7 +985,7 @@ describe("AppAccessPage", () => {
         ...routes(detail(), orderRoutes).filter((item) => item.path !== "/api/admin/application-roles"),
         { path: "/api/admin/application-roles", response: () => jsonResponse({ data: withAudience }) },
       ]);
-      renderPage({ role: "SUPER_ADMIN" }, "/application-access/apps/exima?tab=roles");
+      renderPage({ role: "SUPER_ADMIN", is_protected: true }, "/application-access/apps/exima?tab=roles");
       const admin = (await screen.findByText("ADMIN")).closest("tr");
       expect(within(admin).getByText("Employees")).toBeVisible();
       const staff = screen.getByText("STAFF").closest("tr");
@@ -995,7 +995,7 @@ describe("AppAccessPage", () => {
     it("opens the add role page", async () => {
       globalThis.fetch = createFetchRouter(routes(detail(), orderRoutes));
       const { user } = renderPage(
-        { role: "SUPER_ADMIN" },
+        { role: "SUPER_ADMIN", is_protected: true },
         "/application-access/apps/exima?tab=roles",
       );
       await screen.findByText("ADMIN");
@@ -1010,7 +1010,7 @@ describe("AppAccessPage", () => {
       const fetchMock = createFetchRouter(routes(detail(), orderRoutes));
       globalThis.fetch = fetchMock;
       const { user } = renderPage(
-        { role: "SUPER_ADMIN" },
+        { role: "SUPER_ADMIN", is_protected: true },
         "/application-access/apps/exima?tab=roles",
       );
       await screen.findByText("ADMIN");

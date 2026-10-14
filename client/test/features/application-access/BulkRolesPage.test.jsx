@@ -26,7 +26,7 @@ function routes(extra = []) {
   ]
 }
 
-function renderPage(user = { role: 'SUPER_ADMIN' }) {
+function renderPage(user = { role: 'SUPER_ADMIN', is_protected: true }) {
   return renderWithProviders(
     <AuthContext.Provider value={{ user }}>
       <Routes>
@@ -195,6 +195,6 @@ describe('BulkRolesPage', () => {
   it('is for Super Admin only', async () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage({ role: 'DATABASE_ADMIN' })
-    expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
+    expect(await screen.findByText('Only a protected Super Admin can manage application access.')).toBeVisible()
   })
 })

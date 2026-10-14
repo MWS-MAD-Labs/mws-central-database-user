@@ -49,6 +49,7 @@ import {
   canSeeMyChangeRequests,
   useMyChangeRequestCount,
 } from "../../features/change-requests/hooks/useMyChangeRequestCount.js";
+import { canManageApplications } from "../../features/application-access/utils/canManageApplications.js";
 
 const adminNavItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -179,7 +180,7 @@ export function AppShell() {
             },
             { to: "/audit-logs", label: "Audit Logs", icon: FileClock },
             { to: "/api-clients", label: "API Reference", icon: KeyRound },
-            { to: "/application-access", label: "Application Access", icon: ShieldCheck },
+            ...(canManageApplications(user) ? [{ to: "/application-access", label: "Application Access", icon: ShieldCheck }] : []),
           ],
         },
       );

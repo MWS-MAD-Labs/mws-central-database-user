@@ -16,6 +16,7 @@ import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
 import { useApplicationManagement } from "../hooks/useApplicationManagement.js";
 import { useInternalEndpoints } from "../hooks/useInternalEndpoints.js";
 import { buildSteps, stepsDone } from "../utils/setupSteps.js";
+import { canManageApplications } from "../utils/canManageApplications.js";
 
 const POLL_MS = 5000;
 const STALLED_MS = 10 * 60 * 1000;
@@ -42,7 +43,7 @@ export function AppSetupPage() {
   const setupQuery = useQuery({
     queryKey: ["application-access", "setup", applicationId],
     queryFn: () => applicationAccessApi.getSetup(applicationId),
-    enabled: user?.role === "SUPER_ADMIN",
+    enabled: canManageApplications(user),
     // Only while the application is expected to call Central, otherwise nothing changes by itself.
     refetchInterval: (query) => {
       const data = query.state.data;
@@ -54,11 +55,11 @@ export function AppSetupPage() {
   const mgmt = useApplicationManagement(applicationId, setupQuery.data);
   const { setEditing, setRotating, setDataAccess, setRemoving, setRemovalGuide, navigate, restoreMutation, publishMutation, connectMutation, appSecretMutation, retire, changeAppSecret } = mgmt;
 
-  if (user?.role !== "SUPER_ADMIN") {
+  if (!canManageApplications(user)) {
     return (
       <div className="min-w-0">
         <PageHeader title={applicationId} />
-        <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
+        <PanelMessage>Only a protected Super Admin can manage application access.</PanelMessage>
       </div>
     );
   }

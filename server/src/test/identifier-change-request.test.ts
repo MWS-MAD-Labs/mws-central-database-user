@@ -365,6 +365,7 @@ describe("Identifier change requests", () => {
     const notProtected = await AdminUserTest.createSuperAdmin(undefined, {
       id: "test-icr-plain-super-id",
       email: "test_icr_plain_super@millennia21.id",
+      plain: true,
     });
     const denied = await TestRequest.patch(
       `/api/admin/admin-users/can-approve-identifier-changes/test-icr-approver-id`,

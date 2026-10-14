@@ -65,7 +65,7 @@ const NO_HUB = {
   response: () => jsonResponse({ data: [], paging: { current_page: 1, total_page: 1, total_item: 0, size: 20 } }),
 }
 
-function renderPage(user = { role: 'SUPER_ADMIN' }) {
+function renderPage(user = { role: 'SUPER_ADMIN', is_protected: true }) {
   return renderWithProviders(
     <AuthContext.Provider value={{ user }}>
       <ConfirmProvider>
@@ -83,7 +83,7 @@ describe('AppCreatePage', () => {
   it('refuses anyone who is not a Super Admin', async () => {
     globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
     renderPage({ role: 'DATABASE_ADMIN' })
-    expect(await screen.findByText('Only Super Admin can manage application access.')).toBeVisible()
+    expect(await screen.findByText('Only a protected Super Admin can manage application access.')).toBeVisible()
   })
 
   it('makes the application id from the name and does not let it be typed', async () => {

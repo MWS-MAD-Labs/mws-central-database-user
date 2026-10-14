@@ -78,7 +78,7 @@ describe("assertNotProtectedAdmin", () => {
   it("should resolve without throwing when the target isn't protected", async () => {
     delete process.env.PROTECTED_SUPER_ADMIN_EMAILS;
     const { accessToken: _unused } =
-      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+      await AdminUserTest.createSuperAdmin(masterData.unit.id, { plain: true });
     void _unused;
     const admin = await prismaClient.adminUser.findUniqueOrThrow({
       where: { email: "test_superadmin@millennia21.id" },

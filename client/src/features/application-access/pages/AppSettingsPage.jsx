@@ -25,6 +25,7 @@ import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.
 import { useInternalEndpoints } from "../hooks/useInternalEndpoints.js";
 import { buildSteps, stepsDone, timeAgo } from "../utils/setupSteps.js";
 import { titleCase } from "../utils/roleLabel.js";
+import { canManageApplications } from "../utils/canManageApplications.js";
 
 const CARD_STATUS_LABEL = { active: "Active", maintenance: "Maintenance", coming_soon: "Coming Soon", new: "New" };
 
@@ -63,7 +64,7 @@ export function AppSettingsPage() {
   const { user } = useAuth();
   const { applicationId } = useParams();
   const [params, setParams] = useSearchParams();
-  const superAdmin = user?.role === "SUPER_ADMIN";
+  const superAdmin = canManageApplications(user);
   const setupQuery = useQuery({
     queryKey: ["application-access", "setup", applicationId],
     queryFn: () => applicationAccessApi.getSetup(applicationId),
@@ -87,7 +88,7 @@ export function AppSettingsPage() {
     return (
       <div className="min-w-0">
         <PageHeader title={applicationId} />
-        <PanelMessage>Only Super Admin can manage application access.</PanelMessage>
+        <PanelMessage>Only a protected Super Admin can manage application access.</PanelMessage>
       </div>
     );
   }
@@ -104,7 +105,7 @@ export function AppSettingsPage() {
   const retired = Boolean(app.retired_at);
   const link = app.launch_mode === "link";
   const endpointCount = countFor(setup.data_access.scope_names);
-  const { setEditing, setRotating, setDataAccess, setRemoving, setRemovalGuide, restoreMutation, publishMutation, connectMutation, appSecretMutation, sessionModeMutation, hubLinesMutation, retire, changeAppSecret, changeSessionMode, changePublished } = mgmt;
+  const { setEditing, setRotating, setDataAccess, setRemoving, setRemovalGuide, restoreMutation, publishMutation, connectMutation, appSecretMutation, sessionModeMutation, retire, changeAppSecret, changeSessionMode, changePublished } = mgmt;
   const canShow = setup.can_publish && Boolean(app.launch_url);
 
   const tabs = [
@@ -268,9 +269,6 @@ export function AppSettingsPage() {
                   <TextAction loading={appSecretMutation.isPending} onClick={changeAppSecret}>
                     {setup.hub_secret.mode === "own" ? "Rotate Hub Secret" : "Give A Dedicated Hub Secret"}
                   </TextAction>
-                ) : null}
-                {setup.hub_secret?.applies && setup.application.session_mode !== "shared" ? (
-                  <TextAction loading={hubLinesMutation.isPending} onClick={() => hubLinesMutation.mutate()}>Show Hub Lines</TextAction>
                 ) : null}
                 {setup.application.launch_mode === "sso" && setup.application.uses_hub && !setup.hub ? (
                   <TextAction loading={sessionModeMutation.isPending} onClick={changeSessionMode}>Change Sign-In Way</TextAction>
