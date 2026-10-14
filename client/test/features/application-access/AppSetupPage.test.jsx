@@ -530,6 +530,9 @@ describe("AppSetupPage", () => {
       screen.getByText('CENTRAL_API_BASE_URL="https://db.example.com"'),
     ).toBeVisible();
     expect(rotations).toEqual([{ immediate: false, grace_hours: 24 }]);
+    // It is done only when Central sees the new token in use.
+    expect(screen.getByText(/Waiting for the application to call Central/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
     // What to do next is right there, with the names of this application, and the full steps are one click away.
     expect(screen.getByText("What To Do Now")).toBeVisible();
     expect(

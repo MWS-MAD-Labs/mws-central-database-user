@@ -2,6 +2,7 @@ import { Check, Copy } from "lucide-react";
 import { Link } from "react-router";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { CheckboxField } from "../../../components/ui/FormControls.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
@@ -20,7 +21,11 @@ export function ConnectDialog({
   nextSteps = null,
   description = "Put these lines in the .env of the application, then deploy it.",
   notice = null,
+  // Without it, the dialog closes by itself after the copy. With it, the dialog stays until the values
+  // are proven in use: { kind: "checkbox" } is ticked by the person, { kind: "used", used } comes from Central.
+  proof = null,
 }) {
+  const [ticked, setTicked] = useState(false);
   // The lines are written as they go in the .env, in quotes, with a blank line between groups.
   const startsGroup = (index) => index === 0 || connection.env[index - 1].group !== connection.env[index].group;
   const text = connection.env
@@ -32,6 +37,7 @@ export function ConnectDialog({
   const [copied, setCopied] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
+  const proven = proof ? (proof.kind === "used" ? Boolean(proof.used) : ticked) : copied;
   const timer = useRef(null);
   const fallbackRef = useRef(null);
 
@@ -55,11 +61,11 @@ export function ConnectDialog({
     }
     setCopied(true);
     showSuccessToast("Values copied.");
-    timer.current = setTimeout(onClose, CLOSE_DELAY_MS);
+    if (!proof) timer.current = setTimeout(onClose, CLOSE_DELAY_MS);
   }
 
   function requestClose() {
-    if (copied) onClose();
+    if (proven) onClose();
     else setConfirmingClose(true);
   }
 
@@ -118,6 +124,23 @@ export function ConnectDialog({
           </div>
         ) : null}
 
+        {proof ? (
+          <div className="space-y-3 rounded-xl border border-(--mws-line) bg-white p-3">
+            {proof.kind === "used" ? (
+              <p className="text-sm text-(--mws-charcoal)">
+                {proof.used ? "The application called Central with the new token. You are done." : "Waiting for the application to call Central with the new token. Deploy it with the values above."}
+              </p>
+            ) : (
+              <CheckboxField label="I have updated the .env and deployed the application" checked={ticked} onChange={(event) => setTicked(event.target.checked)} />
+            )}
+            <div className="flex justify-end">
+              <Button type="button" disabled={!proven} onClick={onClose}>
+                Done
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         {nextSteps ? (
           <div className="rounded-xl border border-(--mws-line) bg-white p-3">
             <p className="font-display text-sm font-bold text-(--mws-charcoal)">What To Do Now</p>
@@ -150,8 +173,10 @@ export function ConnectDialog({
 
         {confirmingClose ? (
           <div role="alert" className="rounded-xl border border-[#d8b45b] bg-[#fff8e8] p-3">
-            <p className="text-sm font-semibold text-[#745716]">The token will not be shown again.</p>
-            <p className="mt-1 text-sm text-[#745716]">You have not copied the values yet.</p>
+            <p className="text-sm font-semibold text-[#745716]">{proof ? "The application may stop working." : "The token will not be shown again."}</p>
+            <p className="mt-1 text-sm text-[#745716]">
+              {proof ? "These values are not in use yet. They are not shown again." : "You have not copied the values yet."}
+            </p>
             <div className="mt-3 flex justify-end gap-2">
               <Button type="button" variant="secondary" size="sm" onClick={() => setConfirmingClose(false)}>
                 Keep Open

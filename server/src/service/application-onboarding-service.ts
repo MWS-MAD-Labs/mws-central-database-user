@@ -56,7 +56,7 @@ export type ApplicationDetail = {
 export type SetupStatus = {
   application: ApplicationDetail;
   organization_id: string;
-  connection: { client_id: string | null; created: boolean; created_at: string | null; last_used_at: string | null };
+  connection: { client_id: string | null; created: boolean; created_at: string | null; last_used_at: string | null; newest_token_used_at: string | null };
   permissions: { count: number; synced_at: string | null };
   roles: { active_count: number };
   groups: { active_count: number };
@@ -436,7 +436,15 @@ export class ApplicationOnboardingService {
     ]);
 
     let lastUsed: Date | null = null;
+    let newestUsed: Date | null = null;
     if (client) {
+      // The newest token alone, so a rotation is proved by the new token and not by the old one still running.
+      const newest = await prismaClient.apiClientCredential.findFirst({
+        where: { client_id: client.id, status: { not: ApiCredentialStatus.REVOKED } },
+        orderBy: { issued_at: "desc" },
+        select: { last_used_at: true },
+      });
+      newestUsed = newest?.last_used_at ?? null;
       const credential = await prismaClient.apiClientCredential.aggregate({
         where: { client_id: client.id, status: { not: ApiCredentialStatus.REVOKED } },
         _max: { last_used_at: true },
@@ -479,6 +487,7 @@ export class ApplicationOnboardingService {
         created: Boolean(client),
         created_at: client ? client.created_at.toISOString() : null,
         last_used_at: lastUsed ? lastUsed.toISOString() : null,
+        newest_token_used_at: newestUsed ? newestUsed.toISOString() : null,
       },
       permissions: { count: permissionCount, synced_at: latestPermission._max.synced_at?.toISOString() ?? null },
       roles: { active_count: roles },

@@ -1,3 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { CheckboxField } from "../../../components/ui/FormControls.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
@@ -13,6 +16,37 @@ import { RemoveApplicationDialog } from "./RemoveApplicationDialog.jsx";
 
 const BACK = "/application-access";
 
+// The new token, shown until Central sees the application call with it.
+function RotatedConnectDialog({ applicationId, ...props }) {
+  const query = useQuery({
+    queryKey: ["application-access", "setup", applicationId, "rotation"],
+    queryFn: () => applicationAccessApi.getSetup(applicationId),
+    refetchInterval: (state) => (state.state.data?.connection.newest_token_used_at ? false : 5000),
+  });
+  return <ConnectDialog {...props} proof={{ kind: "used", used: Boolean(query.data?.connection.newest_token_used_at) }} />;
+}
+
+// The lines to drop from the .env, closed only once the person says it is done.
+function RemoveLinesDialog({ name, keys, onClose }) {
+  const [ticked, setTicked] = useState(false);
+  return (
+    <CrudDialog title="Remove From .env" description={`In the .env of ${name}, delete:`} onClose={onClose}>
+      <ul className="space-y-1 rounded-xl border border-(--mws-line) bg-(--mws-soft) px-3 py-3 font-mono text-xs text-(--mws-charcoal)">
+        {keys.map((key) => (
+          <li key={key}>{key}</li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs text-(--mws-muted)">Your Central token stays the same.</p>
+      <div className="mt-3">
+        <CheckboxField label="I have updated the .env and deployed the application" checked={ticked} onChange={(event) => setTicked(event.target.checked)} />
+      </div>
+      <div className="mt-4 flex justify-end">
+        <Button type="button" disabled={!ticked} onClick={onClose}>Done</Button>
+      </div>
+    </CrudDialog>
+  );
+}
+
 // The dialogs that open from useApplicationManagement, the same on the setup steps and on Settings.
 export function ApplicationManagementDialogs({ applicationId, setup, mgmt }) {
   const guideBase = `/application-access/apps/${applicationId}/guide`;
@@ -25,7 +59,8 @@ export function ApplicationManagementDialogs({ applicationId, setup, mgmt }) {
           rotate={(options) => applicationAccessApi.rotateConnection(applicationId, options)}
           onRotated={mgmt.refresh}
           renderResult={({ client, rotation, onClose }) => (
-            <ConnectDialog
+            <RotatedConnectDialog
+              applicationId={applicationId}
               title="Rotated Credentials"
               description="Put these lines in the .env of the application, then deploy it."
               connection={{ env: client.env, hub_lines_missing: client.hub_lines_missing }}
@@ -50,25 +85,12 @@ export function ApplicationManagementDialogs({ applicationId, setup, mgmt }) {
           description={`Add these to the .env of ${setup.application.name}. Your Central token stays the same.`}
           onceLabel="Secret Shown Once"
           connection={{ env: mgmt.envChanges.add }}
+          proof={{ kind: "checkbox" }}
           onClose={() => mgmt.setEnvChanges(null)}
         />
       ) : null}
       {mgmt.envChanges?.remove.length ? (
-        <CrudDialog
-          title="Remove From .env"
-          description={`In the .env of ${setup.application.name}, delete:`}
-          onClose={() => mgmt.setEnvChanges(null)}
-        >
-          <ul className="space-y-1 rounded-xl border border-(--mws-line) bg-(--mws-soft) px-3 py-3 font-mono text-xs text-(--mws-charcoal)">
-            {mgmt.envChanges.remove.map((key) => (
-              <li key={key}>{key}</li>
-            ))}
-          </ul>
-          <p className="mt-3 text-xs text-(--mws-muted)">Your Central token stays the same.</p>
-          <div className="mt-4 flex justify-end">
-            <Button type="button" onClick={() => mgmt.setEnvChanges(null)}>Done</Button>
-          </div>
-        </CrudDialog>
+        <RemoveLinesDialog name={setup.application.name} keys={mgmt.envChanges.remove} onClose={() => mgmt.setEnvChanges(null)} />
       ) : null}
       {mgmt.connection ? <ConnectDialog connection={mgmt.connection} onClose={() => mgmt.setConnection(null)} /> : null}
       {mgmt.appSecret ? (

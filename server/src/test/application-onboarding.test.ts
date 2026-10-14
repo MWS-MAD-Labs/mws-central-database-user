@@ -95,7 +95,7 @@ describe("application onboarding", () => {
     const setup = async () => (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
 
     let status = await setup();
-    expect(status.connection).toEqual({ client_id: null, created: false, created_at: null, last_used_at: null });
+    expect(status.connection).toEqual({ client_id: null, created: false, created_at: null, last_used_at: null, newest_token_used_at: null });
     expect(status.permissions.count).toBe(0);
     expect(status.can_publish).toBe(false);
     expect(status.missing).toEqual(["permissions", "roles", "groups"]);
@@ -573,6 +573,18 @@ describe("application onboarding", () => {
       // Emergency rotation stops the old token at once.
       expect((await TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${data.connection.token}` })).status).toBe(401);
       expect((await TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${next}` })).status).toBe(200);
+    });
+
+    it("proves a rotation only when the new token is used, not the old one still running", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const { data } = await (await create(accessToken, { connect: true })).json();
+      const rotated = await TestRequest.post(`${ACCESS}/apps/${appId}/rotate`, { grace_hours: 24 }, accessToken);
+      const next = (await rotated.json()).data.token as string;
+      const used = async () => (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data.connection.newest_token_used_at;
+      await TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${data.connection.token}` });
+      expect(await used()).toBeNull();
+      await TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${next}` });
+      expect(await used()).not.toBeNull();
     });
 
     it("counts a connection of any purpose as the application's connection", async () => {

@@ -264,6 +264,10 @@ describe("AppSettingsPage", () => {
     expect(await screen.findByText("Add To .env")).toBeVisible();
     expect(screen.getByText(/Your Central token stays the same/)).toBeVisible();
     expect(screen.queryByText(/s3cret-value/)).toBeNull();
+    // Done waits for the person to say the .env is updated.
+    expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /updated the .env/ }));
+    expect(screen.getByRole("button", { name: "Done" })).toBeEnabled();
   });
 
   it("lists the lines to remove after moving to Shared Hub Session", async () => {
@@ -280,6 +284,10 @@ describe("AppSettingsPage", () => {
     expect(await screen.findByText("Remove From .env")).toBeVisible();
     expect(screen.getByText("HUB_INTERNAL_SECRET")).toBeVisible();
     expect(screen.getByText(/In the .env of Demo App, delete/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /updated the .env/ }));
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByText("Remove From .env")).toBeNull());
   });
 
   it("shows the Hub lines again on request, only while the app gets a code and token", async () => {
