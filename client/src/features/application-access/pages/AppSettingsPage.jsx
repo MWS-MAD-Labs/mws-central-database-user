@@ -17,6 +17,7 @@ import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { AppCardPreview } from "../components/AppCardPreview.jsx";
 import { ApplicationManagementDialogs } from "../components/ApplicationManagementDialogs.jsx";
+import { SignInGuide } from "../components/SignInGuide.jsx";
 import { AppActivityTab } from "../components/AppActivityTab.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
 import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
@@ -270,6 +271,9 @@ export function AppSettingsPage() {
                 ["Reads From .env", mono((setup.env_keys ?? []).map((item) => item.key).join(", ") || "-")],
               ]}
             />
+            {setup.application.launch_mode === "sso" && setup.application.uses_hub && !setup.hub ? (
+              <SignInGuide mode={setup.application.session_mode === "shared" ? "shared" : "relay"} />
+            ) : null}
             {retired ? null : setup.connection.created ? (
               <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-(--mws-line) pt-4">
                 <TextAction onClick={() => setRotating(true)}>Rotate Token</TextAction>

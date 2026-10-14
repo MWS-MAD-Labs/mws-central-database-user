@@ -33,7 +33,7 @@ function RemoveLinesDialog({ name, keys, onClose }) {
           <li key={key}>{key}</li>
         ))}
       </ul>
-      <p className="mt-3 text-xs text-(--mws-muted)">Your Central token stays the same. The Hub picks up the change within a minute. Redeploy the application with the matching code.</p>
+      <p className="mt-3 text-xs text-(--mws-muted)">Your Central token stays the same.</p>
       <div className="mt-4 flex justify-end">
         <Button type="button" onClick={onClose}>Done</Button>
       </div>
@@ -76,7 +76,7 @@ export function ApplicationManagementDialogs({ applicationId, setup, mgmt }) {
       {mgmt.envChanges?.add.length ? (
         <ConnectDialog
           title="Add To .env"
-          description={`Add these to the .env of ${setup.application.name}. Your Central token stays the same. The Hub picks up the change within a minute. Redeploy the application with the matching code.`}
+          description={`Add these to the .env of ${setup.application.name}. Your Central token stays the same.`}
           onceLabel="Secret Shown Once"
           connection={{ env: mgmt.envChanges.add }}
           onClose={() => mgmt.setEnvChanges(null)}

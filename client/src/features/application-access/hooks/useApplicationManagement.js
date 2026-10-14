@@ -125,8 +125,8 @@ export function useApplicationManagement(applicationId, setup) {
     const confirmed = await confirm({
       title: toShared ? "Switch To Shared Hub Session" : "Switch To Hub Code & Token",
       description: toShared
-        ? `${name} will read the Hub session. Its code must read the Hub session first. Central only tells the Hub, the app keeps signing in the way its code does.`
-        : `${name} will get a code and token from the Hub again. Its code must handle the Hub code first. Central only tells the Hub, the app keeps signing in the way its code does.`,
+        ? `${name} will read the Hub session. Update its code first.`
+        : `${name} will get a code and token from the Hub again. Update its code first.`,
       confirmLabel: toShared ? "Switch To Shared Session" : "Switch To Code & Token",
       tone: "danger",
     });

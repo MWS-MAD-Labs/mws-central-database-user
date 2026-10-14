@@ -286,11 +286,10 @@ describe("AppSettingsPage", () => {
     ]);
     await user.click(await screen.findByRole("tab", { name: "Connection" }));
     await user.click(screen.getByRole("button", { name: "Change Sign-In Way" }));
-    expect(await screen.findByText(/Its code must handle the Hub code first/)).toBeVisible();
+    expect(await screen.findByText(/Update its code first/)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Switch To Code & Token" }));
     expect(await screen.findByText("Add To .env")).toBeVisible();
     expect(screen.getByText(/Your Central token stays the same/)).toBeVisible();
-    expect(screen.getByText(/within a minute/)).toBeVisible();
     expect(screen.queryByText(/s3cret-value/)).toBeNull();
   });
 
@@ -312,9 +311,23 @@ describe("AppSettingsPage", () => {
     await waitFor(() => expect(screen.queryByText("Remove From .env")).toBeNull());
   });
 
+  it("explains what each sign-in way needs, on the Connection tab", async () => {
+    const shared = renderPage(setup({ application: { ...APP, session_mode: "shared" }, hub_secret: { mode: "shared", version: 1, applies: false } }));
+    await shared.user.click(await screen.findByRole("tab", { name: "Connection" }));
+    expect(screen.getByText("How This App Signs In")).toBeVisible();
+    expect(screen.getByText(/HUB_BASE_URL is the only Hub line the app reads/)).toBeVisible();
+    expect(screen.getByText(/Leaving them does no harm/)).toBeVisible();
+    shared.unmount();
+    const relay = renderPage(setup());
+    await relay.user.click(await screen.findByRole("tab", { name: "Connection" }));
+    expect(screen.getByText(/HUB_INTERNAL_SECRET not copied or wrong/)).toBeVisible();
+    expect(screen.queryByText(/HUB_BASE_URL is the only Hub line/)).toBeNull();
+  });
+
   it("does not offer to change the sign-in way for a plain link", async () => {
     renderPage(setup({ application: { ...APP, launch_mode: "link" } }));
     await screen.findByRole("heading", { name: "Demo App Settings" });
     expect(screen.queryByRole("button", { name: "Change Sign-In Way" })).toBeNull();
+    expect(screen.queryByText("How This App Signs In")).toBeNull();
   });
 });
