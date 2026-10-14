@@ -14,4 +14,4 @@ export {
   PhoneField,
   ReligionFields,
 } from "./formControls/CompositeFields.jsx";
-export { CheckboxField, ToggleChip } from "./formControls/Toggles.jsx";
+export { CheckboxField, ToggleChip, ToggleSwitch } from "./formControls/Toggles.jsx";

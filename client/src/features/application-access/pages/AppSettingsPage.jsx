@@ -6,7 +6,7 @@ import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
-import { ToggleChip } from "../../../components/ui/FormControls.jsx";
+import { ToggleSwitch } from "../../../components/ui/FormControls.jsx";
 import { NameList } from "../../../components/ui/NameList.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
@@ -305,9 +305,9 @@ export function AppSettingsPage() {
                 ]}
               />
               <div className="flex flex-wrap items-center gap-3 border-t border-(--mws-line) pt-4">
-                <ToggleChip checked={app.published} disabled={retired || publishMutation.isPending || (!app.published && !canShow)} onChange={changePublished}>
+                <ToggleSwitch checked={app.published} disabled={retired || publishMutation.isPending || (!app.published && !canShow)} onChange={changePublished}>
                   {app.published ? "Shown In Hub" : "Hidden From Hub"}
-                </ToggleChip>
+                </ToggleSwitch>
                 <span className="text-xs text-(--mws-muted)">Status and keywords are changed with Edit Details.</span>
               </div>
             </div>

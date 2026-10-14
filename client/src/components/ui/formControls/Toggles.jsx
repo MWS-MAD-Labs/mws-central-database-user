@@ -51,3 +51,22 @@ export function CheckboxField({ label, description, className, ...props }) {
     </label>
   );
 }
+
+// A sliding switch with its label beside it.
+export function ToggleSwitch({ checked, onChange, children, disabled = false, className }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn("inline-flex cursor-pointer items-center gap-2.5 text-sm font-semibold text-(--mws-charcoal) disabled:cursor-not-allowed disabled:opacity-50", className)}
+    >
+      <span className={cn("relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors", checked ? "bg-(--mws-burgundy)" : "bg-[#c9c3c0]")}>
+        <span className={cn("absolute left-0.5 size-5 rounded-full bg-white shadow transition-transform", checked ? "translate-x-5" : "translate-x-0")} />
+      </span>
+      {children}
+    </button>
+  );
+}
