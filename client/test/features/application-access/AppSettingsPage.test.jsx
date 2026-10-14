@@ -286,10 +286,11 @@ describe("AppSettingsPage", () => {
     ]);
     await user.click(await screen.findByRole("tab", { name: "Connection" }));
     await user.click(screen.getByRole("button", { name: "Change Sign-In Way" }));
-    expect(await screen.findByText(/Update its code first/)).toBeVisible();
+    expect(await screen.findByText(/Its code must handle the Hub code first/)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Switch To Code & Token" }));
     expect(await screen.findByText("Add To .env")).toBeVisible();
     expect(screen.getByText(/Your Central token stays the same/)).toBeVisible();
+    expect(screen.getByText(/within a minute/)).toBeVisible();
     expect(screen.queryByText(/s3cret-value/)).toBeNull();
   });
 
