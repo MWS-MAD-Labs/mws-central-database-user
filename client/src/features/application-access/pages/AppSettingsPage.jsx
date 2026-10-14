@@ -8,7 +8,6 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
 import { ToggleSwitch } from "../../../components/ui/FormControls.jsx";
 import { NameList } from "../../../components/ui/NameList.jsx";
-import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { Tabs } from "../../../components/ui/Tabs.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
@@ -18,6 +17,7 @@ import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { AppCardPreview } from "../components/AppCardPreview.jsx";
 import { ApplicationManagementDialogs } from "../components/ApplicationManagementDialogs.jsx";
+import { AppActivityTab } from "../components/AppActivityTab.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
 import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
 import { useApplicationManagement } from "../hooks/useApplicationManagement.js";
@@ -25,6 +25,7 @@ import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.
 import { useInternalEndpoints } from "../hooks/useInternalEndpoints.js";
 import { buildSteps, stepsDone, timeAgo } from "../utils/setupSteps.js";
 import { titleCase } from "../utils/roleLabel.js";
+import { computeDateRange } from "../../../lib/dateRange.js";
 import { canManageApplications } from "../utils/canManageApplications.js";
 
 const CARD_STATUS_LABEL = { active: "Active", maintenance: "Maintenance", coming_soon: "Coming Soon", new: "New" };
@@ -72,9 +73,16 @@ export function AppSettingsPage() {
   });
   const [activityPage, setActivityPage] = useState(1);
   const [activitySize, setActivitySize] = useState(10);
+  const [activityRange, setActivityRange] = useState({ preset: "this_month", ...computeDateRange("this_month") });
   const settingsQuery = useQuery({
-    queryKey: ["application-access", "settings", applicationId, activityPage, activitySize],
-    queryFn: () => applicationAccessApi.getSettings(applicationId, { page: activityPage, size: activitySize }),
+    queryKey: ["application-access", "settings", applicationId, activityPage, activitySize, activityRange.date_from, activityRange.date_to],
+    queryFn: () =>
+      applicationAccessApi.getSettings(applicationId, {
+        page: activityPage,
+        size: activitySize,
+        dateFrom: activityRange.date_from ? `${activityRange.date_from}T00:00:00.000` : undefined,
+        dateTo: activityRange.date_to ? `${activityRange.date_to}T23:59:59.999` : undefined,
+      }),
     enabled: superAdmin,
     placeholderData: keepPreviousData,
   });
@@ -374,37 +382,25 @@ export function AppSettingsPage() {
         ) : null}
 
         {active === "activity" ? (
-          more && more.activity.length > 0 ? (
-            <div className="space-y-3">
-              <ul className="divide-y divide-(--mws-line)">
-                {more.activity.map((item) => (
-                  <li key={item.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5 first:pt-0 last:pb-0">
-                    <span className="text-sm text-(--mws-charcoal)">{item.summary}</span>
-                    <span className="text-xs text-(--mws-muted)">
-                      {item.by ? `${item.by}, ` : ""}
-                      {formatDateTime(item.at)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl">
-                <PaginationBar
-                  paging={more.activity_paging}
-                  itemLabel="changes"
-                  isLoading={settingsQuery.isFetching}
-                  onPrevious={() => setActivityPage(Math.max(more.activity_paging.current_page - 1, 1))}
-                  onNext={() => setActivityPage(more.activity_paging.current_page + 1)}
-                  onPageChange={setActivityPage}
-                  onPageSizeChange={(next) => {
-                    setActivitySize(next);
-                    setActivityPage(1);
-                  }}
-                />
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-(--mws-muted)">No changes recorded yet.</p>
-          )
+          <AppActivityTab
+            data={more}
+            range={activityRange}
+            isDefaultRange={activityRange.preset === "this_month"}
+            isFetching={settingsQuery.isFetching}
+            onRangeChange={(next) => {
+              setActivityRange(next);
+              setActivityPage(1);
+            }}
+            onReset={() => {
+              setActivityRange({ preset: "this_month", ...computeDateRange("this_month") });
+              setActivityPage(1);
+            }}
+            onPage={setActivityPage}
+            onPageSize={(next) => {
+              setActivitySize(next);
+              setActivityPage(1);
+            }}
+          />
         ) : null}
       </section>
 

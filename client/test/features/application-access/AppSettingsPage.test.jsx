@@ -61,8 +61,8 @@ const SETTINGS = {
     ],
   },
   activity: [
-    { id: "a1", at: "2026-10-12T09:30:00.000Z", by: "Test Super Admin", summary: "Changed the card status" },
-    { id: "a2", at: "2026-10-03T08:00:00.000Z", by: "Test Super Admin", summary: "Added the application" },
+    { id: "a1", at: "2026-10-12T09:30:00.000Z", by: "Test Super Admin", by_role: "SUPER_ADMIN", by_email: "admin@example.com", title: "Details Changed", summary: "Changed the card status", changes: [{ label: "card status", from: "Active", to: "Maintenance" }, { label: "Hub secret" }], ip_address: "10.0.0.5" },
+    { id: "a2", at: "2026-10-03T08:00:00.000Z", by: "Test Super Admin", by_role: "SUPER_ADMIN", title: "Added", summary: "Added the application", changes: [] },
   ],
   activity_paging: { current_page: 1, total_page: 2, total_item: 12, size: 10 },
 };
@@ -189,10 +189,37 @@ describe("AppSettingsPage", () => {
     expect(screen.getByText("Blocked").previousElementSibling).toHaveTextContent("1");
   });
 
-  it("lists the latest changes on the activity tab", async () => {
-    renderPage(setup(), "/application-access/apps/demo/settings?tab=activity");
-    expect(await screen.findByText("Changed the card status")).toBeVisible();
-    expect(screen.getByText("Added the application")).toBeVisible();
+  it("filters the activity by date range, with this month as the start", async () => {
+    const { user } = renderPage(setup(), "/application-access/apps/demo/settings?tab=activity");
+    await screen.findByText("Details Changed");
+    const settingsCalls = () => globalThis.fetch.mock.calls.map(([url]) => String(url)).filter((url) => url.includes("/settings?"));
+    expect(settingsCalls()[0]).toMatch(/date_from=\d{4}-\d{2}-01T00%3A00%3A00\.000&date_to=/);
+    await user.click(screen.getByText("This Month"));
+    await user.click(await screen.findByText("Today"));
+    await waitFor(() => expect(settingsCalls().at(-1)).toMatch(/date_from=(\d{4}-\d{2}-\d{2})T00%3A00%3A00\.000&date_to=\1T23%3A59%3A59\.999/));
+    // Clear filters shows only once the range is not the start one, and brings it back.
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+    expect(screen.getByText("This Month")).toBeVisible();
+  });
+
+  it("lists the latest changes in a table, and opens the details of one", async () => {
+    const { user } = renderPage(setup(), "/application-access/apps/demo/settings?tab=activity");
+    expect(await screen.findByRole("columnheader", { name: "Actor" })).toBeVisible();
+    for (const name of ["Time", "Action", "Changes"]) expect(screen.getByRole("columnheader", { name })).toBeVisible();
+    expect(screen.getByText("Details Changed")).toBeVisible();
+    expect(screen.getByText("Added")).toBeVisible();
+    // The names of what changed sit in one short line, the values are in the details.
+    expect(screen.getByText("Card Status, Hub Secret")).toBeVisible();
+    expect(screen.queryByText(/Active → Maintenance/)).toBeNull();
+    await user.click(screen.getAllByRole("button", { name: "View Details" })[0]);
+    expect(await screen.findByText("Change Details")).toBeVisible();
+    expect(screen.getByText("Active")).toBeVisible();
+    expect(screen.getByText("Maintenance")).toBeVisible();
+    // A secret only says that it changed.
+    expect(screen.getByText("Changed")).toBeVisible();
+    expect(screen.getByText("10.0.0.5")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /Close/ }));
     // The changes come a page at a time.
     expect(screen.getByText(/Page 1 of 2 \/ 12 changes/)).toBeVisible();
     expect(screen.getByRole("button", { name: /Next/ })).toBeEnabled();

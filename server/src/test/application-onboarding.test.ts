@@ -248,6 +248,19 @@ describe("application onboarding", () => {
     expect(data.activity[0].by).toBeTruthy();
     expect(data.activity.every((item: { summary: string }) => !item.summary.includes("undefined"))).toBe(true);
 
+    // Each change says what it was and what it became.
+    const card = data.activity.find((item: { summary: string }) => item.summary === "Changed the card status");
+    expect(card.changes).toEqual([{ label: "card status", from: "Active", to: "Maintenance" }].map((row) => expect.objectContaining({ label: row.label, to: expect.stringMatching(/maintenance/i) })));
+    expect(card).toMatchObject({ title: "Details Changed", by_email: expect.stringContaining("@"), by_role: "SUPER_ADMIN" });
+    expect(data.activity.map((item: { title: string }) => item.title)).toContain("Added");
+    // The dates narrow the list: a window in the past holds nothing, and a bad date is refused.
+    const empty = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/settings?date_from=2020-01-01T00:00:00.000&date_to=2020-01-02T23:59:59.999`, accessToken)).json()).data;
+    expect(empty.activity).toEqual([]);
+    const today = new Date().toISOString().slice(0, 10);
+    const inRange = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/settings?date_from=${today}T00:00:00.000&date_to=${today}T23:59:59.999`, accessToken)).json()).data;
+    expect(inRange.activity.length).toBeGreaterThan(0);
+    expect((await TestRequest.get(`${ACCESS}/apps/${appId}/settings?date_from=nope`, accessToken)).status).toBe(400);
+
     // The changes come a page at a time, newest first.
     expect(data.activity_paging).toMatchObject({ current_page: 1, size: 10 });
     const small = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/settings?page=2&size=1`, accessToken)).json()).data;

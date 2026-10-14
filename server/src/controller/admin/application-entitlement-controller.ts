@@ -260,7 +260,7 @@ export class ApplicationAccessController {
   static async settings(c: Context<{ Variables: AdminVariables }>) {
     const page = Number(c.req.query("page")) || 1;
     const size = Number(c.req.query("size")) || 10;
-    return c.json({ data: await ApplicationOnboardingService.settings(c.var.admin, requireApplicationId(c), { page, size }) });
+    return c.json({ data: await ApplicationOnboardingService.settings(c.var.admin, requireApplicationId(c), { page, size, date_from: c.req.query("date_from"), date_to: c.req.query("date_to") }) });
   }
 
   static async getApplication(c: Context<{ Variables: AdminVariables }>) {

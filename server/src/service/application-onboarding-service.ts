@@ -99,9 +99,39 @@ export type ApplicationSettings = {
     blocked: number;
     roles: { id: string; key: string; label: string; is_active: boolean; permission_count: number; people: number; groups: number }[];
   };
-  activity: { id: string; at: string; by: string | null; summary: string }[];
+  activity: { id: string; at: string; by: string | null; by_email: string | null; by_role: string | null; title: string; summary: string; changes: ActivityChange[]; ip_address: string | null }[];
   activity_paging: { current_page: number; total_page: number; total_item: number; size: number };
 };
+
+// One line of a change: what it was and what it became. Secrets carry the label only.
+export type ActivityChange = { label: string; from?: string; to?: string };
+
+const HIDDEN_VALUE = new Set(["hub_internal_secret", "env_settings"]);
+const WORD: Record<string, string> = { relay: "Hub Code & Token", shared: "Shared Hub Session", sso: "Single Sign-On", link: "Plain Link" };
+
+function showValue(key: string, value: unknown): string {
+  if (value === null || value === undefined || value === "") return "None";
+  if (key === "published") return value ? "Shown" : "Hidden";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : "None";
+  const text = String(value);
+  return WORD[text] ?? text;
+}
+
+function changesOf(before: unknown, after: unknown): ActivityChange[] {
+  const oldValues = (before ?? {}) as Record<string, unknown>;
+  const newValues = (after ?? {}) as Record<string, unknown>;
+  const seen = new Set<string>();
+  const changes: ActivityChange[] = [];
+  for (const key of [...Object.keys(FIELD_LABEL), "published"]) {
+    if (!(key in oldValues && key in newValues) || JSON.stringify(oldValues[key]) === JSON.stringify(newValues[key])) continue;
+    const label = key === "published" ? "In the Hub" : FIELD_LABEL[key];
+    if (seen.has(label)) continue;
+    seen.add(label);
+    changes.push(HIDDEN_VALUE.has(key) || key.startsWith("hub_secret") ? { label } : { label, from: showValue(key, oldValues[key]), to: showValue(key, newValues[key]) });
+  }
+  return changes;
+}
 
 const ACTIVITY_LABEL: Partial<Record<AuditAction, string>> = {
   [AuditAction.APPLICATION_CREATE]: "Added the application",
@@ -132,6 +162,27 @@ const FIELD_LABEL: Record<string, string> = {
   hub_secret_mode: "Hub secret",
   hub_secret_version: "Hub secret",
 };
+
+// The short name of a change for a badge.
+const ACTIVITY_TITLE: Partial<Record<AuditAction, string>> = {
+  [AuditAction.APPLICATION_CREATE]: "Added",
+  [AuditAction.APPLICATION_RETIRE]: "Retired",
+  [AuditAction.APPLICATION_RESTORE]: "Restored",
+  [AuditAction.APPLICATION_DELETE]: "Deleted",
+  [AuditAction.API_TOKEN_ROTATE]: "Token Rotated",
+  [AuditAction.API_TOKEN_CREATE]: "Connection Made",
+  [AuditAction.API_TOKEN_REVOKE]: "Token Revoked",
+  [AuditAction.API_TOKEN_UPDATE_SCOPES]: "Data Access Changed",
+};
+
+function titleOf(action: AuditAction, before: unknown, after: unknown): string {
+  const fixed = ACTIVITY_TITLE[action];
+  if (fixed) return fixed;
+  const oldValues = (before ?? {}) as Record<string, unknown>;
+  const newValues = (after ?? {}) as Record<string, unknown>;
+  if (oldValues.published !== undefined && oldValues.published !== newValues.published) return newValues.published ? "Shown In Hub" : "Hidden From Hub";
+  return changesOf(before, after).length > 0 ? "Details Changed" : "Updated";
+}
 
 // A line about what a change did: shown or hidden in the Hub, or which details were changed.
 function describeChange(action: AuditAction, before: unknown, after: unknown): string {
@@ -351,13 +402,19 @@ export class ApplicationOnboardingService {
     return { ...detail, env_changes: await envChangesFor(after) };
   }
 
-  static async settings(admin: AdminUser, applicationId: string, paging: { page?: number; size?: number } = {}): Promise<ApplicationSettings> {
+  static async settings(admin: AdminUser, applicationId: string, paging: { page?: number; size?: number; date_from?: string; date_to?: string } = {}): Promise<ApplicationSettings> {
     assertSuperAdmin(admin);
     const app = await findApplication(applicationId);
     const client = await findConnectionClient(applicationId);
     const size = Math.min(Math.max(Math.trunc(paging.size ?? 10) || 10, 1), 100);
     const requested = Math.max(Math.trunc(paging.page ?? 1) || 1, 1);
-    const where = { OR: [{ entity_type: "Application", entity_id: app.id }, ...(client ? [{ entity_type: "ApiClient", entity_id: client.id }] : [])] };
+    const from = paging.date_from ? new Date(paging.date_from) : null;
+    const to = paging.date_to ? new Date(paging.date_to) : null;
+    if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime()))) throw new ResponseError(400, "The dates are not valid");
+    const where = {
+      OR: [{ entity_type: "Application", entity_id: app.id }, ...(client ? [{ entity_type: "ApiClient", entity_id: client.id }] : [])],
+      ...(from || to ? { created_at: { ...(from && { gte: from }), ...(to && { lte: to }) } } : {}),
+    };
     const totalLogs = await prismaClient.auditLog.count({ where });
     const totalPage = Math.max(Math.ceil(totalLogs / size), 1);
     const page = Math.min(requested, totalPage);
@@ -370,7 +427,7 @@ export class ApplicationOnboardingService {
         orderBy: { created_at: "desc" },
         skip: (page - 1) * size,
         take: size,
-        include: { admin: { select: { full_name: true, email: true } } },
+        include: { admin: { select: { full_name: true, email: true, role: true } } },
       }),
     ]);
     const active = detail.groups.filter((group) => group.is_active);
@@ -406,7 +463,12 @@ export class ApplicationOnboardingService {
         id: log.id,
         at: log.created_at.toISOString(),
         by: log.admin ? log.admin.full_name || log.admin.email : null,
+        by_email: log.admin?.email ?? null,
+        by_role: log.admin?.role ?? null,
+        title: titleOf(log.action, log.old_values, log.new_values),
         summary: describeChange(log.action, log.old_values, log.new_values),
+        changes: changesOf(log.old_values, log.new_values),
+        ip_address: log.ip_address ?? null,
       })),
       activity_paging: { current_page: page, total_page: totalPage, total_item: totalLogs, size },
     };
