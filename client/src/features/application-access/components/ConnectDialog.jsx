@@ -2,7 +2,6 @@ import { Check, Copy } from "lucide-react";
 import { Link } from "react-router";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
-import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
@@ -33,8 +32,8 @@ export function ConnectDialog({
       return `${index > 0 && startsGroup(index) ? "\n" : ""}${heading}${item.line}`;
     })
     .join("\n");
-  const confirm = useConfirm();
   const [copied, setCopied] = useState(false);
+  const [confirmingClose, setConfirmingClose] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const proven = proof ? Boolean(proof.used) : copied;
   const timer = useRef(null);
@@ -63,16 +62,9 @@ export function ConnectDialog({
     if (!proof) timer.current = setTimeout(onClose, CLOSE_DELAY_MS);
   }
 
-  async function requestClose() {
-    if (proven) return onClose();
-    const leave = await confirm({
-      title: "Close Without Copying?",
-      description: proof ? "These values are not in use yet and are not shown again. The application may stop working." : "The values are not shown again.",
-      confirmLabel: "Close Anyway",
-      cancelLabel: "Keep Open",
-      tone: "danger",
-    });
-    if (leave) onClose();
+  function requestClose() {
+    if (proven) onClose();
+    else setConfirmingClose(true);
   }
 
   return (
@@ -173,6 +165,21 @@ export function ConnectDialog({
           </div>
         ) : null}
 
+        {confirmingClose ? (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
+            <p className="text-(--mws-muted)">
+              <span className="font-semibold text-(--mws-charcoal)">{proof ? "Not in use yet." : "Not copied yet."}</span> The values are not shown again.
+            </p>
+            <div className="flex items-center gap-4 text-xs font-semibold">
+              <button type="button" className="cursor-pointer text-(--mws-muted) hover:text-(--mws-charcoal)" onClick={() => setConfirmingClose(false)}>
+                Keep Open
+              </button>
+              <button type="button" className="cursor-pointer text-[#a43c41] hover:underline" onClick={onClose}>
+                Close Anyway
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </CrudDialog>
   );
