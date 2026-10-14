@@ -244,6 +244,39 @@ describe("AppSettingsPage", () => {
     await waitFor(() => expect(sent()).toEqual([{ session_mode: "shared" }]));
   });
 
+  it("shows the lines to add after moving to Hub Code & Token, without rotating the token", async () => {
+    const line = (key, value, secret = false) => ({ key, value, secret, group: 0, line: `${key}="${value}"` });
+    const { user } = renderPage(setup({ application: { ...APP, session_mode: "shared" } }), "/application-access/apps/demo/settings", [
+      {
+        path: "/api/admin/application-access/apps/demo/details",
+        method: "PATCH",
+        response: () => jsonResponse({ data: { ...APP, session_mode: "relay", env_changes: { add: [line("HUB_BASE_URL", "https://hub.example.com"), line("HUB_INTERNAL_SECRET", "s3cret-value-1234567890", true)], remove: [] } } }),
+      },
+    ]);
+    await user.click(await screen.findByRole("tab", { name: "Connection" }));
+    await user.click(screen.getByRole("button", { name: "Change Sign-In Way" }));
+    expect(await screen.findByText(/not rotated/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Switch To Code & Token" }));
+    expect(await screen.findByText("Add These .env Lines")).toBeVisible();
+    expect(screen.getByText(/no rotation needed/)).toBeVisible();
+    expect(screen.queryByText(/s3cret-value/)).toBeNull();
+  });
+
+  it("lists the lines to remove after moving to Shared Hub Session", async () => {
+    const { user } = renderPage(setup(), "/application-access/apps/demo/settings", [
+      {
+        path: "/api/admin/application-access/apps/demo/details",
+        method: "PATCH",
+        response: () => jsonResponse({ data: { ...APP, session_mode: "shared", env_changes: { add: [], remove: ["HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"] } } }),
+      },
+    ]);
+    await user.click(await screen.findByRole("tab", { name: "Connection" }));
+    await user.click(screen.getByRole("button", { name: "Change Sign-In Way" }));
+    await user.click(await screen.findByRole("button", { name: "Switch To Shared Session" }));
+    expect(await screen.findByText("Remove These .env Lines")).toBeVisible();
+    expect(screen.getByText("HUB_INTERNAL_SECRET")).toBeVisible();
+  });
+
   it("does not offer to change the sign-in way for a plain link", async () => {
     renderPage(setup({ application: { ...APP, launch_mode: "link" } }));
     await screen.findByRole("heading", { name: "Demo App Settings" });

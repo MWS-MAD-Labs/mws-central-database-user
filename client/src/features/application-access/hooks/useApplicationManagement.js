@@ -14,6 +14,8 @@ export function useApplicationManagement(applicationId, setup) {
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [connection, setConnection] = useState(null);
+  // The .env lines to add or drop after the sign-in way changed. Shown once.
+  const [envChanges, setEnvChanges] = useState(null);
   const [removing, setRemoving] = useState(false);
   // A Hub secret made for this application. Shown once.
   const [appSecret, setAppSecret] = useState(null);
@@ -32,8 +34,10 @@ export function useApplicationManagement(applicationId, setup) {
   });
   const sessionModeMutation = useMutation({
     mutationFn: (sessionMode) => applicationAccessApi.updateDetails(applicationId, { session_mode: sessionMode }),
-    onSuccess: () => {
+    onSuccess: (response) => {
       refresh();
+      const changes = response?.env_changes;
+      if (changes && (changes.add.length || changes.remove.length)) setEnvChanges(changes);
       showSuccessToast("Sign-in way changed.");
     },
     onError: (error) => showErrorToast(error, "Could not change the sign-in way."),
@@ -110,8 +114,8 @@ export function useApplicationManagement(applicationId, setup) {
     const confirmed = await confirm({
       title: toShared ? "Switch To Shared Hub Session" : "Switch To Hub Code & Token",
       description: toShared
-        ? `${name} will read the Hub's session and needs no Hub secret. Its code has to be the version that reads the shared session first, or people cannot open it. The Hub secret and keys address in its .env stop being used.`
-        : `${name} will get a one-time code and a token from the Hub again, and keeps its own session and sign-out. Its code has to be the version that handles them, and its .env needs the Hub secret and keys address.`,
+        ? `${name} will read the Hub's session and needs no Hub secret. Its code has to be the version that reads the shared session first, or people cannot open it. The Hub secret and keys address in its .env stop being used. The Central token stays the same, so nothing is rotated.`
+        : `${name} will get a one-time code and a token from the Hub again, and keeps its own session and sign-out. Its code has to be the version that handles them, and its .env needs the Hub secret and keys address. You get those lines right after, the Central token stays the same and is not rotated.`,
       confirmLabel: toShared ? "Switch To Shared Session" : "Switch To Code & Token",
       tone: "danger",
     });
@@ -123,6 +127,7 @@ export function useApplicationManagement(applicationId, setup) {
     navigate,
     editing, setEditing,
     connection, setConnection,
+    envChanges, setEnvChanges,
     removing, setRemoving,
     appSecret, setAppSecret,
     removalGuide, setRemovalGuide,

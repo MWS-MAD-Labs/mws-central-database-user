@@ -282,6 +282,18 @@ async function envFor(
   return { env: buildEnvItems(facts), hub_lines_missing: usesHub && hubLinesMissing(facts) };
 }
 
+export type EnvChanges = { add: EnvItem[]; remove: string[] };
+
+const HUB_RELAY_KEYS = ["HUB_BASE_URL", "HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"];
+
+// What the .env must gain or lose after the sign-in way changed. The Central token stays as it is.
+async function envChangesFor(app: Parameters<typeof envFor>[0]): Promise<EnvChanges> {
+  if (app.session_mode === ApplicationSessionMode.SHARED) return { add: [], remove: ["HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"] };
+  if (app.uses_hub === false) return { add: [], remove: [] };
+  const { env } = await envFor(app, "", "", "", undefined, true);
+  return { add: env.filter((line) => HUB_RELAY_KEYS.includes(line.key)), remove: [] };
+}
+
 export class ApplicationOnboardingService {
   // The address kept for the Hub, or nothing when there is none yet.
   static async savedHubAddress(): Promise<string | null> {
@@ -297,7 +309,7 @@ export class ApplicationOnboardingService {
     admin: AdminUser,
     request: UpdateApplicationRequest,
     context: AuditRequestContext = {},
-  ): Promise<ApplicationDetail> {
+  ): Promise<ApplicationDetail & { env_changes?: EnvChanges }> {
     assertSuperAdmin(admin);
     const input = Validation.validate(ApplicationValidation.UPDATE, request);
     const before = await findApplication(input.application_id);
@@ -333,7 +345,10 @@ export class ApplicationOnboardingService {
       ip_address: context.ip_address,
       user_agent: context.user_agent,
     });
-    return toDetail(after);
+    const detail = toDetail(after);
+    if (after.session_mode === before.session_mode || after.application_id === hubApplicationId()) return detail;
+    // Shown once. The secret is never kept in the audit log above.
+    return { ...detail, env_changes: await envChangesFor(after) };
   }
 
   static async settings(admin: AdminUser, applicationId: string, paging: { page?: number; size?: number } = {}): Promise<ApplicationSettings> {

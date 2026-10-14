@@ -1098,7 +1098,15 @@ describe("application onboarding", () => {
         // Moving it to the older way brings the Hub secret lines back, and the change is in the activity.
         const moved = await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { session_mode: "relay" }, accessToken);
         expect(moved.status).toBe(200);
-        expect((await moved.json()).data.session_mode).toBe("relay");
+        const movedData = (await moved.json()).data;
+        expect(movedData.session_mode).toBe("relay");
+        // The lines to add come back once, with the secret, and the token is not part of it.
+        expect(movedData.env_changes.add.map((item: { key: string }) => item.key)).toEqual(["HUB_BASE_URL", "HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"]);
+        expect(movedData.env_changes.remove).toEqual([]);
+        const back = await (await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { session_mode: "shared" }, accessToken)).json();
+        expect(back.data.env_changes).toEqual({ add: [], remove: ["HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"] });
+        expect((await (await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { name: "TEST_Shared2" }, accessToken)).json()).data.env_changes).toBeUndefined();
+        await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { session_mode: "relay" }, accessToken);
         const rotated = await TestRequest.post(`${ACCESS}/apps/${shared}/rotate`, { immediate: true }, accessToken);
         expect((await rotated.json()).data.env.map((item: { key: string }) => item.key)).toContain("HUB_INTERNAL_SECRET");
         expect((await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { session_mode: "teleport" }, accessToken)).status).toBe(400);
