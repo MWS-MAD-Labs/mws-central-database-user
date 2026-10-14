@@ -93,8 +93,8 @@ export function AppGuidePage() {
 
   const previous = GUIDE_PARTS[index - 1];
   const next = GUIDE_PARTS[index + 1];
-  const pager = (position) => (
-    <div className={cn("flex items-center justify-between gap-3", position === "bottom" && "border-t border-(--mws-line) pt-4")}>
+  const pager = (
+    <div className="flex items-center justify-between gap-3 border-t border-(--mws-line) pt-4">
       {previous ? (
         <Button asChild variant="secondary" size="sm">
           <Link to={hrefFor(previous.id)}>
@@ -144,10 +144,9 @@ export function AppGuidePage() {
               </p>
               <h2 className="font-display text-xl font-bold text-(--mws-charcoal)">{GUIDE_PARTS[index].label}</h2>
             </div>
-            {pager("top")}
           </div>
           {body}
-          {pager("bottom")}
+          {pager}
         </article>
       </div>
     </div>

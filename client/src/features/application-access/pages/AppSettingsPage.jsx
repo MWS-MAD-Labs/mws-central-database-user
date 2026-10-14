@@ -104,7 +104,7 @@ export function AppSettingsPage() {
   const retired = Boolean(app.retired_at);
   const link = app.launch_mode === "link";
   const endpointCount = countFor(setup.data_access.scope_names);
-  const { setEditing, setRotating, setDataAccess, setRemoving, setRemovalGuide, restoreMutation, publishMutation, connectMutation, appSecretMutation, sessionModeMutation, hubLinesMutation, retire, changeAppSecret, changeSessionMode } = mgmt;
+  const { setEditing, setRotating, setDataAccess, setRemoving, setRemovalGuide, restoreMutation, publishMutation, connectMutation, appSecretMutation, sessionModeMutation, hubLinesMutation, retire, changeAppSecret, changeSessionMode, changePublished } = mgmt;
   const canShow = setup.can_publish && Boolean(app.launch_url);
 
   const tabs = [
@@ -307,8 +307,8 @@ export function AppSettingsPage() {
                 ]}
               />
               <div className="flex flex-wrap items-center gap-3 border-t border-(--mws-line) pt-4">
-                <ToggleChip checked={app.published} disabled={retired || publishMutation.isPending || (!app.published && !canShow)} onChange={(next) => publishMutation.mutate(next)}>
-                  {app.published ? "Shown" : "Hidden"}
+                <ToggleChip checked={app.published} disabled={retired || publishMutation.isPending || (!app.published && !canShow)} onChange={changePublished}>
+                  {app.published ? "Shown In Hub" : "Hidden From Hub"}
                 </ToggleChip>
                 <span className="text-xs text-(--mws-muted)">Status and keywords are changed with Edit Details.</span>
               </div>

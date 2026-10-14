@@ -169,7 +169,11 @@ describe("AppSettingsPage", () => {
     expect(screen.getByText("In The Hub").previousElementSibling).toHaveTextContent("Shown");
     expect(screen.getByText("checkin, daily")).toBeVisible();
     expect(screen.getByText("Preview")).toBeVisible();
-    await user.click(screen.getByRole("switch", { name: "Shown" }));
+    await user.click(screen.getByRole("switch", { name: "Shown In Hub" }));
+    // Nothing is sent until it is confirmed.
+    expect(await screen.findByText(/Hide .* From The Hub/)).toBeVisible();
+    expect(calls).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Hide" }));
     await waitFor(() => expect(calls).toEqual(["unpublish"]));
   });
 
@@ -197,7 +201,7 @@ describe("AppSettingsPage", () => {
 
   it("keeps the switch on for an application that was hidden again, without the setup steps", async () => {
     renderPage(setup({ application: { ...APP, published: false } }), "/application-access/apps/demo/settings?tab=card");
-    const toggle = await screen.findByRole("switch", { name: "Hidden" });
+    const toggle = await screen.findByRole("switch", { name: "Hidden From Hub" });
     expect(toggle).toBeEnabled();
     expect(screen.queryByText("Setup steps")).toBeNull();
   });

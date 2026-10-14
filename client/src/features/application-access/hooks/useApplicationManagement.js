@@ -112,6 +112,17 @@ export function useApplicationManagement(applicationId, setup) {
     if (confirmed) appSecretMutation.mutate(own ? "rotate" : "own");
   }
 
+  async function changePublished(publish) {
+    const name = setup.application.name;
+    const confirmed = await confirm({
+      title: publish ? `Show ${name} In The Hub` : `Hide ${name} From The Hub`,
+      description: publish ? `People with access will see the card of ${name} in the Hub.` : `People will no longer see the card of ${name} in the Hub.`,
+      confirmLabel: publish ? "Show" : "Hide",
+      tone: publish ? undefined : "danger",
+    });
+    if (confirmed) publishMutation.mutate(publish);
+  }
+
   // The other way round from what it is now. The application's code has to match, so this asks first.
   async function changeSessionMode() {
     const toShared = setup.application.session_mode !== "shared";
@@ -142,5 +153,6 @@ export function useApplicationManagement(applicationId, setup) {
     retire,
     changeAppSecret,
     changeSessionMode,
+    changePublished,
   };
 }

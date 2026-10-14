@@ -315,10 +315,11 @@ describe("AppSetupPage", () => {
     // Showing it in the Hub finishes the setup, so Settings takes over from here.
     expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
     await user.click(await screen.findByRole("tab", { name: "Hub Card" }));
-    await user.click(await screen.findByRole("switch", { name: "Shown" }));
+    await user.click(await screen.findByRole("switch", { name: "Shown In Hub" }));
+    await user.click(await screen.findByRole("button", { name: "Hide" }));
     await waitFor(() => expect(calls).toEqual(["publish", "unpublish"]));
     // It stays on Settings after hiding, and showing it again is one click away.
-    expect(await screen.findByRole("switch", { name: "Hidden" })).toBeEnabled();
+    expect(await screen.findByRole("switch", { name: "Hidden From Hub" })).toBeEnabled();
   });
   it("removes the application without a second error toast from the page it leaves", async () => {
     let removed = false;
