@@ -77,8 +77,8 @@ export function routesFor(data, extra = []) {
   ];
 }
 
-function renderPage(data, route = "/application-access/apps/demo/settings") {
-  globalThis.fetch = createFetchRouter(routesFor(data));
+function renderPage(data, route = "/application-access/apps/demo/settings", extra = []) {
+  globalThis.fetch = createFetchRouter(routesFor(data, extra));
   return renderWithProviders(
     <AuthContext.Provider value={{ user: { role: "SUPER_ADMIN" } }}>
       <ConfirmProvider>
@@ -117,7 +117,9 @@ describe("AppSettingsPage", () => {
   it("shows the token, data access and the names it reads on the connection tab", async () => {
     const { user } = renderPage(setup());
     await user.click(await screen.findByRole("tab", { name: "Connection" }));
-    expect(screen.getByText("mws_702f6901a3f1…")).toBeVisible();
+    // Only that there is a token and when it was made. Not the token, not even its beginning.
+    expect(screen.getByText(/^Made \d{1,2} \w{3} 2026$/)).toBeVisible();
+    expect(screen.queryByText(/mws_702f6901a3f1/)).toBeNull();
     expect(screen.getByText("Development")).toBeVisible();
     expect(screen.getByText("Permissions").previousElementSibling).toHaveTextContent("4");
     expect(screen.getByText("Scopes").previousElementSibling).toHaveTextContent("1");
@@ -129,13 +131,13 @@ describe("AppSettingsPage", () => {
   it("says how the application signs in, and shows the Hub secret only for the code and token way", async () => {
     const relay = renderPage(setup());
     await relay.user.click(await screen.findByRole("tab", { name: "Connection" }));
-    expect(screen.getByText("Sign-In Way").nextElementSibling).toHaveTextContent("Hub code and token");
-    expect(screen.getByText("Hub Secret")).toBeVisible();
+    expect(screen.getByText("Sign-In Way").nextElementSibling).toHaveTextContent("Hub Code & Token");
+    expect(screen.getByText("Hub Secret").nextElementSibling).toHaveTextContent("Shared With Other Apps");
     relay.unmount();
 
     const shared = renderPage(setup({ application: { ...APP, session_mode: "shared" }, hub_secret: { mode: "shared", version: 1, applies: false } }));
     await shared.user.click(await screen.findByRole("tab", { name: "Connection" }));
-    expect(screen.getByText("Sign-In Way").nextElementSibling).toHaveTextContent("Shared Hub session");
+    expect(screen.getByText("Sign-In Way").nextElementSibling).toHaveTextContent("Shared Hub Session");
     expect(screen.queryByText("Hub Secret")).toBeNull();
   });
 
@@ -209,6 +211,42 @@ describe("AppSettingsPage", () => {
     renderPage(setup({ application: { ...APP, launch_mode: "link" }, connection: { client_id: null, created: false, last_used_at: null }, permissions: { count: 0, synced_at: null } }));
     expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
     expect(screen.queryByRole("tab", { name: "Connection" })).toBeNull();
-    expect(screen.getByText("Plain Link")).toBeVisible();
+    expect(screen.getAllByText("Plain Link").length).toBeGreaterThan(0);
+  });
+
+  it("writes the overview labels in Title Case and names how it opens like the form does", async () => {
+    renderPage(setup());
+    expect(await screen.findByText("Logout Address")).toBeVisible();
+    expect(screen.getByText("Opens As").nextElementSibling).toHaveTextContent("Single Sign-On");
+    expect(screen.getByText("Last Updated")).toBeVisible();
+    expect(screen.queryByText("Logout address")).toBeNull();
+  });
+
+  it("calls a dedicated Hub secret dedicated, and counts the scopes in Title Case", async () => {
+    const { user } = renderPage(setup({ hub_secret: { mode: "own", version: 1, applies: true }, data_access: { scope_names: ["a:read", "b:read"], editable: true } }));
+    await user.click(await screen.findByRole("tab", { name: "Connection" }));
+    expect(screen.getByText("Hub Secret").nextElementSibling).toHaveTextContent("Dedicated, Version 1");
+    expect(screen.getByRole("button", { name: "2 Scopes" })).toBeVisible();
+    expect(screen.queryByText(/Its own/)).toBeNull();
+  });
+
+  it("changes the sign-in way only after asking, and sends the new way", async () => {
+    const { user } = renderPage(setup(), "/application-access/apps/demo/settings", [
+      { path: "/api/admin/application-access/apps/demo/details", method: "PATCH", response: () => jsonResponse({ data: { ...APP, session_mode: "shared" } }) },
+    ]);
+    const sent = () => globalThis.fetch.mock.calls.filter(([, options]) => options?.method === "PATCH").map(([, options]) => JSON.parse(options.body));
+    await user.click(await screen.findByRole("tab", { name: "Connection" }));
+    await user.click(screen.getByRole("button", { name: "Change Sign-In Way" }));
+    expect(await screen.findByText("Switch To Shared Hub Session")).toBeVisible();
+    // Nothing is sent until it is confirmed.
+    expect(sent()).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Switch To Shared Session" }));
+    await waitFor(() => expect(sent()).toEqual([{ session_mode: "shared" }]));
+  });
+
+  it("does not offer to change the sign-in way for a plain link", async () => {
+    renderPage(setup({ application: { ...APP, launch_mode: "link" } }));
+    await screen.findByRole("heading", { name: "Demo App Settings" });
+    expect(screen.queryByRole("button", { name: "Change Sign-In Way" })).toBeNull();
   });
 });

@@ -104,7 +104,7 @@ export function AppSettingsPage() {
   const retired = Boolean(app.retired_at);
   const link = app.launch_mode === "link";
   const endpointCount = countFor(setup.data_access.scope_names);
-  const { setEditing, setRotating, setDataAccess, setRemoving, setRemovalGuide, restoreMutation, publishMutation, connectMutation, appSecretMutation, retire, changeAppSecret } = mgmt;
+  const { setEditing, setRotating, setDataAccess, setRemoving, setRemovalGuide, restoreMutation, publishMutation, connectMutation, appSecretMutation, sessionModeMutation, retire, changeAppSecret, changeSessionMode } = mgmt;
   const canShow = setup.can_publish && Boolean(app.launch_url);
 
   const tabs = [
@@ -227,11 +227,11 @@ export function AppSettingsPage() {
               ["Application ID", mono(app.application_id)],
               ...(setup.is_hub ? [] : [["Organization ID", <CopyableId key="org" value={setup.organization_id} />]]),
               ...(setup.is_hub ? [] : [["Address", mono(app.launch_url || "Not set")]]),
-              ...(setup.is_hub || link ? [] : [["Logout address", mono(app.logout_url || "None")]]),
-              ...(setup.is_hub ? [] : [["Opens as", link ? "A plain link, nobody signs in through the Hub" : "People sign in through the Hub"]]),
+              ...(setup.is_hub || link ? [] : [["Logout Address", mono(app.logout_url || "None")]]),
+              ...(setup.is_hub ? [] : [["Opens As", link ? "Plain Link" : "Single Sign-On"]]),
               ...(app.category ? [["Category", nameOf(taxonomy.categories, app.category) || app.category]] : []),
               ...(app.scope ? [["Scope", nameOf(taxonomy.scopes, app.scope) || app.scope]] : []),
-              ...(more ? [["Created", formatDateTime(more.created_at)], ["Last updated", `${formatDateTime(more.updated_at)}${more.activity[0]?.by ? ` by ${more.activity[0].by}` : ""}`]] : []),
+              ...(more ? [["Created", formatDateTime(more.created_at)], ["Last Updated", `${formatDateTime(more.updated_at)}${more.activity[0]?.by ? ` by ${more.activity[0].by}` : ""}`]] : []),
             ]}
           />
         ) : null}
@@ -250,14 +250,14 @@ export function AppSettingsPage() {
             />
             <Rows
               rows={[
-                ["Token", more?.token ? <span key="t">{mono(`${more.token.prefix}…`)}<span className="text-(--mws-muted)">, made {formatDate(more.token.created_at)}</span></span> : "None yet"],
+                ["Token", more?.token ? `Made ${formatDate(more.token.created_at)}` : "None Yet"],
                 ["Environment", more?.token?.environment ? titleCase(more.token.environment.toLowerCase()) : setup.environment ? titleCase(setup.environment) : "-"],
                 ["Permissions Received", setup.permissions.synced_at ? `${formatDateTime(setup.permissions.synced_at)} (${timeAgo(setup.permissions.synced_at)} Ago)` : "Not yet"],
-                ["Data Access", <NameList key="d" names={setup.data_access.scope_names} noun="scopes" title="Data access scopes" plain="None" />],
+                ["Data Access", <NameList key="d" names={setup.data_access.scope_names} noun="Scopes" title="Data access scopes" plain="None" />],
                 ...(setup.application.launch_mode === "sso" && setup.application.uses_hub && !setup.hub
-                  ? [["Sign-In Way", setup.application.session_mode === "shared" ? "Shared Hub session" : "Hub code and token"]]
+                  ? [["Sign-In Way", setup.application.session_mode === "shared" ? "Shared Hub Session" : "Hub Code & Token"]]
                   : []),
-                ...(setup.hub_secret?.applies ? [["Hub Secret", setup.hub_secret.mode === "own" ? `Its own, version ${setup.hub_secret.version}` : "The Hub's shared secret"]] : []),
+                ...(setup.hub_secret?.applies ? [["Hub Secret", setup.hub_secret.mode === "own" ? `Dedicated, Version ${setup.hub_secret.version}` : "Shared With Other Apps"]] : []),
                 ["Reads From .env", mono((setup.env_keys ?? []).map((item) => item.key).join(", ") || "-")],
               ]}
             />
@@ -266,8 +266,11 @@ export function AppSettingsPage() {
                 <TextAction onClick={() => setRotating(true)}>Rotate Token</TextAction>
                 {setup.hub_secret?.applies ? (
                   <TextAction loading={appSecretMutation.isPending} onClick={changeAppSecret}>
-                    {setup.hub_secret.mode === "own" ? "Rotate Hub Secret" : "Give Its Own Hub Secret"}
+                    {setup.hub_secret.mode === "own" ? "Rotate Hub Secret" : "Give A Dedicated Hub Secret"}
                   </TextAction>
+                ) : null}
+                {setup.application.launch_mode === "sso" && setup.application.uses_hub && !setup.hub ? (
+                  <TextAction loading={sessionModeMutation.isPending} onClick={changeSessionMode}>Change Sign-In Way</TextAction>
                 ) : null}
                 {endpointsLoaded && setup.data_access.editable ? <TextAction onClick={() => setDataAccess(true)}>Change Data Access</TextAction> : null}
                 <TextAction asChild>

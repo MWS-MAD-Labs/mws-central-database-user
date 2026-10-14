@@ -28,7 +28,7 @@ const SESSION_MODES = [
   },
   {
     value: "relay",
-    label: "Hub Code and Token",
+    label: "Hub Code & Token",
     hint: "The Hub gives the application a one-time code and a token, and the application keeps its own session and sign-out. For an application on another domain, or one that has not moved to the shared session yet.",
   },
 ];
@@ -242,7 +242,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       logout_url: joinAddress(environment, effectiveLogout),
       launch_mode: launchMode,
       uses_hub: launchMode === "sso" ? usesHub : true,
-      session_mode: launchMode === "sso" && usesHub ? sessionMode : "relay",
+      // Only chosen when the application is added. Changing it later is its own step in Settings.
+      ...(layout === "page" ? { session_mode: launchMode === "sso" && usesHub ? sessionMode : "relay" } : {}),
       // On the page layout the connection is made together with the application, unless it is a plain link.
       ...(layout === "page" && launchMode === "sso" ? { connect: true, scope_names: scopeNames } : {}),
     });
@@ -312,7 +313,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
             onChange={(event) => setUsesHub(event.target.checked)}
           />
         ) : null}
-        {launchMode === "sso" && usesHub && !hub ? (
+        {layout === "page" && launchMode === "sso" && usesHub && !hub ? (
           <Field label="Sign-In Way" hint={SESSION_MODES.find((item) => item.value === sessionMode)?.hint}>
             <SearchableSelect value={sessionMode} onChange={setSessionMode} options={SESSION_MODES} placeholder="Select how it signs in" />
           </Field>

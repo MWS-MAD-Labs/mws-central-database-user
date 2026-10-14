@@ -488,7 +488,7 @@ describe('AppCreatePage', () => {
     expect(await screen.findByText('The application answers.')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Shared Hub Session' })).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Shared Hub Session' }))
-    await user.click(screen.getByRole('option', { name: /Hub Code and Token/ }))
+    await user.click(screen.getByRole('option', { name: /Hub Code & Token/ }))
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')

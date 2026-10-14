@@ -30,6 +30,14 @@ export function useApplicationManagement(applicationId, setup) {
     },
     onError: (error) => showErrorToast(error, "Could not make the Hub secret."),
   });
+  const sessionModeMutation = useMutation({
+    mutationFn: (sessionMode) => applicationAccessApi.updateDetails(applicationId, { session_mode: sessionMode }),
+    onSuccess: () => {
+      refresh();
+      showSuccessToast("Sign-in way changed.");
+    },
+    onError: (error) => showErrorToast(error, "Could not change the sign-in way."),
+  });
   const connectMutation = useMutation({
     mutationFn: () => applicationAccessApi.connect(applicationId),
     onSuccess: (response) => {
@@ -85,14 +93,29 @@ export function useApplicationManagement(applicationId, setup) {
   async function changeAppSecret() {
     const own = setup.hub_secret.mode === "own";
     const confirmed = await confirm({
-      title: own ? "Rotate Hub Secret" : "Give Its Own Hub Secret",
+      title: own ? "Rotate Hub Secret" : "Give A Dedicated Hub Secret",
       description: own
         ? `${setup.application.name} and the Hub stop trusting each other until its .env has the new value. Other applications are not affected.`
         : `${setup.application.name} gets a Hub secret that only it has, so one that leaks does not reach the others. Put the new value in its .env. Until then it keeps working with the Hub's own secret.`,
-      confirmLabel: own ? "Rotate" : "Give Its Own",
+      confirmLabel: own ? "Rotate" : "Give",
       tone: own ? "danger" : undefined,
     });
     if (confirmed) appSecretMutation.mutate(own ? "rotate" : "own");
+  }
+
+  // The other way round from what it is now. The application's code has to match, so this asks first.
+  async function changeSessionMode() {
+    const toShared = setup.application.session_mode !== "shared";
+    const name = setup.application.name;
+    const confirmed = await confirm({
+      title: toShared ? "Switch To Shared Hub Session" : "Switch To Hub Code & Token",
+      description: toShared
+        ? `${name} will read the Hub's session and needs no Hub secret. Its code has to be the version that reads the shared session first, or people cannot open it. The Hub secret and keys address in its .env stop being used.`
+        : `${name} will get a one-time code and a token from the Hub again, and keeps its own session and sign-out. Its code has to be the version that handles them, and its .env needs the Hub secret and keys address.`,
+      confirmLabel: toShared ? "Switch To Shared Session" : "Switch To Code & Token",
+      tone: "danger",
+    });
+    if (confirmed) sessionModeMutation.mutate(toShared ? "shared" : "relay");
   }
 
   return {
@@ -105,8 +128,9 @@ export function useApplicationManagement(applicationId, setup) {
     removalGuide, setRemovalGuide,
     rotating, setRotating,
     dataAccess, setDataAccess,
-    appSecretMutation, connectMutation, updateMutation, retireMutation, restoreMutation, publishMutation,
+    appSecretMutation, sessionModeMutation, connectMutation, updateMutation, retireMutation, restoreMutation, publishMutation,
     retire,
     changeAppSecret,
+    changeSessionMode,
   };
 }
