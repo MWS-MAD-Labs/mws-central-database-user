@@ -2,6 +2,7 @@ import { Check, Copy } from "lucide-react";
 import { Link } from "react-router";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
@@ -32,9 +33,9 @@ export function ConnectDialog({
       return `${index > 0 && startsGroup(index) ? "\n" : ""}${heading}${item.line}`;
     })
     .join("\n");
+  const confirm = useConfirm();
   const [copied, setCopied] = useState(false);
   const [blocked, setBlocked] = useState(false);
-  const [confirmingClose, setConfirmingClose] = useState(false);
   const proven = proof ? Boolean(proof.used) : copied;
   const timer = useRef(null);
   const fallbackRef = useRef(null);
@@ -62,9 +63,16 @@ export function ConnectDialog({
     if (!proof) timer.current = setTimeout(onClose, CLOSE_DELAY_MS);
   }
 
-  function requestClose() {
-    if (proven) onClose();
-    else setConfirmingClose(true);
+  async function requestClose() {
+    if (proven) return onClose();
+    const leave = await confirm({
+      title: "Close Without Copying?",
+      description: proof ? "These values are not in use yet and are not shown again. The application may stop working." : "The values are not shown again.",
+      confirmLabel: "Close Anyway",
+      cancelLabel: "Keep Open",
+      tone: "danger",
+    });
+    if (leave) onClose();
   }
 
   return (
@@ -165,22 +173,6 @@ export function ConnectDialog({
           </div>
         ) : null}
 
-        {confirmingClose ? (
-          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d8b45b] bg-[#fff8e8] px-3 py-2.5">
-            <p className="min-w-0 text-sm text-[#745716]">
-              <span className="font-semibold">{proof ? "Not in use yet." : "Not copied yet."}</span>{" "}
-              {proof ? "These values are not shown again." : "The values are not shown again."}
-            </p>
-            <div className="flex shrink-0 items-center gap-1">
-              <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-                Close Anyway
-              </Button>
-              <Button type="button" size="sm" onClick={() => setConfirmingClose(false)}>
-                Keep Open
-              </Button>
-            </div>
-          </div>
-        ) : null}
       </div>
     </CrudDialog>
   );

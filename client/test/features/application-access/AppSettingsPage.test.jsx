@@ -291,6 +291,11 @@ describe("AppSettingsPage", () => {
     expect(await screen.findByText("Add To .env")).toBeVisible();
     expect(screen.getByText(/Your Central token stays the same/)).toBeVisible();
     expect(screen.queryByText(/s3cret-value/)).toBeNull();
+    // Closing before the values are copied asks first, and Keep Open leaves the dialog as it is.
+    await user.click(screen.getByRole("button", { name: "Close Dialog" }));
+    expect(await screen.findByText("Close Without Copying?")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Keep Open" }));
+    expect(screen.getByText("Add To .env")).toBeVisible();
   });
 
   it("lists the lines to remove after moving to Shared Hub Session", async () => {
