@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
@@ -24,18 +25,72 @@ function RotatedConnectDialog({ applicationId, ...props }) {
   return <ConnectDialog {...props} proof={{ used: Boolean(query.data?.connection.newest_token_used_at) }} />;
 }
 
-// The lines to drop from the .env, closed only once the person says it is done.
-function RemoveLinesDialog({ name, keys, onClose }) {
+// The Hub lines to add after switching to the code and token way, until Central has seen a code traded.
+function SignInConnectDialog({ applicationId, ...props }) {
+  const proof = useSignInProof(applicationId);
   return (
-    <CrudDialog title="Remove From .env" description={`In the .env of ${name}, delete:`} onClose={onClose}>
+    <ConnectDialog
+      {...props}
+      proof={{ ...proof, waiting: "Waiting for the app to sign someone in with a Hub code. Open it from the Hub.", done: "The app signs in with a Hub code. You are done." }}
+    />
+  );
+}
+
+// Whether Central has seen the application sign in the way it was switched to.
+function useSignInProof(applicationId) {
+  const query = useQuery({
+    queryKey: ["application-access", "setup", applicationId, "sign-in-proof"],
+    queryFn: () => applicationAccessApi.getSetup(applicationId),
+    refetchInterval: (state) => {
+      const check = state.state.data?.session_check;
+      return check?.confirmed_at || check?.known === false ? false : 5000;
+    },
+  });
+  const check = query.data?.session_check;
+  return { used: Boolean(check?.confirmed_at), unknown: check?.known === false };
+}
+
+// The lines to drop from the .env. It is done when Central has seen the application sign in the new way.
+function RemoveLinesDialog({ applicationId, name, keys, onClose }) {
+  const proof = useSignInProof(applicationId);
+  const [leaving, setLeaving] = useState(false);
+  const done = proof.used || proof.unknown;
+  function requestClose() {
+    if (done) onClose();
+    else setLeaving(true);
+  }
+  return (
+    <CrudDialog title="Remove From .env" description={`In the .env of ${name}, delete:`} onClose={requestClose}>
       <ul className="space-y-1 rounded-xl border border-(--mws-line) bg-(--mws-soft) px-3 py-3 font-mono text-xs text-(--mws-charcoal)">
         {keys.map((key) => (
           <li key={key}>{key}</li>
         ))}
       </ul>
       <p className="mt-3 text-xs text-(--mws-muted)">Your Central token stays the same.</p>
+      <p className="mt-3 text-sm text-(--mws-charcoal)">
+        {proof.used
+          ? "The app reads the Hub session. You are done."
+          : proof.unknown
+            ? "Cannot check right now. Close this when the app is deployed."
+            : "Waiting for the app to read the Hub session. Open it from the Hub."}
+      </p>
+      {leaving ? (
+        <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
+          <p className="text-(--mws-muted)">
+            <span className="font-semibold text-(--mws-charcoal)">Not in use yet.</span> The lines to remove are not shown again.
+          </p>
+          <div className="flex items-center gap-4 text-xs font-semibold">
+            <button type="button" className="cursor-pointer text-(--mws-muted) hover:text-(--mws-charcoal)" onClick={() => setLeaving(false)}>
+              Keep Open
+            </button>
+            <button type="button" className="cursor-pointer text-[#a43c41] hover:underline" onClick={onClose}>
+              Close Anyway
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div className="mt-4 flex justify-end">
-        <Button type="button" onClick={onClose}>Done</Button>
+        <Button type="button" disabled={!done} onClick={onClose}>Done</Button>
       </div>
     </CrudDialog>
   );
@@ -74,7 +129,8 @@ export function ApplicationManagementDialogs({ applicationId, setup, mgmt }) {
         <RemoveApplicationDialog applicationId={applicationId} onClose={() => mgmt.setRemoving(false)} onRemoved={() => mgmt.navigate(BACK)} />
       ) : null}
       {mgmt.envChanges?.add.length ? (
-        <ConnectDialog
+        <SignInConnectDialog
+          applicationId={applicationId}
           title="Add To .env"
           description={`Add these to the .env of ${setup.application.name}. Your Central token stays the same.`}
           onceLabel="Secret Shown Once"
@@ -83,7 +139,7 @@ export function ApplicationManagementDialogs({ applicationId, setup, mgmt }) {
         />
       ) : null}
       {mgmt.envChanges?.remove.length ? (
-        <RemoveLinesDialog name={setup.application.name} keys={mgmt.envChanges.remove} onClose={() => mgmt.setEnvChanges(null)} />
+        <RemoveLinesDialog applicationId={applicationId} name={setup.application.name} keys={mgmt.envChanges.remove} onClose={() => mgmt.setEnvChanges(null)} />
       ) : null}
       {mgmt.connection ? <ConnectDialog connection={mgmt.connection} onClose={() => mgmt.setConnection(null)} /> : null}
       {mgmt.appSecret ? (

@@ -1,4 +1,4 @@
-import { healthOf, type ApplicationHealth, type HealthCredential } from "./application-health";
+import { confirmSignIn, healthOf, type ApplicationHealth, type HealthCredential } from "./application-health";
 import { AdminRole, ApiCredentialStatus, HubSecretMode, ApplicationLaunchMode, ApplicationSessionMode, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
 import type { AdminUser } from "../generated/prisma/client";
 import type { HubCardStatus } from "../generated/prisma/client";
@@ -59,6 +59,8 @@ export type SetupStatus = {
   organization_id: string;
   connection: { client_id: string | null; created: boolean; created_at: string | null; last_used_at: string | null; newest_token_used_at: string | null };
   health: ApplicationHealth | null;
+  // Whether the application signs in the way it was last switched to. Null when it was never switched.
+  session_check: { mode: "relay" | "shared"; changed_at: string; confirmed_at: string | null; known: boolean } | null;
   permissions: { count: number; synced_at: string | null };
   roles: { active_count: number };
   groups: { active_count: number };
@@ -383,6 +385,12 @@ export class ApplicationOnboardingService {
       ...(input.launch_url !== undefined && { launch_url: input.launch_url || null }),
       ...(input.launch_mode !== undefined && { launch_mode: input.launch_mode === "link" ? ApplicationLaunchMode.LINK : ApplicationLaunchMode.SSO }),
       ...(input.session_mode !== undefined && { session_mode: input.session_mode === "shared" ? ApplicationSessionMode.SHARED : ApplicationSessionMode.RELAY }),
+      // A new sign-in way waits for proof again.
+      ...(input.session_mode !== undefined &&
+        (input.session_mode === "shared") !== (before.session_mode === ApplicationSessionMode.SHARED) && {
+          session_mode_changed_at: new Date(),
+          session_mode_confirmed_at: null,
+        }),
       ...(input.logout_url !== undefined && { logout_url: input.logout_url || null }),
     };
     await prismaClient.application.update({ where: { id: before.id }, data });
@@ -504,7 +512,7 @@ export class ApplicationOnboardingService {
     if (client) {
       credentials = await prismaClient.apiClientCredential.findMany({
         where: { client_id: client.id },
-        select: { status: true, expires_at: true, revoked_at: true, last_used_at: true, last_rejected_at: true },
+        select: { status: true, issued_at: true, expires_at: true, revoked_at: true, last_used_at: true, last_rejected_at: true },
       });
       // The newest token alone, so a rotation is proved by the new token and not by the old one still running.
       const newest = await prismaClient.apiClientCredential.findFirst({
@@ -521,6 +529,13 @@ export class ApplicationOnboardingService {
         .filter((date): date is Date => Boolean(date))
         .sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
     }
+
+    // The proof that the application signs in the way it was switched to, looked for now.
+    const signInChecked =
+      app.launch_mode === ApplicationLaunchMode.SSO && app.session_mode_changed_at && applicationId !== hubApplicationId()
+        ? await confirmSignIn(app)
+        : null;
+    const sessionConfirmedAt = signInChecked?.confirmedAt ?? app.session_mode_confirmed_at;
 
     const missing: string[] = [];
     // A plain link has no connection, so no permissions arrive.
@@ -558,7 +573,17 @@ export class ApplicationOnboardingService {
               credentials,
               addressStatus: app.address_status,
               addressDownSince: app.address_down_since,
+              signIn: { changedAt: app.session_mode_changed_at, confirmedAt: sessionConfirmedAt },
             }),
+      session_check:
+        signInChecked && app.session_mode_changed_at
+          ? {
+              mode: app.session_mode === ApplicationSessionMode.SHARED ? "shared" : "relay",
+              changed_at: app.session_mode_changed_at.toISOString(),
+              confirmed_at: sessionConfirmedAt ? sessionConfirmedAt.toISOString() : null,
+              known: signInChecked.known,
+            }
+          : null,
       connection: {
         client_id: client?.id ?? null,
         created: Boolean(client),

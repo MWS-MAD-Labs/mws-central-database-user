@@ -108,3 +108,32 @@ export async function checkApplicationAddress(address: string): Promise<Applicat
     return "unreachable";
   }
 }
+
+// When the Hub last traded a sign-in code for this application, asked with the master secret. `known` is false when
+// the Hub could not be asked or does not have the question yet, so the caller does not treat that as "never".
+export async function checkExchangeSeen(address: string, secret: string, applicationId: string): Promise<{ known: boolean; seenAt: Date | null }> {
+  let url: URL;
+  try {
+    url = new URL(address);
+  } catch {
+    return { known: false, seenAt: null };
+  }
+  if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password || refusedHost(url.hostname)) {
+    return { known: false, seenAt: null };
+  }
+  try {
+    const response = await fetch(new URL("/sso/exchange-seen", url.origin), {
+      method: "POST",
+      redirect: "manual",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: { Accept: "application/json", "Content-Type": "application/json", "x-hub-internal-secret": secret },
+      body: JSON.stringify({ application_id: applicationId }),
+    });
+    if (response.status !== 200) return { known: false, seenAt: null };
+    const body = (await response.json()) as { data?: { seen_at?: string | null } };
+    const seen = body.data?.seen_at ? new Date(body.data.seen_at) : null;
+    return { known: true, seenAt: seen && !Number.isNaN(seen.getTime()) ? seen : null };
+  } catch {
+    return { known: false, seenAt: null };
+  }
+}

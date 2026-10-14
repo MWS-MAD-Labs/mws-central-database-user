@@ -62,7 +62,15 @@ const mono = (value) => <span className="font-mono text-xs">{value}</span>;
 
 // What can still change once an application is set up, and what is known about it. A summary on top and a tab for each
 // kind of thing. There is one way to edit the details (the button in the header), the tabs only show.
-const HEALTH_LABEL = { healthy: "Healthy", pending: "Not Connected Yet", check_token: "Check Token", unreachable: "Unreachable" };
+const HEALTH_LABEL = {
+  healthy: "Healthy",
+  pending: "Not Connected Yet",
+  check_token: "Check Token",
+  token_pending: "Update Pending",
+  sign_in_pending: "Update Pending",
+  unreachable: "Unreachable",
+};
+const ALERT_HEALTH = ["check_token", "token_pending", "sign_in_pending", "unreachable"];
 
 export function AppSettingsPage() {
   const { user } = useAuth();
@@ -219,15 +227,21 @@ export function AppSettingsPage() {
         </div>
       ) : null}
 
-      {!retired && (health?.status === "check_token" || health?.status === "unreachable") ? (
+      {!retired && ALERT_HEALTH.includes(health?.status) ? (
         <div role="note" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl border border-[#d8b45b] bg-[#fff8e8] px-5 py-3 text-sm text-[#745716]">
-          <span className="font-semibold">{health.status === "check_token" ? "Check Token" : "Unreachable"}</span>
+          <span className="font-semibold">{HEALTH_LABEL[health.status]}</span>
           <span>
             {health.status === "check_token"
               ? `Still calling with an old token, last seen ${timeAgo(health.since)} ago. Give the app the newest token.`
-              : `Not answering at its address${health.since ? ` since ${formatDateTime(health.since)}` : ""}. Check the app in Komodo.`}
+              : health.status === "token_pending"
+                ? health.detail.startsWith("Waiting")
+                  ? `${health.detail} ${formatDateTime(health.since)}. Give the app the newest token before then.`
+                  : `${health.detail}. Give it the newest token.`
+                : health.status === "sign_in_pending"
+                  ? `${health.detail}. Open the app from the Hub to check. Changed ${timeAgo(health.since)} ago.`
+                  : `Not answering at its address${health.since ? ` since ${formatDateTime(health.since)}` : ""}. Check the app in Komodo.`}
           </span>
-          {health.status === "check_token" ? (
+          {health.status === "check_token" || health.status === "token_pending" ? (
             <span className="ml-auto">
               <TextAction asChild>
                 <Link to={`${guide}?part=rotate`}>Rotation Guide</Link>

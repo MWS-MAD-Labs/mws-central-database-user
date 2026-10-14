@@ -114,6 +114,15 @@ describe('ApplicationAccessPage', () => {
     expect(screen.queryByText('Unreachable')).toBeNull()
   })
 
+  it('marks an application whose new token or sign-in way has not been seen yet', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    applications[0].health = { status: 'token_pending', detail: 'Waiting', since: null }
+    renderPage()
+    await screen.findByText('Exima')
+    expect(screen.getAllByText('Update Pending')).toHaveLength(1)
+    applications[0].health = { status: 'check_token', detail: 'Still calling with an old token', since: '2026-10-23T08:00:00.000Z' }
+  })
+
   it('marks an application that reads the shared Hub session', async () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage()

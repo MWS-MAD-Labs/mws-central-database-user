@@ -293,27 +293,48 @@ describe("AppSettingsPage", () => {
     expect(screen.queryByText(/s3cret-value/)).toBeNull();
     // Closing before the values are copied asks first, and Keep Open leaves the dialog as it is.
     await user.click(screen.getByRole("button", { name: "Close Dialog" }));
-    expect(await screen.findByText("Not copied yet.")).toBeVisible();
+    expect(await screen.findByText("Not in use yet.")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Keep Open" }));
     expect(screen.getByText("Add To .env")).toBeVisible();
+    // Central has not seen the app sign in with a Hub code yet, so Done waits.
+    expect(screen.getByText(/Waiting for the app to sign someone in with a Hub code/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
   });
 
-  it("lists the lines to remove after moving to Shared Hub Session", async () => {
-    const { user } = renderPage(setup(), "/application-access/apps/demo/settings", [
-      {
-        path: "/api/admin/application-access/apps/demo/details",
-        method: "PATCH",
-        response: () => jsonResponse({ data: { ...APP, session_mode: "shared", env_changes: { add: [], remove: ["HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"] } } }),
-      },
-    ]);
-    await user.click(await screen.findByRole("tab", { name: "Connection" }));
-    await user.click(screen.getByRole("button", { name: "Change Sign-In Way" }));
-    await user.click(await screen.findByRole("button", { name: "Switch To Shared Session" }));
-    expect(await screen.findByText("Remove From .env")).toBeVisible();
-    expect(screen.getByText("HUB_INTERNAL_SECRET")).toBeVisible();
-    expect(screen.getByText(/In the .env of Demo App, delete/)).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Done" }));
-    await waitFor(() => expect(screen.queryByText("Remove From .env")).toBeNull());
+  describe("after moving to Shared Hub Session", () => {
+    const open = async (confirmed) => {
+      const { user } = renderPage(setup({ session_check: { mode: "shared", changed_at: "2026-10-24T01:00:00.000Z", confirmed_at: confirmed, known: true } }), "/application-access/apps/demo/settings", [
+        {
+          path: "/api/admin/application-access/apps/demo/details",
+          method: "PATCH",
+          response: () => jsonResponse({ data: { ...APP, session_mode: "shared", env_changes: { add: [], remove: ["HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"] } } }),
+        },
+      ]);
+      await user.click(await screen.findByRole("tab", { name: "Connection" }));
+      await user.click(screen.getByRole("button", { name: "Change Sign-In Way" }));
+      await user.click(await screen.findByRole("button", { name: "Switch To Shared Session" }));
+      expect(await screen.findByText("Remove From .env")).toBeVisible();
+      return user;
+    };
+
+    it("lists the lines to remove and waits until Central saw the app read the Hub session", async () => {
+      const user = await open(null);
+      expect(screen.getByText("HUB_INTERNAL_SECRET")).toBeVisible();
+      expect(screen.getByText(/In the .env of Demo App, delete/)).toBeVisible();
+      expect(await screen.findByText(/Waiting for the app to read the Hub session/)).toBeVisible();
+      expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
+      await user.click(screen.getByRole("button", { name: "Close Dialog" }));
+      expect(await screen.findByText("Not in use yet.")).toBeVisible();
+      await user.click(screen.getByRole("button", { name: "Keep Open" }));
+      expect(screen.getByText("Remove From .env")).toBeVisible();
+    });
+
+    it("is done once Central saw it", async () => {
+      const user = await open("2026-10-24T01:05:00.000Z");
+      expect(await screen.findByText(/The app reads the Hub session. You are done/)).toBeVisible();
+      await user.click(screen.getByRole("button", { name: "Done" }));
+      await waitFor(() => expect(screen.queryByText("Remove From .env")).toBeNull());
+    });
   });
 
   it("explains what each sign-in way needs, on the Connection tab", async () => {
@@ -338,6 +359,13 @@ describe("AppSettingsPage", () => {
     expect(await screen.findByText(/Not answering at its address since/)).toBeVisible();
     expect(screen.getByText(/Check the app in Komodo/)).toBeVisible();
     down.unmount();
+    const waiting = renderPage(setup({ health: { status: "token_pending", detail: "Waiting for the app to use the new token. The old one works until", since: "2026-10-25T08:00:00.000Z" } }));
+    expect(await screen.findByText(/Waiting for the app to use the new token. The old one works until/)).toBeVisible();
+    expect(screen.getAllByText("Update Pending").length).toBeGreaterThan(0);
+    waiting.unmount();
+    const stopped = renderPage(setup({ health: { status: "sign_in_pending", detail: "Waiting for the app to sign someone in the new way", since: new Date(Date.now() - 3_600_000).toISOString() } }));
+    expect(await screen.findByText(/Waiting for the app to sign someone in the new way/)).toBeVisible();
+    stopped.unmount();
     renderPage(setup({ health: { status: "healthy", detail: null, since: null } }));
     await screen.findByRole("heading", { name: "Demo App Settings" });
     expect(screen.queryByText(/Check the app in Komodo/)).toBeNull();

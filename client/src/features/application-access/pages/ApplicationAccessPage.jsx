@@ -206,6 +206,9 @@ export function ApplicationAccessPage() {
                   {row.health?.status === "check_token" ? (
                     <StatusBadge tone="amber">Check Token</StatusBadge>
                   ) : null}
+                  {row.health?.status === "token_pending" || row.health?.status === "sign_in_pending" ? (
+                    <StatusBadge tone="amber">Update Pending</StatusBadge>
+                  ) : null}
                   {row.health?.status === "unreachable" ? (
                     <StatusBadge tone="red">Unreachable</StatusBadge>
                   ) : null}

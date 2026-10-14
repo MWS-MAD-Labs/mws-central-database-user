@@ -5,7 +5,7 @@ import { prismaClient } from "../lib/prisma";
 import { slugifyApplicationId } from "../utils/application-id";
 import { decryptSecret } from "../utils/secret-box";
 import { deriveAppSecret } from "../utils/hub-app-secret";
-import { checkApplicationAddresses, healthOf } from "../service/application-health";
+import { checkApplicationAddresses, healthOf, useExchangeSeenForTest } from "../service/application-health";
 import { AdminUserTest, ApiClientTest, EmployeeTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const ACCESS = "/api/admin/application-access";
@@ -650,17 +650,79 @@ describe("application onboarding", () => {
       expect((await health()).status).not.toBe("unreachable");
     });
 
+    it("waits for proof after the sign-in way changes, from the app's own lookups for shared and from the Hub for code and token", async () => {
+      const shared = `test-sess-${randomBytes(3).toString("hex")}`;
+      process.env.HUB_APPLICATION_ID = appId;
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        await create(accessToken, { is_hub: true, application_id: undefined, name: "HUB", hub_base_url: "https://hub.example.com/", hub_secret: "master-secret-0123456789abcdef" });
+        const made = await TestRequest.post(`${ACCESS}/applications`, { application_id: shared, name: "TEST_Sess", launch_url: "https://sess.example.com/auth/sso", connect: true }, accessToken);
+        const token = (await made.json()).data.connection.token as string;
+        const detail = (body: Record<string, unknown>) => TestRequest.patch(`${ACCESS}/apps/${shared}/details`, body, accessToken);
+        const setup = async () => (await (await TestRequest.get(`${ACCESS}/apps/${shared}/setup`, accessToken)).json()).data;
+        let hubSeen: Date | null = null;
+        let hubKnown = true;
+        useExchangeSeenForTest(async () => ({ known: hubKnown, seenAt: hubSeen }));
+
+        await TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${token}` });
+        // Never switched: nothing to prove.
+        expect((await setup()).session_check).toBeNull();
+
+        // To code and token: the Hub has not seen a code traded yet.
+        await detail({ session_mode: "relay" });
+        let data = await setup();
+        expect(data.session_check).toMatchObject({ mode: "relay", confirmed_at: null, known: true });
+        expect(data.health.status).toBe("sign_in_pending");
+        hubKnown = false;
+        expect((await setup()).session_check.known).toBe(false);
+        hubKnown = true;
+        hubSeen = new Date(Date.now() - 3_600_000);
+        expect((await setup()).session_check.confirmed_at).toBeNull();
+        hubSeen = new Date(Date.now() + 60_000);
+        data = await setup();
+        expect(data.session_check.confirmed_at).not.toBeNull();
+        expect(data.health.status).not.toBe("sign_in_pending");
+
+        // Back to shared: the app's own lookup after the switch is the proof, one before it is not.
+        const lookup = () => TestRequest.get(`/api/internal/application-entitlements/lookup?person_id=nobody&application_id=${shared}`, undefined, { Authorization: `Bearer ${token}` });
+        await lookup();
+        await detail({ session_mode: "shared" });
+        expect((await setup()).session_check).toMatchObject({ mode: "shared", confirmed_at: null });
+        await lookup();
+        expect((await setup()).session_check.confirmed_at).not.toBeNull();
+      } finally {
+        useExchangeSeenForTest(null);
+        delete process.env.HUB_APPLICATION_ID;
+        await prismaClient.applicationRole.deleteMany({ where: { application_id: shared } });
+        await prismaClient.applicationOrganization.deleteMany({ where: { application_id: shared } });
+        await prismaClient.application.deleteMany({ where: { application_id: shared } });
+        await prismaClient.apiClient.deleteMany({ where: { profile: { code: shared } } });
+        await prismaClient.applicationIntegrationProfile.deleteMany({ where: { code: shared } });
+      }
+    });
+
     it("works out the health from what Central saw", () => {
       const now = new Date("2026-10-23T10:00:00Z");
       const ago = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
-      const live = { status: "ACTIVE", expires_at: null, revoked_at: null, last_used_at: ago(1), last_rejected_at: null };
-      const dead = { status: "REVOKED", expires_at: null, revoked_at: ago(30), last_used_at: ago(40), last_rejected_at: ago(5) };
+      const live = { status: "ACTIVE", issued_at: ago(100), expires_at: null, revoked_at: null, last_used_at: ago(1), last_rejected_at: null };
+      const dead = { status: "REVOKED", issued_at: ago(200), expires_at: null, revoked_at: ago(30), last_used_at: ago(40), last_rejected_at: ago(5) };
       const base = { connected: true, addressStatus: "ok", addressDownSince: null, now };
       expect(healthOf({ ...base, credentials: [live] }).status).toBe("healthy");
       expect(healthOf({ ...base, connected: false, credentials: [{ ...live, last_used_at: null }] }).status).toBe("pending");
       expect(healthOf({ ...base, credentials: [live, dead] }).status).toBe("healthy");
       expect(healthOf({ ...base, credentials: [{ ...live, last_used_at: ago(20) }, dead] }).status).toBe("check_token");
       expect(healthOf({ ...base, credentials: [{ ...live, last_used_at: null }, dead] }).status).toBe("check_token");
+      // A rotation whose new token nobody has used yet stays visible, graceful or not.
+      const retiring = { status: "RETIRING", issued_at: ago(200), expires_at: new Date(now.getTime() + 3_600_000), revoked_at: null, last_used_at: ago(1), last_rejected_at: null };
+      const fresh = { ...live, issued_at: ago(10), last_used_at: null };
+      expect(healthOf({ ...base, credentials: [retiring, fresh] })).toMatchObject({ status: "token_pending", since: retiring.expires_at.toISOString() });
+      expect(healthOf({ ...base, credentials: [{ ...dead, last_rejected_at: null }, fresh] })).toMatchObject({ status: "token_pending", detail: "The old token has stopped. The app needs the new token now" });
+      expect(healthOf({ ...base, credentials: [retiring, { ...fresh, last_used_at: ago(2) }] }).status).toBe("healthy");
+      // A sign-in way change nobody has proved yet shows for a week.
+      const week = (days: number) => new Date(now.getTime() - days * 86_400_000);
+      expect(healthOf({ ...base, credentials: [live], signIn: { changedAt: week(1), confirmedAt: null } }).status).toBe("sign_in_pending");
+      expect(healthOf({ ...base, credentials: [live], signIn: { changedAt: week(1), confirmedAt: ago(5) } }).status).toBe("healthy");
+      expect(healthOf({ ...base, credentials: [live], signIn: { changedAt: week(8), confirmedAt: null } }).status).toBe("healthy");
       expect(healthOf({ ...base, addressStatus: "unreachable", addressDownSince: ago(10), credentials: [live, dead] })).toMatchObject({ status: "unreachable", since: ago(10).toISOString() });
     });
 

@@ -1833,7 +1833,7 @@ export class ApplicationAccessService {
       select: {
         last_used_at: true,
         profile: { select: { code: true } },
-        credentials: { select: { status: true, expires_at: true, revoked_at: true, last_used_at: true, last_rejected_at: true } },
+        credentials: { select: { status: true, issued_at: true, expires_at: true, revoked_at: true, last_used_at: true, last_rejected_at: true } },
       },
     });
     const permissionCounts = await prismaClient.applicationPermission.groupBy({
@@ -1866,6 +1866,7 @@ export class ApplicationAccessService {
               credentials: own.flatMap((client) => client.credentials),
               addressStatus: appRow?.address_status ?? null,
               addressDownSince: appRow?.address_down_since ?? null,
+              signIn: { changedAt: appRow?.session_mode_changed_at ?? null, confirmedAt: appRow?.session_mode_confirmed_at ?? null },
             });
       const verdict = evaluateRemoval({
         isHub: row.is_hub,

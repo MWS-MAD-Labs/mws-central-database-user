@@ -21,7 +21,7 @@ export function ConnectDialog({
   description = "Put these lines in the .env of the application, then deploy it.",
   notice = null,
   // Without it, the dialog closes by itself after the copy. With { used }, it stays until Central has seen
-  // the application use the new values.
+  // the application use the new values. { unknown } means Central cannot tell, so Done is not held back.
   proof = null,
 }) {
   // The lines are written as they go in the .env, in quotes, with a blank line between groups.
@@ -35,7 +35,7 @@ export function ConnectDialog({
   const [copied, setCopied] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [blocked, setBlocked] = useState(false);
-  const proven = proof ? Boolean(proof.used) : copied;
+  const proven = proof ? Boolean(proof.used || proof.unknown) : copied;
   const timer = useRef(null);
   const fallbackRef = useRef(null);
 
@@ -48,7 +48,6 @@ export function ConnectDialog({
   }, [blocked]);
 
   async function copyEnv() {
-    if (copied) return;
     try {
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard is not available");
       await navigator.clipboard.writeText(text);
@@ -59,7 +58,7 @@ export function ConnectDialog({
     }
     setCopied(true);
     showSuccessToast("Values copied.");
-    if (!proof) timer.current = setTimeout(onClose, CLOSE_DELAY_MS);
+    if (!proof && !copied) timer.current = setTimeout(onClose, CLOSE_DELAY_MS);
   }
 
   function requestClose() {
@@ -91,7 +90,7 @@ export function ConnectDialog({
         </div>
         <Button type="button" className="h-12 w-full text-base" onClick={copyEnv}>
           {copied ? <Check size={18} /> : <Copy size={18} />}
-          {copied ? "Copied" : "Copy .env Values"}
+          {copied ? "Copy Again" : "Copy .env Values"}
         </Button>
         {!blocked ? <p className="text-xs text-(--mws-muted)">Copy them now. The token is not shown again.</p> : null}
 
@@ -125,7 +124,11 @@ export function ConnectDialog({
         {proof ? (
           <div className="space-y-3 rounded-xl border border-(--mws-line) bg-white p-3">
             <p className="text-sm text-(--mws-charcoal)">
-              {proof.used ? "The application called Central with the new token. You are done." : "Waiting for the application to call Central with the new token. Deploy it with the values above."}
+              {proof.used
+                ? (proof.done ?? "The application called Central with the new token. You are done.")
+                : proof.unknown
+                  ? "Cannot check right now. Close this when the application has the new values."
+                  : (proof.waiting ?? "Waiting for the application to call Central with the new token. Deploy it with the values above.")}
             </p>
             <div className="flex justify-end">
               <Button type="button" disabled={!proven} onClick={onClose}>

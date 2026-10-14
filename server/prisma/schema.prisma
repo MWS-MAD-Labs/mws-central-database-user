@@ -1703,6 +1703,9 @@ model Application {
   address_checked_at DateTime?
   address_failures   Int       @default(0)
   address_down_since DateTime?
+  // When the sign-in way last changed, and the first proof that the application signs in the new way.
+  session_mode_changed_at   DateTime?
+  session_mode_confirmed_at DateTime?
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
