@@ -23,6 +23,7 @@ const RELAY = [
   {
     title: "What Central controls",
     lines: [
+      "This is the older way, kept until the app's code moves to the shared session.",
       "Central only tells the Hub. The Hub makes a one time code for this app again and includes it in the sign-out and session lists. It picks up a change within a minute, no restart.",
       "How the app signs in is decided by its code. It must be the relay code (the express-relay or nextjs-relay template). Code that only reads the shared session ignores the Hub's code and still signs in from the cookie, so it looks fine while this mode is not used.",
     ],

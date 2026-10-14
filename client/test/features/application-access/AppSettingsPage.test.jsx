@@ -131,7 +131,7 @@ describe("AppSettingsPage", () => {
   it("says how the application signs in, and shows the Hub secret only for the code and token way", async () => {
     const relay = renderPage(setup());
     await relay.user.click(await screen.findByRole("tab", { name: "Connection" }));
-    expect(screen.getByText("Sign-In Way").nextElementSibling).toHaveTextContent("Hub Code & Token");
+    expect(screen.getByText("Sign-In Way").nextElementSibling).toHaveTextContent("Hub Code & Token (Legacy)");
     expect(screen.getByText("Hub Secret").nextElementSibling).toHaveTextContent("Shared With Other Apps");
     relay.unmount();
 

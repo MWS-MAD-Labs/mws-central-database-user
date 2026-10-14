@@ -123,7 +123,7 @@ export function useApplicationManagement(applicationId, setup) {
     const toShared = setup.application.session_mode !== "shared";
     const name = setup.application.name;
     const confirmed = await confirm({
-      title: toShared ? "Switch To Shared Hub Session" : "Switch To Hub Code & Token",
+      title: toShared ? "Switch To Shared Hub Session" : "Switch To Hub Code & Token (Legacy)",
       description: toShared
         ? `${name} will read the Hub session. Update its code first.`
         : `${name} will get a code and token from the Hub again. Update its code first.`,

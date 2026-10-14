@@ -28,8 +28,8 @@ const SESSION_MODES = [
   },
   {
     value: "relay",
-    label: "Hub Code & Token",
-    hint: "The Hub gives the application a one-time code and a token, and the application keeps its own session and sign-out. For an application on another domain, or one that has not moved to the shared session yet.",
+    label: "Hub Code & Token (Legacy)",
+    hint: "The older way, for an application whose code has not moved to the shared session yet, or one on another domain. The Hub gives it a one-time code and a token, and it keeps its own session and sign-out. Shared Hub Session is the way going forward.",
   },
 ];
 

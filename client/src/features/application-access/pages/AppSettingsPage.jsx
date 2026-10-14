@@ -265,7 +265,7 @@ export function AppSettingsPage() {
                 ["Permissions Received", setup.permissions.synced_at ? `${formatDateTime(setup.permissions.synced_at)} (${timeAgo(setup.permissions.synced_at)} Ago)` : "Not yet"],
                 ["Data Access", <NameList key="d" names={setup.data_access.scope_names} noun="Scopes" title="Data access scopes" plain="None" />],
                 ...(setup.application.launch_mode === "sso" && setup.application.uses_hub && !setup.hub
-                  ? [["Sign-In Way", setup.application.session_mode === "shared" ? "Shared Hub Session" : "Hub Code & Token"]]
+                  ? [["Sign-In Way", setup.application.session_mode === "shared" ? "Shared Hub Session" : "Hub Code & Token (Legacy)"]]
                   : []),
                 ...(setup.hub_secret?.applies ? [["Hub Secret", setup.hub_secret.mode === "own" ? `Dedicated, Version ${setup.hub_secret.version}` : "Shared With Other Apps"]] : []),
                 ["Reads From .env", mono((setup.env_keys ?? []).map((item) => item.key).join(", ") || "-")],
