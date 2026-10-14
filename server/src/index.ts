@@ -1,3 +1,4 @@
+import { startApplicationHealthChecks } from "./service/application-health";
 import { web } from "./application/web";
 import { logger } from "./lib/logger";
 import { EmployeeService } from "./service/employee-service";
@@ -85,6 +86,8 @@ globalThis.__pcActivityRoomSweepInterval = setInterval(
   runPcActivityRoomSweep,
   PC_ACTIVITY_ROOM_SWEEP_INTERVAL_MS,
 );
+
+startApplicationHealthChecks();
 
 // The server must not accept traffic with a stale profile/scope catalog.
 await syncApiScopes();

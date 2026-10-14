@@ -5,6 +5,7 @@ import { prismaClient } from "../lib/prisma";
 import { slugifyApplicationId } from "../utils/application-id";
 import { decryptSecret } from "../utils/secret-box";
 import { deriveAppSecret } from "../utils/hub-app-secret";
+import { checkApplicationAddresses, healthOf } from "../service/application-health";
 import { AdminUserTest, ApiClientTest, EmployeeTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const ACCESS = "/api/admin/application-access";
@@ -607,6 +608,60 @@ describe("application onboarding", () => {
       expect(await used()).toBeNull();
       await TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${next}` });
       expect(await used()).not.toBeNull();
+    });
+
+    it("tells when an application still calls with a token that was replaced, and clears it once the new one is used", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const { data } = await (await create(accessToken, { connect: true })).json();
+      const old = data.connection.token as string;
+      const rotated = await TestRequest.post(`${ACCESS}/apps/${appId}/rotate`, { immediate: true }, accessToken);
+      const next = (await rotated.json()).data.token as string;
+      const health = async () => (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data.health;
+      const rejectedAt = async () =>
+        (await prismaClient.apiClientCredential.findMany({ where: { client: { profile: { code: appId } }, last_rejected_at: { not: null } } }))[0]?.last_rejected_at ?? null;
+      const call = (token: string) => TestRequest.get("/api/internal/applications", undefined, { Authorization: `Bearer ${token}` });
+
+      // A made up secret on the same prefix says nothing, only the real old token does.
+      await call(`${old.split(".")[0]}.not-the-secret`);
+      expect(await rejectedAt()).toBeNull();
+      expect((await call(old)).status).toBe(401);
+      const first = await rejectedAt();
+      expect(first).not.toBeNull();
+      expect((await health()).status).toBe("check_token");
+      // Once every five minutes, like the last use.
+      await call(old);
+      expect((await rejectedAt())?.getTime()).toBe(first!.getTime());
+
+      expect((await call(next)).status).toBe(200);
+      expect((await health()).status).toBe("healthy");
+    });
+
+    it("marks an application unreachable after two failed checks and clears it on an answer", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken, { connect: true });
+      const health = async () => (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data.health;
+      await checkApplicationAddresses(async () => "unreachable");
+      expect((await health()).status).not.toBe("unreachable");
+      await checkApplicationAddresses(async () => "unreachable");
+      expect(await health()).toMatchObject({ status: "unreachable", detail: "Not answering at its address" });
+      const list = (await (await TestRequest.get(`${ACCESS}/applications?search=${appId}`, accessToken)).json()).data;
+      expect(list.find((row: { application_id: string }) => row.application_id === appId).health.status).toBe("unreachable");
+      await checkApplicationAddresses(async () => "ok");
+      expect((await health()).status).not.toBe("unreachable");
+    });
+
+    it("works out the health from what Central saw", () => {
+      const now = new Date("2026-10-23T10:00:00Z");
+      const ago = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
+      const live = { status: "ACTIVE", expires_at: null, revoked_at: null, last_used_at: ago(1), last_rejected_at: null };
+      const dead = { status: "REVOKED", expires_at: null, revoked_at: ago(30), last_used_at: ago(40), last_rejected_at: ago(5) };
+      const base = { connected: true, addressStatus: "ok", addressDownSince: null, now };
+      expect(healthOf({ ...base, credentials: [live] }).status).toBe("healthy");
+      expect(healthOf({ ...base, connected: false, credentials: [{ ...live, last_used_at: null }] }).status).toBe("pending");
+      expect(healthOf({ ...base, credentials: [live, dead] }).status).toBe("healthy");
+      expect(healthOf({ ...base, credentials: [{ ...live, last_used_at: ago(20) }, dead] }).status).toBe("check_token");
+      expect(healthOf({ ...base, credentials: [{ ...live, last_used_at: null }, dead] }).status).toBe("check_token");
+      expect(healthOf({ ...base, addressStatus: "unreachable", addressDownSince: ago(10), credentials: [live, dead] })).toMatchObject({ status: "unreachable", since: ago(10).toISOString() });
     });
 
     it("counts a connection of any purpose as the application's connection", async () => {

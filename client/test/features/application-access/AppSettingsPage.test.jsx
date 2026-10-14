@@ -329,6 +329,21 @@ describe("AppSettingsPage", () => {
     expect(screen.queryByText(/HUB_BASE_URL is the only Hub line/)).toBeNull();
   });
 
+  it("warns when the app still uses an old token, and when it does not answer", async () => {
+    const old = renderPage(setup({ health: { status: "check_token", detail: "Still calling with an old token", since: new Date(Date.now() - 3 * 60_000).toISOString() } }));
+    expect(await screen.findByText(/Still calling with an old token, last seen/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "Rotation Guide" })).toHaveAttribute("href", expect.stringContaining("part=rotate"));
+    old.unmount();
+    const down = renderPage(setup({ health: { status: "unreachable", detail: "Not answering at its address", since: "2026-10-23T08:00:00.000Z" } }));
+    expect(await screen.findByText(/Not answering at its address since/)).toBeVisible();
+    expect(screen.getByText(/Check the app in Komodo/)).toBeVisible();
+    down.unmount();
+    renderPage(setup({ health: { status: "healthy", detail: null, since: null } }));
+    await screen.findByRole("heading", { name: "Demo App Settings" });
+    expect(screen.queryByText(/Check the app in Komodo/)).toBeNull();
+    expect(screen.queryByText(/old token, last seen/)).toBeNull();
+  });
+
   it("does not offer to change the sign-in way for a plain link", async () => {
     renderPage(setup({ application: { ...APP, launch_mode: "link" } }));
     await screen.findByRole("heading", { name: "Demo App Settings" });

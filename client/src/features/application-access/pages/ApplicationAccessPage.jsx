@@ -203,6 +203,12 @@ export function ApplicationAccessPage() {
                   {row.published ? (
                     <StatusBadge tone="green">In Hub</StatusBadge>
                   ) : null}
+                  {row.health?.status === "check_token" ? (
+                    <StatusBadge tone="amber">Check Token</StatusBadge>
+                  ) : null}
+                  {row.health?.status === "unreachable" ? (
+                    <StatusBadge tone="red">Unreachable</StatusBadge>
+                  ) : null}
                   {row.launch_mode === "link" ? (
                     <StatusBadge tone="neutral">Plain Link</StatusBadge>
                   ) : null}

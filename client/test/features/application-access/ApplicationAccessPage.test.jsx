@@ -18,6 +18,7 @@ const applications = [
     organization_id: 'org_exima_a1b2c3',
     launch_mode: 'sso',
     session_mode: 'shared',
+    health: { status: 'check_token', detail: 'Still calling with an old token', since: '2026-10-23T08:00:00.000Z' },
     scope: 'safespace',
     connection_created: true,
     connection_last_used_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
@@ -103,6 +104,14 @@ describe('ApplicationAccessPage', () => {
     expect(within(hub).getByText('HUB')).toBeVisible()
     expect(within(hub).getByText('Not Connected')).toBeVisible()
     expect(within(hub).getAllByText('None')).toHaveLength(3)
+  })
+
+  it('marks an application that still uses an old token', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage()
+    await screen.findByText('Exima')
+    expect(screen.getAllByText('Check Token')).toHaveLength(1)
+    expect(screen.queryByText('Unreachable')).toBeNull()
   })
 
   it('marks an application that reads the shared Hub session', async () => {

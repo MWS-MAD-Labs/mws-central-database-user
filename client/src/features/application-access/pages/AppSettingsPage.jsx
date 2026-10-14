@@ -62,6 +62,8 @@ const mono = (value) => <span className="font-mono text-xs">{value}</span>;
 
 // What can still change once an application is set up, and what is known about it. A summary on top and a tab for each
 // kind of thing. There is one way to edit the details (the button in the header), the tabs only show.
+const HEALTH_LABEL = { healthy: "Healthy", pending: "Not Connected Yet", check_token: "Check Token", unreachable: "Unreachable" };
+
 export function AppSettingsPage() {
   const { user } = useAuth();
   const { applicationId } = useParams();
@@ -106,6 +108,7 @@ export function AppSettingsPage() {
 
   const setup = setupQuery.data;
   const more = settingsQuery.data;
+  const health = setup.health;
   const steps = buildSteps(setup);
   // An application that was never finished still has its steps to do.
   if (!setup.setup_completed && stepsDone(steps) < steps.length) return <Navigate to={`${base}/setup`} replace />;
@@ -216,6 +219,24 @@ export function AppSettingsPage() {
         </div>
       ) : null}
 
+      {!retired && (health?.status === "check_token" || health?.status === "unreachable") ? (
+        <div role="note" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl border border-[#d8b45b] bg-[#fff8e8] px-5 py-3 text-sm text-[#745716]">
+          <span className="font-semibold">{health.status === "check_token" ? "Check Token" : "Unreachable"}</span>
+          <span>
+            {health.status === "check_token"
+              ? `Still calling with an old token, last seen ${timeAgo(health.since)} ago. Give the app the newest token.`
+              : `Not answering at its address${health.since ? ` since ${formatDateTime(health.since)}` : ""}. Check the app in Komodo.`}
+          </span>
+          {health.status === "check_token" ? (
+            <span className="ml-auto">
+              <TextAction asChild>
+                <Link to={`${guide}?part=rotate`}>Rotation Guide</Link>
+              </TextAction>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-(--mws-line) bg-white px-5 py-3 text-sm">
         {retired ? <StatusBadge tone="red">Retired</StatusBadge> : setup.is_hub ? <StatusBadge tone="neutral">Hub</StatusBadge> : <StatusBadge tone={app.published ? "green" : "amber"}>{app.published ? "Shown in the Hub" : "Hidden from the Hub"}</StatusBadge>}
         {link ? (
@@ -239,6 +260,7 @@ export function AppSettingsPage() {
               ...(setup.is_hub ? [] : [["Address", mono(app.launch_url || "Not set")]]),
               ...(setup.is_hub || link ? [] : [["Logout Address", mono(app.logout_url || "None")]]),
               ...(setup.is_hub ? [] : [["Opens As", link ? "Plain Link" : "Single Sign-On"]]),
+              ...(health ? [["Health", HEALTH_LABEL[health.status]]] : []),
               ...(app.category ? [["Category", nameOf(taxonomy.categories, app.category) || app.category]] : []),
               ...(app.scope ? [["Scope", nameOf(taxonomy.scopes, app.scope) || app.scope]] : []),
               ...(more ? [["Created", formatDateTime(more.created_at)], ["Last Updated", `${formatDateTime(more.updated_at)}${more.activity[0]?.by ? ` by ${more.activity[0].by}` : ""}`]] : []),

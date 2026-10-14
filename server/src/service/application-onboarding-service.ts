@@ -1,3 +1,4 @@
+import { healthOf, type ApplicationHealth, type HealthCredential } from "./application-health";
 import { AdminRole, ApiCredentialStatus, HubSecretMode, ApplicationLaunchMode, ApplicationSessionMode, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
 import type { AdminUser } from "../generated/prisma/client";
 import type { HubCardStatus } from "../generated/prisma/client";
@@ -57,6 +58,7 @@ export type SetupStatus = {
   application: ApplicationDetail;
   organization_id: string;
   connection: { client_id: string | null; created: boolean; created_at: string | null; last_used_at: string | null; newest_token_used_at: string | null };
+  health: ApplicationHealth | null;
   permissions: { count: number; synced_at: string | null };
   roles: { active_count: number };
   groups: { active_count: number };
@@ -498,7 +500,12 @@ export class ApplicationOnboardingService {
 
     let lastUsed: Date | null = null;
     let newestUsed: Date | null = null;
+    let credentials: HealthCredential[] = [];
     if (client) {
+      credentials = await prismaClient.apiClientCredential.findMany({
+        where: { client_id: client.id },
+        select: { status: true, expires_at: true, revoked_at: true, last_used_at: true, last_rejected_at: true },
+      });
       // The newest token alone, so a rotation is proved by the new token and not by the old one still running.
       const newest = await prismaClient.apiClientCredential.findFirst({
         where: { client_id: client.id, status: { not: ApiCredentialStatus.REVOKED } },
@@ -543,6 +550,15 @@ export class ApplicationOnboardingService {
       env_keys: (await envFor(app, organizationId, "", "", admin.email, false)).env.map((item) => ({ key: item.key, secret: item.secret })),
       application: toDetail(app),
       organization_id: organizationId,
+      health:
+        applicationId === hubApplicationId() || app.launch_mode === ApplicationLaunchMode.LINK || app.retired_at
+          ? null
+          : healthOf({
+              connected: Boolean(lastUsed),
+              credentials,
+              addressStatus: app.address_status,
+              addressDownSince: app.address_down_since,
+            }),
       connection: {
         client_id: client?.id ?? null,
         created: Boolean(client),

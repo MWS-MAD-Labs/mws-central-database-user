@@ -1,3 +1,4 @@
+import { healthOf } from "./application-health";
 import { createHash, randomBytes } from "crypto";
 import {
   AdminRole,
@@ -1820,6 +1821,7 @@ export class ApplicationAccessService {
           setup_completed: Boolean(app?.setup_completed_at),
           connection_created: false,
           connection_last_used_at: null,
+          health: null,
           permission_count: 0,
         };
       });
@@ -1828,7 +1830,11 @@ export class ApplicationAccessService {
     const pageRows = all.slice((page - 1) * size, page * size);
     const clients = await prismaClient.apiClient.findMany({
       where: { is_active: true, profile: { code: { in: pageRows.map((row) => row.application_id) } } },
-      select: { last_used_at: true, profile: { select: { code: true } }, credentials: { select: { last_used_at: true } } },
+      select: {
+        last_used_at: true,
+        profile: { select: { code: true } },
+        credentials: { select: { status: true, expires_at: true, revoked_at: true, last_used_at: true, last_rejected_at: true } },
+      },
     });
     const permissionCounts = await prismaClient.applicationPermission.groupBy({
       by: ["application_id"],
@@ -1851,6 +1857,16 @@ export class ApplicationAccessService {
         .filter((date): date is Date => Boolean(date))
         .sort((left, right) => right.getTime() - left.getTime())[0];
       row.connection_last_used_at = used ? used.toISOString() : null;
+      const appRow = catalog.find((item) => item.application_id === row.application_id);
+      row.health =
+        row.is_hub || row.launch_mode === "link" || row.retired
+          ? null
+          : healthOf({
+              connected: Boolean(used),
+              credentials: own.flatMap((client) => client.credentials),
+              addressStatus: appRow?.address_status ?? null,
+              addressDownSince: appRow?.address_down_since ?? null,
+            });
       const verdict = evaluateRemoval({
         isHub: row.is_hub,
         otherApplications,
@@ -1959,6 +1975,7 @@ export class ApplicationAccessService {
       scope: input.scope || null,
       connection_created: false,
       connection_last_used_at: null,
+      health: null,
       permission_count: 0,
       organization_id: organizationRow.organization_id,
       role_count: 0,

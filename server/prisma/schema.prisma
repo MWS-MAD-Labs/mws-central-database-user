@@ -1560,6 +1560,8 @@ model ApiClientCredential {
   expires_at   DateTime?
   revoked_at   DateTime?
   last_used_at DateTime?
+  // The last time this token was shown with the right secret after it could no longer be used.
+  last_rejected_at DateTime?
   created_at   DateTime            @default(now())
   updated_at   DateTime            @updatedAt
 
@@ -1696,6 +1698,11 @@ model Application {
   // sso: opened through the Hub's sign-in handoff. link: a plain address, nothing to connect.
   launch_mode    ApplicationLaunchMode @default(SSO)
   session_mode   ApplicationSessionMode @default(RELAY)
+  // Whether the address of the application answers, checked every few minutes. Two failures in a row mark it down.
+  address_status     String?
+  address_checked_at DateTime?
+  address_failures   Int       @default(0)
+  address_down_since DateTime?
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
