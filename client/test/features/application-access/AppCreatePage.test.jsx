@@ -274,6 +274,10 @@ describe('AppCreatePage', () => {
     await user.click(within(confirmDialog).getByRole('button', { name: 'Add Hub' }))
     // One block at the end: the key lines first, then what Central made when the Hub was added.
     const envDialog = await screen.findByRole('dialog', { name: 'Connection Created' })
+    // The page behind it does not turn back into a new Add Application form.
+    expect(screen.getByText(/Application added/)).toBeVisible()
+    expect(screen.queryByLabelText('Application Address')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
     const shown = within(envDialog).getByRole('img', { name: /Values hidden/ }).textContent
     expect(shown.indexOf('HUB_SSO_KEY_ID')).toBeGreaterThan(-1)
     expect(shown.indexOf('HUB_SSO_KEY_ID')).toBeLessThan(shown.indexOf('HUB_SSO_APP_ID'))
@@ -291,6 +295,9 @@ describe('AppCreatePage', () => {
         hub_signing: { kid: 'mws-hub-sso-2026-10-ab12', thumbprint: THUMBPRINT },
       })
     })
+    // Copying closes the dialog and goes to the setup of the Hub.
+    await user.click(within(envDialog).getByRole('button', { name: 'Copy .env Values' }))
+    expect(await screen.findByText('Setup page', {}, { timeout: 4000 })).toBeVisible()
   }, 20000)
 
   it('keeps the secret the Hub runs with when it is pasted, and blocks the step without the key', async () => {

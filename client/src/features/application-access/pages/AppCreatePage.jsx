@@ -77,19 +77,23 @@ export function AppCreatePage() {
             </Button>
         }
       />
-      <div role="note" className="mb-4 rounded-xl border border-(--mws-line) bg-(--mws-soft) p-4 text-sm text-(--mws-muted)">
-        <p className="font-semibold text-(--mws-charcoal)">{hubQuery.isSuccess && !hubExists ? "Add The Hub First" : "Before You Add It"}</p>
-        <p className="mt-1">
-          {hubQuery.isSuccess && !hubExists
-            ? "No Hub has been added yet, and every application is given its address. Add the Hub below. It starts with its signing key."
-            : "Have the application's environment ready on its server. The token is shown only once, right after you add it."}{" "}
-          <Link to={startGuideHref(hubQuery.isSuccess && !hubExists ? "hub" : "app")} className="font-semibold text-(--mws-burgundy) underline">
-            Open The Guide
-          </Link>
-        </p>
-      </div>
-      {hubQuery.isPending ? <PanelMessage>Checking for the Hub…</PanelMessage> : null}
-      {hubQuery.isPending ? null : <AppDetailsForm
+      {created ? (
+        <PanelMessage>Application added. Copy the lines, then you go to its setup.</PanelMessage>
+      ) : (
+        <div role="note" className="mb-4 rounded-xl border border-(--mws-line) bg-(--mws-soft) p-4 text-sm text-(--mws-muted)">
+          <p className="font-semibold text-(--mws-charcoal)">{hubQuery.isSuccess && !hubExists ? "Add The Hub First" : "Before You Add It"}</p>
+          <p className="mt-1">
+            {hubQuery.isSuccess && !hubExists
+              ? "No Hub has been added yet, and every application is given its address. Add the Hub below. It starts with its signing key."
+              : "Have the application's environment ready on its server. The token is shown only once, right after you add it."}{" "}
+            <Link to={startGuideHref(hubQuery.isSuccess && !hubExists ? "hub" : "app")} className="font-semibold text-(--mws-burgundy) underline">
+              Open The Guide
+            </Link>
+          </p>
+        </div>
+      )}
+      {hubQuery.isPending && !created ? <PanelMessage>Checking for the Hub…</PanelMessage> : null}
+      {hubQuery.isPending || created ? null : <AppDetailsForm
         layout="page"
         adminEmail={user?.email ?? ""}
         submitLabel="Add Application"
