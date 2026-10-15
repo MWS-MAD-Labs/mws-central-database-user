@@ -38,6 +38,28 @@ describe("hub address check", () => {
     }
   });
 
+  it("says a Hub has no keys when it is up but cannot publish them", async () => {
+    // What the Hub does without HUB_SSO_PRIVATE_KEY: /health is fine, the keys path is a 500.
+    const keyless = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const path = new URL(request.url).pathname;
+        if (path === "/health") return Response.json({ data: "ok" });
+        if (path === "/.well-known/jwks.json") return Response.json({ errors: "Internal server error" }, { status: 500 });
+        return new Response("not found", { status: 404 });
+      },
+    });
+    // Something else that also fails on the keys path but is not a Hub.
+    const broken = Bun.serve({ port: 0, fetch: () => new Response("boom", { status: 500 }) });
+    try {
+      expect(await checkHubAddress(`http://127.0.0.1:${keyless.port}`)).toBe("no_keys");
+      expect(await checkHubAddress(`http://127.0.0.1:${broken.port}`)).toBe("not_hub");
+    } finally {
+      keyless.stop(true);
+      broken.stop(true);
+    }
+  });
+
   it("says unreachable when nothing answers", async () => {
     const closed = Bun.serve({ port: 0, fetch: () => new Response("x") });
     const port = closed.port;

@@ -1,7 +1,9 @@
 // Asks an address whether a Hub answers there, before the address goes into the .env of every application. The Hub
 // publishes its sign-in keys at /.well-known/jwks.json, so a JSON answer with `keys` is what tells it apart from
-// any other server. Only the verdict leaves here, never what the address said.
-export type HubAddressVerdict = "ok" | "unreachable" | "not_hub" | "refused";
+// any other server. A Hub that is running but has no signing key answers that path with an error, so its /health
+// is asked next: that tells "this is the Hub, it has no key yet" from "this is not the Hub". Only the verdict
+// leaves here, never what the address said.
+export type HubAddressVerdict = "ok" | "unreachable" | "not_hub" | "no_keys" | "refused";
 
 const TIMEOUT_MS = 4000;
 const SECRET_PATH = "/sso/secret-check";
@@ -11,6 +13,22 @@ const MAX_BYTES = 64 * 1024;
 function refusedHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return host.startsWith("169.254.") || host === "metadata.google.internal" || host === "[fd00:ec2::254]";
+}
+
+// The Hub answers /health with { data: "ok" }. Nothing else is read from it.
+async function answersLikeHub(url: URL): Promise<boolean> {
+  try {
+    const response = await fetch(new URL("/health", url.origin), {
+      redirect: "manual",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: { Accept: "application/json" },
+    });
+    if (response.status !== 200) return false;
+    const body = JSON.parse((await response.text()).slice(0, MAX_BYTES)) as { data?: unknown };
+    return body.data === "ok";
+  } catch {
+    return false;
+  }
 }
 
 export async function checkHubAddress(address: string): Promise<HubAddressVerdict> {
@@ -29,7 +47,7 @@ export async function checkHubAddress(address: string): Promise<HubAddressVerdic
       signal: AbortSignal.timeout(TIMEOUT_MS),
       headers: { Accept: "application/json" },
     });
-    if (response.status !== 200) return "not_hub";
+    if (response.status !== 200) return (await answersLikeHub(url)) ? "no_keys" : "not_hub";
     const reader = response.body?.getReader();
     if (!reader) return "not_hub";
     const chunks: Uint8Array[] = [];
