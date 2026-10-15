@@ -63,7 +63,7 @@ const ADDRESS_TEXTS = {
   failed: "The address could not be checked just now. Try again.",
   anywayTitle: "Use This Address Anyway",
   anywayText:
-    "Central could not reach this address, which can be true when the application only runs on your machine and Central does not. If it is wrong, the card in the Hub opens a page that does not exist. Use it only if you are sure.",
+    "Central cannot reach this address. If it is wrong, the card in the Hub opens a page that does not exist.",
 };
 
 export function AppDetailsForm({ initial, idLocked = false, isHub = false, layout = "dialog", hubExists = false, hubKnown = false, adminEmail = "", suggestedHubUrl = "", deploymentEnvironment = "", submitLabel, submitting, onSubmit, onCancel }) {

@@ -67,7 +67,7 @@ export function ExceptionsPanel({ applicationId, groupId, groupRole, students = 
       title: groupRole ? "Remove Exception" : "Remove Access",
       description: groupRole
         ? `${row.full_name} loses the ${row.role} exception and gets ${groupRole} from the group again.${row.is_active ? "" : " The block is lifted."}`
-        : `${row.full_name} loses this access to ${applicationId}. No group covers them, so they will have no access.`,
+        : `${row.full_name} loses access to ${applicationId}. No group covers them.`,
       confirmLabel: "Remove",
     });
     if (confirmed) removeMutation.mutate(row.id);

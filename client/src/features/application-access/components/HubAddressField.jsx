@@ -28,7 +28,7 @@ const TEXTS = {
   },
   anywayTitle: "Use This Address Anyway",
   anywayText:
-    "Central could not reach this address, which can be true when the Hub only runs on your machine and Central does not. If it is wrong, every application gets a wrong HUB_BASE_URL and their sign-in fails. Use it only if you are sure.",
+    "Central cannot reach this address. If it is wrong, sign-in fails for every application.",
 };
 
 // The public address of the Hub. `value` is the whole address or nothing. `onChange(address, notReady)` says what is typed and

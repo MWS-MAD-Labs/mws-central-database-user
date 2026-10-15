@@ -72,7 +72,7 @@ export function ApplicationAccessPage() {
   async function retire(row) {
     const confirmed = await confirm({
       title: "Retire Application",
-      description: `${row.name} will stop working: its token is revoked, it disappears from the Hub and nobody has access. Nothing is deleted, and you can restore it later.`,
+      description: `${row.name} leaves the Hub and its token is revoked. Nothing is deleted, you can restore it.`,
       confirmLabel: "Retire",
       tone: "danger",
     });
