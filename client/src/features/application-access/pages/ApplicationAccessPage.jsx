@@ -219,7 +219,7 @@ export function ApplicationAccessPage() {
                   </Link>
                   {row.is_hub ? (
                     <span
-                      title="The Hub itself. It cannot be retired or deleted."
+                      title="The Hub itself. It can only be removed after every other application."
                       className="inline-flex items-center gap-1 rounded-full bg-(--mws-burgundy) px-2 py-0.5 text-[11px] font-bold text-white"
                     >
                       <Lock size={11} aria-hidden="true" />

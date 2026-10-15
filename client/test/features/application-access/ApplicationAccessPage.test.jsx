@@ -187,7 +187,7 @@ describe('ApplicationAccessPage', () => {
     const { user } = renderPage()
     const hubRow = (await screen.findByRole('button', { name: 'Actions for hub' })).closest('tr')
     expect(within(hubRow).getByText('Core')).toBeVisible()
-    expect(within(hubRow).getByTitle('The Hub itself. It cannot be retired or deleted.')).toBeVisible()
+    expect(within(hubRow).getByTitle('The Hub itself. It can only be removed after every other application.')).toBeVisible()
     await user.click(within(hubRow).getByRole('button', { name: 'Actions for hub' }))
     expect(await screen.findByRole('button', { name: 'Continue Setup' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Setup Steps' })).toBeNull()

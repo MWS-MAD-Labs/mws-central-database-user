@@ -276,7 +276,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
         {layout === "page" && !hubExists && !(hubChosen && hubWizard.step > 0) ? (
           <CheckboxField
             label="This is the Hub itself"
-            description="The Hub is not listed in the Hub, so it has no card or launch address. It cannot be retired, deleted or renamed, and there can only be one."
+            description="The Hub is not listed in the Hub, so it has no card or launch address. It cannot be renamed, there can only be one, and it can only be deleted after every other application is removed."
             checked={hubChosen}
             onChange={(event) => setHubChosen(event.target.checked)}
           />

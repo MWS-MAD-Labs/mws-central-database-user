@@ -30,7 +30,7 @@ export function RemovalGuideDialog({ onClose }) {
         <section>
           <h3 className="font-display font-bold">The Hub itself</h3>
           <p className="mt-1 text-(--mws-muted)">
-            It cannot be retired or deleted. Removing it would lock everyone out of the Hub.
+            It can only be retired or deleted after every other application is removed, because removing it locks everyone out of the Hub.
           </p>
         </section>
         <div className="flex justify-end">
