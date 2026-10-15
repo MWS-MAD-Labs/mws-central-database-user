@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Copy, KeyRound, RotateCw } from "lucide-react";
+import { ArrowLeft, Check, Copy, KeyRound, Plus, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextInput } from "../../../components/ui/FormControls.jsx";
@@ -17,7 +17,6 @@ import {
   SecretConfirmDialog,
   SecretsKeyWarning,
 } from "./HubSecretControls.jsx";
-import { ConnectDialog } from "./ConnectDialog.jsx";
 import { SignInLinesDialog } from "./SignInLinesDialog.jsx";
 
 const STEPS = [
@@ -26,8 +25,11 @@ const STEPS = [
   { id: "signin", label: "Sign-in" },
   { id: "review", label: "Review" },
 ];
-// A Hub being added starts with its signing key, because the address check looks for it.
+// A Hub being added starts with its signing key, which is copied at the end with the rest of the .env.
 const ADD_STEPS = [{ id: "key", label: "Key" }, ...STEPS];
+
+// The two ways to make a key look the same, in the brand colour so they are easy to spot.
+const KEY_ACTION = "text-(--mws-burgundy)! hover:text-(--mws-burgundy-dark)!";
 
 const DEFAULT_SETTINGS = { hub_access_mode: "warn", hub_bypass_emails: [] };
 
@@ -66,7 +68,8 @@ export function HubSetupWizard({
   // The key Central made for the Hub. Only its name and thumbprint are kept here, the private key is shown once.
   const [keyChoice, setKeyChoice] = useState(null);
   const [signing, setSigning] = useState(null);
-  const [shownKey, setShownKey] = useState(null);
+  // The key lines wait here until the Hub is added, then they come with the rest of the .env. They are never sent.
+  const [keyEnv, setKeyEnv] = useState(null);
 
   const statusQuery = useQuery({
     queryKey: ["application-access", "secrets-status"],
@@ -84,13 +87,14 @@ export function HubSetupWizard({
       step,
       address,
       signing: keyChoice === "made" ? signing : null,
+      keyEnv: keyChoice === "made" ? keyEnv : null,
       settings: signIn,
       secret:
         secretChoice === "existing" && existingValue.trim()
           ? cleanPastedSecret(existingValue)
           : undefined,
     });
-  }, [managing, onChange, step, address, signing, keyChoice, signIn, secretChoice, existingValue]);
+  }, [managing, onChange, step, address, signing, keyEnv, keyChoice, signIn, secretChoice, existingValue]);
 
   const refresh = () => {
     queryClient.invalidateQueries({
@@ -115,7 +119,7 @@ export function HubSetupWizard({
     onSuccess: (result) => {
       setSigning({ kid: result.kid, thumbprint: result.thumbprint });
       setKeyChoice("made");
-      setShownKey(result);
+      setKeyEnv(result.env);
     },
     onError: (error) => showErrorToast(error, "Could not make the signing key."),
   });
@@ -218,7 +222,7 @@ export function HubSetupWizard({
                 Key Made
                 <span className="truncate font-mono text-xs text-(--mws-muted)">{signing?.kid}</span>
               </span>
-              <TextAction icon={RotateCw} disabled={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
+              <TextAction icon={RotateCw} className={KEY_ACTION} disabled={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
                 Make Another Key
               </TextAction>
             </div>
@@ -231,9 +235,9 @@ export function HubSetupWizard({
               {keyChoice === "own" ? (
                 <TextAction onClick={() => setKeyChoice(null)}>Make One Instead</TextAction>
               ) : (
-                <Button type="button" variant="secondary" size="sm" loading={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
+                <TextAction icon={Plus} className={KEY_ACTION} loading={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
                   Make Signing Key
-                </Button>
+                </TextAction>
               )}
             </div>
           )}
@@ -244,7 +248,7 @@ export function HubSetupWizard({
           ) : null}
           {keyChoice === "made" ? (
             <p className="text-xs text-(--mws-muted)">
-              Put the two lines in the Hub's .env and deploy the Hub again before the next step.
+              The key lines come with the rest of the .env at the end, so there is one copy and one restart.
             </p>
           ) : null}
           {keyChoice === null ? (
@@ -264,7 +268,6 @@ export function HubSetupWizard({
               <p className="font-semibold text-(--mws-charcoal)">Before You Check The Address</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-5">
                 <li>The Hub is deployed and running.</li>
-                <li>It runs with the signing key lines from the first step, so it can publish its sign-in key.</li>
                 <li>You use the address people open the Hub at, over https.</li>
               </ul>
             </div>
@@ -492,15 +495,6 @@ export function HubSetupWizard({
         </div>
       </div>
 
-      {shownKey ? (
-        <ConnectDialog
-          title="Hub Signing Key"
-          description="Put these lines in the .env of the Hub and deploy it. Central keeps only the key's name and fingerprint, so this is the only time the key is shown."
-          onceLabel="Key Shown Once"
-          connection={{ env: shownKey.env }}
-          onClose={() => setShownKey(null)}
-        />
-      ) : null}
       {shownSecret ? (
         <HubSecretShownDialog
           secret={shownSecret}

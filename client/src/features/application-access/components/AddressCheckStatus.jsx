@@ -8,7 +8,7 @@ import { useConfirm } from "../../../components/ui/useConfirm.js";
 // hold an address per verdict, which adds a How To Fix link to the guide.
 export function AddressCheckStatus({ state, texts }) {
   const confirm = useConfirm();
-  const { waiting, verdict, usedAnyway, acceptAnyway } = state;
+  const { waiting, verdict, usedAnyway, accepted, acceptAnyway } = state;
 
   async function askAnyway() {
     const confirmed = await confirm({ title: texts.anywayTitle, description: texts.anywayText, confirmLabel: "Use It Anyway" });
@@ -18,13 +18,13 @@ export function AddressCheckStatus({ state, texts }) {
   return (
     <div aria-live="polite" className="min-h-5 text-xs">
       {waiting ? <p className="text-(--mws-muted)">Checking the address…</p> : null}
-      {!waiting && (verdict === "ok" || usedAnyway) ? (
+      {!waiting && (accepted || usedAnyway) ? (
         <p className="flex items-center gap-1.5 font-semibold text-[#3b5d36]">
           <Check size={14} aria-hidden="true" />
-          {verdict === "ok" ? texts.found : texts.anyway}
+          {verdict === "ok" ? texts.found : accepted ? (texts[`found_${verdict}`] ?? texts.found) : texts.anyway}
         </p>
       ) : null}
-      {!waiting && verdict && verdict !== "ok" && !usedAnyway ? (
+      {!waiting && verdict && !accepted && !usedAnyway ? (
         <p className="text-[#a43c41]">
           {texts[verdict]}{" "}
           {texts.help?.[verdict] ? (
