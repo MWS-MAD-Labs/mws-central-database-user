@@ -1,14 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Copy, RotateCw } from "lucide-react";
+import { ArrowLeft, Check, Copy, KeyRound, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextInput } from "../../../components/ui/FormControls.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { cn } from "../../../lib/cn.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { startGuideHref } from "../utils/startGuide.js";
 import { cleanPastedSecret, emailsProblem, existingSecretProblem } from "../utils/hubSettings.js";
 import { HubAccessSettings } from "./HubAccessSettings.jsx";
 import { HubSecretTest } from "./HubSecretTest.jsx";
@@ -211,43 +209,46 @@ export function HubSetupWizard({
       {stepId === "key" ? (
         <div className="space-y-3">
           <p className="text-sm text-(--mws-muted)">
-            The key the Hub signs everybody in with. Central makes it and shows it once, then keeps only its name and
-            fingerprint. The Hub holds the key, Central cannot sign anyone in.
+            The key the Hub signs everybody in with. Central shows it once and keeps only its name and fingerprint.
           </p>
           {keyChoice === "made" ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--mws-line) bg-(--mws-soft) px-4 py-3">
-              <span className="flex items-center gap-2 text-sm font-medium text-(--mws-charcoal)">
-                <Check size={16} className="text-[#476b43]" aria-hidden="true" />
+              <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-(--mws-charcoal)">
+                <Check size={16} className="shrink-0 text-[#476b43]" aria-hidden="true" />
                 Key Made
-                <span className="font-mono text-xs text-(--mws-muted)">{signing?.kid}</span>
+                <span className="truncate font-mono text-xs text-(--mws-muted)">{signing?.kid}</span>
               </span>
               <TextAction icon={RotateCw} disabled={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
                 Make Another Key
               </TextAction>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-4">
-              <Button type="button" loading={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
-                Make Signing Key
-              </Button>
-              <TextAction onClick={() => setKeyChoice("own")} disabled={keyChoice === "own"}>
-                I Already Have A Key
-              </TextAction>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--mws-line) bg-(--mws-soft) px-4 py-3">
+              <span className="flex items-center gap-2 text-sm font-medium text-(--mws-charcoal)">
+                <KeyRound size={16} className="shrink-0 text-(--mws-muted)" aria-hidden="true" />
+                {keyChoice === "own" ? "Using the Hub's own key" : "No key yet"}
+              </span>
+              {keyChoice === "own" ? (
+                <TextAction onClick={() => setKeyChoice(null)}>Make One Instead</TextAction>
+              ) : (
+                <Button type="button" variant="secondary" size="sm" loading={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
+                  Make Signing Key
+                </Button>
+              )}
             </div>
           )}
           {keyChoice === "own" ? (
-            <p className="text-sm text-(--mws-muted)">
-              The Hub already has HUB_SSO_PRIVATE_KEY in its .env. Central cannot tell it is the same key later, so the address check will only say that the Hub has a key.{" "}
-              <TextAction className="inline-flex" onClick={() => setKeyChoice(null)}>
-                Make One Instead
-              </TextAction>
+            <p className="text-xs text-(--mws-muted)">
+              The Hub already has HUB_SSO_PRIVATE_KEY in its .env. The address check will only say that the Hub has a key.
             </p>
           ) : null}
           {keyChoice === "made" ? (
             <p className="text-xs text-(--mws-muted)">
-              Put the two lines in the Hub's .env and deploy the Hub again before the next step. A key you did not copy
-              cannot be shown again, make another one.
+              Put the two lines in the Hub's .env and deploy the Hub again before the next step.
             </p>
+          ) : null}
+          {keyChoice === null ? (
+            <TextAction onClick={() => setKeyChoice("own")}>I Already Have A Key</TextAction>
           ) : null}
         </div>
       ) : null}
@@ -266,9 +267,6 @@ export function HubSetupWizard({
                 <li>It runs with the signing key lines from the first step, so it can publish its sign-in key.</li>
                 <li>You use the address people open the Hub at, over https.</li>
               </ul>
-              <Link to={startGuideHref("hub")} className="mt-1 inline-block font-semibold text-(--mws-burgundy) underline">
-                Open The Guide
-              </Link>
             </div>
           )}
           <HubAddressField
