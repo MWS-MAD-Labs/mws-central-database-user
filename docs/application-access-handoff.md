@@ -138,6 +138,8 @@ Deploy the Hub first (it accepts both kinds), then Central. When every applicati
 
 Staging and production each run their own Central (`DEPLOYMENT_ENVIRONMENT` tells it which), and a connection belongs to the Central that made it. So an application needs a connection in each: a different token, a different Organization ID and a different Hub secret. In GitHub, make two Environments, `staging` and `production`, and add the same names in each with the values of that Central. The deploy workflow picks the environment from the branch (`staging` or `main`), and the Setup Guide has the job to copy. The same values also go into the environment the application runs in on the server.
 
+Set `HUB_PUBLIC_URL` on each Central so Add Hub suggests the address of that environment instead of a production-shaped example. Staging uses `https://app-stg.mws.web.id`; production uses `https://app.mws.web.id`. The value is only a starting point in the form and is still checked against the Hub JWKS endpoint before it can be saved.
+
 ## The Setup Guide, in order
 
 The guide on an application's setup page now goes in the order things are done: put the lines in the `.env`, check the connection with one call, send the permissions, then staging and production.

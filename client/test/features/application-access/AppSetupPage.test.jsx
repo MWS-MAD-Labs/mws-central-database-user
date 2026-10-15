@@ -43,7 +43,10 @@ function makeSetup(overrides = {}) {
   };
 }
 
-function renderPage(routes, user = { role: "SUPER_ADMIN", is_protected: true }) {
+function renderPage(
+  routes,
+  user = { role: "SUPER_ADMIN", is_protected: true },
+) {
   globalThis.fetch = createFetchRouter(routes);
   return renderWithProviders(
     <AuthContext.Provider value={{ user }}>
@@ -149,9 +152,7 @@ describe("AppSetupPage", () => {
     );
     expect(await screen.findByText("Connection Created")).toBeVisible();
     expect(screen.getByText('HUB_SSO_APP_ID="demo"')).toBeVisible();
-    expect(
-      screen.getByText(/CENTRAL_API_TOKEN="mws_47d0b3/),
-    ).toBeVisible();
+    expect(screen.getByText(/CENTRAL_API_TOKEN="mws_47d0b3/)).toBeVisible();
     expect(screen.queryByText(new RegExp(token.slice(-12)))).toBeNull();
   });
 
@@ -282,12 +283,31 @@ describe("AppSetupPage", () => {
         path: "/api/admin/application-access/apps/demo/setup",
         response: () =>
           jsonResponse({
-            data: { ...ready, setup_completed: completed, application: { ...APP, published } },
+            data: {
+              ...ready,
+              setup_completed: completed,
+              application: { ...APP, published },
+            },
           }),
       },
       {
         path: /\/api\/admin\/application-access\/apps\/demo\/settings/,
-        response: () => jsonResponse({ data: { created_at: "2026-10-03T08:00:00.000Z", updated_at: "2026-10-03T08:00:00.000Z", token: null, access: { groups: 1, people: 0, exceptions: 0, blocked: 0, roles: [] }, activity: [] } }),
+        response: () =>
+          jsonResponse({
+            data: {
+              created_at: "2026-10-03T08:00:00.000Z",
+              updated_at: "2026-10-03T08:00:00.000Z",
+              token: null,
+              access: {
+                groups: 1,
+                people: 0,
+                exceptions: 0,
+                blocked: 0,
+                roles: [],
+              },
+              activity: [],
+            },
+          }),
       },
       {
         path: "/api/admin/application-access/apps/demo/publish",
@@ -313,13 +333,19 @@ describe("AppSetupPage", () => {
       await screen.findByRole("button", { name: "Show In Hub" }),
     );
     // Showing it in the Hub finishes the setup, so Settings takes over from here.
-    expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "Demo App Settings" }),
+    ).toBeVisible();
     await user.click(await screen.findByRole("tab", { name: "Hub Card" }));
-    await user.click(await screen.findByRole("switch", { name: "Shown In Hub" }));
+    await user.click(
+      await screen.findByRole("switch", { name: "Shown In Hub" }),
+    );
     await user.click(await screen.findByRole("button", { name: "Hide" }));
     await waitFor(() => expect(calls).toEqual(["publish", "unpublish"]));
     // It stays on Settings after hiding, and showing it again is one click away.
-    expect(await screen.findByRole("switch", { name: "Hidden From Hub" })).toBeEnabled();
+    expect(
+      await screen.findByRole("switch", { name: "Hidden From Hub" }),
+    ).toBeEnabled();
   });
   it("removes the application without a second error toast from the page it leaves", async () => {
     let removed = false;
@@ -359,7 +385,9 @@ describe("AppSetupPage", () => {
       },
     ]);
     const { user } = renderWithProviders(
-      <AuthContext.Provider value={{ user: { role: "SUPER_ADMIN", is_protected: true } }}>
+      <AuthContext.Provider
+        value={{ user: { role: "SUPER_ADMIN", is_protected: true } }}
+      >
         <ConfirmProvider>
           <Routes>
             <Route
@@ -378,10 +406,7 @@ describe("AppSetupPage", () => {
     await user.click(
       await screen.findByRole("button", { name: "Delete Application" }),
     );
-    await user.type(
-      await screen.findByRole("textbox"),
-      "demo",
-    );
+    await user.type(await screen.findByRole("textbox"), "demo");
     const before = requests.length;
     await user.click(
       screen.getAllByRole("button", { name: "Delete Application" }).at(-1),
@@ -531,7 +556,9 @@ describe("AppSetupPage", () => {
     ).toBeVisible();
     expect(rotations).toEqual([{ immediate: false, grace_hours: 24 }]);
     // It is done only when Central sees the new token in use.
-    expect(screen.getByText(/Waiting for the application to call Central/)).toBeVisible();
+    expect(
+      screen.getByText(/Waiting for the application to call Central/),
+    ).toBeVisible();
     expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
     // What to do next is right there, with the names of this application, and the full steps are one click away.
     expect(screen.getByText("What To Do Now")).toBeVisible();
@@ -900,7 +927,7 @@ describe("AppSetupPage", () => {
         "app.mws.web.id",
       );
       expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
-      await user.click(screen.getByRole("radio", { name: "Hub Local" }));
+      await user.click(screen.getByRole("radio", { name: "Hub Local HTTP" }));
       await user.clear(screen.getByLabelText("Hub Address"));
       await user.type(screen.getByLabelText("Hub Address"), "localhost:5175");
       expect(await screen.findByText("Found the Hub.")).toBeVisible();

@@ -225,7 +225,7 @@ const hubAddress = z
     }
     const url = new URL(value);
     if (url.pathname !== "/" || url.search || url.hash) {
-      ctx.addIssue({ code: "custom", message: "Use only the address, like https://app.mws.web.id, with nothing after it" });
+      ctx.addIssue({ code: "custom", message: "Use only the public Hub address, with nothing after the host" });
     }
   });
 

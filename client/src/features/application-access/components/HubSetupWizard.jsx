@@ -36,6 +36,7 @@ export function HubSetupWizard({
   hub,
   settings,
   adminEmail = "",
+  suggestedAddress = "",
   submitting = false,
   onChange,
   onClose,
@@ -43,7 +44,7 @@ export function HubSetupWizard({
   const managing = mode === "manage";
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
-  const [address, setAddress] = useState(hub?.base_url ?? "");
+  const [address, setAddress] = useState(hub?.base_url ?? suggestedAddress);
   const [addressBad, setAddressBad] = useState(false);
   const [signIn, setSignIn] = useState(
     settings ?? {
@@ -194,6 +195,7 @@ export function HubSetupWizard({
           </p>
           <HubAddressField
             value={address}
+            suggestedAddress={suggestedAddress}
             onChange={(next, bad) => {
               setAddress(next);
               setAddressBad(Boolean(bad));

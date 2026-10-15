@@ -45,7 +45,7 @@ describe('HubAddressField', () => {
     expect(onChange).toHaveBeenLastCalledWith('https://hub.mws.web.id', false)
   })
 
-  it('rejects a local address on Production without asking the server', async () => {
+  it('rejects a local address on Public HTTPS without asking the server', async () => {
     const { user, onChange } = renderField('ok')
     await user.type(screen.getByLabelText('Hub Address'), 'localhost:5175')
     expect(await screen.findByText(/That is a local address/)).toBeVisible()

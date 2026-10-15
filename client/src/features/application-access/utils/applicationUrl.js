@@ -1,7 +1,7 @@
 // Addresses are typed without http or https. The environment adds it: Local is http, Production is https.
 export const ENVIRONMENTS = [
-  { id: 'production', label: 'Production', scheme: 'https://' },
-  { id: 'local', label: 'Local', scheme: 'http://' },
+  { id: 'production', label: 'Public HTTPS', scheme: 'https://' },
+  { id: 'local', label: 'Local HTTP', scheme: 'http://' },
 ]
 
 const SCHEME = /^(https?):\/\//i
@@ -56,22 +56,22 @@ export function addressProblem(environment, rest, { required = false } = {}) {
   if (!text) return required ? 'Address is required.' : null
   if (/\s/.test(text)) return 'No spaces allowed.'
   if (text.split(/[/?#]/)[0].includes('@')) return 'Leave the user name and password out.'
-  if (!REST.test(text)) return 'Use a host like exima.mws.web.id, then the path. Letters, numbers and the usual address symbols only.'
+  if (!REST.test(text)) return 'Use a host like application.example.com, then the path. Letters, numbers and the usual address symbols only.'
   const host = text.split(/[/?#:]/)[0]
-  if (environment === 'local' && !isLocalHost(host)) return 'Local addresses use http. Pick Production for a public address.'
+  if (environment === 'local' && !isLocalHost(host)) return 'Local addresses use http. Pick Public HTTPS for a public address.'
   if (joinAddress(environment, text).length > 300) return 'Address is too long.'
   return null
 }
 
 // What the empty address box shows. Local uses the machine and a port, Production a real host.
 export function addressPlaceholder(environment, path) {
-  return `${environment === 'local' ? 'localhost:3000' : 'exima.mws.web.id'}${path}`
+  return `${environment === 'local' ? 'localhost:3000' : 'application.example.com'}${path}`
 }
 
 // The address of the Hub is an origin: nothing after the host and port.
 export function hubAddressProblem(environment, rest) {
   const text = rest.trim()
-  if (/[/?#]/.test(text)) return 'Use only the address, like app.mws.web.id, with nothing after it.'
+  if (/[/?#]/.test(text)) return 'Use only the public Hub address, with nothing after the host.'
   const problem = addressProblem(environment, text, { required: true })
   if (problem) return problem
   // A public Hub has a public name. Something that only exists on one machine would not work for anyone else.

@@ -8,6 +8,11 @@ const RULES = '/api/admin/application-access-rules'
 const ACCESS = '/api/admin/application-access'
 
 export const applicationAccessApi = {
+  async context() {
+    const response = await apiRequest(`${ACCESS}/context`)
+    return response.data
+  },
+
   async listApplications(params = {}) {
     const query = compactSearchParams(params).toString()
     return apiRequest(`${ACCESS}/applications${query ? `?${query}` : ''}`)

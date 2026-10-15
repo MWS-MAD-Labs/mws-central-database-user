@@ -23,8 +23,9 @@ const TEXTS = {
 
 // The public address of the Hub. `value` is the whole address or nothing. `onChange(address, notReady)` says what is typed and
 // whether it may be used: it has to be well formed and a Hub has to answer there, unless it was kept as it was or is used anyway.
-export function HubAddressField({ value, onChange, showError = false }) {
+export function HubAddressField({ value, suggestedAddress = "", onChange, showError = false }) {
   const start = splitAddress(value);
+  const suggested = splitAddress(suggestedAddress);
   const [environment, setEnvironment] = useState(value ? start.environment : "production");
   const [rest, setRest] = useState(start.rest);
   const [initial] = useState(value);
@@ -69,7 +70,7 @@ export function HubAddressField({ value, onChange, showError = false }) {
           label="Hub Address"
           environment={environment}
           value={rest}
-          placeholder={environment === "local" ? "localhost:5175" : "app.mws.web.id"}
+          placeholder={environment === "local" ? "localhost:5175" : (suggested.rest || "hub.example.com")}
           invalid={Boolean(problem) || (Boolean(verdict) && verdict !== "ok" && !usedAnyway)}
           onChange={(event) => {
             const next = readAddressInput(event.target.value, environment);

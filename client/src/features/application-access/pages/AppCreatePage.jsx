@@ -30,6 +30,11 @@ export function AppCreatePage() {
     enabled: canManageApplications(user),
   });
   const hubExists = Boolean(hubQuery.data?.data?.some((row) => row.is_hub));
+  const contextQuery = useQuery({
+    queryKey: ["application-access", "context"],
+    queryFn: () => applicationAccessApi.context(),
+    enabled: canManageApplications(user),
+  });
 
   const mutation = useMutation({
     mutationFn: (payload) => applicationAccessApi.createApplication(payload),
@@ -71,6 +76,8 @@ export function AppCreatePage() {
         adminEmail={user?.email ?? ""}
         submitLabel="Add Application"
         hubExists={hubExists}
+        suggestedHubUrl={contextQuery.data?.suggested_hub_url ?? ""}
+        deploymentEnvironment={contextQuery.data?.environment ?? ""}
         submitting={mutation.isPending}
         onSubmit={async (payload) => {
           if (payload.is_hub) {

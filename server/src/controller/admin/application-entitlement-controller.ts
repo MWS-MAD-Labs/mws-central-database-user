@@ -29,6 +29,7 @@ import {
 } from "../../service/application-entitlement-service";
 import type { AdminVariables } from "../../type/hono-context";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
+import { getIntegrationEnvironment } from "../../utils/integration-environment";
 
 // "a,b,c" in a query string becomes ["a", "b", "c"].
 function listQuery(value: string | undefined): string[] | undefined {
@@ -234,6 +235,20 @@ export class ApplicationAccessRuleController {
 }
 
 export class ApplicationAccessController {
+  static async context(c: Context<{ Variables: AdminVariables }>) {
+    if (c.var.admin.role !== "SUPER_ADMIN") {
+      throw new ResponseError(403, "Forbidden: Only Super Admin can manage applications");
+    }
+    const configured = process.env.HUB_PUBLIC_URL?.trim().replace(/\/+$/, "") || null;
+    const suggestedHubUrl = configured && !addressProblem(configured) ? configured : null;
+    return c.json({
+      data: {
+        environment: getIntegrationEnvironment().toLowerCase(),
+        suggested_hub_url: suggestedHubUrl,
+      },
+    });
+  }
+
   static async applications(c: Context<{ Variables: AdminVariables }>) {
     const page = c.req.query("page");
     const size = c.req.query("size");

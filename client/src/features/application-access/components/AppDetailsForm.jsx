@@ -66,7 +66,7 @@ const ADDRESS_TEXTS = {
     "Central could not reach this address, which can be true when the application only runs on your machine and Central does not. If it is wrong, the card in the Hub opens a page that does not exist. Use it only if you are sure.",
 };
 
-export function AppDetailsForm({ initial, idLocked = false, isHub = false, layout = "dialog", hubExists = false, adminEmail = "", submitLabel, submitting, onSubmit, onCancel }) {
+export function AppDetailsForm({ initial, idLocked = false, isHub = false, layout = "dialog", hubExists = false, adminEmail = "", suggestedHubUrl = "", deploymentEnvironment = "", submitLabel, submitting, onSubmit, onCancel }) {
   const launch = splitAddress(initial?.launch_url);
   const logout = splitAddress(initial?.logout_url, launch.environment);
   const [values, setValues] = useState({
@@ -358,10 +358,10 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
         </div>
       </Section>
       <Section title="Addresses">
-        <Field label="Environment" hint="Sets the scheme of both addresses.">
+        <Field label="Protocol" hint={deploymentEnvironment ? `This Central is ${deploymentEnvironment}. The protocol only controls http or https.` : "Controls http or https for both addresses."}>
           <div
             role="radiogroup"
-            aria-label="Environment"
+            aria-label="Protocol"
             className="grid w-full grid-cols-2 gap-1 rounded-xl border border-(--mws-line) bg-(--mws-soft) p-1 sm:max-w-xs"
           >
             {ENVIRONMENTS.map((item) => (
@@ -455,7 +455,14 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       </Section>
       </>)}
       {layout === "page" && hubChosen ? (
-        <HubSetupWizard mode="create" adminEmail={adminEmail.endsWith(`@${LIMITS.EMAIL_DOMAIN}`) ? adminEmail : ""} submitting={submitting} onChange={setHubWizard} />
+        <HubSetupWizard
+          key={suggestedHubUrl || "hub-setup"}
+          mode="create"
+          adminEmail={adminEmail.endsWith(`@${LIMITS.EMAIL_DOMAIN}`) ? adminEmail : ""}
+          suggestedAddress={suggestedHubUrl}
+          submitting={submitting}
+          onChange={setHubWizard}
+        />
       ) : null}
       {layout === "page" && launchMode === "sso" && !hubChosen ? (
         <Section title="Data Access">

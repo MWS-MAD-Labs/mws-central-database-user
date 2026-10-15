@@ -77,6 +77,30 @@ describe("hub address check", () => {
       const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
       expect((await TestRequest.get(`${ACCESS}/hub-address-check?url=${encodeURIComponent(base())}`, other)).status).toBe(403);
     });
+
+    it("exposes the Hub URL configured for this Central environment", async () => {
+      await AdminUserTest.delete();
+      await MasterDataTest.delete();
+      await MasterDataTest.create();
+      const previousEnvironment = process.env.DEPLOYMENT_ENVIRONMENT;
+      const previousHubUrl = process.env.HUB_PUBLIC_URL;
+      process.env.DEPLOYMENT_ENVIRONMENT = "staging";
+      process.env.HUB_PUBLIC_URL = "https://app-stg.mws.web.id/";
+      try {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        const response = await TestRequest.get(`${ACCESS}/context`, accessToken);
+        expect(response.status).toBe(200);
+        expect((await response.json()).data).toEqual({
+          environment: "staging",
+          suggested_hub_url: "https://app-stg.mws.web.id",
+        });
+      } finally {
+        if (previousEnvironment === undefined) delete process.env.DEPLOYMENT_ENVIRONMENT;
+        else process.env.DEPLOYMENT_ENVIRONMENT = previousEnvironment;
+        if (previousHubUrl === undefined) delete process.env.HUB_PUBLIC_URL;
+        else process.env.HUB_PUBLIC_URL = previousHubUrl;
+      }
+    });
   });
 
   describe("hub secret check", () => {
