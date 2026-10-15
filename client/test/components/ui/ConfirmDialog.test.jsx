@@ -43,6 +43,18 @@ describe('ConfirmProvider', () => {
     expect(screen.getByTestId('result')).toHaveTextContent('true')
   })
 
+  it('shows the way forward in burgundy, and in red when the action is dangerous', async () => {
+    const normal = renderConfirm({ title: 'Add it', confirmLabel: 'Add' })
+    await normal.user.click(screen.getByRole('button', { name: 'Open confirm' }))
+    expect(screen.getByRole('button', { name: 'Add' }).className).toContain('burgundy')
+    expect(screen.getByRole('button', { name: 'Add' }).className).not.toContain('a43c41')
+    normal.unmount()
+
+    const danger = renderConfirm({ title: 'Remove it', confirmLabel: 'Remove', tone: 'danger' })
+    await danger.user.click(screen.getByRole('button', { name: 'Open confirm' }))
+    expect(screen.getByRole('button', { name: 'Remove' }).className).toContain('a43c41')
+  })
+
   it('resolves false when cancelled', async () => {
     const { user } = renderConfirm('Continue?')
     await user.click(screen.getByRole('button', { name: 'Open confirm' }))
