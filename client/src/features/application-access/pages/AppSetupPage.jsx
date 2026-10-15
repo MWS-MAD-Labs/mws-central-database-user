@@ -360,9 +360,6 @@ export function AppSetupPage() {
                     .
                   </p>
                 ) : null}
-                <TextAction asChild className="mt-3" icon={BookOpen}>
-                  <Link to={`${guideBase}?part=local`}>Show Setup Guide</Link>
-                </TextAction>
               </div>
             ) : null}
           </li>
