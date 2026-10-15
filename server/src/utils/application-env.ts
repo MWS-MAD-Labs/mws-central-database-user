@@ -45,6 +45,14 @@ const HEADINGS = {
   hubMaster: "The Hub's master secret. Never copy it into another application. Changes only when it is rotated here.",
 };
 
+// The Hub's signing key lines. Made once when the key is made, and never read back from Central.
+export function hubKeyEnvItems(kid: string, privatePemOneLine: string): EnvItem[] {
+  return [
+    item("HUB_SSO_PRIVATE_KEY", privatePemOneLine, 0, true, "The Hub's signing key. Shown once and not kept in Central. Changes only when a new key is made here."),
+    item("HUB_SSO_KEY_ID", kid, 0),
+  ];
+}
+
 // Safe by default: people still get in, and whoever would be turned away is only logged.
 export function resolveHubSettings(stored: unknown, adminEmail?: string): HubEnvSettings {
   const value = (stored ?? {}) as Partial<HubEnvSettings>;

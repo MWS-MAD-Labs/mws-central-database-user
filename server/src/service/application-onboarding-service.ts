@@ -13,8 +13,9 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import type { ApplicationSummary, CreateApplicationRequest, UpdateApplicationRequest } from "../model/application-entitlement-model";
 import { ApplicationValidation } from "../validation/application-entitlement-validation";
 import { Validation } from "../validation/validation";
-import { buildEnvItems, hubLinesMissing, resolveHubSettings, type EnvItem, type HubEnvSettings, type HubFacts } from "../utils/application-env";
+import { buildEnvItems, hubKeyEnvItems, hubLinesMissing, resolveHubSettings, type EnvItem, type HubEnvSettings, type HubFacts } from "../utils/application-env";
 import { deriveAppSecret } from "../utils/hub-app-secret";
+import { makeHubSigningKey, pemForEnv } from "../utils/hub-signing-key";
 import { decryptSecret, encryptSecret, keyReady, newSecret } from "../utils/secret-box";
 import { addressProblem } from "../utils/application-id";
 import { evaluateRemoval, usedRecently } from "../utils/application-removal";
@@ -353,6 +354,45 @@ export class ApplicationOnboardingService {
   // The address kept for the Hub, or nothing when there is none yet.
   static async savedHubAddress(): Promise<string | null> {
     return (await loadHubFacts(false)).baseUrl;
+  }
+
+  static async savedHubSigningThumbprint(): Promise<string | null> {
+    const row = await prismaClient.application.findUnique({ where: { application_id: hubApplicationId() }, select: { hub_signing_thumbprint: true } });
+    return row?.hub_signing_thumbprint ?? null;
+  }
+
+  // Makes the Hub's signing key. The private key goes back in this answer only. Central keeps the key's name and
+  // thumbprint, so the address check can tell it is the same key.
+  static async makeHubSigningKey(
+    admin: AdminUser,
+    request: unknown,
+    context: AuditRequestContext = {},
+  ): Promise<{ kid: string; thumbprint: string; saved: boolean; env: EnvItem[] }> {
+    assertSuperAdmin(admin);
+    const body = Validation.validate(ApplicationValidation.HUB_SIGNING_KEY, request ?? {}) as { confirm_replace?: boolean };
+    const hub = await prismaClient.application.findUnique({ where: { application_id: hubApplicationId() } });
+    if (hub?.hub_signing_thumbprint && !body.confirm_replace) {
+      throw new ResponseError(409, "A key was already made for the Hub. A new one signs everybody out until the Hub runs with it. Confirm to replace it");
+    }
+    const key = makeHubSigningKey();
+    if (hub) {
+      await prismaClient.application.update({
+        where: { id: hub.id },
+        data: { hub_signing_kid: key.kid, hub_signing_thumbprint: key.thumbprint, hub_signing_created_at: new Date() },
+      });
+      await AuditService.record({
+        action: AuditAction.APPLICATION_HUB_KEY,
+        source: AuditSource.UI,
+        entity_type: "Application",
+        entity_id: hub.id,
+        admin_id: admin.id,
+        old_values: { kid: hub.hub_signing_kid, thumbprint: hub.hub_signing_thumbprint },
+        new_values: { kid: key.kid, thumbprint: key.thumbprint },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
+    }
+    return { kid: key.kid, thumbprint: key.thumbprint, saved: Boolean(hub), env: hubKeyEnvItems(key.kid, pemForEnv(key.privatePem)) };
   }
 
   static async get(admin: AdminUser, applicationId: string): Promise<ApplicationDetail> {

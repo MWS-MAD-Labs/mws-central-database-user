@@ -90,11 +90,11 @@ describe("hub address check", () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const ask = async (url: string) =>
         (await (await TestRequest.get(`${ACCESS}/hub-address-check?url=${encodeURIComponent(url)}`, accessToken)).json()).data;
-      expect(await ask(base())).toEqual({ verdict: "ok" });
+      expect(await ask(base())).toEqual({ verdict: "ok", key: "unknown" });
       // A path is not part of an address, and a public name over http is not kept, so neither is asked.
-      expect(await ask(`${base()}/x`)).toEqual({ verdict: "refused" });
-      expect(await ask("http://hub.example.com")).toEqual({ verdict: "refused" });
-      expect(await ask("")).toEqual({ verdict: "refused" });
+      expect(await ask(`${base()}/x`)).toEqual({ verdict: "refused", key: "unknown" });
+      expect(await ask("http://hub.example.com")).toEqual({ verdict: "refused", key: "unknown" });
+      expect(await ask("")).toEqual({ verdict: "refused", key: "unknown" });
 
       const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
       expect((await TestRequest.get(`${ACCESS}/hub-address-check?url=${encodeURIComponent(base())}`, other)).status).toBe(403);

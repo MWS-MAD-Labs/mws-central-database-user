@@ -3,6 +3,8 @@
 // any other server. A Hub that is running but has no signing key answers that path with an error, so its /health
 // is asked next: that tells "this is the Hub, it has no key yet" from "this is not the Hub". Only the verdict
 // leaves here, never what the address said.
+import { thumbprintOf } from "../utils/hub-signing-key";
+
 export type HubAddressVerdict = "ok" | "unreachable" | "not_hub" | "no_keys" | "refused";
 
 const TIMEOUT_MS = 4000;
@@ -31,15 +33,20 @@ async function answersLikeHub(url: URL): Promise<boolean> {
   }
 }
 
-export async function checkHubAddress(address: string): Promise<HubAddressVerdict> {
+export type HubAddressResult = { verdict: HubAddressVerdict; thumbprints: string[] };
+
+// The verdict, and the thumbprints of the public keys the Hub publishes, so a caller can tell whether it is the key
+// Central made. Only the thumbprints leave here, never the keys.
+export async function checkHubAddressDetailed(address: string): Promise<HubAddressResult> {
+  const result = (verdict: HubAddressVerdict, thumbprints: string[] = []): HubAddressResult => ({ verdict, thumbprints });
   let url: URL;
   try {
     url = new URL(address);
   } catch {
-    return "refused";
+    return result("refused");
   }
   if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password || refusedHost(url.hostname)) {
-    return "refused";
+    return result("refused");
   }
   try {
     const response = await fetch(new URL("/.well-known/jwks.json", url.origin), {
@@ -47,9 +54,9 @@ export async function checkHubAddress(address: string): Promise<HubAddressVerdic
       signal: AbortSignal.timeout(TIMEOUT_MS),
       headers: { Accept: "application/json" },
     });
-    if (response.status !== 200) return (await answersLikeHub(url)) ? "no_keys" : "not_hub";
+    if (response.status !== 200) return result((await answersLikeHub(url)) ? "no_keys" : "not_hub");
     const reader = response.body?.getReader();
-    if (!reader) return "not_hub";
+    if (!reader) return result("not_hub");
     const chunks: Uint8Array[] = [];
     let size = 0;
     for (;;) {
@@ -58,16 +65,25 @@ export async function checkHubAddress(address: string): Promise<HubAddressVerdic
       size += value.length;
       if (size > MAX_BYTES) {
         await reader.cancel();
-        return "not_hub";
+        return result("not_hub");
       }
       chunks.push(value);
     }
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { keys?: unknown };
-    return Array.isArray(body.keys) ? "ok" : "not_hub";
+    if (!Array.isArray(body.keys)) return result("not_hub");
+    const thumbprints = body.keys.flatMap((key) => {
+      const print = key && typeof key === "object" ? thumbprintOf(key as Record<string, unknown>) : null;
+      return print ? [print] : [];
+    });
+    return result("ok", thumbprints);
   } catch (error) {
     // Nothing answered, or it timed out. A parse error means something answered with no JSON, so it is not a Hub.
-    return error instanceof SyntaxError ? "not_hub" : "unreachable";
+    return result(error instanceof SyntaxError ? "not_hub" : "unreachable");
   }
+}
+
+export async function checkHubAddress(address: string): Promise<HubAddressVerdict> {
+  return (await checkHubAddressDetailed(address)).verdict;
 }
 
 // "no_check" is a Hub that has not been updated with the secret check yet.

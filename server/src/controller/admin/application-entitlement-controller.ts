@@ -1,4 +1,4 @@
-import { checkApplicationAddress, checkHubAddress, checkHubSecret } from "../../service/hub-address-check";
+import { checkApplicationAddress, checkHubAddressDetailed, checkHubSecret } from "../../service/hub-address-check";
 import { keyReady } from "../../utils/secret-box";
 import { ApplicationTaxonomyService } from "../../service/application-taxonomy-service";
 import { ApplicationOnboardingService } from "../../service/application-onboarding-service";
@@ -362,8 +362,20 @@ export class ApplicationAccessController {
     const address = c.req.query("url") ?? "";
     // The same rules as saving it, so only an address that could be kept is asked.
     const parsed = ApplicationValidation.HUB_ADDRESS.safeParse({ hub_base_url: address });
-    if (!parsed.success) return c.json({ data: { verdict: "refused" } });
-    return c.json({ data: { verdict: await checkHubAddress(parsed.data.hub_base_url as string) } });
+    if (!parsed.success) return c.json({ data: { verdict: "refused", key: "unknown" } });
+    const { verdict, thumbprints } = await checkHubAddressDetailed(parsed.data.hub_base_url as string);
+    // The wizard sends the thumbprint of the key it just made. Otherwise it is the one kept for the Hub.
+    const asked = (c.req.query("thumbprint") ?? "").trim();
+    const expected = /^[A-Za-z0-9_-]{43}$/.test(asked) ? asked : await ApplicationOnboardingService.savedHubSigningThumbprint();
+    const key = verdict !== "ok" || !expected ? "unknown" : thumbprints.includes(expected) ? "match" : "mismatch";
+    return c.json({ data: { verdict, key } });
+  }
+
+  static async hubSigningKey(c: Context<{ Variables: AdminVariables }>) {
+    const body = await c.req.json().catch(() => ({}));
+    const data = await ApplicationOnboardingService.makeHubSigningKey(c.var.admin, body, getAuditRequestContext(c));
+    c.header("Cache-Control", "no-store");
+    return c.json({ data });
   }
 
   static async applicationAddressCheck(c: Context<{ Variables: AdminVariables }>) {

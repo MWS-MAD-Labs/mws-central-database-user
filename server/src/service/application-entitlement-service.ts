@@ -1920,6 +1920,9 @@ export class ApplicationAccessService {
     if (organization + roles + rules + entitlements + existing > 0) {
       throw new ResponseError(400, parsed.is_hub ? "The Hub is already added" : `An application with the id ${input.application_id} already exists`);
     }
+    if (!parsed.is_hub && applicationId !== hubApplicationId() && (await prismaClient.application.count({ where: { application_id: hubApplicationId() } })) === 0) {
+      throw new ResponseError(400, "Add the Hub first. Every application is given its address");
+    }
     await ApplicationTaxonomyService.assertKnown(input);
     await resolveOrganizationId(input.application_id);
     const organizationRow = await prismaClient.applicationOrganization.findUniqueOrThrow({
@@ -1947,6 +1950,9 @@ export class ApplicationAccessService {
         ...(parsed.is_hub && parsed.env_settings ? { env_settings: parsed.env_settings } : {}),
         // The Hub shares its address and a secret of its own making with every application.
         ...(parsed.is_hub ? { hub_internal_secret: encryptSecret(parsed.hub_secret ?? newSecret()), hub_base_url: parsed.hub_base_url ?? null } : {}),
+        ...(parsed.is_hub && parsed.hub_signing
+          ? { hub_signing_kid: parsed.hub_signing.kid, hub_signing_thumbprint: parsed.hub_signing.thumbprint, hub_signing_created_at: new Date() }
+          : {}),
       },
     });
     if (!options.skipAudit) await AuditService.record({

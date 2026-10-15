@@ -318,6 +318,7 @@ enum AuditAction {
   APPLICATION_DELETE
   APPLICATION_RETIRE
   APPLICATION_RESTORE
+  APPLICATION_HUB_KEY
   APPLICATION_ROLE_CREATE
   APPLICATION_ROLE_DELETE
   APPLICATION_PERMISSION_CREATE
@@ -1695,6 +1696,11 @@ model Application {
   // Goes up when the secret of this application is rotated.
   hub_secret_version  Int @default(1)
   hub_internal_secret String?
+  // Only on the Hub's own row. Which signing key Central made for it: its name and the thumbprint of the public key.
+  // The private key is shown once and never kept.
+  hub_signing_kid        String?
+  hub_signing_thumbprint String?
+  hub_signing_created_at DateTime?
   // sso: opened through the Hub's sign-in handoff. link: a plain address, nothing to connect.
   launch_mode    ApplicationLaunchMode @default(SSO)
   session_mode   ApplicationSessionMode @default(RELAY)

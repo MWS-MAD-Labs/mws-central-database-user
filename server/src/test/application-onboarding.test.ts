@@ -801,9 +801,9 @@ describe("application onboarding", () => {
       const hubId = "hub-first-test";
       try {
         const { accessToken } = await AdminUserTest.createSuperAdmin();
-        await create(accessToken);
         await prismaClient.application.create({ data: { application_id: hubId, name: "HUB" } });
         await prismaClient.applicationOrganization.create({ data: { application_id: hubId, organization_id: "org_hub_x" } });
+        await create(accessToken);
         const rowOf = async () => {
           const list = (await (await TestRequest.get(`${ACCESS}/applications?search=${appId.slice(0, 8)}&size=50`, accessToken)).json()).data;
           return list.find((item: { application_id: string }) => item.application_id === appId);
@@ -876,14 +876,10 @@ describe("application onboarding", () => {
     it("keeps the Hub address and secret, hides the secret, and puts both into the .env of an application", async () => {
       const other = `test-hubuse-${randomBytes(3).toString("hex")}`;
       await asHub(async (accessToken) => {
-        // Without the Hub having an address, an application is told its Hub lines are missing.
+        // No application can be added before the Hub is.
         const before = await create(accessToken, { application_id: other, name: "TEST_Other", connect: true, session_mode: "relay" });
-        // The Hub is not added yet in this run, so there is nothing to share.
-        expect((await before.json()).data.connection.hub_lines_missing).toBe(true);
-        await prismaClient.application.deleteMany({ where: { application_id: other } });
-        await prismaClient.applicationOrganization.deleteMany({ where: { application_id: other } });
-        await prismaClient.apiClient.deleteMany({ where: { profile: { code: other } } });
-        await prismaClient.applicationIntegrationProfile.deleteMany({ where: { code: other } });
+        expect(before.status).toBe(400);
+        expect((await before.json()).errors).toContain("Add the Hub first");
 
         const hub = await TestRequest.post(`${ACCESS}/applications`, { name: "HUB", is_hub: true, hub_base_url: "https://hub.example.com/", connect: true }, accessToken);
         expect(hub.status).toBe(200);
@@ -1204,15 +1200,14 @@ describe("application onboarding", () => {
       process.env.HUB_APPLICATION_ID = "test-hub-for-guide";
       try {
         const { accessToken } = await AdminUserTest.createSuperAdmin();
+        await prismaClient.application.create({ data: { application_id: "test-hub-for-guide", name: "HUB" } });
         await create(accessToken);
         const before = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
         expect(before.environment).toBe("staging");
         expect(before.central_url).toMatch(/^https?:\/\/[^/]+$/);
         expect(before.hub_address).toBeNull();
 
-        await prismaClient.application.create({
-          data: { application_id: "test-hub-for-guide", name: "HUB", hub_base_url: "https://hub.example.com" },
-        });
+        await prismaClient.application.update({ where: { application_id: "test-hub-for-guide" }, data: { hub_base_url: "https://hub.example.com" } });
         const after = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
         expect(after.hub_address).toBe("https://hub.example.com");
         // The Hub has no Hub address to point at.

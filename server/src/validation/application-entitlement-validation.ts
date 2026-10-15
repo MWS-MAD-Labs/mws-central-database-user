@@ -302,10 +302,19 @@ export class ApplicationValidation {
       is_hub: z.boolean().optional(),
       env_settings: envSettings.optional(),
       hub_base_url: hubAddress.optional(),
+      // The key Central made for the Hub in the wizard. Only its name and thumbprint are kept.
+      hub_signing: z
+        .object({
+          kid: z.string().trim().regex(/^[A-Za-z0-9._-]{1,100}$/, "Key name has letters, numbers, dots, dashes and underscores only"),
+          thumbprint: z.string().trim().regex(/^[A-Za-z0-9_-]{43}$/, "That is not a key thumbprint"),
+        })
+        .optional(),
       // The secret the Hub already runs with, kept instead of making a new one.
       hub_secret: z.preprocess(cleanPastedSecret, z.string().trim().min(16, "A secret is at least 16 characters").max(200, "A secret is at most 200 characters").regex(/^\S+$/, "A secret has no spaces").refine((v) => !NOT_A_HUB_SECRET.test(v), "That is another line of the .env, not HUB_INTERNAL_SECRET")).optional(),
     })
     .refine((value) => value.application_id || value.name, { message: "Name is required", path: ["name"] });
+
+  static readonly HUB_SIGNING_KEY = z.object({ confirm_replace: z.boolean().optional() });
 
   static readonly CONNECTION_SCOPES = z.object({
     scope_names: z.array(z.string().trim().min(1).max(100)).max(50),
