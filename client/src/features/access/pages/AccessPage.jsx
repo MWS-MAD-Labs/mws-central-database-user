@@ -491,9 +491,9 @@ function AdminUsersPanel() {
           <p className="mt-0.5">
             Requests to change a locked NIK, NPWP, bank or BPJS number can't be
             reviewed. Pick an admin who is linked to an employee with the Head
-            of CARE position, then tick Change Request Approver in their
-            row. Only a protected Super Admin can do this. Requests filed
-            earlier appear for them automatically.
+            of CARE position, then tick Change Request Approver in their row.
+            Only a protected Super Admin can do this. Requests filed earlier
+            appear for them automatically.
           </p>
         </div>
       ) : null}
@@ -937,9 +937,10 @@ function AdminUsersPanel() {
                               </>
                             ) : (
                               <ActionsMenuItem
-                                disabled={
-                                  isPendingFor(reactivateMutation, (variables) => variables?.id === admin.id)
-                                }
+                                disabled={isPendingFor(
+                                  reactivateMutation,
+                                  (variables) => variables?.id === admin.id,
+                                )}
                                 onClick={() => {
                                   closeMenu();
                                   handleReactivate(admin);
@@ -1644,13 +1645,13 @@ function UnitScopeDialog({ admin, domain, isSubmitting, onClose, onSubmit }) {
     >
       <form id="unit-scope-form" className="space-y-3" onSubmit={handleSubmit}>
         <ScopeModeOption
-          label="Assigned unit only"
+          label="Assigned Unit Only"
           description="Only the unit this admin is assigned to."
           checked={mode === "own"}
           onChange={() => setMode("own")}
         />
         <ScopeModeOption
-          label={`Selected ${isStudent ? "academic" : "organization"} units`}
+          label={`Selected ${isStudent ? "Academic" : "Organization"} Units`}
           description="Only the units on this list, for viewing and editing."
           checked={mode === "custom"}
           onChange={() => setMode("custom")}
@@ -1684,7 +1685,7 @@ function UnitScopeDialog({ admin, domain, isSubmitting, onClose, onSubmit }) {
           </div>
         ) : null}
         <ScopeModeOption
-          label="All units"
+          label="All Units"
           description="Every unit, for viewing and editing."
           checked={mode === "all"}
           onChange={() => setMode("all")}
