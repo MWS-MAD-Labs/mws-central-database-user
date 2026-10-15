@@ -66,7 +66,7 @@ const ADDRESS_TEXTS = {
     "Central could not reach this address, which can be true when the application only runs on your machine and Central does not. If it is wrong, the card in the Hub opens a page that does not exist. Use it only if you are sure.",
 };
 
-export function AppDetailsForm({ initial, idLocked = false, isHub = false, layout = "dialog", hubExists = false, adminEmail = "", suggestedHubUrl = "", deploymentEnvironment = "", submitLabel, submitting, onSubmit, onCancel }) {
+export function AppDetailsForm({ initial, idLocked = false, isHub = false, layout = "dialog", hubExists = false, hubKnown = false, adminEmail = "", suggestedHubUrl = "", deploymentEnvironment = "", submitLabel, submitting, onSubmit, onCancel }) {
   const launch = splitAddress(initial?.launch_url);
   const logout = splitAddress(initial?.logout_url, launch.environment);
   const [values, setValues] = useState({
@@ -99,7 +99,10 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const [scopeNames, setScopeNames] = useState(DEFAULT_SCOPES);
   // What the Hub wizard has gathered while the Hub is being added.
   const [hubWizard, setHubWizard] = useState({ step: 0, address: "", settings: null, secret: undefined });
-  const [hubChosen, setHubChosen] = useState(false);
+  // Before the Hub is added nothing else can be, so the page starts as the Hub.
+  const mustBeHub = layout === "page" && hubKnown && !hubExists;
+  const [hubTicked, setHubChosen] = useState(false);
+  const hubChosen = mustBeHub || hubTicked;
   // What a pasted address started with, so a clash with the environment can be said out loud.
   const [pasted, setPasted] = useState({ launch: null, logout: null });
   const [notes, setNotes] = useState({ launch: null, logout: null });
@@ -224,6 +227,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
               ...(hubWizard.settings ? { env_settings: hubWizard.settings } : {}),
               ...(hubWizard.address ? { hub_base_url: hubWizard.address } : {}),
               ...(hubWizard.secret ? { hub_secret: hubWizard.secret } : {}),
+              ...(hubWizard.signing ? { hub_signing: hubWizard.signing } : {}),
             }
           : {}),
       });
@@ -273,11 +277,18 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
           </Field>
         </div>
         {/* Gone once the wizard moves past step 1, so a stray click cannot throw the steps away. */}
-        {layout === "page" && !hubExists && !(hubChosen && hubWizard.step > 0) ? (
+        {layout === "page" && !(hubChosen && hubWizard.step > 0) ? (
           <CheckboxField
             label="This is the Hub itself"
-            description="The Hub is not listed in the Hub, so it has no card or launch address. It cannot be renamed, there can only be one, and it can only be deleted after every other application is removed."
-            checked={hubChosen}
+            description={
+              hubExists
+                ? "The Hub is already added. There can only be one."
+                : mustBeHub
+                  ? "Nothing can be added before the Hub, so this is the Hub. It has no card or launch address, it cannot be renamed, and it can only be deleted after every other application is removed."
+                  : "The Hub is not listed in the Hub, so it has no card or launch address. It cannot be renamed, there can only be one, and it can only be deleted after every other application is removed."
+            }
+            checked={hubChosen && !hubExists}
+            disabled={hubExists || mustBeHub}
             onChange={(event) => setHubChosen(event.target.checked)}
           />
         ) : null}

@@ -65,13 +65,44 @@ const NO_HUB = {
   response: () => jsonResponse({ data: [], paging: { current_page: 1, total_page: 1, total_item: 0, size: 20 } }),
 }
 
+const HUB_EXISTS = {
+  ...NO_HUB,
+  response: () => jsonResponse({ data: [{ application_id: 'hub', is_hub: true }], paging: { current_page: 1, total_page: 1, total_item: 1, size: 20 } }),
+}
+
+const THUMBPRINT = 'T'.repeat(43)
+
+const SIGNING_KEY = {
+  path: '/api/admin/application-access/hub-signing-key',
+  method: 'POST',
+  response: () =>
+    jsonResponse({
+      data: {
+        kid: 'mws-hub-sso-2026-10-ab12',
+        thumbprint: THUMBPRINT,
+        saved: false,
+        env: [
+          { key: 'HUB_SSO_PRIVATE_KEY', value: '-----BEGIN PRIVATE KEY-----\\nabc', secret: true, group: 0, line: 'HUB_SSO_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\nabc"', heading: 'The Hub signing key.' },
+          { key: 'HUB_SSO_KEY_ID', value: 'mws-hub-sso-2026-10-ab12', secret: false, group: 0, line: 'HUB_SSO_KEY_ID="mws-hub-sso-2026-10-ab12"' },
+        ],
+      },
+    }),
+}
+
 const CONTEXT = {
   path: '/api/admin/application-access/context',
   response: () => jsonResponse({ data: { environment: 'staging', suggested_hub_url: null } }),
 }
 
-function renderPage(user = { role: 'SUPER_ADMIN', is_protected: true }) {
-  return renderWithProviders(
+// The first step of the Hub wizard, passed by saying the Hub already has a key.
+async function skipKey(user) {
+  await user.click(await screen.findByRole('button', { name: 'I Already Have A Key' }))
+  await user.click(screen.getByRole('button', { name: 'Continue' }))
+}
+
+// The form shows once the page knows whether a Hub exists.
+async function renderPage(user = { role: 'SUPER_ADMIN', is_protected: true }) {
+  const view = renderWithProviders(
     <AuthContext.Provider value={{ user }}>
       <ConfirmProvider>
         <Routes>
@@ -82,18 +113,20 @@ function renderPage(user = { role: 'SUPER_ADMIN', is_protected: true }) {
     </AuthContext.Provider>,
     { route: '/application-access/apps/new' },
   )
+  if (user.role === 'SUPER_ADMIN') await screen.findByRole('checkbox', { name: /This is the Hub itself/ })
+  return view
 }
 
 describe('AppCreatePage', () => {
   it('refuses anyone who is not a Super Admin', async () => {
     globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    renderPage({ role: 'DATABASE_ADMIN' })
+    await renderPage({ role: 'DATABASE_ADMIN' })
     expect(await screen.findByText('Only a protected Super Admin can manage application access.')).toBeVisible()
   })
 
   it('makes the application id from the name and does not let it be typed', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    const { user } = renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    const { user } = await renderPage()
     const id = screen.getByLabelText('Application ID')
     expect(id).toBeDisabled()
     await user.type(screen.getByLabelText('Name'), 'MWS Hub')
@@ -104,8 +137,8 @@ describe('AppCreatePage', () => {
   })
 
   it('puts the scheme in front of the address from the environment', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    const { user } = renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    const { user } = await renderPage()
     const production = screen.getByRole('radio', { name: 'Public HTTPS' })
     expect(production).toHaveAttribute('aria-checked', 'true')
     expect(screen.getAllByText('https://')).toHaveLength(1)
@@ -128,17 +161,17 @@ describe('AppCreatePage', () => {
       KEY,
       HUB_OK,
     ])
-    const { user } = renderPage()
-    await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
+    const { user } = await renderPage()
+    await skipKey(user)
 
     expect(await screen.findByLabelText('Hub Address')).toHaveValue('app-stg.mws.web.id')
     expect(screen.getByRole('radio', { name: 'Hub Public HTTPS' })).toHaveAttribute('aria-checked', 'true')
   })
 
   it('refuses spaces, symbols and a public address on Local, without calling the server', async () => {
-    const fetchMock = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
+    const fetchMock = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
     globalThis.fetch = fetchMock
-    const { user } = renderPage()
+    const { user } = await renderPage()
     await user.type(screen.getByLabelText('Name'), 'Bad <b>')
     await user.type(screen.getByLabelText('Description'), 'hello <script>')
     await user.click(screen.getByRole('button', { name: 'This application uses different paths' }))
@@ -154,8 +187,8 @@ describe('AppCreatePage', () => {
   })
 
   it('switches the environment when the pasted address is the only one, and says so', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    const { user } = renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    const { user } = await renderPage()
     await user.click(screen.getByRole('radio', { name: 'Local HTTP' }))
     await user.click(screen.getByLabelText('Application Address'))
     await user.paste('  HTTPS://Exima.MWS.web.id')
@@ -165,9 +198,9 @@ describe('AppCreatePage', () => {
   })
 
   it('refuses a pasted scheme that clashes with the environment when the other address is filled', async () => {
-    const fetchMock = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
+    const fetchMock = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
     globalThis.fetch = fetchMock
-    const { user } = renderPage()
+    const { user } = await renderPage()
     await user.type(screen.getByLabelText('Name'), 'Demo')
     await user.click(screen.getByRole('button', { name: 'This application uses different paths' }))
     await user.type(screen.getByLabelText('Launch URL'), 'demo.example.com/auth')
@@ -181,7 +214,7 @@ describe('AppCreatePage', () => {
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
   })
 
-  it('marks the Hub itself and adds it through the wizard, sending is_hub with what the steps gathered', async () => {
+  it('starts as the Hub when none exists, and adds it through the wizard, sending is_hub with what the steps gathered', async () => {
     const fetchMock = createFetchRouter([
       SCOPES,
       NO_HUB,
@@ -189,8 +222,9 @@ describe('AppCreatePage', () => {
       TAXONOMY,
       APP_OK,
       KEY,
-      HUB_OK,
+      { ...HUB_OK, response: () => jsonResponse({ data: { verdict: 'ok', key: 'match' } }) },
       SECRET_OK,
+      SIGNING_KEY,
       {
         path: '/api/admin/application-access/applications',
         method: 'POST',
@@ -198,10 +232,11 @@ describe('AppCreatePage', () => {
       },
     ])
     globalThis.fetch = fetchMock
-    const { user } = renderPage()
-    await user.type(screen.getByLabelText('Name'), 'MWS Hub')
-    expect(screen.getByLabelText('Application ID')).toHaveValue('mws-hub')
-    await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
+    const { user } = await renderPage()
+    // Nothing can be added before the Hub, so the page is the Hub already and the choice is locked.
+    const choice = screen.getByRole('checkbox', { name: /This is the Hub itself/ })
+    expect(choice).toBeChecked()
+    expect(choice).toBeDisabled()
     expect(screen.getByLabelText('Application ID')).toHaveValue('hub')
     // The Hub is always called HUB, and neither the name nor the id can be changed.
     expect(screen.getByLabelText('Name')).toHaveValue('HUB')
@@ -212,26 +247,36 @@ describe('AppCreatePage', () => {
     // No way to add it before the last step.
     expect(screen.queryByRole('button', { name: 'Add Application' })).toBeNull()
 
-    // 1. Address, which has to be there to go on.
+    // 1. Key. Central makes it and shows it once.
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Make Signing Key' }))
+    const keyDialog = await screen.findByRole('dialog', { name: 'Hub Signing Key' })
+    expect(within(keyDialog).queryByText(/BEGIN PRIVATE KEY/)).toBeNull()
+    await user.click(within(keyDialog).getByRole('button', { name: 'Copy .env Values' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Hub Signing Key' })).toBeNull(), { timeout: 3000 })
+    expect(screen.getByText('mws-hub-sso-2026-10-ab12')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    // 2. Address, which has to be there to go on.
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
-    expect(await screen.findByText('Found the Hub.')).toBeVisible()
+    expect(await screen.findByText('Found the Hub, and its key is the one Central made.')).toBeVisible()
+    const check = fetchMock.mock.calls.find(([url]) => String(url).includes('hub-address-check'))
+    expect(String(check[0])).toContain(`thumbprint=${THUMBPRINT}`)
     await user.click(screen.getByRole('button', { name: 'Continue' }))
-    // 2. Secret. A new one is the way on without typing anything.
+    // 3. Secret. A new one is the way on without typing anything.
     expect(await screen.findByRole('radio', { name: /Make A New Secret/ })).toHaveAttribute('aria-checked', 'true')
     await user.click(screen.getByRole('button', { name: 'Continue' }))
-    // 3. Sign-in.
+    // 4. Sign-in.
     expect(screen.getByRole('radio', { name: /Warn/ })).toHaveAttribute('aria-checked', 'true')
     await user.click(screen.getByRole('button', { name: 'Continue' }))
-    // 4. Review. The Hub checkbox is gone once past step 1.
-    expect(screen.queryByRole('checkbox', { name: /This is the Hub itself/ })).toBeNull()
+    // 5. Review.
     expect(screen.getByText('https://app.mws.web.id')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     const confirmDialog = await screen.findByRole('dialog', { name: 'Add the Hub' })
-    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST' && String(fetchMock.mock.calls[0][0]).endsWith('/applications'))).toBe(false)
     await user.click(within(confirmDialog).getByRole('button', { name: 'Add Hub' }))
     await waitFor(() => {
-      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
+      const call = fetchMock.mock.calls.find(([url, options]) => options?.method === 'POST' && String(url).endsWith('/applications'))
       expect(JSON.parse(call[1].body)).toEqual({
         name: 'HUB',
         is_hub: true,
@@ -239,9 +284,30 @@ describe('AppCreatePage', () => {
         scope_names: ['employees:read'],
         env_settings: { hub_access_mode: 'warn', hub_bypass_emails: [] },
         hub_base_url: 'https://app.mws.web.id',
+        hub_signing: { kid: 'mws-hub-sso-2026-10-ab12', thumbprint: THUMBPRINT },
       })
     })
-  })
+  }, 20000)
+
+  it('warns when the Hub runs with another key than the one Central made', async () => {
+    globalThis.fetch = createFetchRouter([
+      SCOPES,
+      NO_HUB,
+      CONTEXT,
+      TAXONOMY,
+      KEY,
+      SIGNING_KEY,
+      { ...HUB_OK, response: () => jsonResponse({ data: { verdict: 'ok', key: 'mismatch' } }) },
+    ])
+    const { user } = await renderPage()
+    await user.click(screen.getByRole('button', { name: 'Make Signing Key' }))
+    await user.click(within(await screen.findByRole('dialog', { name: 'Hub Signing Key' })).getByRole('button', { name: 'Copy .env Values' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Hub Signing Key' })).toBeNull(), { timeout: 3000 })
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText('Found the Hub.')).toBeVisible()
+    expect(screen.getByText(/runs with another key than the one made here/)).toBeVisible()
+  }, 20000)
 
   it('keeps the secret the Hub runs with when it is pasted, and blocks the step without the key', async () => {
     const fetchMock = createFetchRouter([
@@ -256,8 +322,8 @@ describe('AppCreatePage', () => {
       { path: '/api/admin/application-access/applications', method: 'POST', response: () => jsonResponse({ data: { application_id: 'hub', connection: null } }) },
     ])
     globalThis.fetch = fetchMock
-    const { user } = renderPage()
-    await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
+    const { user } = await renderPage()
+    await skipKey(user)
     await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
     expect(await screen.findByText('Found the Hub.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
@@ -289,8 +355,8 @@ describe('AppCreatePage', () => {
       HUB_OK,
       SECRET_OK,
     ])
-    const { user } = renderPage()
-    await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
+    const { user } = await renderPage()
+    await skipKey(user)
     await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
     expect(await screen.findByText('Found the Hub.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
@@ -301,7 +367,7 @@ describe('AppCreatePage', () => {
   it('picks the icon from the list the Hub knows and shows it on the preview', async () => {
     const fetchMock = createFetchRouter([
       SCOPES,
-      NO_HUB,
+      HUB_EXISTS,
       CONTEXT,
       TAXONOMY,
       APP_OK,
@@ -312,7 +378,7 @@ describe('AppCreatePage', () => {
       },
     ])
     globalThis.fetch = fetchMock
-    const { user } = renderPage()
+    const { user } = await renderPage()
     await user.type(screen.getByLabelText('Name'), 'Demo')
     await user.type(screen.getByLabelText('Application Address'), 'demo.example.com')
     await user.click(screen.getByRole('button', { name: 'Icon' }))
@@ -330,22 +396,22 @@ describe('AppCreatePage', () => {
   })
 
   it('starts on the default icon', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    await renderPage()
     expect(screen.getByRole('button', { name: 'Icon' })).toHaveTextContent('Default (AppWindow)')
   })
 
   it('stops the description at 50 characters and counts them', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    const { user } = renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    const { user } = await renderPage()
     await user.type(screen.getByLabelText('Description'), 'x'.repeat(80))
     expect(screen.getByLabelText('Description')).toHaveValue('x'.repeat(50))
     expect(screen.getByText(/50\/50/)).toBeVisible()
   })
 
   it('keeps a very long name and description inside the preview card', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    const { user } = renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    const { user } = await renderPage()
     await user.type(screen.getByLabelText('Name'), 'A'.repeat(60))
     await user.type(screen.getByLabelText('Description'), 'y'.repeat(50))
     const name = screen.getAllByText('A'.repeat(60)).find((node) => node.tagName === 'P')
@@ -358,9 +424,9 @@ describe('AppCreatePage', () => {
 
   it('asks how the Hub signs people in only when the Hub is chosen, on its own step', async () => {
     globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, KEY, HUB_OK])
-    const { user } = renderPage()
+    const { user } = await renderPage()
     expect(screen.queryByLabelText('Hub Address')).toBeNull()
-    await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
+    await skipKey(user)
     await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
     expect(await screen.findByText('Found the Hub.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
@@ -379,8 +445,8 @@ describe('AppCreatePage', () => {
 
   it('adds up to three emergency emails one by one, keeping only characters an email name can have', async () => {
     globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, KEY, HUB_OK])
-    const { user } = renderPage()
-    await user.click(screen.getByRole('checkbox', { name: /This is the Hub itself/ }))
+    const { user } = await renderPage()
+    await skipKey(user)
     await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
     expect(await screen.findByText('Found the Hub.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
@@ -408,8 +474,8 @@ describe('AppCreatePage', () => {
   })
 
   it('offers the scopes and categories of the master data and a local example when the environment is Local', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    const { user } = renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    const { user } = await renderPage()
     expect(screen.getByLabelText('Application Address')).toHaveAttribute('placeholder', 'application.example.com')
     await user.click(screen.getByRole('radio', { name: /Local/ }))
     expect(screen.getByLabelText('Application Address')).toHaveAttribute('placeholder', 'localhost:3000')
@@ -430,7 +496,7 @@ describe('AppCreatePage', () => {
   it('shows which endpoints each data access scope opens', async () => {
     globalThis.fetch = createFetchRouter([
       SCOPES,
-      NO_HUB,
+      HUB_EXISTS,
       CONTEXT,
       TAXONOMY,
       APP_OK,
@@ -446,7 +512,7 @@ describe('AppCreatePage', () => {
           }),
       },
     ])
-    const { user } = renderPage()
+    const { user } = await renderPage()
     expect(await screen.findByRole('button', { name: '3 endpoints' })).toBeVisible()
     expect(screen.getByRole('button', { name: '1 endpoint' })).toBeVisible()
     expect(screen.getAllByRole('button', { name: 'No endpoint uses this scope yet' }).length).toBeGreaterThan(0)
@@ -457,8 +523,8 @@ describe('AppCreatePage', () => {
   })
 
   it('asks for the address only and fills in the standard sign-in and sign-out paths', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    const { user } = renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    const { user } = await renderPage()
     expect(screen.queryByLabelText('Launch URL')).toBeNull()
     expect(screen.queryByLabelText('Logout URL')).toBeNull()
     await user.type(screen.getByLabelText('Application Address'), 'localhost:3000')
@@ -476,14 +542,14 @@ describe('AppCreatePage', () => {
   it('lets an application opt out of the Hub lines, and not for a plain link', async () => {
     const fetchMock = createFetchRouter([
       SCOPES,
-      NO_HUB,
+      HUB_EXISTS,
       CONTEXT,
       TAXONOMY,
       APP_OK,
       { path: '/api/admin/application-access/applications', method: 'POST', response: () => jsonResponse({ data: { application_id: 'solo', connection: null } }) },
     ])
     globalThis.fetch = fetchMock
-    const { user } = renderPage()
+    const { user } = await renderPage()
     await user.type(screen.getByLabelText('Name'), 'Solo')
     await user.click(screen.getByRole('button', { name: 'Single Sign-On' }))
     await user.click(screen.getByRole('option', { name: /Plain Link/ }))
@@ -503,14 +569,14 @@ describe('AppCreatePage', () => {
   it('reads the Hub session by default, can choose the older way, and sends the choice', async () => {
     const fetchMock = createFetchRouter([
       SCOPES,
-      NO_HUB,
+      HUB_EXISTS,
       CONTEXT,
       TAXONOMY,
       APP_OK,
       { path: '/api/admin/application-access/applications', method: 'POST', response: () => jsonResponse({ data: { application_id: 'modes', connection: null } }) },
     ])
     globalThis.fetch = fetchMock
-    const { user } = renderPage()
+    const { user } = await renderPage()
     await user.type(screen.getByLabelText('Name'), 'Modes')
     await user.type(screen.getByLabelText('Application Address'), 'modes.example.com')
     expect(await screen.findByText('The application answers.')).toBeVisible()
@@ -525,33 +591,33 @@ describe('AppCreatePage', () => {
   })
 
   it('does not ask for a sign-in way when the application does not sign in through the Hub', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    const { user } = renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    const { user } = await renderPage()
     await user.click(screen.getByRole('checkbox', { name: /Signs in through the Hub/ }))
     expect(screen.queryByRole('button', { name: 'Shared Hub Session' })).toBeNull()
   })
 
-  it('hides the Hub choice once a Hub exists', async () => {
-    globalThis.fetch = createFetchRouter([
-      SCOPES,
-      { ...NO_HUB, response: () => jsonResponse({ data: [{ application_id: 'hub', is_hub: true }], paging: {} }) },
-    ])
-    renderPage()
-    await waitFor(() => expect(globalThis.fetch.mock.calls.some(([url]) => String(url).includes('search=hub'))).toBe(true))
-    await waitFor(() => expect(screen.queryByRole('checkbox', { name: /This is the Hub itself/ })).toBeNull())
+  it('keeps the Hub choice switched off once a Hub exists', async () => {
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    await renderPage()
+    const choice = screen.getByRole('checkbox', { name: /This is the Hub itself/ })
+    expect(choice).not.toBeChecked()
+    expect(choice).toBeDisabled()
+    expect(screen.getByText(/The Hub is already added/)).toBeVisible()
+    expect(screen.getByLabelText('Application Address')).toBeVisible()
   })
 
   it('tidies extra spaces when leaving the name', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    const { user } = renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    const { user } = await renderPage()
     await user.type(screen.getByLabelText('Name'), '  MWS    Hub  ')
     await user.tab()
     expect(screen.getByLabelText('Name')).toHaveValue('MWS Hub')
   })
 
   it('keeps the two required scopes on and marks sensitive data', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    await renderPage()
     const required = await screen.findByRole('checkbox', { name: /Publish an application's permissions/ })
     expect(required).toBeChecked()
     expect(required).toBeDisabled()
@@ -559,8 +625,8 @@ describe('AppCreatePage', () => {
   })
 
   it('shows a preview of the Hub card that follows what is typed', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    const { user } = renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    const { user } = await renderPage()
     expect(screen.getByText('Application name')).toBeVisible()
     await user.type(screen.getByLabelText('Name'), 'Demo App')
     await user.type(screen.getByLabelText('Application Address'), 'demo.example.com')
@@ -571,7 +637,7 @@ describe('AppCreatePage', () => {
   it('creates the application with its details and opens the setup steps', async () => {
     const fetchMock = createFetchRouter([
       SCOPES,
-      NO_HUB,
+      HUB_EXISTS,
       CONTEXT,
       TAXONOMY,
       APP_OK,
@@ -593,7 +659,7 @@ describe('AppCreatePage', () => {
       },
     ])
     globalThis.fetch = fetchMock
-    const { user } = renderPage()
+    const { user } = await renderPage()
     await user.type(screen.getByLabelText('Name'), 'Demo App')
     await user.type(screen.getByLabelText('Application Address'), 'demo.example.com')
     await user.click(await screen.findByRole('checkbox', { name: /View student profiles/ }))
@@ -627,7 +693,7 @@ describe('AppCreatePage', () => {
   it('adds a plain link without a connection or data access', async () => {
     const fetchMock = createFetchRouter([
       SCOPES,
-      NO_HUB,
+      HUB_EXISTS,
       CONTEXT,
       TAXONOMY,
       APP_OK,
@@ -638,7 +704,7 @@ describe('AppCreatePage', () => {
       },
     ])
     globalThis.fetch = fetchMock
-    const { user } = renderPage()
+    const { user } = await renderPage()
     await user.type(screen.getByLabelText('Name'), 'Sheet')
     expect(screen.getByText(/People sign in once in the Hub/)).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Single Sign-On' }))
@@ -666,13 +732,13 @@ describe('AppCreatePage', () => {
     let verdict = 'unreachable'
     const fetchMock = createFetchRouter([
       SCOPES,
-      NO_HUB,
+      HUB_EXISTS,
       TAXONOMY,
       { path: /\/api\/admin\/application-access\/application-address-check/, response: () => jsonResponse({ data: { verdict } }) },
       { path: '/api/admin/application-access/applications', method: 'POST', response: () => jsonResponse({ data: { application_id: 'demo', connection: null } }) },
     ])
     globalThis.fetch = fetchMock
-    const { user } = renderPage()
+    const { user } = await renderPage()
     await user.type(screen.getByLabelText('Name'), 'Demo')
     await user.type(screen.getByLabelText('Application Address'), 'demo.example.com')
     expect(await screen.findByText(/Nothing answers at this address/)).toBeVisible()
@@ -686,8 +752,8 @@ describe('AppCreatePage', () => {
   })
 
   it('says the application answers and opens Add Application', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, CONTEXT, TAXONOMY, APP_OK])
-    const { user } = renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
+    const { user } = await renderPage()
     await user.type(screen.getByLabelText('Name'), 'Demo')
     await user.type(screen.getByLabelText('Application Address'), 'demo.example.com')
     expect(screen.getByRole('button', { name: 'Add Application' })).toBeDisabled()
@@ -696,8 +762,8 @@ describe('AppCreatePage', () => {
   })
 
   it('keeps Add Application off until the name and the address are filled', async () => {
-    globalThis.fetch = createFetchRouter([SCOPES, NO_HUB, TAXONOMY, APP_OK])
-    const { user } = renderPage()
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, TAXONOMY, APP_OK])
+    const { user } = await renderPage()
     const add = screen.getByRole('button', { name: 'Add Application' })
     expect(add).toBeDisabled()
     await user.type(screen.getByLabelText('Name'), 'Demo')

@@ -101,10 +101,18 @@ export const applicationAccessApi = {
     return response.data
   },
 
-  // Whether a Hub answers at an address: 'ok', 'unreachable', 'not_hub' or 'refused'.
-  async checkHubAddress(url) {
-    const response = await apiRequest(`${ACCESS}/hub-address-check?url=${encodeURIComponent(url)}`)
-    return response.data.verdict
+  // Whether a Hub answers at an address: 'ok', 'unreachable', 'not_hub', 'no_keys' or 'refused', and whether the key it
+  // publishes is the one Central made: 'match', 'mismatch' or 'unknown'. `thumbprint` is the key the wizard just made.
+  async checkHubAddress(url, thumbprint) {
+    const extra = thumbprint ? `&thumbprint=${encodeURIComponent(thumbprint)}` : ''
+    const response = await apiRequest(`${ACCESS}/hub-address-check?url=${encodeURIComponent(url)}${extra}`)
+    return { verdict: response.data.verdict, key: response.data.key ?? 'unknown' }
+  },
+
+  // Makes the Hub's signing key. The private key is in this answer only. Replacing one that was kept needs the confirm.
+  async makeHubSigningKey(confirmReplace = false) {
+    const response = await apiRequest(`${ACCESS}/hub-signing-key`, { method: 'POST', body: confirmReplace ? { confirm_replace: true } : {} })
+    return response.data
   },
 
   // Whether anything answers at the address of an application: 'ok', 'unreachable' or 'refused'.

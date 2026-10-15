@@ -19,6 +19,7 @@ import {
   SecretConfirmDialog,
   SecretsKeyWarning,
 } from "./HubSecretControls.jsx";
+import { ConnectDialog } from "./ConnectDialog.jsx";
 import { SignInLinesDialog } from "./SignInLinesDialog.jsx";
 
 const STEPS = [
@@ -27,6 +28,8 @@ const STEPS = [
   { id: "signin", label: "Sign-in" },
   { id: "review", label: "Review" },
 ];
+// A Hub being added starts with its signing key, because the address check looks for it.
+const ADD_STEPS = [{ id: "key", label: "Key" }, ...STEPS];
 
 const DEFAULT_SETTINGS = { hub_access_mode: "warn", hub_bypass_emails: [] };
 
@@ -45,7 +48,9 @@ export function HubSetupWizard({
 }) {
   const managing = mode === "manage";
   const queryClient = useQueryClient();
+  const steps = managing ? STEPS : ADD_STEPS;
   const [step, setStep] = useState(0);
+  const stepId = steps[step].id;
   const [address, setAddress] = useState(hub?.base_url ?? suggestedAddress);
   const [addressBad, setAddressBad] = useState(false);
   const [signIn, setSignIn] = useState(
@@ -60,6 +65,10 @@ export function HubSetupWizard({
   const [dialog, setDialog] = useState(null);
   // A secret Central just made. It is shown once, then it is gone.
   const [shownSecret, setShownSecret] = useState(null);
+  // The key Central made for the Hub. Only its name and thumbprint are kept here, the private key is shown once.
+  const [keyChoice, setKeyChoice] = useState(null);
+  const [signing, setSigning] = useState(null);
+  const [shownKey, setShownKey] = useState(null);
 
   const statusQuery = useQuery({
     queryKey: ["application-access", "secrets-status"],
@@ -76,13 +85,14 @@ export function HubSetupWizard({
     onChange?.({
       step,
       address,
+      signing: keyChoice === "made" ? signing : null,
       settings: signIn,
       secret:
         secretChoice === "existing" && existingValue.trim()
           ? cleanPastedSecret(existingValue)
           : undefined,
     });
-  }, [managing, onChange, step, address, signIn, secretChoice, existingValue]);
+  }, [managing, onChange, step, address, signing, keyChoice, signIn, secretChoice, existingValue]);
 
   const refresh = () => {
     queryClient.invalidateQueries({
@@ -97,10 +107,19 @@ export function HubSetupWizard({
       applicationAccessApi.setHubAddress(applicationId, address),
     onSuccess: () => {
       refresh();
-      setStep(1);
+      setStep((current) => current + 1);
     },
     onError: (error) =>
       showErrorToast(error, "Could not save the Hub address."),
+  });
+  const keyMutation = useMutation({
+    mutationFn: () => applicationAccessApi.makeHubSigningKey(),
+    onSuccess: (result) => {
+      setSigning({ kid: result.kid, thumbprint: result.thumbprint });
+      setKeyChoice("made");
+      setShownKey(result);
+    },
+    onError: (error) => showErrorToast(error, "Could not make the signing key."),
   });
   const secretMutation = useMutation({
     mutationFn: (secret) =>
@@ -118,7 +137,7 @@ export function HubSetupWizard({
       applicationAccessApi.updateEnvSettings(applicationId, signIn),
     onSuccess: () => {
       refresh();
-      setStep(3);
+      setStep((current) => current + 1);
     },
     onError: (error) =>
       showErrorToast(error, "Could not save the sign-in settings."),
@@ -134,12 +153,12 @@ export function HubSetupWizard({
   const addressChanged = managing && address !== (hub?.base_url ?? "");
   const signInChanged =
     managing && JSON.stringify(signIn) !== JSON.stringify(settings);
-  const ready = [addressOk, secretOk, !signInProblem];
+  const ready = { key: keyChoice !== null, address: addressOk, secret: secretOk, signin: !signInProblem, review: true };
 
   function next() {
-    if (step === 0 && addressChanged) return addressMutation.mutate();
-    if (step === 2 && signInChanged) return signInMutation.mutate();
-    setStep((current) => Math.min(current + 1, STEPS.length - 1));
+    if (stepId === "address" && addressChanged) return addressMutation.mutate();
+    if (stepId === "signin" && signInChanged) return signInMutation.mutate();
+    setStep((current) => Math.min(current + 1, steps.length - 1));
   }
 
   return (
@@ -148,7 +167,7 @@ export function HubSetupWizard({
         className="flex flex-wrap items-center gap-2"
         aria-label="Hub setup steps"
       >
-        {STEPS.map((item, index) => {
+        {steps.map((item, index) => {
           const done = index < step;
           return (
             <li
@@ -178,7 +197,7 @@ export function HubSetupWizard({
               >
                 {item.label}
               </span>
-              {index < STEPS.length - 1 ? (
+              {index < steps.length - 1 ? (
                 <span
                   className="mx-1 h-px w-5 bg-(--mws-line)"
                   aria-hidden="true"
@@ -189,7 +208,51 @@ export function HubSetupWizard({
         })}
       </ol>
 
-      {step === 0 ? (
+      {stepId === "key" ? (
+        <div className="space-y-3">
+          <p className="text-sm text-(--mws-muted)">
+            The key the Hub signs everybody in with. Central makes it and shows it once, then keeps only its name and
+            fingerprint. The Hub holds the key, Central cannot sign anyone in.
+          </p>
+          {keyChoice === "made" ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--mws-line) bg-(--mws-soft) px-4 py-3">
+              <span className="flex items-center gap-2 text-sm font-medium text-(--mws-charcoal)">
+                <Check size={16} className="text-[#476b43]" aria-hidden="true" />
+                Key Made
+                <span className="font-mono text-xs text-(--mws-muted)">{signing?.kid}</span>
+              </span>
+              <TextAction icon={RotateCw} disabled={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
+                Make Another Key
+              </TextAction>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-4">
+              <Button type="button" loading={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
+                Make Signing Key
+              </Button>
+              <TextAction onClick={() => setKeyChoice("own")} disabled={keyChoice === "own"}>
+                I Already Have A Key
+              </TextAction>
+            </div>
+          )}
+          {keyChoice === "own" ? (
+            <p className="text-sm text-(--mws-muted)">
+              The Hub already has HUB_SSO_PRIVATE_KEY in its .env. Central cannot tell it is the same key later, so the address check will only say that the Hub has a key.{" "}
+              <TextAction className="inline-flex" onClick={() => setKeyChoice(null)}>
+                Make One Instead
+              </TextAction>
+            </p>
+          ) : null}
+          {keyChoice === "made" ? (
+            <p className="text-xs text-(--mws-muted)">
+              Put the two lines in the Hub's .env and deploy the Hub again before the next step. A key you did not copy
+              cannot be shown again, make another one.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {stepId === "address" ? (
         <div className="space-y-3">
           <p className="text-sm text-(--mws-muted)">
             The address people open the Hub at. Every application gets it in its
@@ -200,7 +263,7 @@ export function HubSetupWizard({
               <p className="font-semibold text-(--mws-charcoal)">Before You Check The Address</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-5">
                 <li>The Hub is deployed and running.</li>
-                <li>HUB_SSO_PRIVATE_KEY is set in its environment, so it can publish its sign-in key.</li>
+                <li>It runs with the signing key lines from the first step, so it can publish its sign-in key.</li>
                 <li>You use the address people open the Hub at, over https.</li>
               </ul>
               <Link to={startGuideHref("hub")} className="mt-1 inline-block font-semibold text-(--mws-burgundy) underline">
@@ -211,6 +274,7 @@ export function HubSetupWizard({
           <HubAddressField
             value={address}
             suggestedAddress={suggestedAddress}
+            signingThumbprint={keyChoice === "made" ? (signing?.thumbprint ?? "") : ""}
             onChange={(next, bad) => {
               setAddress(next);
               setAddressBad(Boolean(bad));
@@ -220,7 +284,7 @@ export function HubSetupWizard({
         </div>
       ) : null}
 
-      {step === 1 ? (
+      {stepId === "secret" ? (
         <div className="space-y-4">
           <p className="text-sm text-(--mws-muted)">
             One secret shared by the Hub and the applications that sign in
@@ -337,7 +401,7 @@ export function HubSetupWizard({
         </div>
       ) : null}
 
-      {step === 2 ? (
+      {stepId === "signin" ? (
         <div className="space-y-3">
           <p className="text-sm text-(--mws-muted)">
             How strictly the Hub checks who may sign in. These go into the Hub's
@@ -347,9 +411,15 @@ export function HubSetupWizard({
         </div>
       ) : null}
 
-      {step === 3 ? (
+      {stepId === "review" ? (
         <div className="space-y-4">
           <dl className="grid gap-2 text-sm sm:grid-cols-[10rem_1fr]">
+            {managing ? null : (
+              <>
+                <dt className="text-(--mws-muted)">Signing Key</dt>
+                <dd>{keyChoice === "made" ? signing?.kid : "The one the Hub already has"}</dd>
+              </>
+            )}
             <dt className="text-(--mws-muted)">Address</dt>
             <dd className="font-mono text-xs text-(--mws-charcoal)">
               {address}
@@ -399,24 +469,24 @@ export function HubSetupWizard({
           Back
         </TextAction>
         <div className="flex gap-2">
-          {managing && step === STEPS.length - 1 ? (
+          {managing && step === steps.length - 1 ? (
             <Button type="button" onClick={onClose}>
               Done
             </Button>
           ) : null}
-          {!managing && step === STEPS.length - 1 ? (
+          {!managing && step === steps.length - 1 ? (
             <Button type="submit" data-hub-add="true" loading={submitting}>
               Add Application
             </Button>
           ) : null}
-          {step < STEPS.length - 1 ? (
+          {step < steps.length - 1 ? (
             <Button
               type="button"
               loading={addressMutation.isPending || signInMutation.isPending}
-              disabled={!ready[step]}
+              disabled={!ready[stepId]}
               onClick={next}
             >
-              {(step === 0 && addressChanged) || (step === 2 && signInChanged)
+              {(stepId === "address" && addressChanged) || (stepId === "signin" && signInChanged)
                 ? "Save and Continue"
                 : "Continue"}
             </Button>
@@ -424,6 +494,15 @@ export function HubSetupWizard({
         </div>
       </div>
 
+      {shownKey ? (
+        <ConnectDialog
+          title="Hub Signing Key"
+          description="Put these lines in the .env of the Hub and deploy it. Central keeps only the key's name and fingerprint, so this is the only time the key is shown."
+          onceLabel="Key Shown Once"
+          connection={{ env: shownKey.env }}
+          onClose={() => setShownKey(null)}
+        />
+      ) : null}
       {shownSecret ? (
         <HubSecretShownDialog
           secret={shownSecret}

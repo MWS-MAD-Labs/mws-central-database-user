@@ -76,18 +76,20 @@ export function AppCreatePage() {
         <p className="font-semibold text-(--mws-charcoal)">{hubQuery.isSuccess && !hubExists ? "Add The Hub First" : "Before You Add It"}</p>
         <p className="mt-1">
           {hubQuery.isSuccess && !hubExists
-            ? "No Hub has been added yet, and every application is given its address. Make the Hub's signing key, deploy it, then add it here."
+            ? "No Hub has been added yet, and every application is given its address. Add the Hub below. It starts with its signing key."
             : "Have the application's environment ready on its server. The token is shown only once, right after you add it."}{" "}
           <Link to={startGuideHref(hubQuery.isSuccess && !hubExists ? "hub" : "app")} className="font-semibold text-(--mws-burgundy) underline">
             Open The Guide
           </Link>
         </p>
       </div>
-      <AppDetailsForm
+      {hubQuery.isPending ? <PanelMessage>Checking for the Hub…</PanelMessage> : null}
+      {hubQuery.isPending ? null : <AppDetailsForm
         layout="page"
         adminEmail={user?.email ?? ""}
         submitLabel="Add Application"
         hubExists={hubExists}
+        hubKnown={hubQuery.isSuccess}
         suggestedHubUrl={contextQuery.data?.suggested_hub_url ?? ""}
         deploymentEnvironment={contextQuery.data?.environment ?? ""}
         submitting={mutation.isPending}
@@ -104,7 +106,7 @@ export function AppCreatePage() {
           mutation.mutate(payload);
         }}
         onCancel={() => navigate(BACK)}
-      />
+      />}
       {created ? (
         <ConnectDialog
           connection={created.connection}

@@ -7,8 +7,8 @@ import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 
 const CHECK = /\/api\/admin\/application-access\/hub-address-check/
 
-function renderField(verdict, props = {}) {
-  globalThis.fetch = createFetchRouter([{ path: CHECK, response: () => jsonResponse({ data: { verdict } }) }])
+function renderField(verdict, props = {}, key = undefined) {
+  globalThis.fetch = createFetchRouter([{ path: CHECK, response: () => jsonResponse({ data: { verdict, key } }) }])
   const onChange = mock()
   return { onChange, ...renderWithProviders(
       <ConfirmProvider>
@@ -25,6 +25,20 @@ describe('HubAddressField', () => {
     expect(onChange).toHaveBeenLastCalledWith('https://app.mws.web.id', false)
   })
 
+  it('says the key is the one Central made, and warns when it is another', async () => {
+    const same = renderField('ok', { signingThumbprint: 'T'.repeat(43) }, 'match')
+    await same.user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText('Found the Hub, and its key is the one Central made.')).toBeVisible()
+    expect(String(globalThis.fetch.mock.calls[0][0])).toContain(`thumbprint=${'T'.repeat(43)}`)
+    same.unmount()
+
+    const other = renderField('ok', { signingThumbprint: 'T'.repeat(43) }, 'mismatch')
+    await other.user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText('Found the Hub.')).toBeVisible()
+    expect(screen.getByText(/runs with another key than the one made here/)).toBeVisible()
+    expect(other.onChange).toHaveBeenLastCalledWith('https://app.mws.web.id', false)
+  })
+
   it('blocks an address that answers but is not the Hub, with no way around it', async () => {
     const { user, onChange } = renderField('not_hub')
     await user.type(screen.getByLabelText('Hub Address'), 'example.com')
@@ -37,7 +51,7 @@ describe('HubAddressField', () => {
     const { user, onChange } = renderField('no_keys')
     await user.type(screen.getByLabelText('Hub Address'), 'app-stg.mws.web.id')
     expect(await screen.findByText(/A Hub answers here, but it has no sign-in key yet/)).toBeVisible()
-    expect(screen.getByText(/HUB_SSO_PRIVATE_KEY/)).toBeVisible()
+    expect(screen.getByText(/signing key lines/)).toBeVisible()
     expect(screen.getByRole('link', { name: 'How To Fix' })).toHaveAttribute('href', '/application-access/guide?part=hub')
     // The address is right, so there is no way around it either: the key has to be set.
     expect(screen.queryByRole('button', { name: 'Use It Anyway' })).toBeNull()

@@ -92,7 +92,7 @@ export function ConnectDialog({
           {copied ? <Check size={18} /> : <Copy size={18} />}
           {copied ? "Copy Again" : "Copy .env Values"}
         </Button>
-        {!blocked ? <p className="text-xs text-(--mws-muted)">Copy them now. The token is not shown again.</p> : null}
+        {!blocked ? <p className="text-xs text-(--mws-muted)">Copy them now. They are not shown again.</p> : null}
 
         {blocked ? (
           <div>

@@ -63,9 +63,20 @@ describe("AppStartGuidePage", () => {
     renderGuide("?part=hub");
     expect(await title()).toBe("Add the Hub first");
     expect(screen.getByText(/openssl genpkey -algorithm RSA/)).toBeVisible();
-    expect(screen.getByText(/HUB_SSO_PRIVATE_KEY: the whole private file/)).toBeVisible();
+    expect(screen.getByText(/choose Make Signing Key and copy the two lines/)).toBeVisible();
+    expect(screen.getByText(/HUB_SSO_PRIVATE_KEY and HUB_SSO_KEY_ID: the two lines from step 1/)).toBeVisible();
     expect(await screen.findByText(/https:\/\/app-stg\.mws\.web\.id\/\.well-known\/jwks\.json/)).toBeVisible();
     expect(screen.getByText(/CENTRAL_API_TOKEN_STAGING/)).toBeVisible();
+  });
+
+  it("walks through adding an application: the scopes, the permissions and the notes per application", async () => {
+    renderGuide("?part=app");
+    expect(await title()).toBe("Add an application");
+    expect(screen.getByText(/Central refuses any other application before that/)).toBeVisible();
+    expect(screen.getByText(/needs students:read/)).toBeVisible();
+    expect(screen.getByText(/Send its permissions/)).toBeVisible();
+    expect(screen.getByText(/Daily Check-in: run the permission sync/)).toBeVisible();
+    expect(screen.getByText(/Exima: create the GitHub environments/)).toBeVisible();
   });
 
   it("lists what failed with its cause and what to do", async () => {

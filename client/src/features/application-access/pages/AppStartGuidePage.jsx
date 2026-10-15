@@ -126,8 +126,8 @@ function HowPart({ environment }) {
         <SubHeading>The order</SubHeading>
         <Steps
           items={[
-            "Deploy the Hub with its signing key. Nothing else can start before the Hub can sign people in.",
-            "Add the Hub here, so every application gets the Hub address and its connection to Central.",
+            "Make the Hub's signing key here and deploy the Hub with it. Nothing else can start before the Hub can sign people in.",
+            "Add the Hub here, so every application gets the Hub address and its connection to Central. Central adds no other application before it.",
             "Deploy each application with the lines Central gives it, then add it here.",
             "Make roles, then groups of people, so people have access.",
             "Choose how people sign in to each application.",
@@ -162,12 +162,20 @@ function HubPart({ hubUrl }) {
   return (
     <div className="space-y-5">
       <Paragraph>
-        The Hub comes first because every application is given its address. Central also checks the address when you type it, so the Hub has
-        to be running with its key before you add it here.
+        The Hub comes first because every application is given its address. Central will not add any other application until the Hub is
+        added, and Add Application opens as the Hub until then. Central also checks the address when you type it, so the Hub has to be
+        running with its key before you add it here.
       </Paragraph>
       <div>
         <SubHeading>1. Make the Hub's signing key</SubHeading>
-        <Paragraph>On your machine, once for each environment. Never reuse the key of another environment.</Paragraph>
+        <Paragraph>
+          Go to Applications, Add Application. The first step makes the key: choose Make Signing Key and copy the two lines it shows. Central
+          shows the private key this once and keeps only the key's name and fingerprint, so make it again if you lost it. Make one key for
+          each environment and never reuse the key of another.
+        </Paragraph>
+        <Paragraph>
+          If the Hub already runs with a key you want to keep, choose I Already Have A Key. To make one by hand instead, on your machine:
+        </Paragraph>
         <Code>{KEY_COMMANDS}</Code>
         <Paragraph>
           The private file belongs to the Hub only. The public one is not needed anywhere: the Hub publishes it by itself at
@@ -178,8 +186,7 @@ function HubPart({ hubUrl }) {
         <SubHeading>2. Set the Hub's environment on the server</SubHeading>
         <Steps
           items={[
-            "HUB_SSO_PRIVATE_KEY: the whole private file, as one line with each line break written as \\n. It must start with BEGIN PRIVATE KEY (PKCS#8), not BEGIN RSA PRIVATE KEY.",
-            "HUB_SSO_KEY_ID: a name for this key, for example mws-hub-sso-2026-01.",
+            "HUB_SSO_PRIVATE_KEY and HUB_SSO_KEY_ID: the two lines from step 1. Made by hand, the whole private file goes in as one line with each line break written as \\n, and it must start with BEGIN PRIVATE KEY (PKCS#8), not BEGIN RSA PRIVATE KEY.",
             "FRONTEND_ORIGIN: the address people open the Hub at, with https.",
             "CENTRAL_API_BASE_URL: the address of this Central, ending in /api/internal. CENTRAL_API_TOKEN stays empty for now, step 4 gives it.",
             "JWT_SECRET and the Google sign-in lines (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ALLOWED_DOMAIN), as in the Hub's own setup notes.",
@@ -200,8 +207,8 @@ function HubPart({ hubUrl }) {
         <SubHeading>4. Add the Hub here</SubHeading>
         <Steps
           items={[
-            "Go to Applications, Add Application, and choose that this is the Hub itself.",
-            "Address: type the address from step 2. Central checks it and says Found The Hub.",
+            "Key: from step 1. Continue once the two lines are in the Hub's environment.",
+            "Address: type the address from step 2. Central checks it and says Found The Hub. When the key came from Central it also says the key is the one it made.",
             "Secret: Central makes one secret shared by the Hub and the applications that sign in through it, or you paste the one the Hub already has. Applications get their own secret made from it.",
             "Sign-in: how strictly the Hub checks who may sign in. These lines go into the Hub's environment.",
             "After Review a block of lines appears once. Copy all of it into the Hub's environment, token and secret included, and deploy the Hub again.",
@@ -224,18 +231,58 @@ function HubPart({ hubUrl }) {
 function AppPart() {
   return (
     <div className="space-y-5">
-      <Paragraph>The same way for every application, and the Hub has to be added already.</Paragraph>
-      <Steps
-        items={[
-          "Applications, Add Application: name it. The ID is made from the name and cannot change later.",
-          "Say how the Hub shows it (icon, group, description) and what it may read from Central. Employees is the default.",
-          "Add it. A block of environment lines appears once, with the token. Copy it before you close the box. If you lose it, rotate the token.",
-          "Put those lines in the application's environment on the server, and in its .env on your machine.",
-          "Deploy the application. Central shows it as connected as soon as it calls Central with the token.",
-          "The application sends its permissions to Central. Roles can only use permissions it has sent.",
-          "Make the roles, then the groups of people that get a role. Without a group nobody has access.",
-        ]}
-      />
+      <Paragraph>The same way for every application. The Hub has to be added already, Central refuses any other application before that.</Paragraph>
+      <div>
+        <SubHeading>1. Add it here</SubHeading>
+        <Steps
+          items={[
+            "Applications, Add Application: name it. The ID is made from the name and cannot change later.",
+            "Say how the Hub shows it (icon, group, description) and what it may read from Central. Employees is the default.",
+            "Add it. A block of environment lines appears once, with the token. Copy it before you close the box. If you lose it, rotate the token.",
+          ]}
+        />
+      </div>
+      <div>
+        <SubHeading>2. Give the token what the application reads</SubHeading>
+        <Paragraph>
+          The token only opens the data you picked under Data Access. An application that reads students needs students:read, one that
+          reads who teaches a class needs class_teacher_assignments:read. When a scope is missing, Central answers 403 with the name of the
+          scope, and the application skips that list without saying so on screen. Change it on the application's page, then deploy again
+          if the token changed.
+        </Paragraph>
+      </div>
+      <div>
+        <SubHeading>3. Set the environment on the application's server</SubHeading>
+        <Steps
+          items={[
+            "Put the lines from step 1 in the application's environment on the server, and in its .env on your machine.",
+            "Deploy the application. Central shows it as connected as soon as it calls Central with the token.",
+            "The address of the application is checked every few minutes. If its page says it is down, open that address yourself first.",
+          ]}
+        />
+      </div>
+      <div>
+        <SubHeading>4. Send its permissions</SubHeading>
+        <Paragraph>
+          The application sends its permissions to Central, usually from its own deploy or a command in its repository, with the
+          CENTRAL_API_BASE_URL and CENTRAL_API_TOKEN secrets set for that environment. Roles can only use permissions it has sent, and a
+          deploy that cannot send them stops.
+        </Paragraph>
+      </div>
+      <div>
+        <SubHeading>5. Roles and groups</SubHeading>
+        <Paragraph>Make the roles, then the groups of people that get a role. Without a group nobody has access.</Paragraph>
+      </div>
+      <div>
+        <SubHeading>Notes for the applications we run</SubHeading>
+        <Steps
+          items={[
+            "Daily Check-in: run the permission sync with the removals confirmed, give its token students:read and class_teacher_assignments:read, fill the role permissions here, and back up the database before the people migration.",
+            "Exima: create the GitHub environments staging and production, each with the Central address and token and the Komodo webhook. The first push to staging creates the branch on GitHub.",
+            "MTSS (older): it keeps the Hub code and token way until it reads the shared session.",
+          ]}
+        />
+      </div>
       <Paragraph>
         Once the application is added, its own Setup Guide continues with the commands, the GitHub settings per environment and what to do
         when you rotate the token. It is on the setup page of that application.
@@ -298,7 +345,17 @@ const PROBLEMS = [
   {
     message: "A Hub answers here, but it has no sign-in key yet",
     cause: "The Hub is running but HUB_SSO_PRIVATE_KEY is missing or not a PKCS#8 PEM.",
-    fix: "Set it as one line with \\n for the line breaks, deploy the Hub again, then open /.well-known/jwks.json to see the keys.",
+    fix: "Make the key in the first step of Add Application and put both lines in the Hub's environment, or write your own as one line with \\n for the line breaks. Deploy the Hub again, then open /.well-known/jwks.json to see the keys.",
+  },
+  {
+    message: "The Hub runs with another key than the one made here",
+    cause: "The Hub still has an older key, or the new lines were not deployed yet.",
+    fix: "Deploy the Hub with the lines Central showed. If you made the key yourself, carry on, Central cannot tell it apart.",
+  },
+  {
+    message: "Add the Hub first",
+    cause: "An application was added before the Hub.",
+    fix: "Add the Hub, then add the application again.",
   },
   {
     message: "Something answers, but it does not look like the Hub",

@@ -22,8 +22,11 @@ export function useAddressCheck({ address, saved = "", name, check }) {
     retry: false,
   });
   const waiting = Boolean(address) && !unchanged && (probe !== address || query.isFetching);
-  const verdict = probe === address && !query.isFetching ? (query.isError ? "failed" : query.data) : null;
+  const answered = probe === address && !query.isFetching && !query.isError;
+  // A check may answer with a word, or with { verdict, ... } when it has more to say.
+  const detail = answered && query.data && typeof query.data === "object" ? query.data : null;
+  const verdict = probe === address && !query.isFetching ? (query.isError ? "failed" : (detail?.verdict ?? query.data)) : null;
   const usedAnyway = anyway === address;
   const ready = Boolean(address) && (unchanged || verdict === "ok" || usedAnyway);
-  return { waiting, verdict, ready, usedAnyway, acceptAnyway: () => setAnyway(address) };
+  return { waiting, verdict, detail, ready, usedAnyway, acceptAnyway: () => setAnyway(address) };
 }

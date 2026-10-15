@@ -12,10 +12,12 @@ const HINT = "Where people open the Hub. Every application gets it in its .env."
 
 const TEXTS = {
   found: "Found the Hub.",
+  foundMatch: "Found the Hub, and its key is the one Central made.",
+  keyMismatch: "The Hub runs with another key than the one made here. It may still have an old one. Put the new key in its .env and deploy it again, or carry on if you made this key yourself.",
   anyway: "Used as typed, not checked.",
   unreachable: "Nothing answers at this address. Is the Hub running?",
   not_hub: "Something answers, but it does not look like the Hub. Check the address and the port.",
-  no_keys: "A Hub answers here, but it has no sign-in key yet. Set HUB_SSO_PRIVATE_KEY in the Hub's .env, deploy it again, then check again.",
+  no_keys: "A Hub answers here, but it has no sign-in key yet. Put the signing key lines in the Hub's .env, deploy it again, then check again.",
   refused: "This address cannot be checked.",
   failed: "The address could not be checked just now. Try again.",
   help: {
@@ -30,7 +32,7 @@ const TEXTS = {
 
 // The public address of the Hub. `value` is the whole address or nothing. `onChange(address, notReady)` says what is typed and
 // whether it may be used: it has to be well formed and a Hub has to answer there, unless it was kept as it was or is used anyway.
-export function HubAddressField({ value, suggestedAddress = "", onChange, showError = false }) {
+export function HubAddressField({ value, suggestedAddress = "", signingThumbprint = "", onChange, showError = false }) {
   const start = splitAddress(value);
   const suggested = splitAddress(suggestedAddress);
   const [environment, setEnvironment] = useState(value ? start.environment : "production");
@@ -39,8 +41,9 @@ export function HubAddressField({ value, suggestedAddress = "", onChange, showEr
 
   const problem = rest.trim() ? hubAddressProblem(environment, rest) : null;
   const address = rest.trim() && !problem ? joinAddress(environment, rest) : "";
-  const state = useAddressCheck({ address, saved: initial, name: "hub-address-check", check: applicationAccessApi.checkHubAddress });
-  const { ready, verdict, usedAnyway } = state;
+  const state = useAddressCheck({ address, saved: initial, name: `hub-address-check-${signingThumbprint}`, check: (url) => applicationAccessApi.checkHubAddress(url, signingThumbprint || undefined) });
+  const { ready, verdict, usedAnyway, detail } = state;
+  const keyKnown = detail?.key ?? "unknown";
 
   const report = useEffectEvent(onChange);
   useEffect(() => {
@@ -85,7 +88,12 @@ export function HubAddressField({ value, suggestedAddress = "", onChange, showEr
           }}
           onBlur={() => setRest((current) => current.trim())}
         />
-        <AddressCheckStatus state={state} texts={TEXTS} />
+        <AddressCheckStatus state={state} texts={{ ...TEXTS, found: keyKnown === "match" ? TEXTS.foundMatch : TEXTS.found }} />
+        {verdict === "ok" && keyKnown === "mismatch" ? (
+          <p role="note" className="text-xs text-[#8a5a12]">
+            {TEXTS.keyMismatch}
+          </p>
+        ) : null}
       </div>
     </Field>
   );
