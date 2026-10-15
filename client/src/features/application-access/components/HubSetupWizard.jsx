@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Copy, KeyRound, RotateCw } from "lucide-react";
+import { ArrowLeft, Check, Copy, KeyRound, Plus, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextInput } from "../../../components/ui/FormControls.jsx";
@@ -27,6 +27,9 @@ const STEPS = [
 ];
 // A Hub being added starts with its signing key, which is copied at the end with the rest of the .env.
 const ADD_STEPS = [{ id: "key", label: "Key" }, ...STEPS];
+
+// The two ways to make a key look the same, in the brand colour so they are easy to spot.
+const KEY_ACTION = "text-(--mws-burgundy)! hover:text-(--mws-burgundy-dark)!";
 
 const DEFAULT_SETTINGS = { hub_access_mode: "warn", hub_bypass_emails: [] };
 
@@ -219,7 +222,7 @@ export function HubSetupWizard({
                 Key Made
                 <span className="truncate font-mono text-xs text-(--mws-muted)">{signing?.kid}</span>
               </span>
-              <TextAction icon={RotateCw} disabled={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
+              <TextAction icon={RotateCw} className={KEY_ACTION} disabled={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
                 Make Another Key
               </TextAction>
             </div>
@@ -232,9 +235,9 @@ export function HubSetupWizard({
               {keyChoice === "own" ? (
                 <TextAction onClick={() => setKeyChoice(null)}>Make One Instead</TextAction>
               ) : (
-                <Button type="button" variant="secondary" size="sm" loading={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
+                <TextAction icon={Plus} className={KEY_ACTION} loading={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
                   Make Signing Key
-                </Button>
+                </TextAction>
               )}
             </div>
           )}
