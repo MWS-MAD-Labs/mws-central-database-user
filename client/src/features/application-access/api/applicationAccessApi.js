@@ -102,10 +102,9 @@ export const applicationAccessApi = {
   },
 
   // Whether a Hub answers at an address: 'ok', 'unreachable', 'not_hub', 'no_keys' or 'refused', and whether the key it
-  // publishes is the one Central made: 'match', 'mismatch' or 'unknown'. `thumbprint` is the key the wizard just made.
-  async checkHubAddress(url, thumbprint) {
-    const extra = thumbprint ? `&thumbprint=${encodeURIComponent(thumbprint)}` : ''
-    const response = await apiRequest(`${ACCESS}/hub-address-check?url=${encodeURIComponent(url)}${extra}`)
+  // publishes is the one Central made: 'match', 'mismatch' or 'unknown'.
+  async checkHubAddress(url) {
+    const response = await apiRequest(`${ACCESS}/hub-address-check?url=${encodeURIComponent(url)}`)
     return { verdict: response.data.verdict, key: response.data.key ?? 'unknown' }
   },
 

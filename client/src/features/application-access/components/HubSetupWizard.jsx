@@ -275,7 +275,7 @@ export function HubSetupWizard({
           <HubAddressField
             value={address}
             suggestedAddress={suggestedAddress}
-            signingThumbprint={keyChoice === "made" ? (signing?.thumbprint ?? "") : ""}
+            keyMadeHere={keyChoice === "made"}
             onChange={(next, bad) => {
               setAddress(next);
               setAddressBad(Boolean(bad));

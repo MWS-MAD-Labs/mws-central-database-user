@@ -25,14 +25,13 @@ describe('HubAddressField', () => {
     expect(onChange).toHaveBeenLastCalledWith('https://app.mws.web.id', false)
   })
 
-  it('says the key is the one Central made, and warns when it is another', async () => {
-    const same = renderField('ok', { signingThumbprint: 'T'.repeat(43) }, 'match')
+  it('on an existing Hub, says the key is the one Central made and warns when it is another', async () => {
+    const same = renderField('ok', {}, 'match')
     await same.user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
     expect(await screen.findByText('Found the Hub, and its key is the one Central made.')).toBeVisible()
-    expect(String(globalThis.fetch.mock.calls[0][0])).toContain(`thumbprint=${'T'.repeat(43)}`)
     same.unmount()
 
-    const other = renderField('ok', { signingThumbprint: 'T'.repeat(43) }, 'mismatch')
+    const other = renderField('ok', {}, 'mismatch')
     await other.user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
     expect(await screen.findByText('Found the Hub.')).toBeVisible()
     expect(screen.getByText(/runs with another key than the one made here/)).toBeVisible()
@@ -40,7 +39,7 @@ describe('HubAddressField', () => {
   })
 
   it('lets a Hub without the key go on only when the key is made in the wizard', async () => {
-    const made = renderField('no_keys', { signingThumbprint: 'T'.repeat(43) })
+    const made = renderField('no_keys', { keyMadeHere: true })
     await made.user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
     expect(await screen.findByText(/does not have the key yet, which is fine/)).toBeVisible()
     expect(made.onChange).toHaveBeenLastCalledWith('https://app.mws.web.id', false)
@@ -50,6 +49,13 @@ describe('HubAddressField', () => {
     await own.user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
     expect(await screen.findByText(/A Hub answers here, but it has no sign-in key yet/)).toBeVisible()
     expect(own.onChange).toHaveBeenLastCalledWith('https://app.mws.web.id', true)
+  })
+
+  it('says nothing about the key while the key made in the wizard is not in the Hub yet', async () => {
+    const view = renderField('ok', { keyMadeHere: true }, 'mismatch')
+    await view.user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText('Found the Hub.')).toBeVisible()
+    expect(screen.queryByText(/runs with another key/)).toBeNull()
   })
 
   it('blocks an address that answers but is not the Hub, with no way around it', async () => {
