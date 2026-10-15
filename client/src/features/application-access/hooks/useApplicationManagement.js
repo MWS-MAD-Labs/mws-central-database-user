@@ -87,7 +87,7 @@ export function useApplicationManagement(applicationId, setup) {
   async function retire() {
     const confirmed = await confirm({
       title: "Retire Application",
-      description: `${setup.application.name} will stop working: its token is revoked, it disappears from the Hub and nobody has access. Nothing is deleted, and you can restore it later.`,
+      description: `${setup.application.name} leaves the Hub and its token is revoked. Nothing is deleted, you can restore it.`,
       confirmLabel: "Retire",
       tone: "danger",
     });
@@ -99,8 +99,8 @@ export function useApplicationManagement(applicationId, setup) {
     const confirmed = await confirm({
       title: own ? "Rotate Hub Secret" : "Give A Dedicated Hub Secret",
       description: own
-        ? `${setup.application.name} and the Hub stop trusting each other until its .env has the new value. Other applications are not affected.`
-        : `${setup.application.name} gets a Hub secret that only it has, so one that leaks does not reach the others. Put the new value in its .env. Until then it keeps working with the Hub's own secret.`,
+        ? `${setup.application.name} and the Hub cannot sign each other in until its .env has the new value.`
+        : `${setup.application.name} gets a Hub secret of its own. Put it in its .env. Until then it keeps the Hub's secret.`,
       confirmLabel: own ? "Rotate" : "Give",
       tone: own ? "danger" : undefined,
     });
@@ -111,7 +111,7 @@ export function useApplicationManagement(applicationId, setup) {
     const name = setup.application.name;
     const confirmed = await confirm({
       title: publish ? `Show ${name} In The Hub` : `Hide ${name} From The Hub`,
-      description: publish ? `People with access will see the card of ${name} in the Hub.` : `People will no longer see the card of ${name} in the Hub.`,
+      description: publish ? `People with access see ${name} in the Hub.` : `People no longer see ${name} in the Hub.`,
       confirmLabel: publish ? "Show" : "Hide",
       tone: publish ? undefined : "danger",
     });

@@ -107,7 +107,7 @@ export function AppCreatePage() {
             const confirmed = await confirm({
               title: "Add the Hub",
               description:
-                "There can only be one Hub, and it cannot be renamed. It can only be removed after every other application is. Its address and shared secret go into the .env of every application that signs in through it.",
+                "There is only one Hub and it stays named HUB. It can only be removed after every other application.",
               confirmLabel: "Add Hub",
             });
             if (!confirmed) return;

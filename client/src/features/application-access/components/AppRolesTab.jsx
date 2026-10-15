@@ -231,8 +231,8 @@ export function AppRolesTab({ applicationId, roles }) {
                                 title: "Deactivate role",
                                 description:
                                   role.active_group_count > 0
-                                    ? `${role.key} is still given by ${role.active_group_count} active group(s) of ${applicationId}. Change or turn off those groups first, or this will be refused.`
-                                    : `${role.key} can no longer be granted for ${applicationId}.`,
+                                    ? `${role.key} is still given by ${role.active_group_count} active group(s). Change those first, or this is refused.`
+                                    : `${role.key} can no longer be granted.`,
                                 confirmLabel: "Deactivate",
                               });
                               if (!confirmed) return;
@@ -258,7 +258,7 @@ export function AppRolesTab({ applicationId, roles }) {
                             closeMenu();
                             const confirmed = await confirm({
                               title: "Delete Role",
-                              description: `${role.key} will be removed from ${applicationId}. A role that was ever used by a person or a group cannot be deleted, deactivate it instead.`,
+                              description: `${role.key} is removed from ${applicationId}. A role that was ever used cannot be deleted, deactivate it.`,
                               confirmLabel: "Delete",
                             });
                             if (confirmed) deleteMutation.mutate(role);

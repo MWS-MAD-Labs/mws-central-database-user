@@ -66,17 +66,17 @@ export function ImpactList({ applicationId }) {
 const COPY = {
   generate: {
     title: "Generate Hub Secret",
-    text: "This makes the secret that the Hub and the applications below share. It goes into each of their .env files. Nothing that is running changes until the new value is put there.",
+    text: "Makes the secret the Hub and the applications below share. Nothing changes until the new value is in their .env.",
     action: "Generate",
   },
   existing: {
     title: "Use The Hub's Current Secret",
-    text: "Open the .env of the Hub and copy the value of HUB_INTERNAL_SECRET. Paste it here and it is kept as the shared one, so nothing that already uses it has to change. It goes into the .env of the applications below from now on.",
+    text: "Paste HUB_INTERNAL_SECRET from the Hub's .env. It is kept as the shared secret, so nothing that uses it has to change.",
     action: "Use This Secret",
   },
   rotate: {
     title: "Rotate Hub Secret",
-    text: "The old secret stops working for new .env blocks. The Hub and every application below must get the new value, and until then they cannot call each other.",
+    text: "The Hub and every application below need the new value. Until they have it they cannot call each other.",
     action: "Rotate",
   },
 };

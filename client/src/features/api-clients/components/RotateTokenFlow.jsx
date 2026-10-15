@@ -26,8 +26,8 @@ export function RotateTokenFlow({ title, rotate, onRotated, onClose, renderResul
     const confirmed = await confirm({
       title: emergency ? "Emergency Token Rotation" : "Rotate API Client Token",
       description: emergency
-        ? "The current credential will stop working immediately. Confirm that the replacement can be deployed now."
-        : "A new credential will be issued and the current credential will remain valid for 24 hours.",
+        ? "The old token stops working at once. Be ready to deploy the new one."
+        : "A new token is issued. The old one works for 24 more hours.",
       confirmLabel: emergency ? "Rotate Immediately" : "Start Rotation",
       tone: emergency ? "danger" : undefined,
     });

@@ -46,7 +46,7 @@ export function HubSecretTest({ secret, address, disabled = false, onReady }) {
     const confirmed = await confirm({
       title: "Use This Secret Anyway",
       description:
-        "The Hub could not confirm this secret. If it is wrong, the applications get a secret the Hub refuses and their sign-in fails. Use it only if you are sure.",
+        "The Hub did not confirm this secret. If it is wrong, sign-in fails for the applications.",
       confirmLabel: "Use It Anyway",
     });
     if (confirmed) setAnyway(true);
