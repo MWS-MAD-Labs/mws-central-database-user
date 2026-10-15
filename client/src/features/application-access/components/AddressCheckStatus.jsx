@@ -1,9 +1,11 @@
 import { Check } from "lucide-react";
+import { Link } from "react-router";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 
 // The line under an address field that is being checked. `texts` has found, anyway, a message per verdict and the
-// text of the confirmation for Use It Anyway. Only an address nothing answers at can be used anyway.
+// text of the confirmation for Use It Anyway. Only an address nothing answers at can be used anyway. `texts.help` may
+// hold an address per verdict, which adds a How To Fix link to the guide.
 export function AddressCheckStatus({ state, texts }) {
   const confirm = useConfirm();
   const { waiting, verdict, usedAnyway, acceptAnyway } = state;
@@ -25,6 +27,11 @@ export function AddressCheckStatus({ state, texts }) {
       {!waiting && verdict && verdict !== "ok" && !usedAnyway ? (
         <p className="text-[#a43c41]">
           {texts[verdict]}{" "}
+          {texts.help?.[verdict] ? (
+            <Link to={texts.help[verdict]} className="font-semibold underline">
+              How To Fix
+            </Link>
+          ) : null}{" "}
           {verdict === "unreachable" || verdict === "failed" ? (
             <TextAction className="ml-1 inline-flex" onClick={askAnyway}>
               Use It Anyway

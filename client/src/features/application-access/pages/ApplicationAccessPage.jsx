@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Lock, Plus } from "lucide-react";
+import { BookOpen, Lock, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
@@ -31,6 +31,7 @@ import { copyText } from "../utils/copyText.js";
 import { timeAgo } from "../utils/setupSteps.js";
 import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
 import { canManageApplications } from "../utils/canManageApplications.js";
+import { startGuideHref } from "../utils/startGuide.js";
 
 // Every application with how much access it has. Roles and groups are managed inside each one.
 export function ApplicationAccessPage() {
@@ -89,6 +90,13 @@ export function ApplicationAccessPage() {
     placeholderData: (previous) => previous,
   });
   const rows = query.data?.data || [];
+  // The same question the Add Application page asks, so the answer is shared.
+  const hubQuery = useQuery({
+    queryKey: ["application-access", "hub-exists"],
+    queryFn: () => applicationAccessApi.listApplications({ search: "hub", size: 20 }),
+    enabled: canManageApplications(user),
+  });
+  const hubExists = Boolean(hubQuery.data?.data?.some((row) => row.is_hub));
   const paging = query.data?.paging;
 
   if (!canManageApplications(user)) {
@@ -108,15 +116,36 @@ export function ApplicationAccessPage() {
         title="Application Access"
         description="Who can open each application and with which role. Open an application to manage its roles, groups and exceptions."
         actions={
-          <Button
-            type="button"
-            onClick={() => navigate("/application-access/apps/new")}
-          >
-            <Plus size={16} />
-            Add Application
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild variant="secondary">
+              <Link to={startGuideHref()}>
+                <BookOpen size={16} />
+                Guide
+              </Link>
+            </Button>
+            <Button
+              type="button"
+              onClick={() => navigate("/application-access/apps/new")}
+            >
+              <Plus size={16} />
+              Add Application
+            </Button>
+          </div>
         }
       />
+
+      {hubQuery.isSuccess && !hubExists ? (
+        <div role="note" className="rounded-xl border border-[#d8b45b] bg-[#fff8e8] p-4 text-sm text-[#745716]">
+          <p className="font-semibold">No Hub has been added yet.</p>
+          <p className="mt-1">
+            The Hub comes first, because every application is given its address. The guide takes you from the Hub's key to a connected
+            application.{" "}
+            <Link to={startGuideHref("hub")} className="font-semibold underline">
+              Open The Guide
+            </Link>
+          </p>
+        </div>
+      ) : null}
 
       <div className="w-full sm:w-80">
         <DebouncedSearchInput

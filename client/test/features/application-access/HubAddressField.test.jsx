@@ -33,6 +33,17 @@ describe('HubAddressField', () => {
     expect(onChange).toHaveBeenLastCalledWith('https://example.com', true)
   })
 
+  it('says a Hub has no sign-in key, and points to the guide for it', async () => {
+    const { user, onChange } = renderField('no_keys')
+    await user.type(screen.getByLabelText('Hub Address'), 'app-stg.mws.web.id')
+    expect(await screen.findByText(/A Hub answers here, but it has no sign-in key yet/)).toBeVisible()
+    expect(screen.getByText(/HUB_SSO_PRIVATE_KEY/)).toBeVisible()
+    expect(screen.getByRole('link', { name: 'How To Fix' })).toHaveAttribute('href', '/application-access/guide?part=hub')
+    // The address is right, so there is no way around it either: the key has to be set.
+    expect(screen.queryByRole('button', { name: 'Use It Anyway' })).toBeNull()
+    expect(onChange).toHaveBeenLastCalledWith('https://app-stg.mws.web.id', true)
+  })
+
   it('offers Use It Anyway only when nothing answers', async () => {
     const { user, onChange } = renderField('unreachable')
     await user.type(screen.getByLabelText('Hub Address'), 'hub.mws.web.id')

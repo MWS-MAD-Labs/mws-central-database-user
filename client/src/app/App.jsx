@@ -22,6 +22,7 @@ const ExceptionAddPage = lazy(() => import('../features/application-access/pages
 const GroupAccessEditPage = lazy(() => import('../features/application-access/pages/GroupAccessEditPage.jsx').then((module) => ({ default: module.GroupAccessEditPage })))
 const AppCreatePage = lazy(() => import('../features/application-access/pages/AppCreatePage.jsx').then((module) => ({ default: module.AppCreatePage })))
 const AppGuidePage = lazy(() => import('../features/application-access/pages/AppGuidePage.jsx').then((module) => ({ default: module.AppGuidePage })))
+const AppStartGuidePage = lazy(() => import('../features/application-access/pages/AppStartGuidePage.jsx').then((module) => ({ default: module.AppStartGuidePage })))
 const AppSetupPage = lazy(() => import('../features/application-access/pages/AppSetupPage.jsx').then((module) => ({ default: module.AppSetupPage })))
 const AppSettingsPage = lazy(() => import('../features/application-access/pages/AppSettingsPage.jsx').then((module) => ({ default: module.AppSettingsPage })))
 const BulkRolesPage = lazy(() => import('../features/application-access/pages/BulkRolesPage.jsx').then((module) => ({ default: module.BulkRolesPage })))
@@ -93,6 +94,7 @@ export default function App() {
           <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="api-clients" element={<ApiClientsPage />} />
           <Route path="application-access" element={<ApplicationAccessPage />} />
+          <Route path="application-access/guide" element={<AppStartGuidePage />} />
           <Route path="application-access/apps/new" element={<AppCreatePage />} />
           <Route path="application-access/apps/:applicationId" element={<AppAccessPage />} />
           <Route path="application-access/apps/:applicationId/setup" element={<AppSetupPage />} />

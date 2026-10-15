@@ -6,6 +6,7 @@ import { ENVIRONMENTS, environmentOfScheme, hubAddressProblem, joinAddress, read
 import { useAddressCheck } from "../hooks/useAddressCheck.js";
 import { AddressCheckStatus } from "./AddressCheckStatus.jsx";
 import { AddressInput } from "./AddressInput.jsx";
+import { startGuideHref } from "../utils/startGuide.js";
 
 const HINT = "Where people open the Hub. Every application gets it in its .env.";
 
@@ -13,9 +14,15 @@ const TEXTS = {
   found: "Found the Hub.",
   anyway: "Used as typed, not checked.",
   unreachable: "Nothing answers at this address. Is the Hub running?",
-  not_hub: "Something answers, but it does not look like the Hub (it has no sign-in keys). Check the address and the port.",
+  not_hub: "Something answers, but it does not look like the Hub. Check the address and the port.",
+  no_keys: "A Hub answers here, but it has no sign-in key yet. Set HUB_SSO_PRIVATE_KEY in the Hub's .env, deploy it again, then check again.",
   refused: "This address cannot be checked.",
   failed: "The address could not be checked just now. Try again.",
+  help: {
+    no_keys: startGuideHref("hub"),
+    not_hub: startGuideHref("problems"),
+    unreachable: startGuideHref("problems"),
+  },
   anywayTitle: "Use This Address Anyway",
   anywayText:
     "Central could not reach this address, which can be true when the Hub only runs on your machine and Central does not. If it is wrong, every application gets a wrong HUB_BASE_URL and their sign-in fails. Use it only if you are sure.",

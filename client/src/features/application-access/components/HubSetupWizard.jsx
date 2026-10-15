@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, Copy, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextInput } from "../../../components/ui/FormControls.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { cn } from "../../../lib/cn.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { startGuideHref } from "../utils/startGuide.js";
 import { cleanPastedSecret, emailsProblem, existingSecretProblem } from "../utils/hubSettings.js";
 import { HubAccessSettings } from "./HubAccessSettings.jsx";
 import { HubSecretTest } from "./HubSecretTest.jsx";
@@ -193,6 +195,19 @@ export function HubSetupWizard({
             The address people open the Hub at. Every application gets it in its
             .env, so set it first.
           </p>
+          {managing ? null : (
+            <div role="note" className="rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3 text-sm text-(--mws-muted)">
+              <p className="font-semibold text-(--mws-charcoal)">Before You Check The Address</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                <li>The Hub is deployed and running.</li>
+                <li>HUB_SSO_PRIVATE_KEY is set in its environment, so it can publish its sign-in key.</li>
+                <li>You use the address people open the Hub at, over https.</li>
+              </ul>
+              <Link to={startGuideHref("hub")} className="mt-1 inline-block font-semibold text-(--mws-burgundy) underline">
+                Open The Guide
+              </Link>
+            </div>
+          )}
           <HubAddressField
             value={address}
             suggestedAddress={suggestedAddress}

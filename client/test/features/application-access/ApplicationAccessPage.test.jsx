@@ -106,6 +106,28 @@ describe('ApplicationAccessPage', () => {
     expect(within(hub).getAllByText('None')).toHaveLength(3)
   })
 
+  it('opens the guide from the header', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage()
+    await screen.findByText('Exima')
+    expect(screen.getByRole('link', { name: 'Guide' })).toHaveAttribute('href', '/application-access/guide')
+    expect(screen.queryByText('No Hub has been added yet.')).toBeNull()
+  })
+
+  it('tells where to start when there is no Hub yet', async () => {
+    globalThis.fetch = createFetchRouter([
+      {
+        path: /\/api\/admin\/application-access\/applications/,
+        method: 'GET',
+        response: () => jsonResponse({ data: applications.filter((row) => !row.is_hub), paging }),
+      },
+      ...routes().slice(0, 1),
+    ])
+    renderPage()
+    expect(await screen.findByText('No Hub has been added yet.')).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Open The Guide' })).toHaveAttribute('href', '/application-access/guide?part=hub')
+  })
+
   it('marks an application that still uses an old token', async () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage()

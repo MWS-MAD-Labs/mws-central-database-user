@@ -12,6 +12,7 @@ import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { AppDetailsForm } from "../components/AppDetailsForm.jsx";
 import { ConnectDialog } from "../components/ConnectDialog.jsx";
 import { canManageApplications } from "../utils/canManageApplications.js";
+import { startGuideHref } from "../utils/startGuide.js";
 
 const BACK = "/application-access";
 
@@ -71,6 +72,17 @@ export function AppCreatePage() {
             </Button>
         }
       />
+      <div role="note" className="mb-4 rounded-xl border border-(--mws-line) bg-(--mws-soft) p-4 text-sm text-(--mws-muted)">
+        <p className="font-semibold text-(--mws-charcoal)">{hubQuery.isSuccess && !hubExists ? "Add The Hub First" : "Before You Add It"}</p>
+        <p className="mt-1">
+          {hubQuery.isSuccess && !hubExists
+            ? "No Hub has been added yet, and every application is given its address. Make the Hub's signing key, deploy it, then add it here."
+            : "Have the application's environment ready on its server. The token is shown only once, right after you add it."}{" "}
+          <Link to={startGuideHref(hubQuery.isSuccess && !hubExists ? "hub" : "app")} className="font-semibold text-(--mws-burgundy) underline">
+            Open The Guide
+          </Link>
+        </p>
+      </div>
       <AppDetailsForm
         layout="page"
         adminEmail={user?.email ?? ""}
