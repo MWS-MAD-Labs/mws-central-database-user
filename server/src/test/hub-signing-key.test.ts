@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { createPublicKey, createSign, createVerify, randomBytes } from "node:crypto";
+import { createPrivateKey, createPublicKey, createSign, createVerify, randomBytes } from "node:crypto";
 import { prismaClient } from "../lib/prisma";
+import { hubKeyEnvItems } from "../utils/application-env";
 import { defaultKid, makeHubSigningKey, pemForEnv, thumbprintOf } from "../utils/hub-signing-key";
 import { AdminUserTest, MasterDataTest, TestRequest } from "./test-utils";
 
@@ -21,6 +22,17 @@ describe("hub signing key", () => {
   it("makes a different key each time and a readable default name", () => {
     expect(makeHubSigningKey().thumbprint).not.toBe(makeHubSigningKey().thumbprint);
     expect(defaultKid(new Date("2026-03-09T00:00:00Z"))).toMatch(/^mws-hub-sso-2026-03-[0-9a-f]{4}$/);
+  });
+
+  it("writes the .env line so the Hub reads the same key back, with one backslash before each n", () => {
+    const key = makeHubSigningKey();
+    const [line] = hubKeyEnvItems(key.kid, pemForEnv(key.privatePem));
+    expect(line!.line).not.toContain("\\\\n");
+    // What the Hub does with the value it reads from the .env.
+    const value = line!.line.slice('HUB_SSO_PRIVATE_KEY="'.length, -1);
+    const restored = value.replace(/\\n/g, "\n");
+    expect(restored.trim()).toBe(key.privatePem.trim());
+    expect(thumbprintOf(createPublicKey(createPrivateKey(restored)).export({ format: "jwk" }))).toBe(key.thumbprint);
   });
 
   it("writes the PEM on one line and ignores things that are not RSA keys", () => {
