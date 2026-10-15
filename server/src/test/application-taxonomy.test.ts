@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { randomBytes } from "crypto";
 import { API_SCOPES } from "../constants/api-scopes";
 import { prismaClient } from "../lib/prisma";
-import { AdminUserTest, ApiClientTest, AuditLogTest, MasterDataTest, TestRequest } from "./test-utils";
+import { AdminUserTest, ApiClientTest, AuditLogTest, HubTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const ACCESS = "/api/admin/application-access";
 
@@ -13,11 +13,13 @@ describe("application scopes and categories", () => {
   let appId: string;
 
   beforeEach(async () => {
+    await HubTest.ensure();
     appId = `test-tax-${suffix}`;
     await MasterDataTest.create();
   });
 
   afterEach(async () => {
+    await HubTest.cleanup();
     await prismaClient.application.deleteMany({ where: { application_id: appId } });
     await prismaClient.applicationScope.deleteMany({ where: { key: { startsWith: "test-" } } });
     await prismaClient.applicationCategory.deleteMany({ where: { key: { startsWith: "test-" } } });

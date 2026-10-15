@@ -7,7 +7,7 @@ import { slugifyApplicationId } from "../utils/application-id";
 import { decryptSecret } from "../utils/secret-box";
 import { deriveAppSecret } from "../utils/hub-app-secret";
 import { checkApplicationAddresses, healthOf, useExchangeSeenForTest } from "../service/application-health";
-import { AdminUserTest, ApiClientTest, EmployeeTest, MasterDataTest, TestRequest } from "./test-utils";
+import { AdminUserTest, ApiClientTest, EmployeeTest, HubTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const ACCESS = "/api/admin/application-access";
 
@@ -27,11 +27,13 @@ describe("application onboarding", () => {
   });
 
   beforeEach(async () => {
+    await HubTest.ensure();
     appId = `test-onb-${randomBytes(4).toString("hex")}`;
     master = await MasterDataTest.create();
   });
 
   afterEach(async () => {
+    await HubTest.cleanup();
     await prismaClient.auditLog.deleteMany({
       where: { OR: [{ entity_type: "Application" }, { entity_type: "ApplicationOrganization" }, { entity_type: "ApplicationIntegrationProfile" }] },
     });

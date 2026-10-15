@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { randomBytes } from "crypto";
 import { EmployeeStatus } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
-import { AdminUserTest, EmployeeTest, MasterDataTest, TestRequest } from "./test-utils";
+import { AdminUserTest, EmployeeTest, HubTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const RULES = "/api/admin/application-access-rules";
 const ENTITLEMENTS = "/api/admin/application-entitlements";
@@ -13,6 +13,7 @@ describe("application access per application", () => {
   let masterData: Awaited<ReturnType<typeof MasterDataTest.create>>;
 
   beforeEach(async () => {
+    await HubTest.ensure();
     appId = `test-apps-${randomBytes(4).toString("hex")}`;
     masterData = await MasterDataTest.create();
     await prismaClient.applicationRole.createMany({
@@ -24,6 +25,7 @@ describe("application access per application", () => {
   });
 
   afterEach(async () => {
+    await HubTest.cleanup();
     const rules = await prismaClient.applicationAccessRule.findMany({ where: { application_id: appId } });
     const entitlements = await prismaClient.applicationEntitlement.findMany({ where: { application_id: appId } });
     await prismaClient.auditLog.deleteMany({

@@ -27,6 +27,7 @@ import {
 } from "../generated/prisma/enums";
 import { prismaClient } from "../lib/prisma";
 import { generateApiToken } from "../utils/generate-api-token";
+import { hubApplicationId } from "../constants/hub-application";
 import { minioClient, MINIO_BUCKET } from "../lib/minio";
 
 const JWT_SECRET = process.env.JWT_SECRET || "secret";
@@ -257,6 +258,25 @@ export class AdminUserTest {
 // the duration of the test and delete() restores it, so tests can have
 // their own ACTIVE TEST_ year without violating the constraint.
 let suspendedActiveAcademicYearId: string | null = null;
+
+// No application can be added before the Hub, so the tests that add one make sure a Hub row is there, and take away
+// only the row they made.
+export class HubTest {
+  private static made: string | null = null;
+
+  static async ensure() {
+    const id = hubApplicationId();
+    if (await prismaClient.application.count({ where: { application_id: id } })) return;
+    await prismaClient.application.create({ data: { application_id: id, name: "HUB" } });
+    HubTest.made = id;
+  }
+
+  static async cleanup() {
+    if (!HubTest.made) return;
+    await prismaClient.application.deleteMany({ where: { application_id: HubTest.made } });
+    HubTest.made = null;
+  }
+}
 
 export class AcademicYearTest {
   static async delete() {
