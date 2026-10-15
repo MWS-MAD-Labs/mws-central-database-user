@@ -328,7 +328,7 @@ describe('Access role change summary', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Student Units: Own' }))
     const dialog = screen.getByRole('dialog', { name: 'Student Units' })
-    await user.click(within(dialog).getByRole('radio', { name: /^Selected academic units/ }))
+    await user.click(within(dialog).getByRole('radio', { name: /^Selected Academic Units/ }))
     await user.click(await within(dialog).findByLabelText('Elementary'))
     await user.click(within(dialog).getByRole('button', { name: 'Save Scope' }))
 
@@ -403,8 +403,8 @@ describe('Access role change summary', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Student Units: 1 selected' }))
     const dialog = screen.getByRole('dialog', { name: 'Student Units' })
-    await user.click(within(dialog).getByRole('radio', { name: /^All units/ }))
-    expect(within(dialog).getByRole('radio', { name: /^Selected academic units/ })).not.toBeChecked()
+    await user.click(within(dialog).getByRole('radio', { name: /^All Units/ }))
+    expect(within(dialog).getByRole('radio', { name: /^Selected Academic Units/ })).not.toBeChecked()
     await user.click(within(dialog).getByRole('button', { name: 'Save Scope' }))
 
     await waitFor(() => {
@@ -462,7 +462,7 @@ describe('Access role change summary', () => {
     )
     await user.click(await screen.findByRole('button', { name: 'Student Units: 1 selected' }))
     const dialog = screen.getByRole('dialog', { name: 'Student Units' })
-    await user.click(within(dialog).getByRole('radio', { name: /^Selected academic units/ }))
+    await user.click(within(dialog).getByRole('radio', { name: /^Selected Academic Units/ }))
 
     expect(await within(dialog).findByLabelText('Junior High')).toBeVisible()
     expect(within(dialog).getByLabelText('Unavailable unit (unit-legacy)')).toBeChecked()

@@ -51,6 +51,7 @@ describe("application integration profiles", () => {
     expect(hub.is_system).toBe(true);
     expect(hub.scopes.map((scope: { name: string }) => scope.name).sort()).toEqual([
       "application_entitlements:read",
+      "application_permissions:write",
       "employees:read",
       "students:read",
     ]);
@@ -79,6 +80,7 @@ describe("application integration profiles", () => {
       expect(body.data.purpose).toBe("backend");
       expect(body.data.effective_scopes.sort()).toEqual([
         "application_entitlements:read",
+        "application_permissions:write",
         "employees:read",
         "students:read",
       ]);

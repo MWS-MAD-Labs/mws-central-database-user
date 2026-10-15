@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { randomBytes } from "crypto";
 import { API_SCOPES } from "../constants/api-scopes";
 import { prismaClient } from "../lib/prisma";
+import { syncApiScopes } from "../lib/sync-api-scopes";
 import { slugifyApplicationId } from "../utils/application-id";
 import { decryptSecret } from "../utils/secret-box";
 import { deriveAppSecret } from "../utils/hub-app-secret";
@@ -19,6 +20,11 @@ const RULES = "/api/admin/application-access-rules";
 describe("application onboarding", () => {
   let appId: string;
   let master: Awaited<ReturnType<typeof MasterDataTest.create>>;
+
+  // Connecting needs the scope rows, which the server creates at boot. A database that was only migrated has none.
+  beforeAll(async () => {
+    await syncApiScopes();
+  });
 
   beforeEach(async () => {
     appId = `test-onb-${randomBytes(4).toString("hex")}`;
