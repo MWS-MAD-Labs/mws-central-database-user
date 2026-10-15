@@ -69,7 +69,7 @@ export function SupportAssignmentsPanel({
     if (
       await confirm({
         title: 'Drop assignment',
-        description: `Drop the Special Education Teacher assignment for ${assignment.student.full_name}? Use this only to undo a mistaken assignment - it won't be kept in this student's assignment history at all. For a real, legitimate handover, use "End assignment" instead.`,
+        description: `Drop the Special Education Teacher assignment for ${assignment.student.full_name}? Only to undo a mistake, it is not kept in the history. For a real handover use End Assignment.`,
         confirmLabel: 'Drop assignment',
         tone: 'danger',
       })
@@ -82,7 +82,7 @@ export function SupportAssignmentsPanel({
     if (
       await confirm({
         title: 'Reactivate assignment',
-        description: `Undo ending the Special Education Teacher assignment for ${assignment.student.full_name} and make it active again?`,
+        description: `Make the Special Education Teacher assignment for ${assignment.student.full_name} active again?`,
         confirmLabel: 'Reactivate',
       })
     ) {

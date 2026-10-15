@@ -216,7 +216,7 @@ export function StudentsPage() {
       action === "deactivate" &&
       !(await confirm({
         title: "Deactivate students",
-        description: `Deactivate ${ids.length} selected student(s)? Their class enrollments stay exactly as they are. This only flags them as inactive.`,
+        description: `Deactivate ${ids.length} selected student(s)? Their class enrollments stay as they are.`,
         confirmLabel: "Deactivate",
         tone: "danger",
       }))

@@ -1077,7 +1077,7 @@ export function ClassDetailPage() {
                             if (
                               await confirm({
                                 title: "Drop students",
-                                description: `Drop ${selectedEnrollments.length} student(s) from this class? Any that were promoted here will move back to their previous class. The rest will just be removed.`,
+                                description: `Drop ${selectedEnrollments.length} student(s) from this class? Promoted students move back to their previous class, the rest are removed.`,
                                 confirmLabel: "Drop",
                                 tone: "danger",
                               })

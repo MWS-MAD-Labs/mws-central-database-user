@@ -190,7 +190,7 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage, canEdi
   async function handleRevoke(entry) {
     const confirmed = await confirm({
       title: 'Revoke record',
-      description: `Revoke this ${formatDisciplinaryType(entry.type)} ${entry.level}? This marks it as issued by mistake. It stops counting toward escalation, but stays visible in the history.`,
+      description: `Revoke this ${formatDisciplinaryType(entry.type)} ${entry.level}? It was issued by mistake: it stops counting toward escalation but stays in the history.`,
       confirmLabel: 'Revoke',
       tone: 'danger',
     })

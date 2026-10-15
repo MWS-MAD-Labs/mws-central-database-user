@@ -298,7 +298,7 @@ export function StudentDetailPage() {
     const confirmed = await confirm({
       title: "Deactivate student",
       description:
-        "Deactivate this student? Their class enrollment stays exactly as it is. This only flags them as inactive.",
+        "Deactivate this student? Their class enrollment stays as it is.",
       confirmLabel: "Deactivate",
       tone: "danger",
     });

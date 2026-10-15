@@ -457,7 +457,7 @@ function AdminUsersPanel() {
     if (
       await confirm({
         title: "Demote Super Admin",
-        description: `Demote ${admin.email} from Super Admin to Database Admin? They'll keep the account, just lose Super Admin access.`,
+        description: `Demote ${admin.email} from Super Admin to Database Admin? They keep the account and lose Super Admin access.`,
         confirmLabel: "Demote",
         tone: "danger",
       })

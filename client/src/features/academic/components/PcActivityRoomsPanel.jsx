@@ -1078,7 +1078,7 @@ export function RoomStudentsSection({ room, canManage }) {
   async function handleBulkEnd() {
     const confirmed = await confirm({
       title: "End student assignments",
-      description: `End ${selected.length} student assignment(s)? The history remains and each same-day slot becomes available.`,
+      description: `End ${selected.length} student assignment(s)? The history stays and the slots open up.`,
       confirmLabel: "End Assignments",
     });
     if (confirmed) bulkEndMutation.mutate(Array.from(selectedIds));
@@ -1087,7 +1087,7 @@ export function RoomStudentsSection({ room, canManage }) {
   async function handleBulkDrop() {
     const confirmed = await confirm({
       title: "Drop student assignments",
-      description: `Drop ${selected.length} student assignment(s) as a mistake? This soft-deletes the history rows.`,
+      description: `Drop ${selected.length} student assignment(s) as a mistake? Their history rows are removed.`,
       confirmLabel: "Drop",
       tone: "danger",
     });
@@ -1734,7 +1734,7 @@ export function RoomMentorsSection({ room, units, canManage }) {
   async function handleBulkRemove() {
     const confirmed = await confirm({
       title: "Remove mentor assignments",
-      description: `Remove ${selected.length} mentor assignment(s)? Use this only to correct a mistake, not to close a finished mentorship. "End selected" does that instead.`,
+      description: `Remove ${selected.length} mentor assignment(s)? Only to correct a mistake. To close a finished mentorship use End Selected.`,
       confirmLabel: "Remove",
       tone: "danger",
     });

@@ -766,7 +766,7 @@ export function EnrollmentDialog({
               if (selectedStudentIds.length > 0) {
                 const confirmed = await confirm({
                   title: "Switch enrollment mode?",
-                  description: `${selectedStudentIds.length} queued student${selectedStudentIds.length === 1 ? "" : "s"} will be cleared. The student list is different in ${checked ? "Historical Data" : "live enrollment"} mode.`,
+                  description: `${selectedStudentIds.length} queued student${selectedStudentIds.length === 1 ? "" : "s"} will be cleared, because the list differs in this mode.`,
                   confirmLabel: "Switch and clear",
                   tone: "danger",
                 });

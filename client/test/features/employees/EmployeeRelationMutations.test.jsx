@@ -121,7 +121,7 @@ describe('EmployeeSupportAssignmentsPanel mutations', () => {
 
     await user.click(screen.getByRole('button', { name: 'Drop assignment' }))
     const dropDialog = screen.getByRole('dialog', { name: 'Drop assignment' })
-    expect(dropDialog).toHaveTextContent("won't be kept in this student's assignment history")
+    expect(dropDialog).toHaveTextContent('it is not kept in the history')
     await user.click(within(dropDialog).getByRole('button', { name: 'Drop assignment' }))
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
