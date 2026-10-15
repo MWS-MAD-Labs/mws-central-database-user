@@ -321,7 +321,7 @@ describe('GroupFormPage', () => {
     await user.click(screen.getByRole('option', { name: 'All Active Students' }))
     const allow = await screen.findByLabelText(/Allow Exceptions/)
     expect(allow).not.toBeChecked()
-    expect(screen.getByText(/For roles such as class leader/)).toBeVisible()
+    expect(screen.getByText(/requires a specific role/)).toBeVisible()
     await user.click(allow)
     await user.click(screen.getByRole('button', { name: 'Select a role' }))
     await user.click(screen.getByRole('option', { name: /STAFF/ }))
