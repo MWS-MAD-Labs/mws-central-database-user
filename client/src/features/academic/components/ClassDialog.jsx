@@ -84,7 +84,7 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
       }
       const proceed = await confirm({
         title: "Class still has active occupants",
-        description: `Moving this class to ${formatStatus(values.status)} while it still has ${parts.join(" and ")}. Promote/transfer/close the students and end the teacher assignments first, or continue anyway.`,
+        description: `This class still has ${parts.join(" and ")}. Promote, transfer or close the students and end the teacher assignments first, or continue anyway.`,
         confirmLabel: "Continue Anyway",
         tone: "danger",
       });

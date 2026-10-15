@@ -169,7 +169,7 @@ export function TeacherAssignmentsSection({
   async function handleBulkRemove() {
     const confirmed = await confirm({
       title: "Remove assignments",
-      description: `Remove ${selectedAssignments.length} teacher assignment(s)? Use this only to correct a mistake, not to close a finished assignment. "End selected" does that instead.`,
+      description: `Remove ${selectedAssignments.length} teacher assignment(s)? Only to correct a mistake. To close a finished assignment use End Selected.`,
       confirmLabel: "Remove",
       tone: "danger",
     });

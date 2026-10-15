@@ -92,8 +92,8 @@ function ExportMenu({ entity, exportParams, canExport, canExportSensitive }) {
     const confirmed = await confirm({
       title: sensitive ? "Export sensitive data?" : `Export ${format.toUpperCase()}?`,
       description: sensitive
-        ? "This file may contain personal identifiers, contact details, birth data, and other sensitive fields. The export will be recorded in Audit Logs."
-        : `${format.toUpperCase()} export will be recorded in Audit Logs with the selected filters.`,
+        ? "This file may contain personal identifiers, contact details and birth data. The export is recorded in Audit Logs."
+        : `${format.toUpperCase()} export is recorded in Audit Logs with the selected filters.`,
       confirmLabel: sensitive ? "Export sensitive data" : `Export ${format.toUpperCase()}`,
       tone: sensitive ? "danger" : undefined,
       wide: true,
@@ -496,9 +496,8 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
           <>
             <p>
               {excludedRowNumbers.size} row(s) will be dropped from this
-              import. Re-check them now if any of this was unchecked by
-              accident, since there's no way back after this besides
-              re-uploading the file:
+              import. Re-check any you unchecked by mistake, the only way
+              back is to upload the file again:
             </p>
             <ul className="mt-2 max-h-64 list-disc space-y-0.5 overflow-y-auto pl-5 font-medium text-(--mws-charcoal)">
               {excludedLabels.map((label, index) => (

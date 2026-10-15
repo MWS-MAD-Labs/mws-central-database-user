@@ -165,17 +165,16 @@ export function AcademicYearsPanel() {
           description: (
             <>
               <p>
-                Moving to {formatStatus(payload.status)} will deactivate{" "}
+                Moving to {formatStatus(payload.status)} deactivates{" "}
                 {counts.class_count} class(es) below
                 {counts.active_enrollment_count > 0
-                  ? `, stranding ${counts.active_enrollment_count} student(s) mid-year`
+                  ? `, leaves ${counts.active_enrollment_count} student(s) mid-year`
                   : ""}
                 {counts.active_teacher_assignment_count > 0
-                  ? `${counts.active_enrollment_count > 0 ? " and" : ","} ending ${counts.active_teacher_assignment_count} active teacher assignment(s)`
+                  ? `${counts.active_enrollment_count > 0 ? " and" : ","} ends ${counts.active_teacher_assignment_count} teacher assignment(s)`
                   : ""}
-                . Promote, transfer, or close the students, and end the
-                teacher assignments yourself first if you'd rather not have
-                them ended automatically.
+                . Promote, transfer or close the students first. Teacher
+                assignments end automatically.
               </p>
               <div className="mt-3 max-h-56 overflow-y-auto rounded-xl border border-(--mws-line)">
                 <table className="w-full text-left text-xs">
@@ -246,7 +245,7 @@ export function AcademicYearsPanel() {
       if (count > 0) {
         const proceed = await confirm({
           title: "Enrollment dates fall outside the new range",
-          description: `${count} enrollment(s) in this year have a start or end date outside the new range. Nothing about those enrollments changes automatically. Update them yourself if needed.`,
+          description: `${count} enrollment(s) have a start or end date outside the new range. They are not changed, update them if needed.`,
           confirmLabel: "Continue Anyway",
           tone: "danger",
         });
