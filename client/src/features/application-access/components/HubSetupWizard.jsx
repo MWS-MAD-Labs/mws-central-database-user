@@ -1,14 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, Copy, KeyRound, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextInput } from "../../../components/ui/FormControls.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { cn } from "../../../lib/cn.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { startGuideHref } from "../utils/startGuide.js";
 import { cleanPastedSecret, emailsProblem, existingSecretProblem } from "../utils/hubSettings.js";
 import { HubAccessSettings } from "./HubAccessSettings.jsx";
 import { HubSecretTest } from "./HubSecretTest.jsx";
@@ -269,9 +267,6 @@ export function HubSetupWizard({
                 <li>It runs with the signing key lines from the first step, so it can publish its sign-in key.</li>
                 <li>You use the address people open the Hub at, over https.</li>
               </ul>
-              <Link to={startGuideHref("hub")} className="mt-1 inline-block font-semibold text-(--mws-burgundy) underline">
-                Open The Guide
-              </Link>
             </div>
           )}
           <HubAddressField
