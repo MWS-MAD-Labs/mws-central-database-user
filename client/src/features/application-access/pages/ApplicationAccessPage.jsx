@@ -97,6 +97,8 @@ export function ApplicationAccessPage() {
     enabled: canManageApplications(user),
   });
   const hubExists = Boolean(hubQuery.data?.data?.some((row) => row.is_hub));
+  // With no Hub the note below carries the guide link, so the header one would repeat it.
+  const noHub = hubQuery.isSuccess && !hubExists;
   const paging = query.data?.paging;
 
   if (!canManageApplications(user)) {
@@ -117,12 +119,14 @@ export function ApplicationAccessPage() {
         description="Who can open each application and with which role. Open an application to manage its roles, groups and exceptions."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button asChild variant="secondary">
-              <Link to={startGuideHref()}>
-                <BookOpen size={16} />
-                Guide
-              </Link>
-            </Button>
+            {noHub ? null : (
+              <Button asChild variant="secondary">
+                <Link to={startGuideHref()}>
+                  <BookOpen size={16} />
+                  Guide
+                </Link>
+              </Button>
+            )}
             <Button
               type="button"
               onClick={() => navigate("/application-access/apps/new")}
@@ -134,7 +138,7 @@ export function ApplicationAccessPage() {
         }
       />
 
-      {hubQuery.isSuccess && !hubExists ? (
+      {noHub ? (
         <div role="note" className="rounded-xl border border-[#d8b45b] bg-[#fff8e8] p-4 text-sm text-[#745716]">
           <p className="font-semibold">No Hub has been added yet.</p>
           <p className="mt-1">

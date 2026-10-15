@@ -126,6 +126,8 @@ describe('ApplicationAccessPage', () => {
     renderPage()
     expect(await screen.findByText('No Hub has been added yet.')).toBeVisible()
     expect(screen.getByRole('link', { name: 'Open The Guide' })).toHaveAttribute('href', '/application-access/guide?part=hub')
+    // One way into the guide at a time.
+    expect(screen.queryByRole('link', { name: 'Guide' })).toBeNull()
   })
 
   it('marks an application that still uses an old token', async () => {
