@@ -31,6 +31,25 @@ const ADD_STEPS = [{ id: "key", label: "Key" }, ...STEPS];
 // The two ways to make a key look the same, in the brand colour so they are easy to spot.
 const KEY_ACTION = "text-(--mws-burgundy)! hover:text-(--mws-burgundy-dark)!";
 
+const SIGN_IN_TITLE = { warn: "Warn", enforce: "Enforce", off: "Off" };
+
+function signInSummary(settings) {
+  if (settings.hub_access_mode === "off") return "Access in Central is not checked.";
+  if (settings.hub_access_mode === "warn") return "Everyone still gets in. Whoever would be turned away is only logged.";
+  const count = settings.hub_bypass_emails.length;
+  const emergency = count === 0 ? "No one gets in without access." : `${count} ${count === 1 ? "email always gets" : "emails always get"} in.`;
+  return `People without access in Central are turned away. ${emergency}`;
+}
+
+function ReviewRow({ label, children }) {
+  return (
+    <div className="grid gap-1 px-4 py-3 text-sm text-(--mws-charcoal) sm:grid-cols-[9rem_1fr] sm:gap-4">
+      <dt className="text-(--mws-muted)">{label}</dt>
+      <dd className="min-w-0">{children}</dd>
+    </div>
+  );
+}
+
 const DEFAULT_SETTINGS = { hub_access_mode: "warn", hub_bypass_emails: [] };
 
 // The pieces of the Hub that depend on each other, one after the other. While the Hub is being added the choices are
@@ -414,35 +433,42 @@ export function HubSetupWizard({
 
       {stepId === "review" ? (
         <div className="space-y-4">
-          <dl className="grid gap-2 text-sm sm:grid-cols-[10rem_1fr]">
+          <dl className="divide-y divide-(--mws-line) rounded-xl border border-(--mws-line) bg-white">
             {managing ? null : (
-              <>
-                <dt className="text-(--mws-muted)">Signing Key</dt>
-                <dd>{keyChoice === "made" ? signing?.kid : "The one the Hub already has"}</dd>
-              </>
+              <ReviewRow label="Signing Key">
+                {keyChoice === "made" ? (
+                  <>
+                    Made here
+                    <span className="mt-0.5 block break-all font-mono text-xs text-(--mws-muted)">{signing?.kid}</span>
+                  </>
+                ) : (
+                  "The Hub keeps the key it already has"
+                )}
+              </ReviewRow>
             )}
-            <dt className="text-(--mws-muted)">Address</dt>
-            <dd className="font-mono text-xs text-(--mws-charcoal)">
-              {address}
-            </dd>
-            <dt className="text-(--mws-muted)">Secret</dt>
-            <dd>
+            <ReviewRow label="Address">
+              <span className="break-all font-mono text-xs">{address}</span>
+            </ReviewRow>
+            <ReviewRow label="Secret">
               {managing
                 ? secretSet
-                  ? "Generated"
-                  : "Not generated yet"
+                  ? "Made"
+                  : "Not made yet"
                 : secretChoice === "existing"
                   ? "The one the Hub runs with now"
-                  : "A new one, made when the Hub is added"}
-            </dd>
-            <dt className="text-(--mws-muted)">Sign-in</dt>
-            <dd className="capitalize">
-              {signIn.hub_access_mode}
-              {signIn.hub_access_mode === "enforce"
-                ? `, ${signIn.hub_bypass_emails.length} emergency`
-                : ""}
-            </dd>
+                  : "Central makes a new one when you add the Hub"}
+            </ReviewRow>
+            <ReviewRow label="Sign-in">
+              <span className="font-semibold">{SIGN_IN_TITLE[signIn.hub_access_mode]}</span>
+              <span className="mt-0.5 block text-xs text-(--mws-muted)">{signInSummary(signIn)}</span>
+            </ReviewRow>
           </dl>
+          {managing ? null : (
+            <p className="text-xs text-(--mws-muted)">
+              When you add the Hub, one block of lines appears, once. Copy all of it into the Hub's .env and restart the
+              Hub.
+            </p>
+          )}
           {managing ? (
             <>
               <ImpactList applicationId={applicationId} />
