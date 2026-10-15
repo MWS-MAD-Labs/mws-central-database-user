@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Copy, KeyRound, Plus, RotateCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Copy, KeyRound, Plus, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextInput } from "../../../components/ui/FormControls.jsx";
@@ -30,6 +30,9 @@ const ADD_STEPS = [{ id: "key", label: "Key" }, ...STEPS];
 
 // The two ways to make a key look the same, in the brand colour so they are easy to spot.
 const KEY_ACTION = "text-(--mws-burgundy)! hover:text-(--mws-burgundy-dark)!";
+
+// Back is the quiet text action. The way forward is the same action in the brand colour.
+const FORWARD_ACTION = "text-(--mws-burgundy)! hover:text-(--mws-burgundy-dark)!";
 
 const SIGN_IN_TITLE = { warn: "Warn", enforce: "Enforce", off: "Off" };
 
@@ -490,35 +493,35 @@ export function HubSetupWizard({
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-(--mws-line) pt-4">
         <TextAction
           icon={ArrowLeft}
+          className={step === 0 ? "invisible" : undefined}
           disabled={step === 0}
           onClick={() => setStep((current) => Math.max(current - 1, 0))}
         >
           Back
         </TextAction>
-        <div className="flex gap-2">
-          {managing && step === steps.length - 1 ? (
-            <Button type="button" onClick={onClose}>
-              Done
-            </Button>
-          ) : null}
-          {!managing && step === steps.length - 1 ? (
-            <Button type="submit" data-hub-add="true" loading={submitting}>
-              Add Application
-            </Button>
-          ) : null}
-          {step < steps.length - 1 ? (
-            <Button
-              type="button"
-              loading={addressMutation.isPending || signInMutation.isPending}
-              disabled={!ready[stepId]}
-              onClick={next}
-            >
-              {(stepId === "address" && addressChanged) || (stepId === "signin" && signInChanged)
-                ? "Save and Continue"
-                : "Continue"}
-            </Button>
-          ) : null}
-        </div>
+        {managing && step === steps.length - 1 ? (
+          <TextAction icon={Check} className={FORWARD_ACTION} onClick={onClose}>
+            Done
+          </TextAction>
+        ) : null}
+        {!managing && step === steps.length - 1 ? (
+          <TextAction type="submit" icon={Check} data-hub-add="true" className={FORWARD_ACTION} loading={submitting}>
+            Add Application
+          </TextAction>
+        ) : null}
+        {step < steps.length - 1 ? (
+          <TextAction
+            icon={ArrowRight}
+            className={FORWARD_ACTION}
+            loading={addressMutation.isPending || signInMutation.isPending}
+            disabled={!ready[stepId]}
+            onClick={next}
+          >
+            {(stepId === "address" && addressChanged) || (stepId === "signin" && signInChanged)
+              ? "Save and Continue"
+              : "Continue"}
+          </TextAction>
+        ) : null}
       </div>
 
       {shownSecret ? (
