@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LIMITS } from "../constants/limits";
 import { PCDay } from "../generated/prisma/client";
 import { PC_ACTIVITY_MASTER_SORT_FIELDS } from "../model/pc-activity-model";
 
@@ -48,7 +49,7 @@ export class PCActivityValidation {
 
 export class PCActivityMasterValidation {
   static readonly CREATE = z.object({
-    name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+    name: z.string().min(1, "Name is required").max(LIMITS.MASTER_NAME_MAX, `Name can have up to ${LIMITS.MASTER_NAME_MAX} characters`),
   });
 
   static readonly UPDATE = z.object({
@@ -56,7 +57,7 @@ export class PCActivityMasterValidation {
     name: z
       .string()
       .min(1, "Name is required")
-      .max(100, "Name is too long")
+      .max(LIMITS.MASTER_NAME_MAX, `Name can have up to ${LIMITS.MASTER_NAME_MAX} characters`)
       .optional(),
   });
 

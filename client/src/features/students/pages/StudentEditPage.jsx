@@ -25,6 +25,7 @@ export function StudentEditPage() {
   })
 
   const updateMutation = useMutation({
+    meta: { successMessage: 'Student updated.' },
     mutationFn: (payload) => studentsApi.update(studentId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['students'] })

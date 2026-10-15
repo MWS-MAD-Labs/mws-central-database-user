@@ -1,4 +1,8 @@
 import { z } from "zod";
+import { ApplicationAudience, EmploymentType } from "../generated/prisma/client";
+import { LIMITS } from "../constants/limits";
+import { isHubIcon } from "../constants/hub-icons";
+import { addressProblem } from "../utils/application-id";
 
 const applicationId = z
   .string()
@@ -8,7 +12,78 @@ const applicationId = z
   .regex(
     /^[a-z][a-z0-9_-]*$/,
     "Application ID must start with a lowercase letter and contain only lowercase letters, numbers, underscores, or hyphens",
-  );
+  )
+  // "me" means the application of the token in the internal API.
+  .refine((value) => value !== "me", "Application ID \"me\" is reserved");
+
+const tidy = (value: string) => value.replace(/\s+/g, " ").trim();
+
+// An address as typed in the form: no spaces, http only for local ones, a sane length.
+const optionalUrl = (label: string) =>
+  z
+    .string()
+    .trim()
+    .max(300, `${label} is too long`)
+    .superRefine((value, ctx) => {
+      const problem = value === "" ? null : addressProblem(value);
+      if (problem) ctx.addIssue({ code: "custom", message: `${label}: ${problem}` });
+    })
+    .optional()
+    .nullable();
+
+
+const applicationDetails = {
+  name: z
+    .string()
+    .transform(tidy)
+    .pipe(
+      z
+        .string()
+        .min(2, "Name needs at least 2 characters")
+        .max(60, "Name is too long")
+        .regex(
+          /^[\p{L}\p{N}][\p{L}\p{N} _.&()'-]*$/u,
+          "Name may only have letters, numbers, spaces and & . ( ) ' _ -",
+        ),
+    )
+    .optional(),
+  description: z
+    .string()
+    .transform(tidy)
+    .pipe(
+      z
+        .string()
+        .max(LIMITS.APPLICATION_DESCRIPTION_MAX, `Description can have up to ${LIMITS.APPLICATION_DESCRIPTION_MAX} characters`)
+        .refine((value) => !/[<>\u0000-\u001f]/.test(value), "Description cannot have < or > or control characters"),
+    )
+    .optional()
+    .nullable(),
+  icon: z
+    .string()
+    .trim()
+    .max(40, "Icon is too long")
+    .refine((value) => value === "" || isHubIcon(value), "Pick an icon from the list")
+    .optional()
+    .nullable(),
+  // Keys from the master data lists, checked against them when saved.
+  category: z.string().trim().max(64, "Category is too long").optional().nullable(),
+  scope: z.string().trim().max(64, "Scope is too long").optional().nullable(),
+  launch_url: optionalUrl("Launch URL"),
+  logout_url: optionalUrl("Logout URL"),
+  // sso: opened through the Hub's sign-in handoff. link: a plain address.
+  launch_mode: z.enum(["sso", "link"], { message: "Pick sso or link" }).optional(),
+  // shared: the application reads the Hub's session. relay: the Hub hands it a one-time code and a token.
+  session_mode: z.enum(["relay", "shared"], { message: "Pick relay or shared" }).optional(),
+  // Whether the .env of the application carries the Hub address and the shared secret.
+  uses_hub: z.boolean().optional(),
+  // How the card looks in the Hub.
+  hub_status: z.enum(["active", "maintenance", "coming_soon", "new"], { message: "Pick active, maintenance, coming_soon or new" }).optional(),
+  hub_keywords: z
+    .array(z.string().trim().toLowerCase().min(1).max(40, "A keyword is at most 40 characters"))
+    .max(20, "At most 20 keywords")
+    .transform((words) => [...new Set(words)])
+    .optional(),
+};
 
 const nonemptyId = (label: string) =>
   z.string().trim().min(1, `${label} is required`).max(128, `${label} is too long`);
@@ -21,91 +96,31 @@ const permissions = z
     "Permissions must be unique",
   );
 
-const EXIMA_ROLE_PERMISSIONS = {
-  admin: [
-    "app.admin", "dashboard.read", "analytics.read", "users.manage",
-    "credentials.read", "credentials.manage", "accurate.manage",
-    "inventory.export", "inventory.import", "borrowing.manage",
-    "pos.catalog.read", "pos.manage", "pos.checkout", "pos.sales.read",
-    "pos.sales.void", "allowance.manage", "allowance.collect", "store.use",
-  ],
-  resource: ["credentials.read", "inventory.export", "inventory.import", "borrowing.manage"],
-  cashier: ["credentials.read", "pos.catalog.read", "pos.checkout", "pos.sales.read", "allowance.collect"],
-  staff: ["credentials.read", "pos.catalog.read", "store.use"],
-} as const;
-
-const DAILY_CHECKIN_PARTICIPANT_PERMISSIONS = [
-  "checkin.self.read",
-  "checkin.self.submit",
-  "support.contacts.read",
-  "notifications.self.manage",
-  "assistant.use",
-] as const;
-
-const DAILY_CHECKIN_EDUCATOR_PERMISSIONS = [
-  ...DAILY_CHECKIN_PARTICIPANT_PERMISSIONS,
-  "student_checkins.read",
-] as const;
-
-const DAILY_CHECKIN_SUPPORT_PERMISSIONS = [
-  ...DAILY_CHECKIN_EDUCATOR_PERMISSIONS,
-  "dashboard.read",
-  "support_requests.manage",
-] as const;
-
-const DAILY_CHECKIN_ADMIN_PERMISSIONS = [
-  ...DAILY_CHECKIN_SUPPORT_PERMISSIONS,
-  "users.read",
-  "users.manage",
-  "organizations.manage",
-  "notifications.create",
-  "sync.read",
-  "sync.run",
-  "dev_topology.read",
-] as const;
-
-const DAILY_CHECKIN_ROLE_PERMISSIONS = {
-  participant: DAILY_CHECKIN_PARTICIPANT_PERMISSIONS,
-  educator: DAILY_CHECKIN_EDUCATOR_PERMISSIONS,
-  support: DAILY_CHECKIN_SUPPORT_PERMISSIONS,
-  admin: DAILY_CHECKIN_ADMIN_PERMISSIONS,
-  superadmin: [
-    ...DAILY_CHECKIN_ADMIN_PERMISSIONS,
-    "users.deactivate",
-    "dashboard.export",
-  ],
-} as const;
-
-const APPLICATION_ROLE_PERMISSIONS = {
-  exima: {
-    roles: EXIMA_ROLE_PERMISSIONS,
-    label: "Exima",
-  },
-  "daily-checkin": {
-    roles: DAILY_CHECKIN_ROLE_PERMISSIONS,
-    label: "Daily Check-in",
-  },
-} as const;
-
-function validateApplicationPolicy(value: {
-  application_id?: string;
-  role?: string;
-  permissions?: string[];
-}, context: z.RefinementCtx) {
-  if (!value.application_id || !(value.application_id in APPLICATION_ROLE_PERMISSIONS)) return;
-
-  const policy = APPLICATION_ROLE_PERMISSIONS[
-    value.application_id as keyof typeof APPLICATION_ROLE_PERMISSIONS
-  ];
-  if (!value.role || !(value.role in policy.roles)) {
-    context.addIssue({ code: "custom", path: ["role"], message: `Unsupported ${policy.label} role` });
-    return;
-  }
-  const expected = policy.roles[value.role as keyof typeof policy.roles];
-  if (!value.permissions || value.permissions.length !== expected.length || expected.some((permission) => !value.permissions?.includes(permission))) {
-    context.addIssue({ code: "custom", path: ["permissions"], message: `${policy.label} permissions must match the selected role` });
-  }
+// "support staff" becomes "Support Staff": the first letter of every word is a capital, the rest stays as typed.
+export function titleCaseLabel(text: string): string {
+  return text.replace(/(^|\s)(\p{L})/gu, (_match, space: string, letter: string) => space + letter.toUpperCase());
 }
+
+// A role label is plain words: letters, numbers and single spaces.
+export const ROLE_LABEL_PATTERN = /^[\p{L}\p{N}]+( [\p{L}\p{N}]+)*$/u;
+const roleLabel = z
+  .string()
+  .trim()
+  .min(1, "Label is required")
+  .max(64, "Label is too long")
+  .regex(ROLE_LABEL_PATTERN, "A label can only have letters, numbers and single spaces")
+  .transform(titleCaseLabel);
+
+
+// Role keys are exact: uppercase letters, digits and underscores.
+const roleKey = z
+  .string()
+  .min(1, "Role is required")
+  .max(64, "Role is too long")
+  .regex(
+    /^[A-Z][A-Z0-9_]*$/,
+    "Role must be UPPER_SNAKE_CASE, for example ADMIN or SUPPORT_STAFF",
+  );
 
 export class ApplicationEntitlementValidation {
   static readonly LOOKUP = z.object({
@@ -113,18 +128,32 @@ export class ApplicationEntitlementValidation {
     application_id: applicationId,
   });
 
+  // Permissions are optional: the registry role decides them.
   static readonly GRANT = z.object({
     person_id: nonemptyId("Person ID"),
     application_id: applicationId,
-    organization_id: nonemptyId("Organization ID"),
-    role: nonemptyId("Role"),
-    permissions,
-  }).superRefine(validateApplicationPolicy);
+    role: roleKey,
+    permissions: permissions.optional(),
+  });
+
+  static readonly BULK_GRANT = z
+    .object({
+      person_ids: z
+        .array(nonemptyId("Person ID"))
+        .min(1, "Pick at least one person")
+        .max(200, "Pick at most 200 people at a time")
+        .refine((values) => new Set(values).size === values.length, "People must be unique"),
+      application_id: applicationId,
+      role: roleKey.optional(),
+      // Shuts the person out of the application instead of giving them a role.
+      blocked: z.boolean().optional(),
+    })
+    .refine((value) => value.blocked || value.role, { message: "Role is required", path: ["role"] });
 
   static readonly UPDATE = z
     .object({
       id: nonemptyId("Entitlement ID"),
-      role: nonemptyId("Role").optional(),
+      role: roleKey.optional(),
       permissions: permissions.optional(),
     })
     .refine((value) => value.role !== undefined || value.permissions !== undefined, {
@@ -137,6 +166,317 @@ export class ApplicationEntitlementValidation {
     person_id: nonemptyId("Person ID").optional(),
     application_id: applicationId.optional(),
     organization_id: nonemptyId("Organization ID").optional(),
+    role: roleKey.optional(),
     is_active: z.boolean().optional(),
+    search: z.string().trim().max(100).optional(),
+    page: z.number().int().min(1).default(1),
+    size: z.number().int().min(1).max(100).default(10),
+  });
+}
+
+const AUDIENCES = Object.values(ApplicationAudience) as [
+  ApplicationAudience,
+  ...ApplicationAudience[],
+];
+
+const idList = (label: string) =>
+  z
+    .array(nonemptyId(label))
+    .max(100, `Too many ${label.toLowerCase()}s`)
+    .refine((values) => new Set(values).size === values.length, `${label}s must be unique`)
+    .default([]);
+
+const accessRuleFields = {
+  audience: z.enum(AUDIENCES, {
+    message: "Audience must be EMPLOYEES, STUDENTS or EMPLOYEES_AND_STUDENTS",
+  }),
+  unit_ids: idList("Unit"),
+  job_position_ids: idList("Job position"),
+  job_level_ids: idList("Job level"),
+  default_role_key: roleKey,
+  is_active: z.boolean().default(true),
+  // Only used by groups of students.
+  allows_exceptions: z.boolean().optional(),
+};
+
+const EMPLOYMENT_TYPES = Object.values(EmploymentType) as [EmploymentType, ...EmploymentType[]];
+
+// The Hub's sign-in settings: how strictly it checks, and who always gets in.
+const envSettings = z.object({
+  hub_access_mode: z.enum(["off", "warn", "enforce"], { message: "Pick off, warn or enforce" }),
+  hub_bypass_emails: z
+    .array(z.string().trim().toLowerCase().max(LIMITS.EMAIL_MAX, `Email can have up to ${LIMITS.EMAIL_MAX} characters`).pipe(z.email("Use a valid email")).refine((email) => email.endsWith(`@${LIMITS.EMAIL_DOMAIN}`), `Only ${LIMITS.EMAIL_DOMAIN} emails`))
+    .max(3, "At most 3 emails")
+    .refine((emails) => new Set(emails).size === emails.length, "Each email only once"),
+});
+
+// The public address of the Hub, as an origin: scheme and host, no path.
+const hubAddress = z
+  .string()
+  .trim()
+  .min(1, "Hub address is required")
+  .max(200, "Hub address is too long")
+  .transform((value) => value.replace(/\/+$/, ""))
+  .superRefine((value, ctx) => {
+    const problem = addressProblem(value);
+    if (problem) {
+      ctx.addIssue({ code: "custom", message: problem });
+      return;
+    }
+    const url = new URL(value);
+    if (url.pathname !== "/" || url.search || url.hash) {
+      ctx.addIssue({ code: "custom", message: "Use only the address, like https://app.mws.web.id, with nothing after it" });
+    }
+  });
+
+// A line copied from a .env (HUB_INTERNAL_SECRET="abc") is reduced to the value.
+// A line for another variable (CENTRAL_API_TOKEN="...") or an API token is not the Hub secret.
+export const NOT_A_HUB_SECRET = /^[A-Z][A-Z0-9_]*\s*=|^mws_/;
+
+export function cleanPastedSecret(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  let text = value.trim();
+  // Repeated, so a line that was already wrapped by an earlier copy is also reduced.
+  for (let round = 0; round < 10; round += 1) {
+    const next = text
+      .replace(/^HUB_INTERNAL_SECRET\s*=\s*/, "")
+      .replace(/\\+(["'])/g, "$1")
+      .replace(/^(["'])([\s\S]*)\1$/, "$2")
+      .trim();
+    if (next === text) break;
+    text = next;
+  }
+  return text;
+}
+
+export class ApplicationValidation {
+  static readonly HUB_ADDRESS = z.object({ hub_base_url: hubAddress });
+
+  static readonly HUB_APP_SECRET = z.object({
+    action: z.enum(["own", "rotate"], { message: "Pick own or rotate" }),
+  });
+
+  static readonly HUB_SECRET_CHECK = z.object({
+    address: hubAddress.optional(),
+    secret: z
+      .preprocess(
+        cleanPastedSecret,
+        z
+          .string()
+          .trim()
+          .min(16, "A secret is at least 16 characters")
+          .max(200, "A secret is at most 200 characters")
+          .regex(/^\S+$/, "A secret has no spaces")
+          .refine((v) => !NOT_A_HUB_SECRET.test(v), "That is another line of the .env, not HUB_INTERNAL_SECRET"),
+      ),
+  });
+
+  static readonly HUB_SECRET = z.object({
+    // An existing secret to keep. Left out, a new one is made.
+    secret: z
+      .preprocess(cleanPastedSecret, z.string()
+      .trim()
+      .min(16, "A secret is at least 16 characters")
+      .max(200, "A secret is at most 200 characters")
+      .regex(/^\S+$/, "A secret has no spaces").refine((v) => !NOT_A_HUB_SECRET.test(v), "That is another line of the .env, not HUB_INTERNAL_SECRET"))
+      .optional(),
+  });
+
+  static readonly ENV_SETTINGS = envSettings;
+
+  static readonly LIST = z.object({
+    search: z.string().trim().max(100).optional(),
+    page: z.number().int().min(1).default(1),
+    size: z.number().int().min(1).max(100).default(10),
+  });
+
+  // The id comes from the name when it is not given.
+  static readonly CREATE = z
+    .object({
+      application_id: applicationId.optional(),
+      ...applicationDetails,
+      // Used by the controller, which makes the connection right after the application.
+      connect: z.boolean().optional(),
+      scope_names: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
+      // The Hub itself: its id is fixed and it has no card or address.
+      is_hub: z.boolean().optional(),
+      env_settings: envSettings.optional(),
+      hub_base_url: hubAddress.optional(),
+      // The secret the Hub already runs with, kept instead of making a new one.
+      hub_secret: z.preprocess(cleanPastedSecret, z.string().trim().min(16, "A secret is at least 16 characters").max(200, "A secret is at most 200 characters").regex(/^\S+$/, "A secret has no spaces").refine((v) => !NOT_A_HUB_SECRET.test(v), "That is another line of the .env, not HUB_INTERNAL_SECRET")).optional(),
+    })
+    .refine((value) => value.application_id || value.name, { message: "Name is required", path: ["name"] });
+
+  static readonly CONNECTION_SCOPES = z.object({
+    scope_names: z.array(z.string().trim().min(1).max(100)).max(50),
+  });
+
+  static readonly UPDATE = z.object({
+    application_id: applicationId,
+    ...applicationDetails,
+  });
+
+  static readonly EXCEPTIONS = z.object({
+    // A group id, or "other" for access no group covers.
+    group_id: nonemptyId("Group ID"),
+    search: z.string().trim().max(100).optional(),
+    page: z.number().int().min(1).default(1),
+    size: z.number().int().min(1).max(100).default(10),
+  });
+}
+
+export class ApplicationAccessRuleValidation {
+  // Who a person could be given access: filters plus how a group covers them.
+  static readonly CANDIDATES = z.object({
+    application_id: applicationId,
+    coverage: z.enum(["ANY", "COVERED", "UNCOVERED", "GROUP"]).default("ANY"),
+    group_id: nonemptyId("Group ID").optional(),
+    // Leave out people who already have their own access row for the application.
+    exclude_own_access: z.boolean().optional(),
+    unit_id: nonemptyId("Unit ID").optional(),
+    job_position_id: nonemptyId("Job position ID").optional(),
+    job_level_id: nonemptyId("Job level ID").optional(),
+    // For a group of students.
+    grade_id: nonemptyId("Grade ID").optional(),
+    class_id: nonemptyId("Class ID").optional(),
+    // Several at once, for a scope. Empty or missing means no limit.
+    unit_ids: z.array(nonemptyId("Unit ID")).max(100).optional(),
+    job_position_ids: z.array(nonemptyId("Job position ID")).max(100).optional(),
+    job_level_ids: z.array(nonemptyId("Job level ID")).max(100).optional(),
+    employment_type: z.enum(EMPLOYMENT_TYPES).optional(),
+    search: z.string().trim().max(100).optional(),
+    page: z.number().int().min(1).default(1),
+    size: z.number().int().min(1).max(100).default(10),
+  });
+
+  // A scope someone is about to save, to ask which roles it can still take.
+  static readonly ROLE_OPTIONS = z.object({
+    audience: z.enum(["EMPLOYEES", "STUDENTS", "EMPLOYEES_AND_STUDENTS"]),
+    unit_ids: idList("Unit").optional(),
+    job_position_ids: idList("Job position").optional(),
+    job_level_ids: idList("Job level").optional(),
+    group_id: nonemptyId("Group ID").optional(),
+  });
+
+  // A group is for employees or for students. One group for both used to exist, but
+  // students have no positions or levels, so it could not be scoped honestly.
+  static readonly CREATE = z
+    .object({
+      application_id: applicationId,
+      ...accessRuleFields,
+    })
+    .refine((value) => value.audience !== "EMPLOYEES_AND_STUDENTS", {
+      message: "Create one group for employees and another for students",
+      path: ["audience"],
+    });
+
+  // The application and audience can't change, only who within it and the role.
+  static readonly UPDATE = z.object({
+    id: nonemptyId("Rule ID"),
+    unit_ids: idList("Unit").optional(),
+    job_position_ids: idList("Job position").optional(),
+    job_level_ids: idList("Job level").optional(),
+    default_role_key: roleKey.optional(),
+    is_active: z.boolean().optional(),
+    allows_exceptions: z.boolean().optional(),
+  });
+
+  static readonly DELETE = z.object({ id: nonemptyId("Rule ID") });
+
+  static readonly LIST = z.object({
+    kind: z.enum(["GROUP", "PERSON"]).optional(),
+    application_id: applicationId.optional(),
+    role: roleKey.optional(),
+    is_active: z.boolean().optional(),
+    search: z.string().trim().max(100).optional(),
+    page: z.number().int().min(1).default(1),
+    size: z.number().int().min(1).max(100).default(10),
+  });
+}
+
+export class ApplicationRoleValidation {
+  static readonly CREATE = z
+    .object({
+      application_id: applicationId,
+      key: roleKey,
+      label: roleLabel,
+      permissions,
+      allows_employees: z.boolean().optional(),
+      allows_students: z.boolean().optional(),
+    })
+    .refine((value) => (value.allows_employees ?? true) || (value.allows_students ?? false), {
+      message: "A role has to be for employees, students or both",
+      path: ["allows_employees"],
+    });
+
+  static readonly UPDATE = z
+    .object({
+      id: nonemptyId("Role ID"),
+      label: roleLabel.optional(),
+      permissions: permissions.optional(),
+      allows_employees: z.boolean().optional(),
+      allows_students: z.boolean().optional(),
+      is_active: z.boolean().optional(),
+    })
+    .refine(
+      (value) =>
+        value.label !== undefined ||
+        value.permissions !== undefined ||
+        value.allows_employees !== undefined ||
+        value.allows_students !== undefined ||
+        value.is_active !== undefined,
+      { message: "Provide a label, permissions, who the role is for, or is_active to update" },
+    );
+
+  static readonly LIST = z.object({
+    application_id: applicationId.optional(),
+    is_active: z.boolean().optional(),
+  });
+
+  // Every role of the application, highest first.
+  static readonly ORDER = z.object({
+    application_id: applicationId,
+    role_ids: z
+      .array(nonemptyId("Role ID"))
+      .min(1, "Provide the roles in order")
+      .max(100, "Too many roles")
+      .refine((values) => new Set(values).size === values.length, "Roles must be unique"),
+  });
+}
+
+const permissionKey = z
+  .string()
+  .trim()
+  .min(1, "Permission is required")
+  .max(128, "Permission is too long")
+  .regex(
+    /^[a-z][a-z0-9_]*([.:-][a-z0-9_]+)*$/,
+    "Permission must be lowercase letters, numbers and underscores, joined by dots",
+  );
+
+export class ApplicationPermissionValidation {
+  static readonly LIST = z.object({ application_id: applicationId });
+
+  static readonly CREATE = z.object({
+    application_id: applicationId,
+    key: permissionKey,
+    description: z.string().trim().max(200, "Description is too long").optional(),
+  });
+
+  static readonly SYNC = z.object({
+    application_id: applicationId,
+    // Needed when this send would drop more than half of what the application published before.
+    confirm_removals: z.boolean().optional(),
+    permissions: z
+      .array(
+        z.object({
+          key: permissionKey,
+          description: z.string().trim().max(200, "Description is too long").optional(),
+          requires: z.array(permissionKey).max(50, "Too many required permissions").optional(),
+        }),
+      )
+      .min(1, "Send at least one permission")
+      .max(300, "Too many permissions")
+      .refine((rows) => new Set(rows.map((row) => row.key)).size === rows.length, "Permissions must be unique"),
   });
 }

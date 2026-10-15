@@ -24,6 +24,7 @@ import {
   studentSensitiveApi,
 } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame, SensitiveDataReveal, SummaryCard } from './panelPrimitives.jsx'
+import { isPendingFor } from "../../../../lib/mutationState.js";
 
 const studentHealthPiiScope = (studentId) => `student-health:${studentId}`
 
@@ -64,6 +65,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
   })
 
   const createNoteMutation = useMutation({
+    meta: { successMessage: "Health note added." },
     mutationFn: (payload) => studentSensitiveApi.createHealthNote(studentId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-notes'] })
@@ -71,6 +73,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const updateNoteMutation = useMutation({
+    meta: { successMessage: "Health note updated." },
     mutationFn: ({ id, payload }) => studentSensitiveApi.updateHealthNote(studentId, id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-notes'] })
@@ -78,22 +81,27 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const deleteNoteMutation = useMutation({
+    meta: { successMessage: "Health note deleted." },
     mutationFn: (id) => studentSensitiveApi.removeHealthNote(studentId, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-notes'] }),
   })
   const restoreNoteMutation = useMutation({
+    meta: { successMessage: "Health note restored." },
     mutationFn: (id) => studentSensitiveApi.restoreHealthNote(studentId, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-notes'] }),
   })
   const deleteRecordMutation = useMutation({
+    meta: { successMessage: "Health record deleted." },
     mutationFn: () => studentSensitiveApi.removeHealthRecord(studentId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-record'] }),
   })
   const restoreRecordMutation = useMutation({
+    meta: { successMessage: "Health record restored." },
     mutationFn: () => studentSensitiveApi.restoreHealthRecord(studentId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-record'] }),
   })
   const saveRecordMutation = useMutation({
+    meta: { successMessage: "Health record saved." },
     mutationFn: (payload) => recordQuery.data
       ? studentSensitiveApi.updateHealthRecord(studentId, payload)
       : studentSensitiveApi.createHealthRecord(studentId, payload),
@@ -225,7 +233,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
                       variant="ghost"
                       size="sm"
                        disabled={!canWrite}
-                       loading={restoreNoteMutation.variables === note.id}
+                       loading={isPendingFor(restoreNoteMutation, note.id)}
                       onClick={() => restoreNoteMutation.mutate(note.id)}
                     >
                       <RotateCcw size={15} />
@@ -236,7 +244,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
                       <Button type="button" variant="ghost" size="sm" disabled={!canWrite} onClick={() => setNoteDialog({ mode: 'edit', record: note })}>
                         Edit
                       </Button>
-                       <Button type="button" variant="ghost" size="sm" disabled={!canWrite} loading={deleteNoteMutation.variables === note.id} onClick={() => deleteNoteMutation.mutate(note.id)}>
+                       <Button type="button" variant="ghost" size="sm" disabled={!canWrite} loading={isPendingFor(deleteNoteMutation, note.id)} onClick={() => deleteNoteMutation.mutate(note.id)}>
                         <Trash2 size={15} />
                       </Button>
                     </>

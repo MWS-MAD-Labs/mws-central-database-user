@@ -270,11 +270,14 @@ describe('ImportDialog', () => {
       type: 'text/csv',
     })
 
+    // The upload step stays narrow and widens once the preview table is there.
+    expect(screen.getByRole('dialog')).toHaveClass('max-w-3xl')
     await user.click(screen.getByRole('radio', { name: /Attach to Existing Student/ }))
     await user.upload(container.querySelector('input[type="file"]'), file)
     await user.click(screen.getByRole('button', { name: 'Preview' }))
 
     expect(await screen.findByText('Unmapped headers: Legacy Code')).toBeVisible()
+    expect(screen.getByRole('dialog').className).toContain('max-w-[min(80rem')
     expect(screen.getByText(/1 row\(s\) have errors and will be skipped on commit/)).toBeVisible()
     expect(screen.getByText('Email is already used by another student')).toBeVisible()
     expect(screen.getByText('Attach to Existing')).toBeVisible()

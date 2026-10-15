@@ -1,6 +1,9 @@
 import { prismaClient } from "../lib/prisma";
 
 if (process.env.NODE_ENV === "test") {
+  // The key that keeps the Hub secret encrypted. A fixed one is enough for tests.
+  process.env.APP_SECRETS_KEY ??= Buffer.alloc(32, 7).toString("base64");
+
   const databaseUrl = new URL(process.env.DATABASE_URL || "");
   const databaseName = databaseUrl.pathname.replace(/^\//, "").toLowerCase();
   if (!databaseName.includes("test")) {

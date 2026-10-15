@@ -1,13 +1,17 @@
 import { API_SCOPES } from "./api-scopes";
 
 export type InternalApiEndpointDoc = {
-  method: "GET" | "POST" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   scope: string;
+  // Scopes the token needs as well, when the endpoint asks for more than one.
+  also_scopes?: string[];
   // Plain-language name and grouping for the admin-facing reference.
   title: string;
-  group: "Students" | "Employees" | "Classes and teachers" | "Application access";
+  group: "Students" | "Employees" | "Classes and Teachers" | "Application Access";
   purpose: string;
+  // A short extra line shown with the endpoint.
+  note?: string;
 };
 
 // Source for the Access page's internal API reference.
@@ -70,7 +74,7 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
-    path: "/api/internal/students/{student_id}/support-contacts",
+    path: "/api/internal/students/support-contacts?email=student@millennia21.id",
     scope: API_SCOPES.STUDENTS_SUPPORT_CONTACTS_READ,
     title: "A student's class teachers",
     group: "Students",
@@ -86,10 +90,28 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
+    path: "/api/internal/persons/lookup?email=person@millennia21.id",
+    scope: API_SCOPES.EMPLOYEES_READ,
+    also_scopes: [API_SCOPES.STUDENTS_READ],
+    title: "Find one person",
+    group: "Employees",
+    purpose: "Finds a person by email whether they are an employee or a student.",
+    note: "The token needs both the employee and the student scope.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/classes",
+    scope: API_SCOPES.CLASSES_READ,
+    title: "List classes",
+    group: "Classes and Teachers",
+    purpose: "Lists every active class, even the ones without a teacher assigned yet.",
+  },
+  {
+    method: "GET",
     path: "/api/internal/class-teacher-assignments",
     scope: API_SCOPES.CLASS_TEACHER_ASSIGNMENTS_READ,
     title: "Classes a teacher is assigned to",
-    group: "Classes and teachers",
+    group: "Classes and Teachers",
     purpose: "Shows which classes a teacher is currently assigned to, as homeroom or subject teacher.",
   },
   {
@@ -97,15 +119,85 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     path: "/api/internal/student-support-assignments",
     scope: API_SCOPES.STUDENT_SUPPORT_ASSIGNMENTS_READ,
     title: "Students a support teacher looks after",
-    group: "Classes and teachers",
+    group: "Classes and Teachers",
     purpose: "Shows which students a special education or support teacher is currently responsible for.",
   },
   {
     method: "GET",
-    path: "/api/internal/application-entitlements/lookup?person_id={person_id}&application_id=exima",
+    path: "/api/internal/applications",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Applications shown in the Hub",
+    group: "Application Access",
+    purpose: "Lists the applications published for the Hub, with the name, icon and launch address of each. No people are included.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/application-taxonomy",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Categories and scopes of applications",
+    group: "Application Access",
+    purpose: "Lists the categories and scopes kept in Central's master data, so the Hub can group and filter its cards.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/application-entitlements/applications",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Applications set up in Central",
+    group: "Application Access",
+    purpose: "Lists the ids of the applications set up in Application Access, published or not. No people are included.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/application-entitlements/lookup?person_id={person_id}&application_id={application_id}",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
     title: "Who may use an application",
-    group: "Application access",
+    group: "Application Access",
     purpose: "Checks whether a person currently has access to an MWS application.",
+    note: "Leave out application_id, or write me, to mean the application this token was made for.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/application-entitlements?application_id={application_id}&page=1&size=100",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Everyone who may use an application",
+    group: "Application Access",
+    purpose: "Lists the people with access to an MWS application and the role each one has, so the app can keep its own list in step.",
+    note: "Leave out application_id, or write me, to mean the application this token was made for.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/application-entitlements/version?application_id={application_id}",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Has the list of people changed",
+    group: "Application Access",
+    purpose: "Gives a short key that changes only when the people, names, emails or roles of an application change, so an app syncs only when it must.",
+    note: "Leave out application_id, or write me, to mean the application this token was made for.",
+  },
+  {
+    method: "PUT",
+    path: "/api/internal/application-permissions/{application_id}",
+    scope: API_SCOPES.APPLICATION_PERMISSIONS_WRITE,
+    title: "Publish application permissions",
+    group: "Application Access",
+    purpose: "An application sends the permissions its code understands, so roles can only use those.",
+    note: "Use me instead of the application ID to mean the application this token was made for.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/application-permissions/{application_id}",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Registered application permissions",
+    group: "Application Access",
+    purpose: "Lists the permissions registered for an application, to check them against its code.",
+    note: "Use me instead of the application ID to mean the application this token was made for.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/application-permissions/{application_id}/usage",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Permissions roles carry",
+    group: "Application Access",
+    purpose: "Lists the permissions active roles of an application carry, to compare with the application's code.",
+    note: "Use me instead of the application ID to mean the application this token was made for.",
   },
 ];

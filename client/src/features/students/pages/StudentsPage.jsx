@@ -35,10 +35,7 @@ import { StudentsTable } from "../components/StudentsTable.jsx";
 import { useStudentsSearchParams } from "../hooks/useStudentsSearchParams.js";
 import { formatStatus } from "../../../lib/format.js";
 import { useBulkSelection } from "../../../lib/useBulkSelection.js";
-import {
-  showBulkFailureToast,
-  showSuccessToast,
-} from "../../../lib/toast.js";
+import { showBulkFailureToast, showSuccessToast } from "../../../lib/toast.js";
 
 export function StudentsPage() {
   const { params, updateParams, resetPageAndUpdate } =
@@ -73,6 +70,7 @@ export function StudentsPage() {
   });
 
   const restoreMutation = useMutation({
+    meta: { successMessage: "Student restored." },
     mutationFn: studentsApi.restore,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
@@ -258,7 +256,10 @@ export function StudentsPage() {
               exportParams={queryParams}
               canImport={canImport}
               canExport={canWrite}
-              canExportSensitive={user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_sensitive_data)}
+              canExportSensitive={
+                user?.role === "SUPER_ADMIN" ||
+                Boolean(user?.can_view_sensitive_data)
+              }
             />
             {canManagePhotos ? (
               <Button
@@ -363,7 +364,7 @@ export function StudentsPage() {
               }
               options={[
                 { value: "", label: "Active Records" },
-                { value: "true", label: "Trash bin" },
+                { value: "true", label: "Trash Bin" },
               ]}
             />
           </div>
@@ -381,13 +382,15 @@ export function StudentsPage() {
                   onClick={() => {
                     closeMenu();
                     setRestoreStudentRecords(
-                      students.filter((student) => selectedStudentIds.has(student.id)),
+                      students.filter((student) =>
+                        selectedStudentIds.has(student.id),
+                      ),
                     );
                   }}
                 >
                   <span className="flex items-center gap-2">
                     <RotateCcw size={15} />
-                    Restore selected
+                    Restore Selected
                   </span>
                 </ActionsMenuItem>
               )}
@@ -415,7 +418,7 @@ export function StudentsPage() {
                   >
                     <span className="flex items-center gap-2">
                       <UserX size={15} />
-                      Deactivate selected
+                      Deactivate Selected
                     </span>
                   </ActionsMenuItem>
                   <ActionsMenuItem
@@ -436,7 +439,7 @@ export function StudentsPage() {
                   >
                     <span className="flex items-center gap-2">
                       <UserCheck size={15} />
-                      Reactivate selected
+                      Reactivate Selected
                     </span>
                   </ActionsMenuItem>
                   <div className="my-1 border-t border-(--mws-line)" />
@@ -450,7 +453,7 @@ export function StudentsPage() {
                   >
                     <span className="flex items-center gap-2">
                       <Trash2 size={15} />
-                      Archive selected
+                      Archive Selected
                     </span>
                   </ActionsMenuItem>
                 </>
@@ -468,7 +471,7 @@ export function StudentsPage() {
           isLoading={studentsQuery.isLoading}
           isTrash={isTrash}
           canRestore={canRestore}
-          restoringId={restoreMutation.variables}
+          restoringId={restoreMutation.isPending ? restoreMutation.variables : undefined}
           onRestore={handleRestore}
           canSelect={canBulkManage}
           selectedIds={selectedStudentIds}
@@ -509,11 +512,32 @@ export function StudentsPage() {
         description="Review the archived student record before restoring it."
         records={restoreStudentRecords}
         columns={[
-          { key: "name", label: "Name", render: (student) => student.identity.full_name },
-          { key: "nis", label: "NIS", render: (student) => student.academic.nis || "-" },
-          { key: "grade", label: "Grade", render: (student) => student.academic.current_grade || "-" },
-          { key: "class", label: "Class", render: (student) => student.academic.current_class || "-" },
-          { key: "join_year", label: "Join Year", render: (student) => yearsById[student.academic.join_academic_year_id] || "-" },
+          {
+            key: "name",
+            label: "Name",
+            render: (student) => student.identity.full_name,
+          },
+          {
+            key: "nis",
+            label: "NIS",
+            render: (student) => student.academic.nis || "-",
+          },
+          {
+            key: "grade",
+            label: "Grade",
+            render: (student) => student.academic.current_grade || "-",
+          },
+          {
+            key: "class",
+            label: "Class",
+            render: (student) => student.academic.current_class || "-",
+          },
+          {
+            key: "join_year",
+            label: "Join Year",
+            render: (student) =>
+              yearsById[student.academic.join_academic_year_id] || "-",
+          },
         ]}
         getDetailHref={(student) => `/students/${student.id}`}
         isSubmitting={restoreMutation.isPending}
@@ -525,7 +549,10 @@ export function StudentsPage() {
             });
           } else {
             bulkMutation.mutate(
-              { action: "restore", ids: restoreStudentRecords.map((student) => student.id) },
+              {
+                action: "restore",
+                ids: restoreStudentRecords.map((student) => student.id),
+              },
               { onSettled: () => setRestoreStudentRecords(null) },
             );
           }

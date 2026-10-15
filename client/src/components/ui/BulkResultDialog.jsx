@@ -43,7 +43,7 @@ export function BulkResultDialog({
       panelClassName="max-w-3xl"
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={handleCopy}>
+          <Button type="button" variant="ghost" className="cursor-pointer" onClick={handleCopy}>
             {copied ? <Check size={15} /> : <Copy size={15} />}
             {copied ? "Copied" : "Copy"}
           </Button>

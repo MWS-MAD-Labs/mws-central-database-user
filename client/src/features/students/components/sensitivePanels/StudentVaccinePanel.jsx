@@ -19,6 +19,7 @@ import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../../lib/p
 import { studentSensitiveApi, vaccineTypes } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame, SensitiveDataReveal } from './panelPrimitives.jsx'
 import { invalidateStudentRelation } from './panelHelpers.js'
+import { isPendingFor } from "../../../../lib/mutationState.js";
 
 const studentVaccinePiiScope = (studentId) => `student-vaccine:${studentId}`
 
@@ -50,6 +51,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
     enabled: Boolean(studentId) && canViewSensitive && revealed,
   })
   const createMutation = useMutation({
+    meta: { successMessage: "Vaccine record added." },
     mutationFn: (payload) => studentSensitiveApi.createVaccine(studentId, payload),
     onSuccess: () => {
       invalidateStudentRelation(queryClient, studentId, 'vaccine-records')
@@ -57,6 +59,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const updateMutation = useMutation({
+    meta: { successMessage: "Vaccine record updated." },
     mutationFn: ({ id, payload }) =>
       studentSensitiveApi.updateVaccine(studentId, id, payload),
     onSuccess: () => {
@@ -65,10 +68,12 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const deleteMutation = useMutation({
+    meta: { successMessage: "Vaccine record deleted." },
     mutationFn: (id) => studentSensitiveApi.removeVaccine(studentId, id),
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'vaccine-records'),
   })
   const restoreMutation = useMutation({
+    meta: { successMessage: "Vaccine record restored." },
     mutationFn: (id) => studentSensitiveApi.restoreVaccine(studentId, id),
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'vaccine-records'),
   })
@@ -149,7 +154,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      disabled={!canWrite || restoreMutation.variables === record.id}
+                      disabled={!canWrite || isPendingFor(restoreMutation, record.id)}
                       onClick={() => restoreMutation.mutate(record.id)}
                     >
                       <RotateCcw size={15} />
@@ -170,7 +175,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        disabled={!canWrite || deleteMutation.variables === record.id}
+                        disabled={!canWrite || isPendingFor(deleteMutation, record.id)}
                         onClick={() => deleteMutation.mutate(record.id)}
                       >
                         <Trash2 size={15} />

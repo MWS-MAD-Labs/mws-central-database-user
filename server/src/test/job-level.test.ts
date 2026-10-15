@@ -617,6 +617,41 @@ describe("GET /api/admin/job-levels", () => {
     expect(body.data[0].name).toBe("TEST_Sombrero");
   });
 
+  it("should filter by unit while including levels available in all units", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const selectedUnit = await prismaClient.masterUnit.findFirstOrThrow();
+    const otherUnit = await prismaClient.masterUnit.create({
+      data: { name: "TEST_Filter_Level_Other" },
+    });
+    await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_Filter_Level_All" },
+    });
+    await prismaClient.masterJobLevel.create({
+      data: {
+        name: "TEST_Filter_Level_Selected",
+        units: { create: [{ unit_id: selectedUnit.id }] },
+      },
+    });
+    await prismaClient.masterJobLevel.create({
+      data: {
+        name: "TEST_Filter_Level_OtherOnly",
+        units: { create: [{ unit_id: otherUnit.id }] },
+      },
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/job-levels?search=TEST_Filter_Level&unit_id=${selectedUnit.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.map((item: { name: string }) => item.name).sort()).toEqual([
+      "TEST_Filter_Level_All",
+      "TEST_Filter_Level_Selected",
+    ]);
+  });
+
   it("should sort by name descending when requested", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await prismaClient.masterJobLevel.create({

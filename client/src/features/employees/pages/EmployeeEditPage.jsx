@@ -25,6 +25,7 @@ export function EmployeeEditPage() {
   })
 
   const updateMutation = useMutation({
+    meta: { successMessage: 'Employee updated.' },
     mutationFn: (payload) => employeesApi.update(employeeId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] })

@@ -21,6 +21,7 @@ import {
 import { studentSensitiveApi } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame } from './panelPrimitives.jsx'
 import { invalidateStudentRelation } from './panelHelpers.js'
+import { isPendingFor } from "../../../../lib/mutationState.js";
 
 export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canWrite }) {
   const queryClient = useQueryClient()
@@ -33,6 +34,7 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
     enabled: Boolean(studentId),
   })
   const createMutation = useMutation({
+    meta: { successMessage: "Support teacher assigned." },
     mutationFn: (payload) =>
       studentSensitiveApi.createSupportAssignment(studentId, payload),
     onSuccess: () => {
@@ -41,21 +43,25 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
     },
   })
   const endMutation = useMutation({
+    meta: { successMessage: "Assignment ended." },
     mutationFn: (id) => studentSensitiveApi.endSupportAssignment(studentId, id),
     onSuccess: () =>
       invalidateStudentRelation(queryClient, studentId, 'support-assignments'),
   })
   const dropMutation = useMutation({
+    meta: { successMessage: "Assignment removed." },
     mutationFn: (id) => studentSensitiveApi.removeSupportAssignment(studentId, id),
     onSuccess: () =>
       invalidateStudentRelation(queryClient, studentId, 'support-assignments'),
   })
   const reactivateMutation = useMutation({
+    meta: { successMessage: "Assignment reactivated." },
     mutationFn: (id) => studentSensitiveApi.reactivateSupportAssignment(studentId, id),
     onSuccess: () =>
       invalidateStudentRelation(queryClient, studentId, 'support-assignments'),
   })
   const changeMutation = useMutation({
+    meta: { successMessage: "Support teacher changed." },
     mutationFn: async ({ endAssignmentId, payload }) => {
       await studentSensitiveApi.endSupportAssignment(studentId, endAssignmentId)
       return studentSensitiveApi.createSupportAssignment(studentId, payload)
@@ -185,7 +191,7 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
                         title="End assignment"
                         aria-label="End assignment"
                         disabled={!canWrite}
-                        loading={endMutation.variables === assignment.id}
+                        loading={isPendingFor(endMutation, assignment.id)}
                         onClick={() => handleEnd(assignment)}
                       >
                         <Ban size={15} />
@@ -200,7 +206,7 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
                       title="Reactivate assignment (undo an accidental End)"
                       aria-label="Reactivate assignment"
                       disabled={!canWrite}
-                      loading={reactivateMutation.variables === assignment.id}
+                      loading={isPendingFor(reactivateMutation, assignment.id)}
                       onClick={() => handleReactivate(assignment)}
                     >
                       <RotateCcw size={15} />
@@ -214,7 +220,7 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
                     title="Drop assignment (undo a mistake)"
                     aria-label="Drop assignment"
                     disabled={!canWrite}
-                    loading={dropMutation.variables === assignment.id}
+                    loading={isPendingFor(dropMutation, assignment.id)}
                     onClick={() => handleDrop(assignment)}
                   >
                     <Trash2 size={15} />

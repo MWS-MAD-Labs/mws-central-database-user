@@ -249,6 +249,7 @@ export class StudentValidation {
     current_grade_id: z.string().optional(),
     current_class_id: z.string().optional(),
     join_academic_year_id: z.string().optional(),
+    enrolled_academic_year_id: z.string().optional(),
     leave_year: z.string().optional(),
 
     pickup_drop_service: z.boolean().optional(),
@@ -274,6 +275,7 @@ export class StudentValidation {
     current_grade_id: z.string().optional(),
     current_class_id: z.string().optional(),
     join_academic_year_id: z.string().optional(),
+    enrolled_academic_year_id: z.string().optional(),
     leave_year: z.string().optional(),
     pickup_drop_service: z.boolean().optional(),
     catering_service: z.boolean().optional(),

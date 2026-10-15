@@ -13,3 +13,55 @@ applicationEntitlementApiRouter.get(
   requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
   (c) => ApplicationEntitlementApiController.lookup(c),
 );
+
+applicationEntitlementApiRouter.get(
+  "/",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.list(c),
+);
+
+applicationEntitlementApiRouter.get(
+  "/version",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.version(c),
+);
+
+applicationEntitlementApiRouter.get(
+  "/applications",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.applications(c),
+);
+
+export const applicationPermissionApiRouter = new Hono<{ Variables: ApiClientVariables }>();
+
+applicationPermissionApiRouter.put(
+  "/:applicationId",
+  requireScope(API_SCOPES.APPLICATION_PERMISSIONS_WRITE),
+  (c) => ApplicationEntitlementApiController.syncPermissions(c),
+);
+applicationPermissionApiRouter.get(
+  "/:applicationId/usage",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.permissionUsage(c),
+);
+applicationPermissionApiRouter.get(
+  "/:applicationId",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.registeredPermissions(c),
+);
+
+export const applicationTaxonomyApiRouter = new Hono<{ Variables: ApiClientVariables }>();
+
+applicationTaxonomyApiRouter.get(
+  "/",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.taxonomy(c),
+);
+
+export const applicationCatalogApiRouter = new Hono<{ Variables: ApiClientVariables }>();
+
+applicationCatalogApiRouter.get(
+  "/",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.publishedApplications(c),
+);

@@ -36,11 +36,31 @@ const CLIENT_INCLUDE = {
   profile: { include: { scopes: { include: { scope: true } } } },
 } as const;
 
+// Set by Application Access when it works on the connection of its own application.
+export type ViaApplication = { viaApplication?: boolean; skipAudit?: boolean };
+
+async function applicationOfProfile(code: string | null | undefined) {
+  if (!code) return null;
+  return prismaClient.application.findUnique({ where: { application_id: code }, select: { name: true } });
+}
+
+// A connection an application in Application Access depends on is removed with the application.
+async function assertNotAnApplicationConnection(code: string | null | undefined) {
+  const app = await applicationOfProfile(code);
+  if (app) {
+    throw new ResponseError(
+      400,
+      `This is the connection of ${app.name}. Rotate its token, or delete the application in Application Access`,
+    );
+  }
+}
+
 export class ApiClientService {
   static async create(
     admin: AdminUser,
     request: CreateApiClientRequest,
     context: AuditRequestContext = {},
+    options: ViaApplication = {},
   ): Promise<ApiClientCreatedResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -68,6 +88,9 @@ export class ApiClientService {
     }
     if (profile && profile.status !== IntegrationProfileStatus.ACTIVE) {
       throw new ResponseError(400, "Application integration profile is not active");
+    }
+    if (profile && !options.viaApplication && (await applicationOfProfile(profile.code))) {
+      throw new ResponseError(400, `${profile.name} is an application. Add its connection in Application Access`);
     }
 
     const name = managed
@@ -123,7 +146,7 @@ export class ApiClientService {
         include: CLIENT_INCLUDE,
       });
 
-      await AuditService.record(
+      if (!options.skipAudit) await AuditService.record(
         {
           action: AuditAction.API_TOKEN_CREATE,
           source: AuditSource.UI,
@@ -192,6 +215,7 @@ export class ApiClientService {
     admin: AdminUser,
     request: RevokeApiClientRequest,
     context: AuditRequestContext = {},
+    options: ViaApplication = {},
   ): Promise<ApiClientResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -207,6 +231,7 @@ export class ApiClientService {
 
     const existingClient = await prismaClient.apiClient.findUnique({
       where: { id: revokeRequest.id },
+      include: { profile: { select: { code: true } } },
     });
     if (!existingClient) {
       throw new ResponseError(404, "API client not found");
@@ -214,6 +239,7 @@ export class ApiClientService {
     if (!existingClient.is_active) {
       throw new ResponseError(400, "API client is already revoked");
     }
+    if (!options.viaApplication) await assertNotAnApplicationConnection(existingClient.profile?.code);
 
     const client = await prismaClient.$transaction(async (tx) => {
       await tx.apiClient.update({
@@ -237,7 +263,7 @@ export class ApiClientService {
         include: CLIENT_INCLUDE,
       });
 
-      await AuditService.record(
+      if (!options.skipAudit) await AuditService.record(
         {
           action: AuditAction.API_TOKEN_REVOKE,
           source: AuditSource.UI,
@@ -295,96 +321,62 @@ export class ApiClientService {
 
     const generatedToken = generateApiToken();
 
-    if (existingClient.profile_id && existingClient.profile?.code !== "unmapped") {
-      const now = new Date();
-      const immediate = rotateRequest.immediate ?? false;
-      const graceHours = immediate ? 0 : (rotateRequest.grace_hours ?? 24);
-      const retiringAt = new Date(now.getTime() + graceHours * 60 * 60 * 1000);
-      const client = await prismaClient.$transaction(async (tx) => {
-        await tx.apiClient.update({
-          where: { id: existingClient.id },
-          data: {
-            token_prefix: generatedToken.token_prefix,
-            token_hash: generatedToken.token_hash,
-          },
-        });
-        await tx.apiClientCredential.updateMany({
-          where: {
-            client_id: existingClient.id,
-            status: immediate
-              ? { in: [ApiCredentialStatus.ACTIVE, ApiCredentialStatus.RETIRING] }
-              : ApiCredentialStatus.ACTIVE,
-          },
-          data: immediate
-            ? { status: ApiCredentialStatus.REVOKED, revoked_at: now, expires_at: now }
-            : { status: ApiCredentialStatus.RETIRING, expires_at: retiringAt },
-        });
+    const managed = Boolean(existingClient.profile_id && existingClient.profile?.code !== "unmapped");
+    const now = new Date();
+    const immediate = rotateRequest.immediate ?? false;
+    // A managed client gets 24 hours unless told otherwise. A legacy client is cut off at once when
+    // the request names no grace, so a caller that sends nothing keeps the behaviour it had; a
+    // request that names a grace (the admin screen always does) is honored for both.
+    const graceHours = immediate ? 0 : (rotateRequest.grace_hours ?? (managed ? 24 : 0));
+    const retiringAt = new Date(now.getTime() + graceHours * 60 * 60 * 1000);
+    const revokeNow = immediate || graceHours === 0;
+
+    const client = await prismaClient.$transaction(async (tx) => {
+      // A client from before credential rows keeps its token on the client itself. Give that token a
+      // row first, so it can retire with a grace like any other.
+      const hasRow = await tx.apiClientCredential.findUnique({
+        where: { token_prefix: existingClient.token_prefix },
+        select: { id: true },
+      });
+      if (!hasRow) {
         await tx.apiClientCredential.create({
           data: {
             client_id: existingClient.id,
-            token_prefix: generatedToken.token_prefix,
-            token_hash: generatedToken.token_hash,
+            token_prefix: existingClient.token_prefix,
+            token_hash: existingClient.token_hash,
           },
         });
-        const fetchedClient = await tx.apiClient.findUniqueOrThrow({
-          where: { id: existingClient.id },
-          include: CLIENT_INCLUDE,
-        });
-        await AuditService.record(
-          {
-            action: AuditAction.API_TOKEN_ROTATE,
-            source: AuditSource.UI,
-            entity_type: "ApiClient",
-            entity_id: fetchedClient.id,
-            admin_id: admin.id,
-            new_values: {
-              api_client_id: fetchedClient.id,
-              token_prefix: generatedToken.token_prefix,
-              immediate,
-              grace_hours: graceHours,
-            },
-            ip_address: context.ip_address,
-            user_agent: context.user_agent,
-          },
-          tx,
-        );
-        return fetchedClient;
-      });
-      return { ...toApiClientResponse(client), token: generatedToken.token };
-    }
-
-    const client = await prismaClient.$transaction(async (tx) => {
-      await tx.apiClientCredential.updateMany({
-        where: {
-          client_id: existingClient.id,
-          status: { in: [ApiCredentialStatus.ACTIVE, ApiCredentialStatus.RETIRING] },
-        },
-        data: {
-          status: ApiCredentialStatus.REVOKED,
-          revoked_at: new Date(),
-          expires_at: new Date(),
-        },
-      });
+      }
       await tx.apiClient.update({
-        where: { id: rotateRequest.id },
+        where: { id: existingClient.id },
         data: {
           token_prefix: generatedToken.token_prefix,
           token_hash: generatedToken.token_hash,
-          credentials: {
-            create: {
-              token_prefix: generatedToken.token_prefix,
-              token_hash: generatedToken.token_hash,
-            },
-          },
         },
       });
-
+      await tx.apiClientCredential.updateMany({
+        where: {
+          client_id: existingClient.id,
+          status: revokeNow
+            ? { in: [ApiCredentialStatus.ACTIVE, ApiCredentialStatus.RETIRING] }
+            : ApiCredentialStatus.ACTIVE,
+        },
+        data: revokeNow
+          ? { status: ApiCredentialStatus.REVOKED, revoked_at: now, expires_at: now }
+          : { status: ApiCredentialStatus.RETIRING, expires_at: retiringAt },
+      });
+      await tx.apiClientCredential.create({
+        data: {
+          client_id: existingClient.id,
+          token_prefix: generatedToken.token_prefix,
+          token_hash: generatedToken.token_hash,
+        },
+      });
       // fetched separately - write + nested include races on the pg client
       const fetchedClient = await tx.apiClient.findUniqueOrThrow({
-        where: { id: rotateRequest.id },
+        where: { id: existingClient.id },
         include: CLIENT_INCLUDE,
       });
-
       await AuditService.record(
         {
           action: AuditAction.API_TOKEN_ROTATE,
@@ -395,21 +387,19 @@ export class ApiClientService {
           new_values: {
             api_client_id: fetchedClient.id,
             name: fetchedClient.name,
-            token_prefix: fetchedClient.token_prefix,
+            token_prefix: generatedToken.token_prefix,
+            immediate: revokeNow,
+            grace_hours: graceHours,
           },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
         tx,
       );
-
       return fetchedClient;
     });
 
-    return {
-      ...toApiClientResponse(client),
-      token: generatedToken.token,
-    };
+    return { ...toApiClientResponse(client), token: generatedToken.token };
   }
 
   static async updateScopes(
@@ -524,8 +514,10 @@ export class ApiClientService {
     const value = Validation.validate(ApiClientValidation.REVOKE_CREDENTIAL, request);
     const credential = await prismaClient.apiClientCredential.findFirst({
       where: { id: value.credential_id, client_id: value.id },
+      include: { client: { select: { profile: { select: { code: true } } } } },
     });
     if (!credential) throw new ResponseError(404, "API client credential not found");
+    await assertNotAnApplicationConnection(credential.client.profile?.code);
 
     const client = await prismaClient.$transaction(async (tx) => {
       await tx.apiClientCredential.update({

@@ -178,11 +178,7 @@ describe("POST /api/admin/admin-users/promote", () => {
     expect(searchResponse.status).toBe(200);
     expect(searchBody.data).toHaveLength(1);
     expect(searchBody.data[0].id).toBe(first.employee!.id);
-    expect(
-      searchBody.data.some(
-        (entry: { email: string }) => entry.email === existingAdmin.email,
-      ),
-    ).toBe(false);
+    expect(searchBody.data.some((entry: { email: string }) => entry.email === existingAdmin.email)).toBe(false);
   });
 
   it("should reject promotable employee lookup for non-super-admins", async () => {
@@ -247,7 +243,10 @@ describe("POST /api/admin/admin-users/promote", () => {
   it("should reject if an active admin account already exists for the employee's email", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,
+      { plain: true },
     );
+    // Earlier tests listed this email as protected, this one needs it plain.
+    process.env.PROTECTED_SUPER_ADMIN_EMAILS = "";
 
     const person = await EmployeeTest.create({
       email: "test_superadmin@millennia21.id",
@@ -456,8 +455,7 @@ describe("POST /api/admin/admin-users/promote", () => {
 
   it("should reject granting a non-Super-Admin role to a brand-new protected email", async () => {
     const originalProtected = process.env.PROTECTED_SUPER_ADMIN_EMAILS;
-    process.env.PROTECTED_SUPER_ADMIN_EMAILS =
-      "future_protected@millennia21.id";
+    process.env.PROTECTED_SUPER_ADMIN_EMAILS = "future_protected@millennia21.id";
 
     try {
       const { accessToken } = await AdminUserTest.createSuperAdmin(
@@ -1661,9 +1659,7 @@ describe("PATCH admin unit-view scope", () => {
   });
 
   it("should reject duplicate custom unit IDs in aggregate permission updates", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin(
-      masterData.unit.id,
-    );
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
     await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
     const target = await prismaClient.adminUser.findUniqueOrThrow({
       where: { email: "test_dbadmin@millennia21.id" },
@@ -1680,9 +1676,7 @@ describe("PATCH admin unit-view scope", () => {
   });
 
   it("should reject nonexistent custom unit IDs in aggregate permission updates", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin(
-      masterData.unit.id,
-    );
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
     await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
     const target = await prismaClient.adminUser.findUniqueOrThrow({
       where: { email: "test_dbadmin@millennia21.id" },
@@ -1697,9 +1691,7 @@ describe("PATCH admin unit-view scope", () => {
   });
 
   it("should only accept academic units for student custom scope", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin(
-      masterData.unit.id,
-    );
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
     await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
     const target = await prismaClient.adminUser.findUniqueOrThrow({
       where: { email: "test_dbadmin@millennia21.id" },
@@ -1717,9 +1709,7 @@ describe("PATCH admin unit-view scope", () => {
   });
 
   it("should reject the reserved system unit for employee custom scope", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin(
-      masterData.unit.id,
-    );
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
     await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
     const target = await prismaClient.adminUser.findUniqueOrThrow({
       where: { email: "test_dbadmin@millennia21.id" },
@@ -2557,7 +2547,8 @@ describe("GET /api/admin/admin-users", () => {
 
   it("should flag is_protected only for a configured protected email", async () => {
     const originalProtected = process.env.PROTECTED_SUPER_ADMIN_EMAILS;
-    process.env.PROTECTED_SUPER_ADMIN_EMAILS = "test_superadmin@millennia21.id";
+    process.env.PROTECTED_SUPER_ADMIN_EMAILS =
+      "test_superadmin@millennia21.id";
 
     try {
       const { accessToken } = await AdminUserTest.createSuperAdmin();

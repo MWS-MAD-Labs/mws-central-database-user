@@ -18,6 +18,7 @@ import { enumOptions, formatStatus } from '../../../../lib/format.js'
 import { parentTypes, studentSensitiveApi } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame, SensitiveDataReveal } from './panelPrimitives.jsx'
 import { invalidateStudentRelation } from './panelHelpers.js'
+import { isPendingFor } from "../../../../lib/mutationState.js";
 
 export function StudentParentsPanel({ studentId, canWrite, revealed = true, onReveal, onHide }) {
   const queryClient = useQueryClient()
@@ -39,6 +40,7 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
   })
 
   const createMutation = useMutation({
+    meta: { successMessage: "Parent added." },
     mutationFn: (payload) => studentSensitiveApi.createParent(studentId, payload),
     onSuccess: () => {
       invalidateStudentRelation(queryClient, studentId, 'parents')
@@ -46,6 +48,7 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
     },
   })
   const updateMutation = useMutation({
+    meta: { successMessage: "Parent updated." },
     mutationFn: ({ id, payload }) =>
       studentSensitiveApi.updateParent(studentId, id, payload),
     onSuccess: () => {
@@ -54,10 +57,12 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
     },
   })
   const deleteMutation = useMutation({
+    meta: { successMessage: "Parent removed." },
     mutationFn: (id) => studentSensitiveApi.removeParent(studentId, id),
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'parents'),
   })
   const restoreMutation = useMutation({
+    meta: { successMessage: "Parent restored." },
     mutationFn: (id) => studentSensitiveApi.restoreParent(studentId, id),
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'parents'),
   })
@@ -127,7 +132,7 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
                       type="button"
                       variant="ghost"
                       size="sm"
-                      disabled={!canWrite || restoreMutation.variables === parent.id}
+                      disabled={!canWrite || isPendingFor(restoreMutation, parent.id)}
                       onClick={() => restoreMutation.mutate(parent.id)}
                     >
                       <RotateCcw size={15} />
@@ -148,7 +153,7 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
                         type="button"
                         variant="ghost"
                         size="sm"
-                        disabled={!canWrite || deleteMutation.variables === parent.id}
+                        disabled={!canWrite || isPendingFor(deleteMutation, parent.id)}
                         onClick={() => deleteMutation.mutate(parent.id)}
                       >
                         <Trash2 size={15} />

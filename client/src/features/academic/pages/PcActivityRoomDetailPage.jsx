@@ -15,6 +15,7 @@ import {
   canManageTeacherAssignments,
   canWriteInUnit,
 } from '../../../lib/capabilities.js'
+import { RoomCoverage } from '../components/RoomCoverage.jsx'
 import {
   RoomFormDialog,
 } from '../components/PcActivityRoomsPanel.jsx'
@@ -22,40 +23,6 @@ import {
   RoomMentorsSection,
   RoomStudentsSection,
 } from '../components/pc-activity-room/RoomAssignmentsSection.jsx'
-
-// A room's unit/grade/class scope can span everything ("allow all" = every
-// current unit or grade checked), which reads badly as full name lists.
-// Match the list table's existing convention instead: a count per
-// category, full names on hover - compact regardless of how wide the scope is.
-function scopePart(items, singular, emptyLabel) {
-  if (items.length === 0) {
-    return { text: emptyLabel, title: undefined }
-  }
-  return {
-    text: `${items.length} ${singular}${items.length === 1 ? '' : 's'}`,
-    title: items.map((item) => item.name).join(', '),
-  }
-}
-
-function ScopeSummary({ room }) {
-  const parts = [
-    scopePart(room.units, 'unit'),
-    scopePart(room.grades, 'grade', 'Any grade'),
-    scopePart(room.classes, 'class', 'Any class'),
-  ]
-  return (
-    <span className="flex flex-wrap items-center gap-x-1.5 text-sm">
-      {parts.map((part, index) => (
-        <span key={part.text} className="flex items-center gap-x-1.5">
-          {index > 0 ? <span className="text-(--mws-line)">·</span> : null}
-          <span title={part.title} className="font-semibold text-(--mws-charcoal)">
-            {part.text}
-          </span>
-        </span>
-      ))}
-    </span>
-  )
-}
 
 export function PcActivityRoomDetailPage() {
   const { roomId } = useParams()
@@ -147,7 +114,7 @@ export function PcActivityRoomDetailPage() {
 
       {room ? (
         <div className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1">
-          <ScopeSummary room={room} />
+          <RoomCoverage room={room} />
           <span className="text-(--mws-line)">·</span>
           <span className="text-sm text-(--mws-muted)">
             {room.student_count} active student{room.student_count === 1 ? '' : 's'}

@@ -42,10 +42,7 @@ import { EmployeesTable } from "../components/EmployeesTable.jsx";
 import { useEmployeesSearchParams } from "../hooks/useEmployeesSearchParams.js";
 import { formatStatus } from "../../../lib/format.js";
 import { useBulkSelection } from "../../../lib/useBulkSelection.js";
-import {
-  showBulkFailureToast,
-  showSuccessToast,
-} from "../../../lib/toast.js";
+import { showBulkFailureToast, showSuccessToast } from "../../../lib/toast.js";
 
 export function EmployeesPage() {
   const { params, updateParams, resetPageAndUpdate } =
@@ -86,6 +83,7 @@ export function EmployeesPage() {
   });
 
   const restoreMutation = useMutation({
+    meta: { successMessage: "Employee restored." },
     mutationFn: employeesApi.restore,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
@@ -312,7 +310,10 @@ export function EmployeesPage() {
     setBulkExtendIds(ids);
   }
 
-  function runBulkExtendContract({ durationMonths, contractEndDate, baselineOverrides }, includedIds) {
+  function runBulkExtendContract(
+    { durationMonths, contractEndDate, baselineOverrides },
+    includedIds,
+  ) {
     if (!includedIds || includedIds.length === 0) return;
     if (!durationMonths && !contractEndDate) return;
 
@@ -325,7 +326,7 @@ export function EmployeesPage() {
   }
 
   return (
-      <div className="min-w-0">
+    <div className="min-w-0">
       <PageHeader
         title="Staff & Teachers"
         description="Manage employee records, work assignments, and profile authority data."
@@ -336,7 +337,10 @@ export function EmployeesPage() {
               exportParams={queryParams}
               canImport={canImport}
               canExport={canWrite}
-              canExportSensitive={user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_employee_pii)}
+              canExportSensitive={
+                user?.role === "SUPER_ADMIN" ||
+                Boolean(user?.can_view_employee_pii)
+              }
             />
             {canManagePhotos ? (
               <Button
@@ -414,7 +418,7 @@ export function EmployeesPage() {
               }
               options={[
                 { value: "", label: "Active Records" },
-                { value: "true", label: "Trash bin" },
+                { value: "true", label: "Trash Bin" },
               ]}
             />
             <FilterSelect
@@ -454,13 +458,15 @@ export function EmployeesPage() {
                   onClick={() => {
                     closeMenu();
                     setRestoreEmployeeRecords(
-                      employees.filter((employee) => selectedEmployeeIds.has(employee.id)),
+                      employees.filter((employee) =>
+                        selectedEmployeeIds.has(employee.id),
+                      ),
                     );
                   }}
                 >
                   <span className="flex items-center gap-2">
                     <RotateCcw size={15} />
-                    Restore selected
+                    Restore Selected
                   </span>
                 </ActionsMenuItem>
               )}
@@ -478,7 +484,7 @@ export function EmployeesPage() {
                   >
                     <span className="flex items-center gap-2">
                       <PencilLine size={15} />
-                      Bulk edit
+                      Bulk Edit
                     </span>
                   </ActionsMenuItem>
                   <div className="my-1 border-t border-(--mws-line)" />
@@ -491,7 +497,7 @@ export function EmployeesPage() {
                   >
                     <span className="flex items-center gap-2">
                       <CalendarClock size={15} />
-                      Extend contracts
+                      Extend Contracts
                     </span>
                   </ActionsMenuItem>
                   <div className="my-1 border-t border-(--mws-line)" />
@@ -509,7 +515,7 @@ export function EmployeesPage() {
                   >
                     <span className="flex items-center gap-2">
                       <Trash2 size={15} />
-                      Archive selected
+                      Archive Selected
                     </span>
                   </ActionsMenuItem>
                 </>
@@ -557,11 +563,31 @@ export function EmployeesPage() {
           description="Review the archived employee records before restoring them."
           records={restoreEmployeeRecords}
           columns={[
-            { key: "name", label: "Name", render: (employee) => employee.identity.full_name },
-            { key: "employee_id", label: "Employee ID", render: (employee) => employee.employment.employee_id },
-            { key: "unit", label: "Unit", render: (employee) => employee.employment.unit || "-" },
-            { key: "position", label: "Position", render: (employee) => employee.employment.job_position || "-" },
-            { key: "status", label: "Previous Status", render: (employee) => formatStatus(employee.status_info.status) },
+            {
+              key: "name",
+              label: "Name",
+              render: (employee) => employee.identity.full_name,
+            },
+            {
+              key: "employee_id",
+              label: "Employee ID",
+              render: (employee) => employee.employment.employee_id,
+            },
+            {
+              key: "unit",
+              label: "Unit",
+              render: (employee) => employee.employment.unit || "-",
+            },
+            {
+              key: "position",
+              label: "Position",
+              render: (employee) => employee.employment.job_position || "-",
+            },
+            {
+              key: "status",
+              label: "Previous Status",
+              render: (employee) => formatStatus(employee.status_info.status),
+            },
           ]}
           getDetailHref={(employee) => `/employees/${employee.id}`}
           isSubmitting={restoreMutation.isPending || bulkMutation.isPending}
@@ -573,7 +599,10 @@ export function EmployeesPage() {
               });
             } else {
               bulkMutation.mutate(
-                { action: "restore", ids: restoreEmployeeRecords.map((employee) => employee.id) },
+                {
+                  action: "restore",
+                  ids: restoreEmployeeRecords.map((employee) => employee.id),
+                },
                 { onSettled: () => setRestoreEmployeeRecords(null) },
               );
             }
@@ -590,7 +619,7 @@ export function EmployeesPage() {
             isLoading={employeesQuery.isLoading}
             isTrash={isTrash}
             canRestore={canRestore}
-            restoringId={restoreMutation.variables}
+            restoringId={restoreMutation.isPending ? restoreMutation.variables : undefined}
             onRestore={handleRestore}
             canSelect={canSelectEmployees}
             selectedIds={selectedEmployeeIds}

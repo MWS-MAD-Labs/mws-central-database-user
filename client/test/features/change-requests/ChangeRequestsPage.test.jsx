@@ -90,7 +90,7 @@ describe('ChangeRequestsPage', () => {
     expect(note).toHaveAttribute('maxlength', '100')
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
-    await user.click(screen.getByRole('button', { name: 'History' }))
+    await user.click(screen.getByRole('tab', { name: 'History' }))
     expect(await screen.findByText('Person 2')).toBeVisible()
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('history=true'))).toBe(true))
     expect(screen.getByText('Not needed')).toBeVisible()

@@ -96,7 +96,7 @@ export class AdminUserTest {
 
   static async createSuperAdmin(
     unitId?: string,
-    options: { id?: string; email?: string } = {},
+    options: { id?: string; email?: string; plain?: boolean } = {},
   ): Promise<{
     accessToken: string;
     refreshToken: string;
@@ -104,6 +104,11 @@ export class AdminUserTest {
     const adminId = options.id ?? "test-super-admin-id";
     const email = options.email ?? "test_superadmin@millennia21.id";
     const resolvedUnitId = await this.resolveUnitId(unitId);
+    // Application management is for protected Super Admins, so the test ones are protected unless plain.
+    if (!options.plain) {
+      const listed = (process.env.PROTECTED_SUPER_ADMIN_EMAILS ?? "").split(",").map((item) => item.trim().toLowerCase());
+      if (!listed.includes(email)) process.env.PROTECTED_SUPER_ADMIN_EMAILS = [...listed.filter(Boolean), email].join(",");
+    }
 
     const { accessToken, refreshToken } = await generateTestTokens(
       adminId,
@@ -489,6 +494,23 @@ export class TestRequest {
     );
   }
 
+  static async put<T>(
+    url: string,
+    body: T,
+    accessToken?: string,
+    customHeaders?: Record<string, string>,
+  ): Promise<Response> {
+    return web.request(
+      url,
+      {
+        method: "PUT",
+        headers: this.makeHeaders(accessToken, customHeaders),
+        body: JSON.stringify(body),
+      },
+      this.createMockEnv(),
+    );
+  }
+
   static async delete(url: string, accessToken?: string): Promise<Response> {
     return web.request(
       url,
@@ -588,6 +610,12 @@ export class MasterDataTest {
 }
 
 export class ApiClientTest {
+  // The suites on managed clients and profiles are about those rules, not about Application Access,
+  // which would take the built-in profiles over.
+  static async detachApplications() {
+    await prismaClient.application.deleteMany({ where: { application_id: { in: ["hub", "exima", "daily-checkin"] } } });
+  }
+
   static async delete() {
     await prismaClient.apiClient.deleteMany({
       where: { name: { startsWith: "TEST_" } },

@@ -187,6 +187,7 @@ export function StudentDetailPage() {
   });
 
   const reissueNisMutation = useMutation({
+    meta: { successMessage: "NIS reissued." },
     mutationFn: () =>
       studentsApi.reissueNis(studentId, reissueEntryType, {
         joinGradeId: reissueJoinGradeId,

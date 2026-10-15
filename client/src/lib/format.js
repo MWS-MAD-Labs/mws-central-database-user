@@ -289,6 +289,7 @@ const ACRONYM_WORD_LABELS = {
   ui: 'UI',
   api: 'API',
   ab: 'AB',
+  wfh: 'WFH',
 }
 
 export function formatStatus(value) {

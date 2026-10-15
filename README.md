@@ -328,6 +328,32 @@ and [`src/middleware/api-client-auth-middleware.ts`](server/src/middleware/api-c
 | `students:consent:read`          | Consent records       |
 | `students:support_contacts:read` | Support assignments   |
 
+## Application Access icons
+
+The icon of an application is picked from the icons the Hub can draw (`HUB_ICONS` in
+`mws-hub/frontend/src/data/hubCategories.ts`). The list lives in `server/src/constants/hub-icons.ts` and
+`client/src/features/application-access/utils/hubIcons.js`, both generated. After the Hub adds or removes an icon:
+
+```bash
+cd server
+bun run sync:hub-icons    # rewrites both files from the Hub repo (HUB_REPO_PATH, default ../../mws-hub)
+bun run check:hub-icons   # only compares, fails when they differ
+```
+
+## Removing an application
+
+An application in Application Access is taken out of use in this order:
+
+1. **Retire** stops it without deleting anything. Its token is revoked, it is hidden from the Hub and nobody has access.
+   Roles, groups and permissions stay.
+2. **Restore** turns it back on. The old token stays revoked, so a new connection is made and the Hub card is
+   published again by hand.
+3. **Delete** removes it with its roles, groups, permissions and the access people still had. A retired application
+   can be deleted right away, and an application nobody uses can be deleted without retiring it.
+
+The Hub itself (`HUB_APPLICATION_ID`, default `hub`) cannot be retired or deleted: removing it would lock everyone out
+of the Hub. The same explanation is in the app under "How Removing Works".
+
 ## Rate Limiting
 
 All routes are rate-limited via Redis (`rate-limiter-flexible`). Key is
@@ -406,6 +432,8 @@ DATABASE_URL="your-database-url"
 
 # Auth
 JWT_SECRET="[ENCRYPTION_KEY]"
+# Keeps the Hub secret encrypted. Make one with: cd server && bun run secrets:key
+APP_SECRETS_KEY="[32_RANDOM_BYTES_BASE64]"
 ALLOWED_DOMAIN="mws.sch.id"
 GOOGLE_CLIENT_ID="your-google-oauth-client-id"
 GOOGLE_CLIENT_SECRET="your-google-oauth-client-secret"

@@ -18,6 +18,7 @@ import {
   ActionsMenu,
   ActionsMenuItem,
 } from "../../../components/ui/ActionsMenu.jsx";
+import { Tabs } from "../../../components/ui/Tabs.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -55,6 +56,7 @@ import {
 import { auditLogsApi } from "../../audit/api/auditLogsApi.js";
 import { AuditDiffTable } from "../../audit/pages/AuditLogsPage.jsx";
 import { adminRoles, adminUsersApi, workingDaysApi } from "../api/accessApi.js";
+import { isPendingFor } from "../../../lib/mutationState.js";
 
 const tabs = [
   { id: "admins", label: "Admin Users" },
@@ -116,17 +118,8 @@ export function AccessPage() {
         description="Manage admin panel access, emergency write grants, and working Saturday overrides."
       />
 
-      <div className="mb-4 flex min-w-0 flex-wrap gap-2">
-        {tabs.map((tab) => (
-          <Button
-            key={tab.id}
-            type="button"
-            variant={activeTab === tab.id ? "primary" : "secondary"}
-            onClick={() => setTab(tab.id)}
-          >
-            {tab.label}
-          </Button>
-        ))}
+      <div className="mb-5">
+        <Tabs label="Access" tabs={tabs} active={activeTab} onChange={setTab} />
       </div>
 
       {activeTab === "working-days" ? (
@@ -945,7 +938,7 @@ function AdminUsersPanel() {
                             ) : (
                               <ActionsMenuItem
                                 disabled={
-                                  reactivateMutation.variables?.id === admin.id
+                                  isPendingFor(reactivateMutation, (variables) => variables?.id === admin.id)
                                 }
                                 onClick={() => {
                                   closeMenu();
@@ -1139,7 +1132,7 @@ function WorkingDaysPanel() {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      disabled={deleteMutation.variables === day.id}
+                      disabled={isPendingFor(deleteMutation, day.id)}
                       onClick={() => handleDelete(day)}
                     >
                       <Trash2 size={15} />

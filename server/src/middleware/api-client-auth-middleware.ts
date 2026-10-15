@@ -10,6 +10,32 @@ import {
 
 const LAST_USED_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
 
+// A correct token of a retired application gets its own answer, so the application can end its sessions.
+async function retiredApplicationResponse(
+  c: Context<{ Variables: ApiClientVariables }>,
+  applicationId: string | null | undefined,
+) {
+  if (!applicationId) return null;
+  const application = await prismaClient.application.findUnique({
+    where: { application_id: applicationId },
+    select: { retired_at: true },
+  });
+  if (!application?.retired_at) return null;
+  return c.json({ errors: "Application retired", code: "application_retired" }, 403);
+}
+
+// A token that can no longer be used, shown with the right secret: the application behind it still runs on an old
+// token. Only the right secret counts, so nobody else can set this. Once per interval, like last_used_at.
+async function noteRejectedCredential(
+  credential: { id: string; last_rejected_at: Date | null },
+  now: Date,
+) {
+  if (credential.last_rejected_at && now.getTime() - credential.last_rejected_at.getTime() < LAST_USED_UPDATE_INTERVAL_MS) return;
+  await prismaClient.apiClientCredential
+    .update({ where: { id: credential.id }, data: { last_rejected_at: now } })
+    .catch(() => undefined);
+}
+
 export const apiClientAuthMiddleware = async (
   c: Context<{ Variables: ApiClientVariables }>,
   next: Next,
@@ -53,6 +79,11 @@ export const apiClientAuthMiddleware = async (
       (!credential.expires_at || credential.expires_at > now) &&
       !credential.revoked_at;
     credentialAuthenticated = credentialUsable;
+    if (!credentialUsable) {
+      await noteRejectedCredential(credential, now);
+      const retired = await retiredApplicationResponse(c, client?.profile?.code);
+      if (retired) return retired;
+    }
   }
 
   // Temporary compatibility path for clients not yet using credential rows.

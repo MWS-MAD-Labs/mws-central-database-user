@@ -52,6 +52,7 @@ export function AcademicYearsPanel() {
   );
 
   const createMutation = useMutation({
+    meta: { successMessage: "Academic year created." },
     mutationFn: academicYearsApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
@@ -74,6 +75,7 @@ export function AcademicYearsPanel() {
   });
 
   const updateMutation = useMutation({
+    meta: { successMessage: "Academic year updated." },
     mutationFn: ({ id, payload }) => academicYearsApi.update(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
@@ -82,6 +84,7 @@ export function AcademicYearsPanel() {
   });
 
   const deleteMutation = useMutation({
+    meta: { successMessage: "Academic year deleted." },
     mutationFn: academicYearsApi.remove,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });

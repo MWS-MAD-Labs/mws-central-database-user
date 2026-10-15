@@ -6,8 +6,10 @@ import {
   CheckboxField,
   Field,
   SearchableSelect,
+  NumberInput,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
+import { LIMITS } from "../../../lib/limits.js";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import {
   formatDate,
@@ -182,9 +184,15 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
         noValidate
         className="grid gap-4 md:grid-cols-2"
       >
-        <Field label="Name" className="md:col-span-2" error={errors.name}>
+        <Field
+          label="Name"
+          className="md:col-span-2"
+          error={errors.name}
+          hint={`${values.name.length}/${LIMITS.CLASS_NAME_MAX}`}
+        >
           <TextInput
             invalid={Boolean(errors.name)}
+            maxLength={LIMITS.CLASS_NAME_MAX}
             value={values.name}
             onChange={(event) =>
               setValues({ ...values, name: capitalizeWords(event.target.value) })
@@ -255,20 +263,20 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
 
         <Field
           label="Capacity"
+          error={errors.capacity}
           hint={
             dialog.mode === "create"
-              ? "Defaults to 30 if left blank."
-              : undefined
+              ? `Defaults to 30 if left blank. Up to ${LIMITS.CLASS_CAPACITY_MAX}.`
+              : `Up to ${LIMITS.CLASS_CAPACITY_MAX}.`
           }
         >
-          <TextInput
-            type="number"
-            min="1"
+          <NumberInput
+            invalid={Boolean(errors.capacity)}
+            min={1}
+            max={LIMITS.CLASS_CAPACITY_MAX}
             placeholder={dialog.mode === "create" ? "30" : undefined}
             value={values.capacity}
-            onChange={(event) =>
-              setValues({ ...values, capacity: event.target.value })
-            }
+            onChange={(capacity) => setValues({ ...values, capacity })}
           />
         </Field>
       </form>
@@ -279,6 +287,11 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
 function computeClassErrors(values) {
   const errors = {};
   if (!values.name.trim()) errors.name = "Name is required.";
+  else if (values.name.length > LIMITS.CLASS_NAME_MAX) errors.name = `Name can have up to ${LIMITS.CLASS_NAME_MAX} characters.`;
+  const capacity = Number(values.capacity);
+  if (values.capacity !== "" && values.capacity !== "__clear__" && (capacity < 1 || capacity > LIMITS.CLASS_CAPACITY_MAX)) {
+    errors.capacity = `Use a capacity from 1 to ${LIMITS.CLASS_CAPACITY_MAX}.`;
+  }
   if (!values.grade_id) errors.grade_id = "Grade is required.";
   if (!values.academic_year_id)
     errors.academic_year_id = "Academic year is required.";

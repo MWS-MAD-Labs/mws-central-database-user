@@ -47,8 +47,12 @@ function assertSuperAdmin(admin: AdminUser, action: string): void {
   }
 }
 
-function toProfileResponse(profile: ProfileWithScopes) {
+type OwnerApplication = { application_id: string; name: string };
+
+function toProfileResponse(profile: ProfileWithScopes, application: OwnerApplication | null = null) {
   return {
+    // The application this profile belongs to, managed in Application Access.
+    application,
     id: profile.id,
     code: profile.code,
     name: profile.name,
@@ -95,6 +99,16 @@ async function resolveScopeIds(
   return scopes.map((scope) => scope.id);
 }
 
+// Set by Application Access when it changes the connection of its own application.
+type ViaApplication = { viaApplication?: boolean };
+
+async function assertNotAnApplication(code: string) {
+  const app = await prismaClient.application.findUnique({ where: { application_id: code }, select: { name: true } });
+  if (app) {
+    throw new ResponseError(400, `${app.name} is an application. Change its data access in Application Access`);
+  }
+}
+
 export class ApplicationIntegrationProfileService {
   static async list(admin: AdminUser) {
     assertSuperAdmin(admin, "view");
@@ -103,7 +117,12 @@ export class ApplicationIntegrationProfileService {
       include: PROFILE_INCLUDE,
       orderBy: { name: "asc" },
     });
-    return profiles.map(toProfileResponse);
+    const owners = await prismaClient.application.findMany({
+      where: { application_id: { in: profiles.map((profile) => profile.code) } },
+      select: { application_id: true, name: true },
+    });
+    const byId = new Map(owners.map((owner) => [owner.application_id, owner]));
+    return profiles.map((profile) => toProfileResponse(profile, byId.get(profile.code) ?? null));
   }
 
   static async listScopes(admin: AdminUser) {
@@ -130,6 +149,7 @@ export class ApplicationIntegrationProfileService {
       ApplicationIntegrationProfileValidation.CREATE,
       request,
     );
+    await assertNotAnApplication(createRequest.code);
 
     let createdId: string;
     try {
@@ -181,6 +201,7 @@ export class ApplicationIntegrationProfileService {
     admin: AdminUser,
     request: UpdateApplicationIntegrationProfileRequest,
     context: AuditRequestContext = {},
+    options: ViaApplication = {},
   ) {
     assertSuperAdmin(admin, "update");
     const updateRequest = Validation.validate(
@@ -195,6 +216,13 @@ export class ApplicationIntegrationProfileService {
       });
       if (!existing) {
         throw new ResponseError(404, "Application integration profile not found");
+      }
+
+      if (!options.viaApplication) {
+        const app = await tx.application.findUnique({ where: { application_id: existing.code }, select: { name: true } });
+        if (app) {
+          throw new ResponseError(400, `${app.name} is an application. Change its data access in Application Access`);
+        }
       }
 
       if (existing.code === "unmapped") {

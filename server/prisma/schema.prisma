@@ -313,6 +313,20 @@ enum AuditAction {
   APPLICATION_ENTITLEMENT_GRANT
   APPLICATION_ENTITLEMENT_UPDATE
   APPLICATION_ENTITLEMENT_REVOKE
+  APPLICATION_ENTITLEMENT_DELETE
+  APPLICATION_CREATE
+  APPLICATION_DELETE
+  APPLICATION_RETIRE
+  APPLICATION_RESTORE
+  APPLICATION_ROLE_CREATE
+  APPLICATION_ROLE_DELETE
+  APPLICATION_PERMISSION_CREATE
+  APPLICATION_PERMISSION_SYNC
+  APPLICATION_ROLE_UPDATE
+  APPLICATION_ACCESS_RULE_SET
+  APPLICATION_ACCESS_RULE_CREATE
+  APPLICATION_ACCESS_RULE_UPDATE
+  APPLICATION_ACCESS_RULE_DELETE
   ROLE_CHANGE
   PERMISSION_CHANGE
   REQUEST_IDENTIFIER_CHANGE
@@ -1546,6 +1560,8 @@ model ApiClientCredential {
   expires_at   DateTime?
   revoked_at   DateTime?
   last_used_at DateTime?
+  // The last time this token was shown with the right secret after it could no longer be used.
+  last_rejected_at DateTime?
   created_at   DateTime            @default(now())
   updated_at   DateTime            @updatedAt
 
@@ -1579,6 +1595,192 @@ model ApplicationEntitlement {
   @@unique([person_id, application_id])
   @@index([application_id, organization_id, is_active])
   @@map("application_entitlements")
+}
+
+enum ApplicationAudience {
+  EMPLOYEES
+  STUDENTS
+  EMPLOYEES_AND_STUDENTS
+}
+
+// Group access: everyone in the audience who matches the unit, job position and
+// job level filters (empty means all) gets default_role_key without a
+// per-person row. The most specific matching rule wins, and a person's own
+// entitlement (even a revoked one) always wins over any rule.
+model ApplicationAccessRule {
+  id               String              @id @default(cuid())
+  application_id   String
+  audience         ApplicationAudience
+  // Empty means every unit, position or level.
+  unit_ids         String[]            @default([])
+  job_position_ids String[]            @default([])
+  job_level_ids    String[]            @default([])
+  default_role_key String
+  organization_id  String
+  is_active        Boolean             @default(true)
+  // A group of students can have exceptions (such as a class leader) only when this is on.
+  // Groups of employees always can.
+  allows_exceptions Boolean            @default(false)
+  created_at       DateTime            @default(now())
+  updated_at       DateTime            @updatedAt
+
+  @@index([application_id])
+  @@map("application_access_rules")
+}
+
+// The organization an application sees its Central people under. Generated
+// once per application and never typed by hand.
+model ApplicationOrganization {
+  id              String   @id @default(cuid())
+  application_id  String   @unique
+  organization_id String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@map("application_organizations")
+}
+
+enum ApplicationLaunchMode {
+  SSO
+  LINK
+}
+
+// How the card of an application is shown in the Hub.
+enum HubCardStatus {
+  ACTIVE
+  MAINTENANCE
+  COMING_SOON
+  NEW
+}
+
+enum HubSecretMode {
+  SHARED
+  OWN
+}
+
+// How an application knows who is signed in. SHARED: it reads the Hub's session (a cookie on the parent domain).
+// RELAY: the Hub hands it a one-time code and a relay token, and the application keeps its own session.
+enum ApplicationSessionMode {
+  RELAY
+  SHARED
+}
+
+model Application {
+  id             String   @id @default(cuid())
+  application_id String   @unique
+  name           String
+  description    String?
+  icon           String?
+  category       String?
+  // The product space, like Safespace. Optional. Both hold the key of a row in the master data.
+  scope          String?
+  launch_url     String?
+  logout_url     String?
+  published      Boolean  @default(false)
+  // Stopped but kept: its connection is revoked, it is hidden from the Hub and it gives nobody access.
+  retired_at     DateTime?
+  // Set the first time it is shown in the Hub, which is the last step. After that it is managed from Settings.
+  setup_completed_at DateTime?
+  // How its card looks in the Hub: a status, and words people can find it by.
+  hub_status     HubCardStatus @default(ACTIVE)
+  hub_keywords   String[] @default([])
+  // Settings that go into the .env of the application, for now only the Hub's sign-in settings.
+  env_settings   Json?
+  // Only on the Hub's own row. Its public address, and the secret it shares with the applications (encrypted).
+  hub_base_url        String?
+  // Whether the .env of this application carries the Hub address and the shared secret.
+  uses_hub            Boolean @default(true)
+  // SHARED: the application uses the Hub's master secret. OWN: a secret made from it for this application alone.
+  hub_secret_mode     HubSecretMode @default(SHARED)
+  // Goes up when the secret of this application is rotated.
+  hub_secret_version  Int @default(1)
+  hub_internal_secret String?
+  // sso: opened through the Hub's sign-in handoff. link: a plain address, nothing to connect.
+  launch_mode    ApplicationLaunchMode @default(SSO)
+  session_mode   ApplicationSessionMode @default(RELAY)
+  // Whether the address of the application answers, checked every few minutes. Two failures in a row mark it down.
+  address_status     String?
+  address_checked_at DateTime?
+  address_failures   Int       @default(0)
+  address_down_since DateTime?
+  // When the sign-in way last changed, and the first proof that the application signs in the new way.
+  session_mode_changed_at   DateTime?
+  session_mode_confirmed_at DateTime?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@map("applications")
+}
+
+// The kind of tool an application is, like Reporting. Kept as master data so more can be added.
+model ApplicationCategory {
+  id         String   @id @default(cuid())
+  // Made from the name when it is created and never changed, applications and the Hub refer to it.
+  key        String   @unique
+  name       String   @unique
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("application_categories")
+}
+
+// The product space an application belongs to, like Safespace.
+model ApplicationScope {
+  id         String   @id @default(cuid())
+  key        String   @unique
+  name       String   @unique
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("application_scopes")
+}
+
+// Allowed roles per application. Entitlement roles must match a row here exactly.
+model ApplicationRole {
+  id             String   @id @default(cuid())
+  application_id String
+  key            String
+  label          String
+  permissions    String[] @default([])
+  // 0 is the highest role of the application, then 1, 2 and so on.
+  rank           Int      @default(0)
+  // Who the role is meant for. A group of students can only hand out roles that allow students.
+  allows_employees Boolean @default(true)
+  allows_students  Boolean @default(false)
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@unique([application_id, key])
+  @@map("application_roles")
+}
+
+// Where a registered permission came from: the application's own manifest, or typed in by hand
+// for an application that has not synced one.
+enum ApplicationPermissionSource {
+  MANIFEST
+  MANUAL
+}
+
+// What an application understands. Roles can only carry permissions registered here. The meaning
+// of a permission lives in the application's code, this table is the contract Central checks against.
+model ApplicationPermission {
+  id             String                      @id @default(cuid())
+  application_id String
+  key            String
+  description    String?
+  // Permissions that must come with this one, for example manage needs read. Roles are checked against it.
+  requires       String[]                    @default([])
+  source         ApplicationPermissionSource @default(MANUAL)
+  // Dropped from the application's manifest. Roles that already carry it keep it, new roles cannot pick it.
+  deprecated_at  DateTime?
+  // Last time the application's manifest listed it.
+  synced_at      DateTime?
+  created_at     DateTime                    @default(now())
+  updated_at     DateTime                    @updatedAt
+
+  @@unique([application_id, key])
+  @@map("application_permissions")
 }
 
 model AuditLog {

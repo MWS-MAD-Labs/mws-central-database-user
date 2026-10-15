@@ -1,7 +1,6 @@
 import {
   CalendarClock,
   CalendarOff,
-  Eye,
   GraduationCap,
   MoveRight,
   Plus,
@@ -29,7 +28,6 @@ import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { SelectFilter } from "./SelectFilter.jsx";
-import { PaginatedSingleSelect } from "../../../components/ui/PaginatedSingleSelect.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { useDebouncedValue } from "../../../hooks/useDebouncedValue.js";
@@ -42,6 +40,7 @@ import {
   classSelectOptions,
 } from "../utils/selectOptions.js";
 import { AssignmentDurationCell } from "./AssignmentDurationCell.jsx";
+import { TeacherCandidateList } from "./TeacherCandidateList.jsx";
 
 function formatSubjectDetail(assignment) {
   return assignment.subject || null
@@ -122,12 +121,16 @@ export function TeacherAssignmentsSection({
   const [teacherSort, setTeacherSort] = useState({ sort_by: "start_date", sort_order: "desc" });
   const [candidatePageSize, setCandidatePageSize] = useState(10);
   const confirm = useConfirm();
+  // Who is picked, by value, with what the confirmation and the subject need. Picks stay between pages.
+  const [picked, setPicked] = useState(() => new Map());
   const [form, setForm] = useState({
-    workforce_target: "",
     role: "HOMEROOM",
     subject: "",
     start_date: dateInputFromIso(academicYearStartDate),
   });
+
+  // Starts on the first day of the academic year until a later day is picked, also when the class was still loading.
+  const startDate = form.start_date || dateInputFromIso(academicYearStartDate);
 
   const candidatesQuery = useQuery({
     queryKey: [
@@ -189,28 +192,66 @@ export function TeacherAssignmentsSection({
     }
   }
 
+  function togglePicked(item, checked) {
+    setPicked((current) => {
+      const next = new Map(current);
+      if (checked) next.set(item.value, item);
+      else next.delete(item.value);
+      return next;
+    });
+    if (checked) fillSubject(item);
+  }
+
+  function togglePage(checked, items) {
+    setPicked((current) => {
+      const next = new Map(current);
+      items.forEach((item) => (checked ? next.set(item.value, item) : next.delete(item.value)));
+      return next;
+    });
+    if (checked && items[0]) fillSubject(items[0]);
+  }
+
+  // A subject teacher's subject starts from the job position of the first one picked. One subject goes to everyone picked.
+  function fillSubject(item) {
+    setForm((current) =>
+      current.role === "SUBJECT_TEACHER" && !current.subject
+        ? { ...current, subject: deriveSubjectFromJobPosition(item.sublabel) }
+        : current,
+    );
+  }
+
   async function submitAssign(event) {
     event.preventDefault();
-    if (!form.workforce_target || !form.start_date) return;
-    const candidate = candidates.find(
-      (item) => candidateValue(item) === form.workforce_target,
-    );
+    if (picked.size === 0 || !startDate) return;
+    const people = [...picked.values()];
+    const role = formatStatus(form.role);
+    const forSubject = form.subject ? ` for ${form.subject}` : "";
     const confirmed = await confirm({
-      title: "Confirm teacher assignment",
-      description: `${candidateName(candidate)} will be assigned as ${formatStatus(form.role)}${form.subject ? ` for ${form.subject}` : ""}.`,
-      confirmLabel: "Add assignment",
+      title: people.length === 1 ? "Confirm teacher assignment" : "Confirm teacher assignments",
+      description:
+        people.length === 1
+          ? `${people[0].name} will be assigned as ${role}${forSubject}.`
+          : `${people.length} people will be assigned as ${role}${forSubject}: ${people
+              .slice(0, 5)
+              .map((person) => person.name)
+              .join(", ")}${people.length > 5 ? `, and ${people.length - 5} more` : ""}.`,
+      confirmLabel: people.length === 1 ? "Add assignment" : `Add ${people.length} assignments`,
     });
     if (!confirmed) return;
 
-    onAssign({
-      ...candidateTargetPayload(form.workforce_target),
-      role: form.role,
-      start_date: isoFromDateInput(form.start_date),
-      subject:
-        form.role === "SUBJECT_TEACHER" ? form.subject || undefined : undefined,
-    });
+    onAssign(
+      people.map((person) => ({
+        label: person.name,
+        payload: {
+          ...candidateTargetPayload(person.value),
+          role: form.role,
+          start_date: isoFromDateInput(startDate),
+          subject: form.role === "SUBJECT_TEACHER" ? form.subject || undefined : undefined,
+        },
+      })),
+    );
+    setPicked(new Map());
     setForm({
-      workforce_target: "",
       role: form.role,
       subject: "",
       start_date: dateInputFromIso(academicYearStartDate),
@@ -409,7 +450,7 @@ export function TeacherAssignmentsSection({
                     >
                       <span className="flex items-center gap-2">
                         <CalendarOff size={15} />
-                        End selected
+                        End Selected
                       </span>
                     </ActionsMenuItem>
                     <ActionsMenuItem
@@ -426,7 +467,7 @@ export function TeacherAssignmentsSection({
                     >
                       <span className="flex items-center gap-2">
                         <RotateCcw size={15} />
-                        Reopen selected
+                        Reopen Selected
                       </span>
                     </ActionsMenuItem>
                     <div className="my-1 border-t border-(--mws-line)" />
@@ -439,7 +480,7 @@ export function TeacherAssignmentsSection({
                     >
                       <span className="flex items-center gap-2">
                         <Trash2 size={15} />
-                        Remove selected
+                        Remove Selected
                       </span>
                     </ActionsMenuItem>
                   </>
@@ -600,11 +641,11 @@ export function TeacherAssignmentsSection({
               <Button
                 form="assign-teacher-form"
                 type="submit"
-                disabled={!form.workforce_target || !form.start_date}
+                disabled={picked.size === 0 || !startDate}
                 loading={isAssigning}
               >
                 <Plus size={16} />
-                Add assignment
+                {picked.size > 1 ? `Add ${picked.size} assignments` : "Add assignment"}
               </Button>
             </>
           }
@@ -624,52 +665,30 @@ export function TeacherAssignmentsSection({
             noValidate
             className="grid gap-3"
           >
-            <Field label="Teacher">
-              <PaginatedSingleSelect
-                itemLabel="teacher or intern"
-                options={candidates.map(candidateOption)}
-                value={form.workforce_target}
+            <Field
+              label="Teacher"
+              hint={`Showing teachers and interns who can take the ${formatStatus(form.role).toLowerCase()} role. Check the ones to assign, then save once.`}
+            >
+              <TeacherCandidateList
+                items={candidates.map(candidateItem)}
+                selected={picked}
                 paging={candidatePaging}
                 search={candidateSearch}
                 isLoading={candidatesQuery.isLoading}
                 emptyMessage="No teachers or interns match."
-                onChange={(value) => {
-                  const candidate = candidates.find(
-                    (item) => candidateValue(item) === value,
-                  );
-                  setForm((current) => ({
-                    ...current,
-                    workforce_target: value,
-                    subject:
-                      current.role === "SUBJECT_TEACHER" && !current.subject
-                        ? deriveSubjectFromJobPosition(
-                            candidate?.employment?.job_position ||
-                              candidate?.job_position,
-                          )
-                        : current.subject,
-                  }));
-                }}
+                onToggle={togglePicked}
+                onTogglePage={togglePage}
                 onSearchChange={(value) => {
                   setCandidateSearch(value);
                   setCandidatePage(1);
                 }}
-                onPageChange={setCandidatePage}
+                onPrevious={() => setCandidatePage((page) => Math.max(page - 1, 1))}
+                onNext={() => setCandidatePage((page) => page + 1)}
                 onPageSizeChange={(size) => {
                   setCandidatePageSize(size);
                   setCandidatePage(1);
                 }}
               />
-              {form.workforce_target ? (
-                <Link
-                  to={candidateHref(form.workforce_target)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-(--mws-muted) hover:text-(--mws-burgundy)"
-                >
-                  <Eye size={14} />
-                  Open teacher detail in a new tab
-                </Link>
-              ) : null}
             </Field>
             <Field
               label="Role"
@@ -685,7 +704,10 @@ export function TeacherAssignmentsSection({
               <SearchableSelect
                 value={form.role}
                 onChange={(value) =>
-                   setForm({ ...form, role: value, workforce_target: "" })
+                   {
+                  setForm({ ...form, role: value });
+                  setPicked(new Map());
+                }
                  }
                 options={enumOptions(classTeacherRoles)}
                 placeholder="Select Role"
@@ -695,7 +717,7 @@ export function TeacherAssignmentsSection({
             {form.role === "SUBJECT_TEACHER" ? (
               <Field
                 label="Subject"
-                hint="Pre-filled from the teacher's job position. Edit if it doesn't fit."
+                hint={picked.size > 1 ? "One subject for everyone picked. Pre-filled from the first one's job position." : "Pre-filled from the teacher's job position. Edit if it doesn't fit."}
               >
                 <TextInput
                   placeholder="e.g. Visual Arts"
@@ -715,7 +737,7 @@ export function TeacherAssignmentsSection({
               }
             >
               <DateField
-                value={form.start_date}
+                value={startDate}
                 min={dateInputFromIso(academicYearStartDate) || undefined}
                 max={dateInputFromIso(academicYearEndDate) || undefined}
                 onChange={(event) =>
@@ -1073,12 +1095,14 @@ function candidateValue(candidate) {
   return `${candidateType(candidate)}:${candidate.id}`;
 }
 
-function candidateOption(candidate) {
+function candidateItem(candidate) {
   const type = candidateType(candidate);
   return {
     value: candidateValue(candidate),
+    name: candidateName(candidate),
     label: `${candidateName(candidate)}${type === "INTERN" ? " (Intern)" : ""}`,
-    description: candidate.employment?.job_position || candidate.job_position,
+    sublabel: candidate.employment?.job_position || candidate.job_position,
+    href: candidateHref(candidateValue(candidate)),
   };
 }
 

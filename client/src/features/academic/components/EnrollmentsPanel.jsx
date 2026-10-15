@@ -11,7 +11,10 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { StartDateDialog } from "./pc-activity-room/AssignmentDialogs.jsx";
-import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
+import {
+  ActionsMenu,
+  ActionsMenuItem,
+} from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -142,6 +145,7 @@ export function EnrollmentsPanel() {
   });
 
   const transferMutation = useMutation({
+    meta: { successMessage: "Student moved." },
     mutationFn: ({ enrollment, payload }) =>
       enrollmentsApi.transfer(enrollment.student.id, enrollment.id, payload),
     onSuccess: () => {
@@ -162,6 +166,7 @@ export function EnrollmentsPanel() {
   });
 
   const promoteMutation = useMutation({
+    meta: { successMessage: "Student promoted." },
     mutationFn: ({ enrollment, payload }) =>
       enrollmentsApi.promote(enrollment.student.id, enrollment.id, payload),
     onSuccess: () => {
@@ -248,6 +253,7 @@ export function EnrollmentsPanel() {
   });
 
   const closeMutation = useMutation({
+    meta: { successMessage: "Enrollment closed." },
     mutationFn: ({ enrollment, payload }) =>
       enrollmentsApi.close(enrollment.student.id, enrollment.id, payload),
     onSuccess: () => {
@@ -257,12 +263,14 @@ export function EnrollmentsPanel() {
   });
 
   const deleteMutation = useMutation({
+    meta: { successMessage: "Enrollment deleted." },
     mutationFn: (enrollment) =>
       enrollmentsApi.remove(enrollment.student.id, enrollment.id),
     onSuccess: () => invalidateEnrollmentData(queryClient),
   });
 
   const restoreMutation = useMutation({
+    meta: { successMessage: "Enrollment restored." },
     mutationFn: (enrollment) =>
       enrollmentsApi.restore(enrollment.student.id, enrollment.id),
     onSuccess: () => invalidateEnrollmentData(queryClient),
@@ -399,7 +407,7 @@ export function EnrollmentsPanel() {
             onChange={(value) => resetPageAndUpdate({ is_deleted: value })}
             options={[
               { value: "", label: "Active Records" },
-              { value: "true", label: "Trash bin" },
+              { value: "true", label: "Trash Bin" },
             ]}
             placeholder="Active Records"
           />
@@ -578,7 +586,7 @@ export function EnrollmentsPanel() {
                         isTrash={isTrash}
                         canWrite={canWrite}
                         canDelete={canDelete}
-                        restoringId={restoreMutation.variables?.id}
+                        restoringId={restoreMutation.isPending ? restoreMutation.variables?.id : undefined}
                         onTransfer={() =>
                           setDialog({ mode: "transfer", record: enrollment })
                         }
@@ -662,7 +670,10 @@ export function EnrollmentsPanel() {
 
       {startDateRecords ? (
         <StartDateDialog
-          {...startDateBounds(startDateRecords, optionsQuery.data?.academicYears)}
+          {...startDateBounds(
+            startDateRecords,
+            optionsQuery.data?.academicYears,
+          )}
           title="Edit Enrollment Date"
           noun="enrollment"
           count={startDateRecords.length}
@@ -756,16 +767,36 @@ function EnrollmentRowActions({
           <>
             {canWrite && isActive ? (
               <>
-                <ActionsMenuItem onClick={() => { closeMenu(); onEditDate(); }}>
+                <ActionsMenuItem
+                  onClick={() => {
+                    closeMenu();
+                    onEditDate();
+                  }}
+                >
                   Edit date
                 </ActionsMenuItem>
-                <ActionsMenuItem onClick={() => { closeMenu(); onTransfer(); }}>
+                <ActionsMenuItem
+                  onClick={() => {
+                    closeMenu();
+                    onTransfer();
+                  }}
+                >
                   Move
                 </ActionsMenuItem>
-                <ActionsMenuItem onClick={() => { closeMenu(); onPromote(); }}>
+                <ActionsMenuItem
+                  onClick={() => {
+                    closeMenu();
+                    onPromote();
+                  }}
+                >
                   Promote
                 </ActionsMenuItem>
-                <ActionsMenuItem onClick={() => { closeMenu(); onClose(); }}>
+                <ActionsMenuItem
+                  onClick={() => {
+                    closeMenu();
+                    onClose();
+                  }}
+                >
                   Close
                 </ActionsMenuItem>
               </>
@@ -773,7 +804,10 @@ function EnrollmentRowActions({
             <ActionsMenuItem
               tone="danger"
               disabled={!canDelete}
-              onClick={() => { closeMenu(); onDelete(); }}
+              onClick={() => {
+                closeMenu();
+                onDelete();
+              }}
             >
               Delete
             </ActionsMenuItem>
@@ -787,13 +821,20 @@ function EnrollmentRowActions({
 // Limits the date picker to the academic year when every record shares one.
 function startDateBounds(records, academicYears = []) {
   const yearId = records[0]?.academic_year?.id;
-  if (!yearId || records.some((record) => record.academic_year?.id !== yearId)) {
+  if (
+    !yearId ||
+    records.some((record) => record.academic_year?.id !== yearId)
+  ) {
     return {};
   }
   const year = academicYears.find((item) => item.id === yearId);
   return {
-    min: year?.start_date ? new Date(year.start_date).toISOString().slice(0, 10) : undefined,
-    max: year?.end_date ? new Date(year.end_date).toISOString().slice(0, 10) : undefined,
+    min: year?.start_date
+      ? new Date(year.start_date).toISOString().slice(0, 10)
+      : undefined,
+    max: year?.end_date
+      ? new Date(year.end_date).toISOString().slice(0, 10)
+      : undefined,
   };
 }
 
@@ -801,17 +842,16 @@ function useEnrollmentOptionsQuery() {
   return useQuery({
     queryKey: ["enrollment-form-options"],
     queryFn: async () => {
-      const [classes, grades, academicYears] =
-        await Promise.all([
-          classesApi.list({ page: 1, size: 100 }),
-          gradesApi.list({ page: 1, size: 100 }),
-          academicYearsApi.list({
-            page: 1,
-            size: 100,
-            sort_by: "start_date",
-            sort_order: "desc",
-          }),
-        ]);
+      const [classes, grades, academicYears] = await Promise.all([
+        classesApi.list({ page: 1, size: 100 }),
+        gradesApi.list({ page: 1, size: 100 }),
+        academicYearsApi.list({
+          page: 1,
+          size: 100,
+          sort_by: "start_date",
+          sort_order: "desc",
+        }),
+      ]);
       const unitIdByGradeId = new Map(
         (grades.data || []).map((grade) => [grade.id, grade.unit_id]),
       );

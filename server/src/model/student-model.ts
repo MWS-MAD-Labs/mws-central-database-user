@@ -193,6 +193,8 @@ export type SearchStudentRequest = {
   current_grade_id?: string;
   current_class_id?: string;
   join_academic_year_id?: string;
+  // Students with an enrollment in a class of this academic year, whatever they are now.
+  enrolled_academic_year_id?: string;
   leave_year?: string;
 
   pickup_drop_service?: boolean;

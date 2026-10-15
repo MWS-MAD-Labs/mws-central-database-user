@@ -570,7 +570,12 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
           : "Upload CSV or Excel, edit invalid cells in preview, revalidate, then commit. Uncheck a row to drop it entirely instead of fixing it. Rows still in error are skipped on commit."
       }
       onClose={onClose}
-      panelClassName="max-w-[min(96rem,calc(100vw-2rem))]"
+      panelClassName={
+        // Upload needs little room, the preview table needs the width.
+        preview || initialJobId
+          ? "max-w-[min(80rem,calc(100vw-2rem))]"
+          : "max-w-3xl"
+      }
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose}>

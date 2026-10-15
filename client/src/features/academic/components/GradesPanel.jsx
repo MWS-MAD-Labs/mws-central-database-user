@@ -36,6 +36,7 @@ export function GradesPanel() {
   });
 
   const createMutation = useMutation({
+    meta: { successMessage: "Grade created." },
     mutationFn: gradesApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["grades"] });
@@ -45,6 +46,7 @@ export function GradesPanel() {
   });
 
   const updateMutation = useMutation({
+    meta: { successMessage: "Grade updated." },
     mutationFn: ({ id, payload }) => gradesApi.update(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["grades"] });
@@ -54,6 +56,7 @@ export function GradesPanel() {
   });
 
   const deleteMutation = useMutation({
+    meta: { successMessage: "Grade deleted." },
     mutationFn: gradesApi.remove,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["grades"] });
@@ -158,7 +161,7 @@ export function GradesPanel() {
                   </td>
                   <td className="px-4 py-3">{grade.level}</td>
                   <td className="px-4 py-3 text-(--mws-muted)">
-                    {grade.typical_age ?? '—'}
+                    {grade.typical_age ?? '-'}
                   </td>
                   <td className="px-4 py-3">{formatDate(grade.created_at)}</td>
                   <td className="px-4 py-3">

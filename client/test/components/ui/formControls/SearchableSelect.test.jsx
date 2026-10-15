@@ -1,4 +1,5 @@
 import { describe, expect, it, mock } from 'bun:test'
+import { useState } from 'react'
 import { fireEvent, screen } from '@testing-library/react'
 import { renderWithProviders } from '../../../helpers/render.jsx'
 import { SearchableSelect } from '../../../../src/components/ui/formControls/SearchableSelect.jsx'
@@ -45,6 +46,36 @@ describe('SearchableSelect', () => {
     expect(search).toHaveValue('')
     await user.type(search, 'live')
     expect(screen.getByRole('option', { name: /Active/ })).toBeVisible()
+  })
+
+  it('highlights only one option: none before anything is picked, then the pointed or picked one', async () => {
+    const { user } = renderWithProviders(
+      <SearchableSelect value="" onChange={() => {}} options={options} placeholder="Select status" />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Select status' }))
+    const highlighted = () => screen.getAllByRole('option').filter((option) => option.className.includes('bg-(--mws-soft)'))
+    expect(highlighted()).toHaveLength(0)
+
+    await user.hover(screen.getByRole('option', { name: /Inactive/ }))
+    expect(highlighted().map((option) => option.textContent)).toEqual([expect.stringContaining('Inactive')])
+  })
+
+  it('does not keep a stale highlight when it is opened again after another option was picked', async () => {
+    function Harness() {
+      const [value, setValue] = useState('active')
+      return <SearchableSelect value={value} onChange={setValue} options={options.map((option) => ({ ...option, disabled: false }))} placeholder="Pick" />
+    }
+    const { user } = renderWithProviders(<Harness />)
+    await user.click(screen.getByRole('button', { name: /Active/ }))
+    await user.click(screen.getByRole('option', { name: /Archived/ }))
+
+    await user.click(screen.getByRole('button', { name: /Archived/ }))
+    const highlighted = screen.getAllByRole('option').filter((option) => option.className.includes('bg-(--mws-soft)'))
+    expect(highlighted).toHaveLength(1)
+    expect(highlighted[0]).toHaveTextContent('Archived')
+    // The picked one carries the tick, not the first one.
+    expect(screen.getByRole('option', { name: /Archived/ }).querySelector('svg')).not.toBeNull()
+    expect(screen.getByRole('option', { name: /Active/ }).querySelector('svg')).toBeNull()
   })
 
   it('does not select disabled options', async () => {

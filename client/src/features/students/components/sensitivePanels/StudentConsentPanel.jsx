@@ -20,6 +20,7 @@ import { MAX_ATTACHMENT_SIZE_BYTES, formatFileSize, validateFileSize } from '../
 import { showErrorToast } from '../../../../lib/toast.js'
 import { consentStatuses, consentTypes, studentSensitiveApi } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame } from './panelPrimitives.jsx'
+import { isPendingFor } from "../../../../lib/mutationState.js";
 
 export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
@@ -35,6 +36,7 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
   })
 
   const createMutation = useMutation({
+    meta: { successMessage: "Consent added." },
     mutationFn: (payload) => studentSensitiveApi.createConsent(studentId, payload),
     onSuccess: () => {
       invalidateConsents(queryClient, studentId)
@@ -42,6 +44,7 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const updateMutation = useMutation({
+    meta: { successMessage: "Consent updated." },
     mutationFn: ({ id, payload }) =>
       studentSensitiveApi.updateConsent(studentId, id, payload),
     onSuccess: () => {
@@ -50,10 +53,12 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const deleteMutation = useMutation({
+    meta: { successMessage: "Consent deleted." },
     mutationFn: (id) => studentSensitiveApi.removeConsent(studentId, id),
     onSuccess: () => invalidateConsents(queryClient, studentId),
   })
   const restoreMutation = useMutation({
+    meta: { successMessage: "Consent restored." },
     mutationFn: (id) => studentSensitiveApi.restoreConsent(studentId, id),
     onSuccess: () => invalidateConsents(queryClient, studentId),
   })
@@ -107,7 +112,7 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
               onEdit={() => setDialog({ mode: 'edit', record: consent })}
               onDelete={() => handleDelete(consent)}
               onRestore={() => restoreMutation.mutate(consent.id)}
-              isRestoring={restoreMutation.variables === consent.id}
+              isRestoring={isPendingFor(restoreMutation, consent.id)}
             />
           ))}
         </div>
@@ -221,6 +226,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
     enabled: canViewSensitive,
   })
   const uploadMutation = useMutation({
+    meta: { successMessage: "File uploaded." },
     mutationFn: (file) => studentSensitiveApi.uploadAttachment(studentId, consentId, file),
     onSuccess: () =>
       queryClient.invalidateQueries({
@@ -228,6 +234,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
       }),
   })
   const deleteMutation = useMutation({
+    meta: { successMessage: "File deleted." },
     mutationFn: (attachmentId) =>
       studentSensitiveApi.removeAttachment(studentId, consentId, attachmentId),
     onSuccess: () =>
@@ -236,6 +243,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
       }),
   })
   const restoreMutation = useMutation({
+    meta: { successMessage: "File restored." },
     mutationFn: (attachmentId) =>
       studentSensitiveApi.restoreAttachment(studentId, consentId, attachmentId),
     onSuccess: () =>
@@ -335,7 +343,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
                     type="button"
                     variant="ghost"
                     size="sm"
-                    disabled={!canWrite || restoreMutation.variables === attachment.id}
+                    disabled={!canWrite || isPendingFor(restoreMutation, attachment.id)}
                     onClick={() => restoreMutation.mutate(attachment.id)}
                   >
                     <RotateCcw size={15} />
@@ -345,7 +353,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
                     type="button"
                     variant="ghost"
                     size="sm"
-                    disabled={!canWrite || deleteMutation.variables === attachment.id}
+                    disabled={!canWrite || isPendingFor(deleteMutation, attachment.id)}
                     onClick={() => deleteMutation.mutate(attachment.id)}
                   >
                     <Trash2 size={15} />

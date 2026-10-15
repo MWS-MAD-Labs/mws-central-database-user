@@ -138,7 +138,7 @@ describe('StudentsPage', () => {
 
     await user.click(screen.getByRole('checkbox', { name: 'Select Ari Student' }))
     await user.click(screen.getByRole('button', { name: 'Bulk Actions' }))
-    await user.click(screen.getByRole('button', { name: /Deactivate selected/ }))
+    await user.click(screen.getByRole('button', { name: /Deactivate Selected/ }))
     expect(screen.getByRole('dialog', { name: 'Deactivate students' })).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Deactivate' }))
 

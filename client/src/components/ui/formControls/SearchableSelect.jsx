@@ -1,4 +1,4 @@
-import { ChevronDown, Plus, Search, X } from "lucide-react";
+import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../../lib/cn.js";
@@ -143,15 +143,17 @@ export function SearchableSelect({
     if (isOpen && shouldSearch) searchInputRef.current?.focus();
   }, [isOpen, shouldSearch]);
 
+  // The highlight starts again on every opening: on the picked option, or on none when
+  // nothing is picked, so no option looks active before the person points at one.
   const nextHighlightSyncKey = `${isOpen}:${searchTerm}`;
-  if (isOpen && nextHighlightSyncKey !== highlightSyncKey) {
+  if (!isOpen && highlightSyncKey !== null) {
+    setHighlightSyncKey(null);
+  } else if (isOpen && nextHighlightSyncKey !== highlightSyncKey) {
     setHighlightSyncKey(nextHighlightSyncKey);
     const selectedIndex = combinedItems.findIndex(
       (item) => item.type === "option" && item.option.value === value,
     );
-    const nextHighlight =
-      selectedIndex >= 0 ? selectedIndex : combinedItems.length > 0 ? 0 : -1;
-    if (nextHighlight !== highlightedIndex) setHighlightedIndex(nextHighlight);
+    if (selectedIndex !== highlightedIndex) setHighlightedIndex(selectedIndex);
   }
 
   useEffect(() => {
@@ -192,7 +194,9 @@ export function SearchableSelect({
       setHighlightedIndex((current) =>
         combinedItems.length === 0
           ? -1
-          : (current - 1 + combinedItems.length) % combinedItems.length,
+          : current < 0
+            ? combinedItems.length - 1
+            : (current - 1 + combinedItems.length) % combinedItems.length,
       );
     } else if (event.key === "Enter") {
       event.preventDefault();
@@ -342,12 +346,10 @@ export function SearchableSelect({
                         aria-selected={option.value === value}
                         disabled={option.disabled}
                         onClick={() => selectOption(option)}
+                        onMouseEnter={() => setHighlightedIndex(combinedIndex)}
                         className={cn(
                           "flex w-full items-start justify-between gap-3 px-3 py-2 text-left text-sm transition",
-                          option.value === value ||
-                            highlightedIndex === combinedIndex
-                            ? "bg-(--mws-soft)"
-                            : "hover:bg-(--mws-soft)",
+                          highlightedIndex === combinedIndex ? "bg-(--mws-soft)" : null,
                           option.disabled
                             ? "cursor-not-allowed opacity-60"
                             : null,
@@ -356,7 +358,8 @@ export function SearchableSelect({
                         <span className="min-w-0">
                           <span
                             className={cn(
-                              "block truncate font-medium",
+                              "block truncate",
+                              option.value === value ? "font-bold" : "font-medium",
                               !option.badge && option.tone
                                 ? textToneClass(option.tone)
                                 : "text-(--mws-charcoal)",
@@ -379,6 +382,13 @@ export function SearchableSelect({
                           >
                             {option.badge}
                           </span>
+                        ) : null}
+                        {option.value === value ? (
+                          <Check
+                            size={15}
+                            aria-hidden="true"
+                            className="mt-0.5 shrink-0 text-(--mws-burgundy)"
+                          />
                         ) : null}
                       </button>
                     );
