@@ -46,9 +46,18 @@ const HEADINGS = {
 };
 
 // The Hub's signing key lines. Made once when the key is made, and never read back from Central.
+// The key is written without quoteEnv: its line breaks are already a backslash and n, which the Hub turns back into
+// line breaks, and doubling the backslash would leave a stray one in front of every line of the PEM.
 export function hubKeyEnvItems(kid: string, privatePemOneLine: string): EnvItem[] {
   return [
-    item("HUB_SSO_PRIVATE_KEY", privatePemOneLine, 0, true, "The Hub's signing key. Shown once and not kept in Central. Changes only when a new key is made here."),
+    {
+      key: "HUB_SSO_PRIVATE_KEY",
+      value: privatePemOneLine,
+      secret: true,
+      group: 0,
+      line: `HUB_SSO_PRIVATE_KEY="${privatePemOneLine}"`,
+      heading: "The Hub's signing key. Shown once and not kept in Central. Changes only when a new key is made here.",
+    },
     item("HUB_SSO_KEY_ID", kid, 0),
   ];
 }
