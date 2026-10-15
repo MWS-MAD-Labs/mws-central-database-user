@@ -33,7 +33,7 @@ const TEXTS = {
 
 // The public address of the Hub. `value` is the whole address or nothing. `onChange(address, notReady)` says what is typed and
 // whether it may be used: it has to be well formed and a Hub has to answer there, unless it was kept as it was or is used anyway.
-export function HubAddressField({ value, suggestedAddress = "", signingThumbprint = "", onChange, showError = false }) {
+export function HubAddressField({ value, suggestedAddress = "", keyMadeHere = false, onChange, showError = false }) {
   const start = splitAddress(value);
   const suggested = splitAddress(suggestedAddress);
   const [environment, setEnvironment] = useState(value ? start.environment : "production");
@@ -42,9 +42,10 @@ export function HubAddressField({ value, suggestedAddress = "", signingThumbprin
 
   const problem = rest.trim() ? hubAddressProblem(environment, rest) : null;
   const address = rest.trim() && !problem ? joinAddress(environment, rest) : "";
-  const state = useAddressCheck({ address, saved: initial, name: `hub-address-check-${signingThumbprint}`, check: (url) => applicationAccessApi.checkHubAddress(url, signingThumbprint || undefined), okVerdicts: signingThumbprint ? ["ok", "no_keys"] : ["ok"] });
+  const state = useAddressCheck({ address, saved: initial, name: "hub-address-check", check: applicationAccessApi.checkHubAddress, okVerdicts: keyMadeHere ? ["ok", "no_keys"] : ["ok"] });
   const { ready, verdict, usedAnyway, detail } = state;
-  const keyKnown = detail?.key ?? "unknown";
+  // A key made in this wizard is not in the Hub yet, so there is nothing to compare until it is added.
+  const keyKnown = keyMadeHere ? "unknown" : (detail?.key ?? "unknown");
 
   const report = useEffectEvent(onChange);
   useEffect(() => {

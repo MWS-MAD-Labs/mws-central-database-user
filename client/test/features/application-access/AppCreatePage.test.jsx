@@ -259,8 +259,6 @@ describe('AppCreatePage', () => {
     await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
     // The Hub is running without the key yet, which is fine because it is copied at the end.
     expect(await screen.findByText(/does not have the key yet, which is fine/)).toBeVisible()
-    const check = fetchMock.mock.calls.find(([url]) => String(url).includes('hub-address-check'))
-    expect(String(check[0])).toContain(`thumbprint=${THUMBPRINT}`)
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     // 3. Secret. A new one is the way on without typing anything.
     expect(await screen.findByRole('radio', { name: /Make A New Secret/ })).toHaveAttribute('aria-checked', 'true')
@@ -293,25 +291,6 @@ describe('AppCreatePage', () => {
         hub_signing: { kid: 'mws-hub-sso-2026-10-ab12', thumbprint: THUMBPRINT },
       })
     })
-  }, 20000)
-
-  it('warns when the Hub runs with another key than the one Central made', async () => {
-    globalThis.fetch = createFetchRouter([
-      SCOPES,
-      NO_HUB,
-      CONTEXT,
-      TAXONOMY,
-      KEY,
-      SIGNING_KEY,
-      { ...HUB_OK, response: () => jsonResponse({ data: { verdict: 'ok', key: 'mismatch' } }) },
-    ])
-    const { user } = await renderPage()
-    await user.click(screen.getByRole('button', { name: 'Make Signing Key' }))
-    await screen.findByText('mws-hub-sso-2026-10-ab12')
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
-    await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
-    expect(await screen.findByText('Found the Hub.')).toBeVisible()
-    expect(screen.getByText(/runs with another key than the one made here/)).toBeVisible()
   }, 20000)
 
   it('keeps the secret the Hub runs with when it is pasted, and blocks the step without the key', async () => {
