@@ -126,8 +126,8 @@ function HowPart({ environment }) {
         <SubHeading>The order</SubHeading>
         <Steps
           items={[
-            "Make the Hub's signing key here and deploy the Hub with it. Nothing else can start before the Hub can sign people in.",
-            "Add the Hub here, so every application gets the Hub address and its connection to Central. Central adds no other application before it.",
+            "Run the Hub, then add it here. Its key, token and secret come in one block to copy. Nothing else can start before the Hub can sign people in.",
+            "Every application gets the Hub address and its connection to Central from that, so Central adds no other application before it.",
             "Deploy each application with the lines Central gives it, then add it here.",
             "Make roles, then groups of people, so people have access.",
             "Choose how people sign in to each application.",
@@ -163,40 +163,41 @@ function HubPart({ hubUrl }) {
     <div className="space-y-5">
       <Paragraph>
         The Hub comes first because every application is given its address. Central will not add any other application until the Hub is
-        added, and Add Application opens as the Hub until then. Central also checks the address when you type it, so the Hub has to be
-        running with its key before you add it here.
+        added, and Add Application opens as the Hub until then. The Hub only has to be running when you add it. Its key, token and
+        secret all come in one block at the end, so the .env is filled once.
       </Paragraph>
       <div>
-        <SubHeading>1. Make the Hub's signing key</SubHeading>
+        <SubHeading>1. Run the Hub</SubHeading>
         <Paragraph>
-          Go to Applications, Add Application. The first step makes the key: choose Make Signing Key and copy the two lines it shows. Central
-          shows the private key this once and keeps only the key's name and fingerprint, so make it again if you lost it. Make one key for
-          each environment and never reuse the key of another.
-        </Paragraph>
-        <Paragraph>
-          If the Hub already runs with a key you want to keep, choose I Already Have A Key. To make one by hand instead, on your machine:
-        </Paragraph>
-        <Code>{KEY_COMMANDS}</Code>
-        <Paragraph>
-          The private file belongs to the Hub only. The public one is not needed anywhere: the Hub publishes it by itself at
-          /.well-known/jwks.json.
+          Deploy the Hub, or start it on your machine. It can run without its .env lines for now, Central only needs to find it at its
+          address. Set what the Hub has always needed: FRONTEND_ORIGIN (the address people open the Hub at, with https), JWT_SECRET, and
+          the Google sign-in lines (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ALLOWED_DOMAIN), as in the Hub's own setup notes. Also set
+          CENTRAL_API_BASE_URL to the address of this Central, ending in /api/internal.
         </Paragraph>
       </div>
       <div>
-        <SubHeading>2. Set the Hub's environment on the server</SubHeading>
+        <SubHeading>2. Add the Hub here</SubHeading>
         <Steps
           items={[
-            "HUB_SSO_PRIVATE_KEY and HUB_SSO_KEY_ID: the two lines from step 1. Made by hand, the whole private file goes in as one line with each line break written as \\n, and it must start with BEGIN PRIVATE KEY (PKCS#8), not BEGIN RSA PRIVATE KEY.",
-            "FRONTEND_ORIGIN: the address people open the Hub at, with https.",
-            "CENTRAL_API_BASE_URL: the address of this Central, ending in /api/internal. CENTRAL_API_TOKEN stays empty for now, step 4 gives it.",
-            "JWT_SECRET and the Google sign-in lines (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ALLOWED_DOMAIN), as in the Hub's own setup notes.",
-            "HUB_COOKIE_DOMAIN: the parent domain all your applications share, when any of them will use the shared sign-in. It can wait until then.",
+            "Applications, Add Application. The page is the Hub already when none exists.",
+            "Key: choose Make Signing Key. Central makes the key and keeps only its name and fingerprint. The key itself waits in this page until the last step, so do not close the page before you finish.",
+            "Address: type the address of the Hub. Central says Found The Hub. A Hub that does not have the key yet is fine here.",
+            "Secret: Central makes one secret shared by the Hub and the applications that sign in through it, or you paste the one the Hub already has. Applications get their own secret made from it.",
+            "Sign-in: how strictly the Hub checks who may sign in.",
+            "Review, then Add Hub.",
           ]}
         />
-        <Paragraph>Deploy the Hub again after changing its environment, the server only reads it when the Hub starts.</Paragraph>
       </div>
       <div>
-        <SubHeading>3. Check that the Hub can publish its key</SubHeading>
+        <SubHeading>3. Copy the block once</SubHeading>
+        <Paragraph>
+          After Add Hub one block of lines appears, once: the signing key (HUB_SSO_PRIVATE_KEY and HUB_SSO_KEY_ID), the token, the
+          sign-in lines and the secret. Copy all of it into the Hub's environment and deploy or restart the Hub. HUB_COOKIE_DOMAIN, the
+          parent domain all your applications share, can wait until an application uses the shared sign-in.
+        </Paragraph>
+      </div>
+      <div>
+        <SubHeading>4. Check that the Hub publishes its key</SubHeading>
         <Paragraph>
           Open {hubUrl ? hubUrl : "the address of the Hub"}/.well-known/jwks.json in a browser. You should see a block of text that starts with
           {" "}
@@ -204,16 +205,16 @@ function HubPart({ hubUrl }) {
         </Paragraph>
       </div>
       <div>
-        <SubHeading>4. Add the Hub here</SubHeading>
-        <Steps
-          items={[
-            "Key: from step 1. Continue once the two lines are in the Hub's environment.",
-            "Address: type the address from step 2. Central checks it and says Found The Hub. When the key came from Central it also says the key is the one it made.",
-            "Secret: Central makes one secret shared by the Hub and the applications that sign in through it, or you paste the one the Hub already has. Applications get their own secret made from it.",
-            "Sign-in: how strictly the Hub checks who may sign in. These lines go into the Hub's environment.",
-            "After Review a block of lines appears once. Copy all of it into the Hub's environment, token and secret included, and deploy the Hub again.",
-          ]}
-        />
+        <SubHeading>If the Hub already has a key</SubHeading>
+        <Paragraph>
+          Choose I Already Have A Key in the Key step and keep its lines in the Hub. To make one by hand, on your machine, once for each
+          environment:
+        </Paragraph>
+        <Code>{KEY_COMMANDS}</Code>
+        <Paragraph>
+          HUB_SSO_PRIVATE_KEY is the whole private file as one line with each line break written as \n, starting with BEGIN PRIVATE KEY
+          (PKCS#8), not BEGIN RSA PRIVATE KEY. The public file is not needed anywhere, the Hub publishes it by itself.
+        </Paragraph>
       </div>
       <div>
         <SubHeading>5. Send the Hub's permissions</SubHeading>
@@ -345,7 +346,7 @@ const PROBLEMS = [
   {
     message: "A Hub answers here, but it has no sign-in key yet",
     cause: "The Hub is running but HUB_SSO_PRIVATE_KEY is missing or not a PKCS#8 PEM.",
-    fix: "Make the key in the first step of Add Application and put both lines in the Hub's environment, or write your own as one line with \\n for the line breaks. Deploy the Hub again, then open /.well-known/jwks.json to see the keys.",
+    fix: "Add the Hub in Central and copy the block at the end into the Hub's environment, or write your own as one line with \\n for the line breaks. Deploy the Hub again, then open /.well-known/jwks.json to see the keys.",
   },
   {
     message: "The Hub runs with another key than the one made here",

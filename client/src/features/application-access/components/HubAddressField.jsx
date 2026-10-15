@@ -13,6 +13,7 @@ const HINT = "Where people open the Hub. Every application gets it in its .env."
 const TEXTS = {
   found: "Found the Hub.",
   foundMatch: "Found the Hub, and its key is the one Central made.",
+  found_no_keys: "A Hub answers here. It does not have the key yet, which is fine: you copy it at the end.",
   keyMismatch: "The Hub runs with another key than the one made here. It may still have an old one. Put the new key in its .env and deploy it again, or carry on if you made this key yourself.",
   anyway: "Used as typed, not checked.",
   unreachable: "Nothing answers at this address. Is the Hub running?",
@@ -41,7 +42,7 @@ export function HubAddressField({ value, suggestedAddress = "", signingThumbprin
 
   const problem = rest.trim() ? hubAddressProblem(environment, rest) : null;
   const address = rest.trim() && !problem ? joinAddress(environment, rest) : "";
-  const state = useAddressCheck({ address, saved: initial, name: `hub-address-check-${signingThumbprint}`, check: (url) => applicationAccessApi.checkHubAddress(url, signingThumbprint || undefined) });
+  const state = useAddressCheck({ address, saved: initial, name: `hub-address-check-${signingThumbprint}`, check: (url) => applicationAccessApi.checkHubAddress(url, signingThumbprint || undefined), okVerdicts: signingThumbprint ? ["ok", "no_keys"] : ["ok"] });
   const { ready, verdict, usedAnyway, detail } = state;
   const keyKnown = detail?.key ?? "unknown";
 

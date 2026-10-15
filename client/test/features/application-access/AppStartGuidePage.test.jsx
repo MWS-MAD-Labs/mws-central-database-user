@@ -63,8 +63,8 @@ describe("AppStartGuidePage", () => {
     renderGuide("?part=hub");
     expect(await title()).toBe("Add the Hub first");
     expect(screen.getByText(/openssl genpkey -algorithm RSA/)).toBeVisible();
-    expect(screen.getByText(/choose Make Signing Key and copy the two lines/)).toBeVisible();
-    expect(screen.getByText(/HUB_SSO_PRIVATE_KEY and HUB_SSO_KEY_ID: the two lines from step 1/)).toBeVisible();
+    expect(screen.getByText(/Key: choose Make Signing Key/)).toBeVisible();
+    expect(screen.getByText(/the signing key \(HUB_SSO_PRIVATE_KEY and HUB_SSO_KEY_ID\), the token/)).toBeVisible();
     expect(await screen.findByText(/https:\/\/app-stg\.mws\.web\.id\/\.well-known\/jwks\.json/)).toBeVisible();
     expect(screen.getByText(/CENTRAL_API_TOKEN_STAGING/)).toBeVisible();
   });

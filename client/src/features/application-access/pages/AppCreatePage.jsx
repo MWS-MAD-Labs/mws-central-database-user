@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -23,6 +23,8 @@ export function AppCreatePage() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [created, setCreated] = useState(null);
+  // The Hub's key lines, kept here from the wizard to the dialog at the end. They are not part of the request.
+  const keyEnv = useRef(null);
 
   // Only one Hub can exist, so the choice goes away once there is one.
   const hubQuery = useQuery({
@@ -43,7 +45,10 @@ export function AppCreatePage() {
       queryClient.invalidateQueries({ queryKey: ["application-access"] });
       showSuccessToast("Application added.");
       // The token is shown once, so the next page waits until the .env values are copied.
-      if (response.connection) setCreated(response);
+      if (response.connection) {
+        const keyLines = (keyEnv.current ?? []).map((item) => ({ ...item, group: -1 }));
+        setCreated(keyLines.length ? { ...response, connection: { ...response.connection, env: [...keyLines, ...response.connection.env] } } : response);
+      }
       else navigate(`/application-access/apps/${response.application_id}/setup`);
     },
     onError: (error) => showErrorToast(error, "Could not add this application."),
@@ -93,7 +98,7 @@ export function AppCreatePage() {
         suggestedHubUrl={contextQuery.data?.suggested_hub_url ?? ""}
         deploymentEnvironment={contextQuery.data?.environment ?? ""}
         submitting={mutation.isPending}
-        onSubmit={async (payload) => {
+        onSubmit={async (payload, extra) => {
           if (payload.is_hub) {
             const confirmed = await confirm({
               title: "Add the Hub",
@@ -103,6 +108,7 @@ export function AppCreatePage() {
             });
             if (!confirmed) return;
           }
+          keyEnv.current = extra?.keyEnv ?? null;
           mutation.mutate(payload);
         }}
         onCancel={() => navigate(BACK)}

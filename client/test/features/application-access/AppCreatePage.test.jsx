@@ -222,7 +222,7 @@ describe('AppCreatePage', () => {
       TAXONOMY,
       APP_OK,
       KEY,
-      { ...HUB_OK, response: () => jsonResponse({ data: { verdict: 'ok', key: 'match' } }) },
+      { ...HUB_OK, response: () => jsonResponse({ data: { verdict: 'no_keys', key: 'unknown' } }) },
       SECRET_OK,
       SIGNING_KEY,
       {
@@ -250,16 +250,15 @@ describe('AppCreatePage', () => {
     // 1. Key. Central makes it and shows it once.
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Make Signing Key' }))
-    const keyDialog = await screen.findByRole('dialog', { name: 'Hub Signing Key' })
-    expect(within(keyDialog).queryByText(/BEGIN PRIVATE KEY/)).toBeNull()
-    await user.click(within(keyDialog).getByRole('button', { name: 'Copy .env Values' }))
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Hub Signing Key' })).toBeNull(), { timeout: 3000 })
-    expect(screen.getByText('mws-hub-sso-2026-10-ab12')).toBeVisible()
+    // No dialog here: the key comes with the rest of the .env at the end.
+    expect(await screen.findByText('mws-hub-sso-2026-10-ab12')).toBeVisible()
+    expect(screen.queryByRole('dialog')).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     // 2. Address, which has to be there to go on.
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
-    expect(await screen.findByText('Found the Hub, and its key is the one Central made.')).toBeVisible()
+    // The Hub is running without the key yet, which is fine because it is copied at the end.
+    expect(await screen.findByText(/does not have the key yet, which is fine/)).toBeVisible()
     const check = fetchMock.mock.calls.find(([url]) => String(url).includes('hub-address-check'))
     expect(String(check[0])).toContain(`thumbprint=${THUMBPRINT}`)
     await user.click(screen.getByRole('button', { name: 'Continue' }))
@@ -275,8 +274,15 @@ describe('AppCreatePage', () => {
     const confirmDialog = await screen.findByRole('dialog', { name: 'Add the Hub' })
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST' && String(fetchMock.mock.calls[0][0]).endsWith('/applications'))).toBe(false)
     await user.click(within(confirmDialog).getByRole('button', { name: 'Add Hub' }))
+    // One block at the end: the key lines first, then what Central made when the Hub was added.
+    const envDialog = await screen.findByRole('dialog', { name: 'Connection Created' })
+    const shown = within(envDialog).getByRole('img', { name: /Values hidden/ }).textContent
+    expect(shown.indexOf('HUB_SSO_KEY_ID')).toBeGreaterThan(-1)
+    expect(shown.indexOf('HUB_SSO_KEY_ID')).toBeLessThan(shown.indexOf('HUB_SSO_APP_ID'))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url, options]) => options?.method === 'POST' && String(url).endsWith('/applications'))
+      // The private key never goes to the server.
+      expect(call[1].body).not.toContain('PRIVATE KEY')
       expect(JSON.parse(call[1].body)).toEqual({
         name: 'HUB',
         is_hub: true,
@@ -301,8 +307,7 @@ describe('AppCreatePage', () => {
     ])
     const { user } = await renderPage()
     await user.click(screen.getByRole('button', { name: 'Make Signing Key' }))
-    await user.click(within(await screen.findByRole('dialog', { name: 'Hub Signing Key' })).getByRole('button', { name: 'Copy .env Values' }))
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Hub Signing Key' })).toBeNull(), { timeout: 3000 })
+    await screen.findByText('mws-hub-sso-2026-10-ab12')
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     await user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
     expect(await screen.findByText('Found the Hub.')).toBeVisible()

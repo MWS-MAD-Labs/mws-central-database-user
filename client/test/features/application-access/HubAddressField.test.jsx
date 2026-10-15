@@ -39,6 +39,19 @@ describe('HubAddressField', () => {
     expect(other.onChange).toHaveBeenLastCalledWith('https://app.mws.web.id', false)
   })
 
+  it('lets a Hub without the key go on only when the key is made in the wizard', async () => {
+    const made = renderField('no_keys', { signingThumbprint: 'T'.repeat(43) })
+    await made.user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText(/does not have the key yet, which is fine/)).toBeVisible()
+    expect(made.onChange).toHaveBeenLastCalledWith('https://app.mws.web.id', false)
+    made.unmount()
+
+    const own = renderField('no_keys')
+    await own.user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText(/A Hub answers here, but it has no sign-in key yet/)).toBeVisible()
+    expect(own.onChange).toHaveBeenLastCalledWith('https://app.mws.web.id', true)
+  })
+
   it('blocks an address that answers but is not the Hub, with no way around it', async () => {
     const { user, onChange } = renderField('not_hub')
     await user.type(screen.getByLabelText('Hub Address'), 'example.com')

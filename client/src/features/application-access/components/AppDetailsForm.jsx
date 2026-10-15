@@ -230,7 +230,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
               ...(hubWizard.signing ? { hub_signing: hubWizard.signing } : {}),
             }
           : {}),
-      });
+      }, { keyEnv: hubWizard.keyEnv ?? null });
       return;
     }
     onSubmit({
