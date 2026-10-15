@@ -231,7 +231,7 @@ export function HubSetupWizard({
               {keyChoice === "own" ? (
                 <TextAction onClick={() => setKeyChoice(null)}>Make One Instead</TextAction>
               ) : (
-                <Button type="button" loading={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
+                <Button type="button" variant="secondary" size="sm" loading={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
                   Make Signing Key
                 </Button>
               )}
