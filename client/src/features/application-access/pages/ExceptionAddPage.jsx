@@ -23,6 +23,7 @@ import { PermissionPopover } from "../components/PermissionPopover.jsx";
 import { isRealUnit } from "../utils/legacyUnit.js";
 import { roleOptions } from "../utils/roleOptions.js";
 import { canManageApplications } from "../utils/canManageApplications.js";
+import { hasEmployees, studentsOnly } from "../utils/audiences.js";
 
 // Another role for people inside one group. Only people that group covers are listed.
 export function ExceptionAddPage() {
@@ -45,7 +46,9 @@ export function ExceptionAddPage() {
   }).data;
   const formOptions = useQuery({ queryKey: ["employee-form-options"], queryFn: loadEmployeeFormOptions }).data || {};
   const group = detail?.groups.find((item) => item.id === ruleId);
-  const isStudents = group?.audience === "STUDENTS";
+  const isStudents = studentsOnly(group?.audiences);
+  // Exceptions of a group with employees go to employees, a group of interns alone goes to interns.
+  const roleFlag = isStudents ? "allows_students" : hasEmployees(group?.audiences) ? "allows_employees" : "allows_interns";
   const studentOptions =
     useQuery({ queryKey: ["student-form-options"], queryFn: loadStudentFormOptions, enabled: isStudents }).data || {};
   // Classes of the year that is running, the ones a class leader belongs to.
@@ -54,7 +57,7 @@ export function ExceptionAddPage() {
     (item) => !activeYearId || (item.academic_year?.id ?? item.academic_year_id) === activeYearId,
   );
   const roles = (useApplicationRoles().data || []).filter(
-    (role) => role.application_id === applicationId && role.is_active && (isStudents ? role.allows_students : role.allows_employees !== false),
+    (role) => role.application_id === applicationId && role.is_active && (roleFlag === "allows_employees" ? role.allows_employees !== false : Boolean(role[roleFlag])),
   );
   const selectedRole = roles.find((role) => role.key === roleKey);
 

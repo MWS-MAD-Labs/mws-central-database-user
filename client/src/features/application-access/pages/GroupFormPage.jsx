@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
-import { Field, SearchableSelect } from "../../../components/ui/FormControls.jsx";
+import { CheckboxField, Field, SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
@@ -13,14 +13,13 @@ import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { PermissionPopover } from "../components/PermissionPopover.jsx";
 import { roleOptions } from "../utils/roleOptions.js";
 import { GroupFilters } from "../components/GroupFilters.jsx";
-import { OrganizationNote } from "../components/OrganizationNote.jsx";
+import { AUDIENCE_CHOICES, audienceHint, audienceKey, toggleAudience } from "../utils/audiences.js";
 import { isRealUnit } from "../utils/legacyUnit.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { useScopeCatalog } from "../hooks/useScopeCatalog.js";
 import { AllowExceptionsField } from "../components/AllowExceptionsField.jsx";
 import { useRoleAvailability } from "../hooks/useRoleAvailability.js";
 import {
-  audienceLabels,
   groupFilterPayload,
   hasGroupFilterError,
   useGroupFilterState,
@@ -34,13 +33,15 @@ export function GroupFormPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const back = `/application-access/apps/${applicationId}`;
-  const [audience, setAudience] = useState("EMPLOYEES");
+  const [audiences, setAudiences] = useState(["EMPLOYEES"]);
+  const audience = audienceKey(audiences);
+  const studentsGroup = audience === "STUDENTS";
   const [allowsExceptions, setAllowsExceptions] = useState(false);
   const [roleKey, setRoleKey] = useState("");
   const [attempted, setAttempted] = useState(false);
   const [scopeReviewed, setScopeReviewed] = useState(false);
   const rules = useScopeCatalog();
-  const scope = useGroupFilterState({}, audience === "STUDENTS" ? null : rules);
+  const scope = useGroupFilterState({}, studentsGroup ? null : rules);
 
   const roles = (useApplicationRoles().data || []).filter(
     (role) => role.application_id === applicationId && role.is_active,
@@ -50,7 +51,7 @@ export function GroupFormPage() {
   const knownUnitIds = options.units?.length ? new Set(options.units.filter(isRealUnit).map((unit) => unit.id)) : undefined;
   const unavailable = useRoleAvailability({
     applicationId,
-    audience,
+    audiences,
     scope: groupFilterPayload(scope, audience, knownUnitIds),
   });
   // A role the scope can no longer take is dropped from the form.
@@ -63,10 +64,10 @@ export function GroupFormPage() {
     mutationFn: () =>
       applicationAccessApi.createRule({
         application_id: applicationId,
-        audience,
+        audiences,
         ...groupFilterPayload(scope, audience, knownUnitIds),
         default_role_key: chosenRole,
-        ...(audience === "STUDENTS" ? { allows_exceptions: allowsExceptions } : {}),
+        ...(studentsGroup ? { allows_exceptions: allowsExceptions } : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["application-access"] });
@@ -92,8 +93,11 @@ export function GroupFormPage() {
     mutation.mutate();
   }
 
-  function changeAudience(nextAudience) {
-    setAudience(nextAudience);
+  // Ticks or unticks one audience. There is always at least one.
+  function changeAudience(name) {
+    const next = toggleAudience(audiences, name);
+    if (next.length === 0) return;
+    setAudiences(next);
     setScopeReviewed(false);
   }
 
@@ -132,15 +136,17 @@ export function GroupFormPage() {
           </section>
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
             <div className="space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
-              <Field label="Audience">
-                <SearchableSelect
-                  value={audience}
-                  onChange={changeAudience}
-                  options={Object.entries(audienceLabels)
-                    .filter(([value]) => value !== "EMPLOYEES_AND_STUDENTS")
-                    .map(([value, label]) => ({ value, label }))}
-                  placeholder="Select an audience"
-                />
+              <Field label="Audience" hint={audienceHint(audiences)}>
+                <div className="space-y-2" role="group" aria-label="Audience">
+                  {AUDIENCE_CHOICES.map((choice) => (
+                    <CheckboxField
+                      key={choice.value}
+                      label={choice.label}
+                      checked={audiences.includes(choice.value)}
+                      onChange={() => changeAudience(choice.value)}
+                    />
+                  ))}
+                </div>
               </Field>
               <Field label="Role" error={attempted && !chosenRole ? "Role is required." : undefined}>
                 <SearchableSelect
@@ -165,10 +171,9 @@ export function GroupFormPage() {
                 </p>
               ) : null}
               {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} applicationId={selectedRole.application_id} /> : null}
-              {audience === "STUDENTS" ? (
+              {studentsGroup ? (
                 <AllowExceptionsField checked={allowsExceptions} onChange={setAllowsExceptions} />
               ) : null}
-              <OrganizationNote applicationId={applicationId} />
             </div>
             <div className="flex gap-2">
               <Button asChild variant="secondary" className="flex-1">

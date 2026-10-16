@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { ApplicationAudience, EmploymentType } from "../generated/prisma/client";
+import { EmploymentType } from "../generated/prisma/client";
+import { AUDIENCE_NAMES, audienceProblem, type AudienceName } from "../utils/audience";
 import { LIMITS } from "../constants/limits";
 import { isHubIcon } from "../constants/hub-icons";
 import { addressProblem } from "../utils/application-id";
@@ -174,10 +175,14 @@ export class ApplicationEntitlementValidation {
   });
 }
 
-const AUDIENCES = Object.values(ApplicationAudience) as [
-  ApplicationAudience,
-  ...ApplicationAudience[],
-];
+// Who a group is for: employees, interns or students, and students on their own.
+const audienceList = z
+  .array(z.enum(AUDIENCE_NAMES as unknown as [AudienceName, ...AudienceName[]], { message: "Audience must be EMPLOYEES, INTERNS or STUDENTS" }))
+  .transform((values) => [...new Set(values)])
+  .superRefine((values, context) => {
+    const problem = audienceProblem(values);
+    if (problem) context.addIssue({ code: "custom", message: problem });
+  });
 
 const idList = (label: string) =>
   z
@@ -187,9 +192,7 @@ const idList = (label: string) =>
     .default([]);
 
 const accessRuleFields = {
-  audience: z.enum(AUDIENCES, {
-    message: "Audience must be EMPLOYEES, STUDENTS or EMPLOYEES_AND_STUDENTS",
-  }),
+  audiences: audienceList,
   unit_ids: idList("Unit"),
   job_position_ids: idList("Job position"),
   job_level_ids: idList("Job level"),
@@ -360,24 +363,19 @@ export class ApplicationAccessRuleValidation {
 
   // A scope someone is about to save, to ask which roles it can still take.
   static readonly ROLE_OPTIONS = z.object({
-    audience: z.enum(["EMPLOYEES", "STUDENTS", "EMPLOYEES_AND_STUDENTS"]),
+    audiences: audienceList,
     unit_ids: idList("Unit").optional(),
     job_position_ids: idList("Job position").optional(),
     job_level_ids: idList("Job level").optional(),
     group_id: nonemptyId("Group ID").optional(),
   });
 
-  // A group is for employees or for students. One group for both used to exist, but
-  // students have no positions or levels, so it could not be scoped honestly.
-  static readonly CREATE = z
-    .object({
-      application_id: applicationId,
-      ...accessRuleFields,
-    })
-    .refine((value) => value.audience !== "EMPLOYEES_AND_STUDENTS", {
-      message: "Create one group for employees and another for students",
-      path: ["audience"],
-    });
+  // A group is for employees, interns or both, or for students on their own. Students have no
+  // positions or levels, so a group with them could not be scoped honestly.
+  static readonly CREATE = z.object({
+    application_id: applicationId,
+    ...accessRuleFields,
+  });
 
   // The application and audience can't change, only who within it and the role.
   static readonly UPDATE = z.object({
@@ -411,10 +409,11 @@ export class ApplicationRoleValidation {
       label: roleLabel,
       permissions,
       allows_employees: z.boolean().optional(),
+      allows_interns: z.boolean().optional(),
       allows_students: z.boolean().optional(),
     })
-    .refine((value) => (value.allows_employees ?? true) || (value.allows_students ?? false), {
-      message: "A role has to be for employees, students or both",
+    .refine((value) => (value.allows_employees ?? true) || (value.allows_interns ?? false) || (value.allows_students ?? false), {
+      message: "A role has to be for employees, interns or students",
       path: ["allows_employees"],
     });
 
@@ -424,6 +423,7 @@ export class ApplicationRoleValidation {
       label: roleLabel.optional(),
       permissions: permissions.optional(),
       allows_employees: z.boolean().optional(),
+      allows_interns: z.boolean().optional(),
       allows_students: z.boolean().optional(),
       is_active: z.boolean().optional(),
     })
@@ -432,6 +432,7 @@ export class ApplicationRoleValidation {
         value.label !== undefined ||
         value.permissions !== undefined ||
         value.allows_employees !== undefined ||
+        value.allows_interns !== undefined ||
         value.allows_students !== undefined ||
         value.is_active !== undefined,
       { message: "Provide a label, permissions, who the role is for, or is_active to update" },

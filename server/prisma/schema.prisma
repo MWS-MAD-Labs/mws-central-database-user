@@ -10,6 +10,7 @@ datasource db {
 enum PersonType {
   STUDENT
   EMPLOYEE
+  INTERN
 }
 
 enum Gender {
@@ -684,6 +685,7 @@ model Person {
 
   student   Student?
   employee  Employee?
+  intern    Intern?
   adminUser AdminUser?
 
   application_entitlements ApplicationEntitlement[]
@@ -830,6 +832,9 @@ model EmployeePcMentorUnit {
 // Interns stay separate from Person because their required identity data differs.
 model Intern {
   id        String @id @default(cuid())
+  // The person behind the intern, so group access can reach them like an employee or a student.
+  person_id String @unique
+  person    Person @relation(fields: [person_id], references: [id])
   full_name String
   nick_name String
   email     String @unique
@@ -1598,12 +1603,6 @@ model ApplicationEntitlement {
   @@map("application_entitlements")
 }
 
-enum ApplicationAudience {
-  EMPLOYEES
-  STUDENTS
-  EMPLOYEES_AND_STUDENTS
-}
-
 // Group access: everyone in the audience who matches the unit, job position and
 // job level filters (empty means all) gets default_role_key without a
 // per-person row. The most specific matching rule wins, and a person's own
@@ -1611,7 +1610,10 @@ enum ApplicationAudience {
 model ApplicationAccessRule {
   id               String              @id @default(cuid())
   application_id   String
-  audience         ApplicationAudience
+  // Who the group is for. At least one, and students are never mixed with the others.
+  for_employees    Boolean             @default(false)
+  for_interns      Boolean             @default(false)
+  for_students     Boolean             @default(false)
   // Empty means every unit, position or level.
   unit_ids         String[]            @default([])
   job_position_ids String[]            @default([])
@@ -1758,6 +1760,7 @@ model ApplicationRole {
   // Who the role is meant for. A group of students can only hand out roles that allow students.
   allows_employees Boolean @default(true)
   allows_students  Boolean @default(false)
+  allows_interns   Boolean @default(false)
   is_active      Boolean  @default(true)
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt

@@ -9,7 +9,6 @@ import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { OrganizationNote } from "../components/OrganizationNote.jsx";
 import { PermissionChecklist } from "../components/PermissionChecklist.jsx";
 import { useApplicationPermissions } from "../hooks/useApplicationPermissions.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
@@ -66,6 +65,7 @@ function RoleForm({ applicationId, role, roles }) {
   const [labelEdited, setLabelEdited] = useState(false);
   const [permissions, setPermissions] = useState(role?.permissions || []);
   const [allowsEmployees, setAllowsEmployees] = useState(role?.allows_employees ?? true);
+  const [allowsInterns, setAllowsInterns] = useState(role?.allows_interns ?? false);
   const [allowsStudents, setAllowsStudents] = useState(role?.allows_students ?? false);
   const [attempted, setAttempted] = useState(false);
 
@@ -110,6 +110,7 @@ function RoleForm({ applicationId, role, roles }) {
             label: label.trim(),
             permissions,
             allows_employees: allowsEmployees,
+            allows_interns: allowsInterns,
             allows_students: allowsStudents,
           })
         : applicationAccessApi.createRole({
@@ -118,6 +119,7 @@ function RoleForm({ applicationId, role, roles }) {
             label: label.trim(),
             permissions,
             allows_employees: allowsEmployees,
+            allows_interns: allowsInterns,
             allows_students: allowsStudents,
           }),
     onSuccess: () => {
@@ -131,7 +133,7 @@ function RoleForm({ applicationId, role, roles }) {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!allowsEmployees && !allowsStudents) return;
+    if (!allowsEmployees && !allowsInterns && !allowsStudents) return;
     if (twin || labelProblem(label) || (!isEdit && !key.trim())) return;
     if (options.length > 0 && permissions.length === 0) return;
     mutation.mutate();
@@ -219,11 +221,14 @@ function RoleForm({ applicationId, role, roles }) {
               <Field
                 label="Who It Is For"
                 hint="Groups of students can only use roles that allow students."
-                error={attempted && !allowsEmployees && !allowsStudents ? "Pick employees, students or both." : undefined}
+                error={attempted && !allowsEmployees && !allowsInterns && !allowsStudents ? "Pick employees, interns or students." : undefined}
               >
                 <div className="flex flex-wrap gap-2" role="group" aria-label="Who It Is For">
                   <ToggleChip checked={allowsEmployees} onChange={setAllowsEmployees}>
                     Employees
+                  </ToggleChip>
+                  <ToggleChip checked={allowsInterns} onChange={setAllowsInterns}>
+                    Interns
                   </ToggleChip>
                   <ToggleChip checked={allowsStudents} onChange={setAllowsStudents}>
                     Students
@@ -236,7 +241,6 @@ function RoleForm({ applicationId, role, roles }) {
                   permissions right away.
                 </p>
               ) : null}
-              <OrganizationNote applicationId={application} />
             </div>
             <div className="flex gap-2">
               <Button asChild variant="secondary" className="flex-1">

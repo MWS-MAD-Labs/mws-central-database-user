@@ -1,14 +1,16 @@
 import {
-  ApplicationAudience,
   EmployeeStatus,
+  InternStatus,
   PersonType,
   StudentStatus,
 } from "../generated/prisma/client";
 import { ResponseError } from "../error/response-error";
 import { prismaClient } from "../lib/prisma";
 
-export type RuleFilter = {
-  audience: ApplicationAudience;
+// Who a group is for. Students are never mixed with the others when a group is made.
+export type RuleAudience = { for_employees: boolean; for_interns: boolean; for_students: boolean };
+
+export type RuleFilter = RuleAudience & {
   unit_ids: string[];
   job_position_ids: string[];
   job_level_ids: string[];
@@ -22,20 +24,28 @@ export type GateRule = RuleFilter & {
   allows_exceptions?: boolean;
 };
 
-export function groupAllowsExceptions(rule: Pick<GateRule, "audience" | "allows_exceptions">): boolean {
-  return rule.audience !== ApplicationAudience.STUDENTS || Boolean(rule.allows_exceptions);
+// A group that is only for students.
+export function studentsOnly(rule: RuleAudience): boolean {
+  return rule.for_students && !rule.for_employees && !rule.for_interns;
+}
+
+export function groupAllowsExceptions(rule: RuleAudience & { allows_exceptions?: boolean }): boolean {
+  return !studentsOnly(rule) || Boolean(rule.allows_exceptions);
 }
 
 export type RuleSubject =
   | { kind: "EMPLOYEE"; unitId: string; positionId: string; levelId: string }
+  // Interns have a unit and a position, and no level.
+  | { kind: "INTERN"; unitId: string; positionId: string }
   | { kind: "STUDENT"; unitId: string | null };
 
 // How narrow a rule is. The weights are distinct powers of two, so two rules
 // with different filters never tie.
-export function ruleSpecificity(rule: RuleFilter): number {
+export function ruleSpecificity(rule: Pick<RuleFilter, "unit_ids" | "job_position_ids" | "job_level_ids">, forIntern = false): number {
   return (
     (rule.job_position_ids.length > 0 ? 4 : 0) +
-    (rule.job_level_ids.length > 0 ? 2 : 0) +
+    // An intern has no level, so a level filter does not make a rule narrower for them.
+    (!forIntern && rule.job_level_ids.length > 0 ? 2 : 0) +
     (rule.unit_ids.length > 0 ? 1 : 0)
   );
 }
@@ -44,6 +54,9 @@ export const SUBJECT_SELECT = {
   person_type: true,
   employee: {
     select: { status: true, deleted_at: true, unit_id: true, job_position_id: true, job_level_id: true },
+  },
+  intern: {
+    select: { status: true, deleted_at: true, unit_id: true, job_position_id: true },
   },
   student: {
     select: { status: true, deleted_at: true, current_grade: { select: { unit_id: true } } },
@@ -59,6 +72,12 @@ type SubjectPerson = {
     job_position_id: string;
     job_level_id: string;
   } | null;
+  intern: {
+    status: InternStatus;
+    deleted_at: Date | null;
+    unit_id: string;
+    job_position_id: string;
+  } | null;
   student: {
     status: StudentStatus;
     deleted_at: Date | null;
@@ -66,7 +85,7 @@ type SubjectPerson = {
   } | null;
 };
 
-// Only active employees and active students can receive group access.
+// Only active employees, interns and students can receive group access.
 export function toRuleSubject(person: SubjectPerson | null): RuleSubject | null {
   if (!person) return null;
   if (person.person_type === PersonType.EMPLOYEE) {
@@ -78,6 +97,11 @@ export function toRuleSubject(person: SubjectPerson | null): RuleSubject | null 
       positionId: employee.job_position_id,
       levelId: employee.job_level_id,
     };
+  }
+  if (person.person_type === PersonType.INTERN) {
+    const intern = person.intern;
+    if (!intern || intern.status !== InternStatus.ACTIVE || intern.deleted_at !== null) return null;
+    return { kind: "INTERN", unitId: intern.unit_id, positionId: intern.job_position_id };
   }
   if (person.person_type === PersonType.STUDENT) {
     const student = person.student;
@@ -99,18 +123,26 @@ export function ruleMatches(rule: RuleFilter, subject: RuleSubject): boolean {
   const has = (ids: string[], id: string | null) => ids.length === 0 || (id !== null && ids.includes(id));
   if (subject.kind === "EMPLOYEE") {
     return (
-      rule.audience !== ApplicationAudience.STUDENTS &&
+      rule.for_employees &&
       has(rule.unit_ids, subject.unitId) &&
       has(rule.job_position_ids, subject.positionId) &&
       has(rule.job_level_ids, subject.levelId)
     );
   }
-  return rule.audience !== ApplicationAudience.EMPLOYEES && has(rule.unit_ids, subject.unitId);
+  // An intern has no level, so a level filter only narrows the employees of a group.
+  if (subject.kind === "INTERN") {
+    return rule.for_interns && has(rule.unit_ids, subject.unitId) && has(rule.job_position_ids, subject.positionId);
+  }
+  return rule.for_students && has(rule.unit_ids, subject.unitId);
 }
 
-// Does an audience include everyone of the target audience?
-function audienceIncludes(audience: ApplicationAudience, target: ApplicationAudience): boolean {
-  return audience === ApplicationAudience.EMPLOYEES_AND_STUDENTS || audience === target;
+// Does the outer audience include every kind of person of the inner one?
+function audienceIncludes(outer: RuleAudience, inner: RuleAudience): boolean {
+  return (
+    (!inner.for_employees || outer.for_employees) &&
+    (!inner.for_interns || outer.for_interns) &&
+    (!inner.for_students || outer.for_students)
+  );
 }
 
 export function dimensionCovers(outer: string[], inner: string[]): boolean {
@@ -119,11 +151,13 @@ export function dimensionCovers(outer: string[], inner: string[]): boolean {
 
 // Whether everyone matched by `inner` is also matched by `outer`.
 export function covers(outer: RuleFilter, inner: RuleFilter): boolean {
-  if (!audienceIncludes(outer.audience, inner.audience)) return false;
+  if (!audienceIncludes(outer, inner)) return false;
   if (!dimensionCovers(outer.unit_ids, inner.unit_ids)) return false;
-  // Job position and level only exist for employees.
-  if (inner.audience !== ApplicationAudience.STUDENTS) {
+  // Job position exists for employees and interns, level only for employees.
+  if (inner.for_employees || inner.for_interns) {
     if (!dimensionCovers(outer.job_position_ids, inner.job_position_ids)) return false;
+  }
+  if (inner.for_employees) {
     if (!dimensionCovers(outer.job_level_ids, inner.job_level_ids)) return false;
   }
   return true;
@@ -139,7 +173,7 @@ export function parentRule(target: GateRule, rules: GateRule[]): GateRule | unde
 export function inheritedRole(subject: RuleSubject, rules: GateRule[]): GateRule | undefined {
   return rules
     .filter((rule) => rule.is_active && ruleMatches(rule, subject))
-    .sort((left, right) => ruleSpecificity(right) - ruleSpecificity(left))[0];
+    .sort((left, right) => ruleSpecificity(right, subject.kind === "INTERN") - ruleSpecificity(left, subject.kind === "INTERN"))[0];
 }
 
 export async function loadActiveRules(applicationId: string): Promise<GateRule[]> {
@@ -148,7 +182,9 @@ export async function loadActiveRules(applicationId: string): Promise<GateRule[]
   });
   return rules.map((rule) => ({
     id: rule.id,
-    audience: rule.audience,
+    for_employees: rule.for_employees,
+    for_interns: rule.for_interns,
+    for_students: rule.for_students,
     unit_ids: rule.unit_ids,
     job_position_ids: rule.job_position_ids,
     job_level_ids: rule.job_level_ids,
@@ -160,8 +196,8 @@ export async function loadActiveRules(applicationId: string): Promise<GateRule[]
 
 // Exceptions only exist inside a group's scope.
 export function assertHasGroup(applicationId: string, rules: GateRule[]): void {
-  const hasEmployeeGroup = rules.some((rule) => rule.is_active && rule.audience !== ApplicationAudience.STUDENTS);
-  if (!hasEmployeeGroup) {
+  const hasStaffGroup = rules.some((rule) => rule.is_active && (rule.for_employees || rule.for_interns));
+  if (!hasStaffGroup) {
     throw new ResponseError(400, `Set up a group for ${applicationId} first. It decides who can use the app.`);
   }
 }
@@ -175,7 +211,7 @@ export async function assertPersonException(
   rules: GateRule[],
 ): Promise<void> {
   const subject = await loadRuleSubject(personId);
-  // Employees need an employee group. A student only needs the group that covers them.
+  // Employees and interns need a group of staff. A student only needs the group that covers them.
   if (subject?.kind !== "STUDENT") assertHasGroup(applicationId, rules);
   const inherited = subject ? inheritedRole(subject, rules) : undefined;
   if (inherited && subject?.kind === "STUDENT" && !groupAllowsExceptions(inherited)) {

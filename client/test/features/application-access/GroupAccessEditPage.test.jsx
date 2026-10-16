@@ -16,7 +16,7 @@ const roles = [
 let rule = {
   id: 'rule-1',
   application_id: 'exima',
-  audience: 'EMPLOYEES',
+  audiences: ['EMPLOYEES'],
   unit_ids: ['unit-1'],
   job_position_ids: [],
   job_level_ids: [],
@@ -53,7 +53,7 @@ function renderPage(user = { role: 'SUPER_ADMIN', is_protected: true }) {
 }
 
 describe('GroupAccessEditPage', () => {
-  it('loads the group access with its units checked and the organization shown', async () => {
+  it('loads the group access with its units checked', async () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage()
     expect(await screen.findByText('Edit All Active Employees')).toBeVisible()
@@ -61,7 +61,7 @@ describe('GroupAccessEditPage', () => {
     expect(screen.getByRole('switch', { name: 'Elementary' })).not.toBeChecked()
     expect(screen.getByRole('switch', { name: 'All Units' })).not.toBeChecked()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
-    expect(await screen.findByText('org_exima_a1b2c3')).toBeVisible()
+    expect(screen.queryByText('org_exima_a1b2c3')).not.toBeInTheDocument()
   })
 
   it('saves a new role and turns the group off without sending an organization id', async () => {
@@ -103,7 +103,7 @@ describe('GroupAccessEditPage', () => {
 
   it('tells that a group of employees and students together should be split', async () => {
     const original = rule
-    rule = { ...rule, audience: 'EMPLOYEES_AND_STUDENTS' }
+    rule = { ...rule, audiences: ['EMPLOYEES', 'STUDENTS'] }
     globalThis.fetch = createFetchRouter(routes())
     renderPage()
     expect(await screen.findByText(/covers employees and students together/)).toBeVisible()
@@ -112,7 +112,7 @@ describe('GroupAccessEditPage', () => {
 
   it('shows Allow Exceptions for a group of students only and saves it', async () => {
     const original = rule
-    rule = { ...rule, audience: 'STUDENTS', allows_exceptions: false }
+    rule = { ...rule, audiences: ['STUDENTS'], allows_exceptions: false }
     const fetchMock = createFetchRouter(routes([
       { path: '/api/admin/application-access-rules/rule-1', method: 'PATCH', response: () => jsonResponse({ data: rule }) },
     ]))

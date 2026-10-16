@@ -44,7 +44,7 @@ const exception = (extra = {}) => ({
 const baselineGroup = (extra = {}) => ({
   id: "rule-1",
   application_id: "exima",
-  audience: "EMPLOYEES",
+  audiences: ["EMPLOYEES"],
   unit_ids: [],
   job_position_ids: [],
   job_level_ids: [],
@@ -497,8 +497,8 @@ describe("AppAccessPage", () => {
     globalThis.fetch = createFetchRouter(
       routes(detail({
         groups: [
-          baselineGroup({ id: "rule-off", audience: "STUDENTS", default_role_key: "STAFF", allows_exceptions: false }),
-          baselineGroup({ id: "rule-on", audience: "STUDENTS", default_role_key: "ADMIN", allows_exceptions: true }),
+          baselineGroup({ id: "rule-off", audiences: ["STUDENTS"], default_role_key: "STAFF", allows_exceptions: false }),
+          baselineGroup({ id: "rule-on", audiences: ["STUDENTS"], default_role_key: "ADMIN", allows_exceptions: true }),
         ],
       })),
     );

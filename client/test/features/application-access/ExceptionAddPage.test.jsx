@@ -14,7 +14,7 @@ const roles = [
 const group = {
   id: 'rule-1',
   application_id: 'exima',
-  audience: 'EMPLOYEES',
+  audiences: ['EMPLOYEES'],
   unit_ids: ['unit-1'],
   job_position_ids: [],
   job_level_ids: [],
@@ -132,7 +132,7 @@ describe('ExceptionAddPage', () => {
   })
 
   describe('for a group of students', () => {
-    const studentGroup = { ...group, id: 'rule-s', audience: 'STUDENTS', unit_ids: [], units: [], allows_exceptions: true, default_role_key: 'STAFF' }
+    const studentGroup = { ...group, id: 'rule-s', audiences: ['STUDENTS'], unit_ids: [], units: [], allows_exceptions: true, default_role_key: 'STAFF' }
     const studentRoles = [
       { ...roles[0], key: 'LEADER', label: 'Leader', allows_students: true, allows_employees: false },
       { ...roles[1], allows_students: true, allows_employees: true },

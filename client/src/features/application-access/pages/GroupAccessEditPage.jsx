@@ -14,18 +14,17 @@ import { PermissionPopover } from "../components/PermissionPopover.jsx";
 import { roleOptions } from "../utils/roleOptions.js";
 import { GroupFilters } from "../components/GroupFilters.jsx";
 import {
-  audienceLabels,
   groupFilterPayload,
   hasGroupFilterError,
   useGroupFilterState,
 } from "../utils/groupFilterState.js";
-import { OrganizationNote } from "../components/OrganizationNote.jsx";
 import { isRealUnit } from "../utils/legacyUnit.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { useScopeCatalog } from "../hooks/useScopeCatalog.js";
 import { AllowExceptionsField } from "../components/AllowExceptionsField.jsx";
 import { useRoleAvailability } from "../hooks/useRoleAvailability.js";
 import { canManageApplications } from "../utils/canManageApplications.js";
+import { audienceKey, audienceLabelOf, hasStudents } from "../utils/audiences.js";
 
 export function GroupAccessEditPage() {
   const { user } = useAuth();
@@ -55,7 +54,9 @@ function GroupAccessForm({ rule }) {
   const queryClient = useQueryClient();
   const back = `/application-access/apps/${rule.application_id}`;
   const rules = useScopeCatalog();
-  const state = useGroupFilterState(rule, rule.audience === "STUDENTS" ? null : rules);
+  const audience = audienceKey(rule.audiences);
+  const studentsGroup = audience === "STUDENTS";
+  const state = useGroupFilterState(rule, studentsGroup ? null : rules);
   const [roleKey, setRoleKey] = useState(rule.default_role_key);
   const [isActive, setIsActive] = useState(rule.is_active);
   const [allowsExceptions, setAllowsExceptions] = useState(Boolean(rule.allows_exceptions));
@@ -70,8 +71,8 @@ function GroupAccessForm({ rule }) {
   const knownUnitIds = options.units?.length ? new Set(options.units.filter(isRealUnit).map((unit) => unit.id)) : undefined;
   const unavailable = useRoleAvailability({
     applicationId: rule.application_id,
-    audience: rule.audience,
-    scope: groupFilterPayload(state, rule.audience, knownUnitIds),
+    audiences: rule.audiences,
+    scope: groupFilterPayload(state, audience, knownUnitIds),
     groupId: rule.id,
   });
   const lostRole = roleKey && unavailable.has(roleKey) ? roleKey : "";
@@ -82,10 +83,10 @@ function GroupAccessForm({ rule }) {
   const mutation = useMutation({
     mutationFn: () =>
       applicationAccessApi.updateRule(rule.id, {
-        ...groupFilterPayload(state, rule.audience, knownUnitIds),
+        ...groupFilterPayload(state, audience, knownUnitIds),
         default_role_key: chosenRole,
         is_active: isActive,
-        ...(rule.audience === "STUDENTS" ? { allows_exceptions: allowsExceptions } : {}),
+        ...(studentsGroup ? { allows_exceptions: allowsExceptions } : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["application-access"] });
@@ -98,14 +99,14 @@ function GroupAccessForm({ rule }) {
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (!scopeReviewed || !chosenRole || hasGroupFilterError(state, rule.audience, knownUnitIds, rules?.studentUnitIds)) return;
+    if (!scopeReviewed || !chosenRole || hasGroupFilterError(state, audience, knownUnitIds, rules?.studentUnitIds)) return;
     mutation.mutate();
   }
 
   return (
     <div className="min-w-0">
       <PageHeader
-        title={`Edit ${audienceLabels[rule.audience]}`}
+        title={`Edit ${audienceLabelOf(rule.audiences)}`}
         description={`Group access for ${rule.application_id}. The application and audience stay as created.`}
         actions={
           <Button asChild variant="secondary">
@@ -116,7 +117,7 @@ function GroupAccessForm({ rule }) {
           </Button>
         }
       />
-      {rule.audience === "EMPLOYEES_AND_STUDENTS" ? (
+      {hasStudents(rule.audiences) && rule.audiences.length > 1 ? (
         <p role="status" className="mb-4 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
           This group covers employees and students together, so positions and levels never limit the students.
           Create one group for employees and one for students, then remove this one.
@@ -126,7 +127,7 @@ function GroupAccessForm({ rule }) {
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <section className="min-w-0 space-y-5 rounded-2xl border border-(--mws-line) bg-white p-5">
             <GroupFilters
-              audience={rule.audience}
+              audience={audience}
               options={options}
               state={state}
               showErrors={attempted}
@@ -163,10 +164,9 @@ function GroupAccessForm({ rule }) {
                 />
                 Group access is on
               </label>
-              {rule.audience === "STUDENTS" ? (
+              {studentsGroup ? (
                 <AllowExceptionsField checked={allowsExceptions} onChange={setAllowsExceptions} />
               ) : null}
-              <OrganizationNote applicationId={rule.application_id} />
             </div>
             <div className="flex gap-2">
               <Button asChild variant="secondary" className="flex-1">

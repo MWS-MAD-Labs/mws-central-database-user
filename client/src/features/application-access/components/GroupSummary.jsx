@@ -1,18 +1,20 @@
-import { GraduationCap, Users } from "lucide-react";
+import { GraduationCap, UserRound, Users } from "lucide-react";
 import { formatDateTime } from "../../../lib/format.js";
 import {
   countOf,
   groupScopeChips,
   groupShortTitle,
 } from "../utils/groupSummary.js";
+import { audienceKey } from "../utils/audiences.js";
 import { UNKNOWN_LEGACY_UNIT_NAME } from "../utils/legacyUnit.js";
 import { ListPopover } from "../../../components/ui/ListPopover.jsx";
 import { PermissionPopover } from "./PermissionPopover.jsx";
 import { NameList } from "../../../components/ui/NameList.jsx";
 import { RoleName } from "./RoleName.jsx";
 
-export function AudienceIcon({ audience, size = 18 }) {
-  const Icon = audience === "STUDENTS" ? GraduationCap : Users;
+export function AudienceIcon({ audiences, size = 18 }) {
+  const key = audienceKey(audiences);
+  const Icon = key === "STUDENTS" ? GraduationCap : key === "INTERNS" ? UserRound : Users;
   return <Icon size={size} aria-hidden="true" />;
 }
 
@@ -54,12 +56,12 @@ export function GroupFacts({ group, parentRole }) {
   const facts = [
     {
       label: "Covers",
-      value: countOf(group.covered_count ?? 0, group.audience),
+      value: countOf(group.covered_count ?? 0, group.audiences),
     },
     group.own_count !== undefined && group.own_count !== group.covered_count
       ? {
           label: "Holds This Role",
-          value: countOf(group.own_count, group.audience),
+          value: countOf(group.own_count, group.audiences),
         }
       : null,
     parentRole ? { label: "Part of", value: parentRole, role: true } : null,
@@ -141,7 +143,7 @@ export function RemainingScope({ group, narrower }) {
               <div className="contents">
                 <dt className="text-sm text-(--mws-muted)">Holds This Role</dt>
                 <dd className="text-sm font-semibold text-(--mws-charcoal)">
-                  {countOf(group.own_count, group.audience)}
+                  {countOf(group.own_count, group.audiences)}
                 </dd>
               </div>
             ) : null}
@@ -155,7 +157,7 @@ export function RemainingScope({ group, narrower }) {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <RoleName className="text-sm">{child.default_role_key}</RoleName>
                   <span className="text-xs text-(--mws-muted)">
-                    {countOf(child.covered_count ?? 0, child.audience)}
+                    {countOf(child.covered_count ?? 0, child.audiences)}
                     <span aria-hidden="true"> · </span>
                     <PermissionPopover permissions={child.permissions ?? []} applicationId={child.application_id ?? group.application_id} />
                   </span>
@@ -189,7 +191,7 @@ export function GroupSummary({ group, hasNarrower = false }) {
       <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
         <div className="flex items-center gap-2 font-display text-sm font-bold text-(--mws-charcoal)">
           <span className="text-(--mws-burgundy)">
-            <AudienceIcon audience={group.audience} />
+            <AudienceIcon audiences={group.audiences} />
           </span>
           {groupShortTitle(group)}
         </div>

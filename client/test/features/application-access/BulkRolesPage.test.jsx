@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { Route, Routes } from 'react-router'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { BulkRolesPage } from '../../../src/features/application-access/pages/BulkRolesPage.jsx'
 import { keyFromLabel, togglePermission, requiredBy } from '../../../src/features/application-access/utils/bulkRoles.js'
@@ -58,6 +58,36 @@ describe('bulk role helpers', () => {
 })
 
 describe('BulkRolesPage', () => {
+  it('says who a role is for with three choices, keeps one ticked, and sends all three', async () => {
+    const fetchMock = createFetchRouter(
+      routes([{ path: '/api/admin/application-roles', method: 'POST', response: () => jsonResponse({ data: { id: 'new' } }) }]),
+    )
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await user.type(await screen.findByLabelText('Role name'), 'Helper')
+    const group = screen.getByRole('group', { name: 'For' })
+    const employees = within(group).getByRole('switch', { name: 'Employees' })
+    const interns = within(group).getByRole('switch', { name: 'Interns' })
+    expect(employees).toBeChecked()
+    expect(interns).not.toBeChecked()
+
+    await user.click(interns)
+    await user.click(employees)
+    expect(interns).toBeChecked()
+    expect(employees).not.toBeChecked()
+    // The last one stays ticked.
+    await user.click(interns)
+    expect(interns).toBeChecked()
+    expect(screen.getByText(/Interns, 0 permissions/)).toBeVisible()
+
+    await user.click(perm('pos.catalog.read'))
+    await user.click(screen.getByRole('button', { name: 'Add Role' }))
+    await waitFor(() => {
+      const posts = fetchMock.mock.calls.filter(([url, options]) => url === '/api/admin/application-roles' && options?.method === 'POST')
+      expect(JSON.parse(posts[0][1].body)).toMatchObject({ key: 'HELPER', allows_employees: false, allows_interns: true, allows_students: false })
+    })
+  })
+
   it('shows the key as a labelled field that cannot be edited, made from the name', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
@@ -89,7 +119,7 @@ describe('BulkRolesPage', () => {
     await waitFor(() => {
       const posts = fetchMock.mock.calls.filter(([url, options]) => url === '/api/admin/application-roles' && options?.method === 'POST')
       expect(posts).toHaveLength(2)
-      expect(JSON.parse(posts[0][1].body)).toMatchObject({ key: 'CASHIER', label: 'Cashier', allows_employees: true, allows_students: false })
+      expect(JSON.parse(posts[0][1].body)).toMatchObject({ key: 'CASHIER', label: 'Cashier', allows_employees: true, allows_interns: false, allows_students: false })
       expect(JSON.parse(posts[0][1].body).permissions.sort()).toEqual(['pos.catalog.read', 'pos.checkout'])
       expect(JSON.parse(posts[1][1].body)).toMatchObject({ key: 'STORE_ADMIN' })
       expect(JSON.parse(posts[1][1].body).permissions).toHaveLength(3)

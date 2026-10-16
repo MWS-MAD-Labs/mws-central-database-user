@@ -69,7 +69,7 @@ describe("application access gate: no redundant access, parent removed last", ()
   async function addRule(token: string, body: Record<string, unknown> = {}) {
     return TestRequest.post(
       RULES,
-      { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF", ...body },
+      { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "STAFF", ...body },
       token,
     );
   }
@@ -109,7 +109,7 @@ describe("application access gate: no redundant access, parent removed last", ()
     );
     expect(bulk.status).toBe(400);
     // A student-only group does not give employees a scope either.
-    await addRule(accessToken, { audience: "STUDENTS" });
+    await addRule(accessToken, { audiences: ["STUDENTS"] });
     expect((await grant(accessToken, person.id, "ADMIN")).status).toBe(400);
   });
 
@@ -410,22 +410,22 @@ describe("application access gate: no redundant access, parent removed last", ()
       ((await (await TestRequest.get(`${OPTIONS}?${query}`, token)).json()).data.unavailable as { role: string }[]).map((item) => item.role);
 
     // Nothing exists yet, so every role is open.
-    expect(await unavailable("audience=EMPLOYEES")).toEqual([]);
+    expect(await unavailable("audiences=EMPLOYEES")).toEqual([]);
 
     const baseline = await (await addRule(accessToken, { default_role_key: "STAFF" })).json();
     // A group inside the baseline cannot repeat its role.
-    expect(await unavailable(`audience=EMPLOYEES&job_position_ids=${position.id}`)).toEqual(["STAFF"]);
+    expect(await unavailable(`audiences=EMPLOYEES&job_position_ids=${position.id}`)).toEqual(["STAFF"]);
     // Editing the baseline itself keeps its own role open.
-    expect(await unavailable(`audience=EMPLOYEES&group_id=${baseline.data.id}`)).toEqual([]);
+    expect(await unavailable(`audiences=EMPLOYEES&group_id=${baseline.data.id}`)).toEqual([]);
 
     // A wider group may not take the role of a group that would then sit inside it.
     await addRule(accessToken, { job_position_ids: [position.id], default_role_key: "ADMIN" });
-    const wide = await unavailable("audience=EMPLOYEES&unit_ids=" + masterData.unit.id);
+    const wide = await unavailable("audiences=EMPLOYEES&unit_ids=" + masterData.unit.id);
     expect(wide).toContain("STAFF");
 
-    expect((await TestRequest.get(`${OPTIONS}?audience=NOPE`, accessToken)).status).toBe(400);
+    expect((await TestRequest.get(`${OPTIONS}?audiences=NOPE`, accessToken)).status).toBe(400);
     const dbAdmin = await AdminUserTest.createDatabaseAdmin();
-    expect((await TestRequest.get(`${OPTIONS}?audience=EMPLOYEES`, dbAdmin.accessToken)).status).toBe(403);
+    expect((await TestRequest.get(`${OPTIONS}?audiences=EMPLOYEES`, dbAdmin.accessToken)).status).toBe(403);
 
     const legacy = await prismaClient.masterUnit.findUniqueOrThrow({ where: { name: "Unknown / Legacy" } });
     const refused = await addRule(accessToken, { unit_ids: [legacy.id], default_role_key: "MEMBER" });

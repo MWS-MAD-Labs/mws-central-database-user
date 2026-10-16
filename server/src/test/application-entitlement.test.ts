@@ -115,8 +115,8 @@ describe("application entitlements", () => {
     });
     await prismaClient.applicationAccessRule.createMany({
       data: [
-        { application_id: "exima", audience: "EMPLOYEES", default_role_key: "RESOURCE", organization_id: BASELINE_MARKER },
-        { application_id: "daily-checkin", audience: "EMPLOYEES", default_role_key: "BASELINE_TEST", organization_id: BASELINE_MARKER },
+        { application_id: "exima", for_employees: true, default_role_key: "RESOURCE", organization_id: BASELINE_MARKER },
+        { application_id: "daily-checkin", for_employees: true, default_role_key: "BASELINE_TEST", organization_id: BASELINE_MARKER },
       ],
     });
   });

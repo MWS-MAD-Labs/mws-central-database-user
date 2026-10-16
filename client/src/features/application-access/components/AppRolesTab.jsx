@@ -173,6 +173,7 @@ export function AppRolesTab({ applicationId, roles }) {
                 <td className={denseCellClass}>
                   {[
                     role.allows_employees ? "Employees" : null,
+                    role.allows_interns ? "Interns" : null,
                     role.allows_students ? "Students" : null,
                   ]
                     .filter(Boolean)

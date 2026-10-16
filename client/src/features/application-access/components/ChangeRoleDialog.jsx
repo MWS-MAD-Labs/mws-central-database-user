@@ -15,7 +15,7 @@ export function ChangeRoleDialog({ applicationId, exception, roles, onClose, onD
     (role) =>
       role.application_id === applicationId &&
       role.is_active &&
-      (exception.kind === "STUDENT" ? role.allows_students : role.allows_employees !== false),
+      (exception.kind === "STUDENT" ? role.allows_students : exception.kind === "INTERN" ? role.allows_interns : role.allows_employees !== false),
   );
   const selectedRole = options.find((role) => role.key === roleKey);
 

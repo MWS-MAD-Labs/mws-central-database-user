@@ -6,6 +6,7 @@ import {
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { assertJobPositionCapacity } from "../utils/job-position-capacity";
+import { createInternPerson } from "./test-utils";
 
 describe("job position capacity", () => {
   let positionId: string;
@@ -173,8 +174,10 @@ describe("job position capacity", () => {
   });
 
   it("counts active interns as position holders", async () => {
+    const internPerson = await createInternPerson({ email: "test_capacity_intern@millennia21.id", fullName: "Capacity Intern" });
     await prismaClient.intern.create({
       data: {
+        person_id: internPerson.id,
         full_name: "Capacity Intern",
         nick_name: "Intern",
         email: "test_capacity_intern@millennia21.id",
@@ -212,8 +215,10 @@ describe("job position capacity", () => {
         max_active_holders: 1,
       },
     });
+    const globalPerson = await createInternPerson({ email: "test_capacity_global@millennia21.id", fullName: "Global Capacity Intern" });
     await prismaClient.intern.create({
       data: {
+        person_id: globalPerson.id,
         full_name: "Global Capacity Intern",
         nick_name: "Global",
         email: "test_capacity_global@millennia21.id",
