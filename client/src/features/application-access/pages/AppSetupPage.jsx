@@ -11,12 +11,14 @@ import { isPendingFor } from "../../../lib/mutationState.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { ApplicationManagementDialogs } from "../components/ApplicationManagementDialogs.jsx";
+import { AddressLink } from "../components/AddressLink.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
 import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
 import { useApplicationManagement } from "../hooks/useApplicationManagement.js";
 import { useInternalEndpoints } from "../hooks/useInternalEndpoints.js";
 import { buildSteps, stepsDone } from "../utils/setupSteps.js";
 import { canManageApplications } from "../utils/canManageApplications.js";
+import { appHomeUrl } from "../utils/sessionDomain.js";
 
 const POLL_MS = 5000;
 const STALLED_MS = 10 * 60 * 1000;
@@ -157,6 +159,8 @@ export function AppSetupPage() {
     }
   }
 
+  // Where to open the application once, so it connects.
+  const openUrl = setup.is_hub ? (setup.hub?.base_url ?? "") : appHomeUrl(setup.application.launch_url);
   const waiting = setup.connection.created && steps.find((step) => step.id === "connect")?.status === "current";
   const stalled =
     waiting && setup.connection.created_at && now - new Date(setup.connection.created_at).getTime() > STALLED_MS;
@@ -346,6 +350,11 @@ export function AppSetupPage() {
                 <p className="mt-2 text-xs text-(--mws-muted)">
                   Cannot run the application yet? The setup guide has one command that does the same from a terminal.
                 </p>
+                {openUrl ? (
+                  <p className="mt-2 text-xs text-(--mws-muted)">
+                    Open it once so it can connect: <AddressLink url={openUrl} />
+                  </p>
+                ) : null}
                 <p className="mt-2 text-xs text-(--mws-muted)">This page checks every few seconds and updates by itself.</p>
                 {stalled ? (
                   <p role="note" className="mt-3 rounded-lg border border-[#f3d7a3] bg-[#fff8e8] px-3 py-2 text-xs text-[#805b18]">

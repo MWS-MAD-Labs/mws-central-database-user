@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, BookOpen, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, BookOpen, ShieldCheck } from "lucide-react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
@@ -21,12 +21,15 @@ import { AppStatusStrip } from "../components/AppStatusStrip.jsx";
 import { SignInGuide } from "../components/SignInGuide.jsx";
 import { AppActivityTab } from "../components/AppActivityTab.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
+import { AddressLink } from "../components/AddressLink.jsx";
+import { DifferentDomainNote } from "../components/DifferentDomainNote.jsx";
 import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
 import { useApplicationManagement } from "../hooks/useApplicationManagement.js";
 import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.js";
 import { useInternalEndpoints } from "../hooks/useInternalEndpoints.js";
 import { buildSteps, stepsDone, timeAgo } from "../utils/setupSteps.js";
 import { titleCase } from "../utils/roleLabel.js";
+import { appHomeUrl, sameParentDomain } from "../utils/sessionDomain.js";
 import { computeDateRange } from "../../../lib/dateRange.js";
 import { canManageApplications } from "../utils/canManageApplications.js";
 
@@ -141,6 +144,9 @@ export function AppSettingsPage() {
   const endpointCount = countFor(setup.data_access.scope_names);
   const { setEditing, setRotating, setDataAccess, setRemoving, setRemovalGuide, restoreMutation, publishMutation, connectMutation, appSecretMutation, sessionModeMutation, retire, changeAppSecret, changeSessionMode, changePublished } = mgmt;
   const canShow = setup.can_publish && Boolean(app.launch_url);
+  // An application on the shared session whose address is not under the Hub's parent domain.
+  const sharedHere = app.launch_mode === "sso" && app.uses_hub && !setup.hub && app.session_mode === "shared";
+  const differentDomain = sharedHere && sameParentDomain(setup.hub_address, app.launch_url) === false;
 
   const tabs = [
     { id: "overview", label: "Overview" },
@@ -283,7 +289,10 @@ export function AppSettingsPage() {
               ["Name", app.name],
               ["Application ID", mono(app.application_id)],
               ...(setup.is_hub ? [] : [["Organization ID", <CopyableId key="org" value={setup.organization_id} />]]),
-              ...(setup.is_hub ? [] : [["Address", mono(app.launch_url || "Not set")]]),
+              ...(setup.is_hub
+                ? (setup.hub?.base_url ? [["Address", <AddressLink key="addr" url={setup.hub.base_url} />]] : [])
+                : [["Address", app.launch_url ? <AddressLink key="addr" url={appHomeUrl(app.launch_url)} /> : "Not set"]]),
+              ...(setup.is_hub || link || !app.launch_url ? [] : [["Sign-In Address", mono(app.launch_url)]]),
               ...(setup.is_hub || link ? [] : [["Logout Address", mono(app.logout_url || "None")]]),
               ...(setup.is_hub ? [] : [["Opens As", link ? "Plain Link" : "Single Sign-On"]]),
               ...(health ? [["Health", HEALTH_LABEL[health.status]]] : []),
@@ -313,12 +322,13 @@ export function AppSettingsPage() {
                 ["Permissions Received", setup.permissions.synced_at ? `${formatDateTime(setup.permissions.synced_at)} (${timeAgo(setup.permissions.synced_at)} Ago)` : "Not yet"],
                 ["Data Access", <NameList key="d" names={setup.data_access.scope_names} noun="Scopes" title="Data access scopes" plain="None" />],
                 ...(setup.application.launch_mode === "sso" && setup.application.uses_hub && !setup.hub
-                  ? [["Sign-In Way", setup.application.session_mode === "shared" ? "Shared Hub Session" : "Hub Code & Token (Legacy)"]]
+                  ? [["Sign-In Way", setup.application.session_mode === "shared" ? `Shared Hub Session${differentDomain ? " (Different Domain)" : ""}` : "Hub Code & Token (Legacy)"]]
                   : []),
                 ...(setup.hub_secret?.applies ? [["Hub Secret", setup.hub_secret.mode === "own" ? `Dedicated, Version ${setup.hub_secret.version}` : "Shared With Other Apps"]] : []),
                 ["Reads From .env", mono((setup.env_keys ?? []).map((item) => item.key).join(", ") || "-")],
               ]}
             />
+            {differentDomain ? <DifferentDomainNote hubAddress={setup.hub_address} appAddress={app.launch_url} /> : null}
             {setup.application.launch_mode === "sso" && setup.application.uses_hub && !setup.hub ? (
               <SignInGuide mode={setup.application.session_mode === "shared" ? "shared" : "relay"} />
             ) : null}
@@ -408,10 +418,7 @@ export function AppSettingsPage() {
                     <td className={`${denseCellClass} font-mono text-xs text-(--mws-muted)`}>{role.key}</td>
                     <td className={`${denseCellClass} text-center`}>{role.permission_count}</td>
                     <td className={`${denseCellClass} text-center`}>
-                      <span className={role.people === 0 ? "text-(--mws-muted)" : "inline-flex items-center justify-center gap-1"}>
-                        {role.people > 0 ? <Users size={13} aria-hidden="true" className="text-(--mws-muted)" /> : null}
-                        {role.people}
-                      </span>
+                      <span className={role.people === 0 ? "text-(--mws-muted)" : undefined}>{role.people}</span>
                     </td>
                     <td className={`${denseCellClass} text-center`}>{role.groups}</td>
                     <td className={denseCellClass}>

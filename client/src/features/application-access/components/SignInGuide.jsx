@@ -1,5 +1,12 @@
 const SHARED = [
   {
+    title: "The domain has to match",
+    lines: [
+      "The shared session is a cookie on the Hub's parent domain, so every application on it has to be under that same parent. With the Hub at app.mws.web.id the parent is mws.web.id, and daily.mws.web.id works. web.id alone does not count, and neither does another domain like millenniaws.sch.id.",
+      "An application on another domain can be switched to Shared anyway, and Central marks it Different Domain. Nobody can sign in to it with the shared session, and signing out of the Hub does not end a session it still holds. Keep it on Hub Code & Token (Legacy) until it moves.",
+    ],
+  },
+  {
     title: "What Central controls",
     lines: [
       "Central only tells the Hub. The Hub stops making a code for this app and leaves it out of the sign-out and session lists. It picks up a change within a minute, no restart.",

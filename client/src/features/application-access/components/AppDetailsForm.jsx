@@ -17,6 +17,8 @@ import { NextStepsCard } from "./NextStepsCard.jsx";
 import { HubSetupWizard } from "./HubSetupWizard.jsx";
 import { ScopePicker } from "./ScopePicker.jsx";
 import { emailsProblem } from "../utils/hubSettings.js";
+import { sameParentDomain } from "../utils/sessionDomain.js";
+import { DifferentDomainNote } from "./DifferentDomainNote.jsx";
 import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.js";
 const STANDARD_PATHS = { launch: "/auth/sso", logout: "/auth/logout" };
 
@@ -66,7 +68,7 @@ const ADDRESS_TEXTS = {
     "Central cannot reach this address. If it is wrong, the card in the Hub opens a page that does not exist.",
 };
 
-export function AppDetailsForm({ initial, idLocked = false, isHub = false, layout = "dialog", hubExists = false, hubKnown = false, adminEmail = "", suggestedHubUrl = "", deploymentEnvironment = "", submitLabel, submitting, onSubmit, onCancel }) {
+export function AppDetailsForm({ initial, idLocked = false, isHub = false, layout = "dialog", hubExists = false, hubKnown = false, hubAddress = "", adminEmail = "", suggestedHubUrl = "", deploymentEnvironment = "", submitLabel, submitting, onSubmit, onCancel }) {
   const launch = splitAddress(initial?.launch_url);
   const logout = splitAddress(initial?.logout_url, launch.environment);
   const [values, setValues] = useState({
@@ -328,6 +330,10 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
           <Field label="Sign-In Way" hint={SESSION_MODES.find((item) => item.value === sessionMode)?.hint}>
             <SearchableSelect value={sessionMode} onChange={setSessionMode} options={SESSION_MODES} placeholder="Select how it signs in" />
           </Field>
+        ) : null}
+        {layout === "page" && launchMode === "sso" && usesHub && !hub && sessionMode === "shared" && effectiveLaunch.trim() &&
+        sameParentDomain(hubAddress, joinAddress(environment, effectiveLaunch)) === false ? (
+          <DifferentDomainNote hubAddress={hubAddress} appAddress={joinAddress(environment, effectiveLaunch)} />
         ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Scope" hint="The product space it belongs to, like Safespace. Optional.">

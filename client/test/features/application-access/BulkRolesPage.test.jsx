@@ -58,6 +58,17 @@ describe('bulk role helpers', () => {
 })
 
 describe('BulkRolesPage', () => {
+  it('shows the key as a labelled field that cannot be edited, made from the name', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    const key = await screen.findByLabelText('Role key')
+    expect(key).toBeDisabled()
+    expect(key).toHaveValue('')
+    expect(screen.getByPlaceholderText('Role Name')).toBeVisible()
+    await user.type(screen.getByLabelText('Role name'), 'Store Admin')
+    expect(screen.getByLabelText('Role key')).toHaveValue('STORE_ADMIN')
+  })
+
   it('adds several roles at once from the list and the permissions of each', async () => {
     const fetchMock = createFetchRouter(
       routes([{ path: '/api/admin/application-roles', method: 'POST', response: () => jsonResponse({ data: { id: 'new' } }) }]),
@@ -108,7 +119,7 @@ describe('BulkRolesPage', () => {
     expect(screen.getByText('2 / 2')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Previous roles' }))
     expect(screen.getByText('1 / 2')).toBeVisible()
-    expect(screen.getAllByRole('button', { name: /Untitled role/ }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: /Untitled Role/ }).length).toBeGreaterThan(0)
   })
 
   it('copies the permissions of another role', async () => {

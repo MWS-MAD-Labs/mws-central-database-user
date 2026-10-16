@@ -193,7 +193,7 @@ function HubPart({ hubUrl }) {
         <Paragraph>
           After Add Hub one block of lines appears, once: the signing key (HUB_SSO_PRIVATE_KEY and HUB_SSO_KEY_ID), the token, the
           sign-in lines and the secret. Copy all of it into the Hub's environment and deploy or restart the Hub. HUB_COOKIE_DOMAIN, the
-          parent domain all your applications share, can wait until an application uses the shared sign-in.
+          parent domain the Hub and the applications on the shared sign-in share, like mws.web.id, can wait until an application uses it.
         </Paragraph>
       </div>
       <div>
@@ -309,6 +309,13 @@ function SignInPart() {
         <Paragraph>
           Signing in once covers every application. They read the Hub's session from a cookie on the parent domain, so the Hub and the
           application must be subdomains of the same domain, and the Hub needs HUB_COOKIE_DOMAIN set to it.
+        </Paragraph>
+        <Paragraph>
+          Every application on the shared session has to be under the same parent as the Hub. With the Hub at app.mws.web.id the parent is
+          mws.web.id, so daily.mws.web.id works. web.id alone does not count, and another domain like millenniaws.sch.id never gets the cookie.
+          Central checks the addresses and marks an application on another domain as Different Domain. You can still switch it, but nobody can
+          sign in to it with the shared session and signing out of the Hub does not end a session it still holds. Keep it on Hub Code & Token
+          (Legacy) until it moves.
         </Paragraph>
       </div>
       <div>
