@@ -348,12 +348,13 @@ export function AppSetupPage() {
                   <li>Put the .env values you copied in the application.</li>
                   {githubEnvironment ? (
                     <li>
-                      In the repository, add the token as a secret and the Central address and Organization ID as variables to the GitHub
-                      environment <span className="font-mono">{githubEnvironment}</span>. The{" "}
+                      In the repository, add the token, the Central address and the Organization ID in GitHub, so the deploy can send the
+                      permissions. Put them in the environment <span className="font-mono">{githubEnvironment}</span>, or as repository
+                      secrets with {githubEnvironment.toUpperCase()}_ in front if you cannot use environments. The{" "}
                       <Link to={`${guideBase}?part=deploy`} className="font-semibold underline">
                         Setup Guide
                       </Link>{" "}
-                      lists the names and the workflow job. The deploy cannot send the permissions without them.
+                      shows both and the workflow job for each.
                     </li>
                   ) : null}
                   <li>On your machine, run the permission sync by hand or start the application if it sends them on start.</li>

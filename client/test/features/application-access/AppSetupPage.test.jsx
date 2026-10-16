@@ -175,7 +175,7 @@ describe("AppSetupPage", () => {
     expect(screen.getByText("Do This Next")).toBeVisible();
     expect(screen.getByText(/When it is deployed, the pipeline runs the sync/)).toBeVisible();
     // The GitHub values are not left for the guide to mention: the step says so, with the environment of this Central.
-    expect(screen.getByText(/add the token as a secret and the Central address and Organization ID as variables/)).toBeVisible();
+    expect(screen.getByText(/add the token, the Central address and the Organization ID in GitHub/)).toBeVisible();
     const guideLinks = screen.getAllByRole("link", { name: "Setup Guide" });
     expect(guideLinks.some((link) => link.getAttribute("href")?.includes("?part=deploy"))).toBe(true);
     // The page to open once, so the application connects, one click away.
