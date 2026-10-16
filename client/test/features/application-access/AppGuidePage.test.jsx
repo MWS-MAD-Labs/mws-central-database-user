@@ -180,6 +180,10 @@ describe("AppGuidePage", () => {
       const hub = workflowJob({ keys: KEYS, isHub: true, mode: "prefixed" });
       expect(hub).toContain("bun run permissions:sync --retries 5 --wait 20");
       expect(hub).not.toContain("environment:");
+      expect(hub).toContain("CENTRAL_ORGANIZATION_ID: ${{ github.ref_name == 'main' && secrets.PRODUCTION_CENTRAL_ORGANIZATION_ID");
+      const withEnvironments = workflowJob({ keys: KEYS, isHub: false, mode: "environments" });
+      expect(withEnvironments).toContain("environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}");
+      expect(withEnvironments).toContain("CENTRAL_ORGANIZATION_ID: ${{ vars.CENTRAL_ORGANIZATION_ID }}");
       expect(ownerMessage({ applicationName: "X", keys: KEYS, isHub: false, environment: "development", centralUrl: "http://localhost:3000", applicationId: "x" })).toContain(
         "(from the staging Central, I will send it)",
       );

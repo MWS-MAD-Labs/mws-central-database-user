@@ -26,7 +26,8 @@ export function guideRows({ keys, applicationId, selected, environment, centralU
     const prefixed = mode === 'prefixed'
     const kind = prefixed || item.secret ? 'Secret' : 'Variable'
     const name = prefixed ? prefixedName(item.key, selected) : item.key
-    const usedBy = item.key === base || item.key === token ? 'Sync job and app' : 'App'
+    const inPipeline = item.key === base || item.key === token || item.key.endsWith('ORGANIZATION_ID')
+    const usedBy = inPipeline ? 'Pipeline and server' : 'Server only'
     let value = null
     let source = `From the block of the ${selected} Central.`
     if (item.key === 'HUB_SSO_APP_ID') {
@@ -153,11 +154,15 @@ export function prefixedName(key, environment) {
 // the branch. Without them it picks the prefixed secrets with an expression on the branch.
 export function workflowJob({ keys, isHub, mode }) {
   const { base, token } = connectionKeys(keys)
+  const organization = keys.find((item) => item.key.endsWith('ORGANIZATION_ID'))?.key
   const prefixed = mode === 'prefixed' || mode === 'owner-prefixed'
   const pick = (key) =>
     `\${{ github.ref_name == 'main' && secrets.${prefixedName(key, 'production')} || secrets.${prefixedName(key, 'staging')} }}`
   const baseValue = prefixed ? pick(base) : `\${{ vars.${base} }}`
   const tokenValue = prefixed ? pick(token) : `\${{ secrets.${token} }}`
+  const organizationLine = organization
+    ? `\n          ${organization}: ${prefixed ? pick(organization) : `\${{ vars.${organization} }}`}`
+    : ''
   const header = prefixed
     ? `  send-permissions:
     needs: deploy
@@ -175,14 +180,14 @@ export function workflowJob({ keys, isHub, mode }) {
         working-directory: backend
         env:
           CENTRAL_API_BASE_URL: ${baseValue}
-          CENTRAL_API_TOKEN: ${tokenValue}
+          CENTRAL_API_TOKEN: ${tokenValue}${organizationLine}
         run: |
           bun install --frozen-lockfile
           bun run permissions:sync --retries 5 --wait 20`
     : `      - name: Send the permissions to Central
         env:
           ${base}: ${baseValue}
-          ${token}: ${tokenValue}
+          ${token}: ${tokenValue}${organizationLine}
         run: node scripts/sync-permissions.mjs`
   return `${header}
       - uses: actions/checkout@v4

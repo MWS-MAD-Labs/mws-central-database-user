@@ -359,8 +359,13 @@ function DeployPart({ setup, isHub, keys, environment, github, mode, application
               {mode === "environments"
                 ? " The staging branch uses the staging environment and main uses production, so each takes the values of its own Central."
                 : " It picks the staging secrets on the staging branch and the production secrets on main."}{" "}
-              Change deploy if your deploy job has another name. The names marked "Sync job and app" are the two this job needs. The rest are
-              read by the application where it runs, so they go into its environment on the server as well, with the plain names.
+              Change deploy if your deploy job has another name. The names marked "Pipeline and server" are the ones this job reads. The names
+              marked "Server only" are read by the application where it runs, so they go into its environment on the server, with the plain
+              names, and not into the pipeline.
+            </Paragraph>
+            <Paragraph>
+              To stop a deploy when Central refuses the list, run this job before the deploy job instead: remove needs: deploy here and add
+              this job to the needs of the deploy job.
             </Paragraph>
             <Code>{job}</Code>
             <TextAction className="mt-2" icon={Copy} onClick={() => copyText(job)}>
