@@ -2,7 +2,7 @@ import { confirmSignIn, healthOf, type ApplicationHealth, type HealthCredential 
 import { AdminRole, ApiCredentialStatus, HubSecretMode, ApplicationLaunchMode, ApplicationSessionMode, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
 import type { AdminUser } from "../generated/prisma/client";
 import type { HubCardStatus } from "../generated/prisma/client";
-import { API_SCOPES } from "../constants/api-scopes";
+import { API_SCOPES, REQUIRED_CONNECT_SCOPES } from "../constants/api-scopes";
 import { ApplicationTaxonomyService } from "./application-taxonomy-service";
 import { hubApplicationId } from "../constants/hub-application";
 import { notifyHubAppRetired } from "./hub-retire-notice";
@@ -26,11 +26,7 @@ import { AuditService } from "./audit-service";
 import { ApplicationAccessService, clearActiveSnapshot, resolveOrganizationId } from "./application-entitlement-service";
 
 const CONNECT_PURPOSE = "app-connection";
-// Every connection can send permissions and check who may use the application.
-export const REQUIRED_CONNECT_SCOPES: string[] = [
-  API_SCOPES.APPLICATION_PERMISSIONS_WRITE,
-  API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
-];
+export { REQUIRED_CONNECT_SCOPES };
 const DEFAULT_DATA_SCOPES: string[] = [API_SCOPES.EMPLOYEES_READ];
 
 const withRequiredScopes = (names?: string[]) => [...new Set([...REQUIRED_CONNECT_SCOPES, ...(names ?? DEFAULT_DATA_SCOPES)])];

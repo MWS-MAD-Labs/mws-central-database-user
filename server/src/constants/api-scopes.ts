@@ -18,3 +18,9 @@ export const API_SCOPES = {
 } as const;
 
 export type ApiScopeName = (typeof API_SCOPES)[keyof typeof API_SCOPES];
+
+// Every application connection can send permissions and check who may use the application.
+export const REQUIRED_CONNECT_SCOPES: string[] = [
+  API_SCOPES.APPLICATION_PERMISSIONS_WRITE,
+  API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+];

@@ -1,5 +1,5 @@
 import { prismaClient } from "./prisma";
-import { API_SCOPES } from "../constants/api-scopes";
+import { API_SCOPES, REQUIRED_CONNECT_SCOPES } from "../constants/api-scopes";
 import { APPLICATION_INTEGRATION_PROFILES } from "../constants/application-integration-profiles";
 import { getIntegrationEnvironment } from "../utils/integration-environment";
 
@@ -103,6 +103,19 @@ export async function syncApiScopes(): Promise<void> {
         skipDuplicates: true,
       });
     }
+
+    // A connection profile of an application always keeps the scopes every connection needs. Only added, never
+    // removed, so the rest of what an admin set stays.
+    const required = await tx.apiScope.findMany({ where: { name: { in: REQUIRED_CONNECT_SCOPES } }, select: { id: true } });
+    const applications = await tx.application.findMany({ select: { application_id: true } });
+    const connectionProfiles = await tx.applicationIntegrationProfile.findMany({
+      where: { code: { in: applications.map((application) => application.application_id) } },
+      select: { id: true },
+    });
+    await tx.applicationIntegrationProfileScope.createMany({
+      data: connectionProfiles.flatMap((profile) => required.map((scope) => ({ profile_id: profile.id, scope_id: scope.id }))),
+      skipDuplicates: true,
+    });
 
     const hubProfile = await tx.applicationIntegrationProfile.findUnique({
       where: { code: "hub" },
