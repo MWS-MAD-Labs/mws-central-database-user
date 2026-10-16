@@ -9,6 +9,31 @@ import {
 } from "../generated/prisma/client";
 
 const LAST_USED_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
+const ORGANIZATION_HEADER = "x-central-organization-id";
+const ORGANIZATION_SHAPE = /^[A-Za-z0-9_-]{1,100}$/;
+// What was last written for an application, so a call that says the same thing costs no query.
+const noted = new Map<string, { reported: string; at: number }>();
+
+// The Organization ID an application says it has, set from the line in its .env. Central compares it with the one it
+// made, so a wrong or mixed-up value shows in Settings. It never changes the answer to the call.
+async function noteOrganization(applicationId: string, reported: string, now: Date) {
+  const last = noted.get(applicationId);
+  if (last && last.reported === reported && now.getTime() - last.at < LAST_USED_UPDATE_INTERVAL_MS) return;
+  const organization = await prismaClient.applicationOrganization.findUnique({
+    where: { application_id: applicationId },
+    select: { organization_id: true },
+  });
+  if (!organization) return;
+  await prismaClient.application.updateMany({
+    where: { application_id: applicationId },
+    data: {
+      organization_check_ok: organization.organization_id === reported,
+      organization_reported: reported,
+      organization_checked_at: now,
+    },
+  });
+  noted.set(applicationId, { reported, at: now.getTime() });
+}
 
 // A correct token of a retired application gets its own answer, so the application can end its sessions.
 async function retiredApplicationResponse(
@@ -125,6 +150,12 @@ export const apiClientAuthMiddleware = async (
       where: { id: client.id },
       data: { last_used_at: now },
     });
+  }
+
+  const reportedOrganization = c.req.header(ORGANIZATION_HEADER)?.trim();
+  const applicationCode = client.profile?.code;
+  if (reportedOrganization && ORGANIZATION_SHAPE.test(reportedOrganization) && applicationCode && applicationCode !== "unmapped") {
+    await noteOrganization(applicationCode, reportedOrganization, now).catch(() => undefined);
   }
 
   c.set("clientId", client.id);

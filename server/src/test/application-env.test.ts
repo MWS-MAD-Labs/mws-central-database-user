@@ -88,6 +88,7 @@ describe("application env", () => {
         "# The Hub's own connection to Central. Changes when the Hub's token is rotated.",
         'CENTRAL_API_BASE_URL="https://db.mws.web.id/api/internal"',
         'CENTRAL_API_TOKEN="mws_abc.def"',
+        'CENTRAL_ORGANIZATION_ID="org_x_abc"',
         "",
         "# How the Hub checks who may sign in. Changes in the Hub setup wizard.",
         'HUB_CENTRAL_ACCESS_MODE="enforce"',
@@ -95,9 +96,9 @@ describe("application env", () => {
         'HUB_CENTRAL_ACCESS_BYPASS_EMAILS="a@millennia21.id,b@millennia21.id"',
       ].join("\n"),
     );
-    // The Hub does not read these two, so they are not sent.
+    // The Hub has no application ID line of its own, but it sends the Organization ID like every other application.
     expect(items.map((item) => item.key)).not.toContain("HUB_SSO_APP_ID");
-    expect(items.map((item) => item.key)).not.toContain("CENTRAL_ORGANIZATION_ID");
+    expect(items.map((item) => item.key)).toContain("CENTRAL_ORGANIZATION_ID");
     expect(items.find((item) => item.key === "CENTRAL_API_TOKEN")?.secret).toBe(true);
   });
 

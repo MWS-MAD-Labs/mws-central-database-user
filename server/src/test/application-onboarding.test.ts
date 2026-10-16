@@ -547,6 +547,40 @@ describe("application onboarding", () => {
       expect(other.status).toBe(403);
     });
 
+    it("notes whether the Organization ID an application sends is the one Central made, and never refuses a call for it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const { data } = await (await create(accessToken, { connect: true })).json();
+      const organizationId = data.organization_id;
+      const base = { Authorization: `Bearer ${data.connection.token}`, "Content-Type": "application/json" };
+      const check = async () => (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data.organization;
+
+      // Nothing sent yet.
+      expect(await check()).toMatchObject({ id: organizationId, check: "not_reported", reported: null, checked_at: null });
+      const quiet = await TestRequest.get("/api/internal/application-permissions/me", undefined, base);
+      expect(quiet.status).toBe(200);
+      expect((await check()).check).toBe("not_reported");
+
+      // The right one.
+      const right = await TestRequest.get("/api/internal/application-permissions/me", undefined, { ...base, "X-Central-Organization-Id": organizationId });
+      expect(right.status).toBe(200);
+      expect(await check()).toMatchObject({ check: "matches", reported: organizationId });
+
+      // A wrong one is noted, the call still works, and a call without it leaves the note as it was.
+      const wrong = await TestRequest.get("/api/internal/application-permissions/me", undefined, { ...base, "X-Central-Organization-Id": "org_other_aaaaaaaaaaaaaaaaaaaa" });
+      expect(wrong.status).toBe(200);
+      expect(await check()).toMatchObject({ check: "mismatch", reported: "org_other_aaaaaaaaaaaaaaaaaaaa" });
+      await TestRequest.get("/api/internal/application-permissions/me", undefined, base);
+      expect((await check()).check).toBe("mismatch");
+
+      // Something that is not an ID is ignored.
+      await TestRequest.get("/api/internal/application-permissions/me", undefined, { ...base, "X-Central-Organization-Id": "not an id!" });
+      expect((await check()).reported).toBe("org_other_aaaaaaaaaaaaaaaaaaaa");
+
+      // Setting it right again clears the mismatch.
+      await TestRequest.get("/api/internal/application-permissions/me", undefined, { ...base, "X-Central-Organization-Id": organizationId });
+      expect((await check()).check).toBe("matches");
+    });
+
     it("asks a client with no application to name one, and keeps me reserved", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const { token } = await ApiClientTest.createWithToken({ scopeNames: [API_SCOPES.APPLICATION_ENTITLEMENTS_READ] });
@@ -858,6 +892,7 @@ describe("application onboarding", () => {
         expect(items.map((item) => item.key)).toEqual([
           "CENTRAL_API_BASE_URL",
           "CENTRAL_API_TOKEN",
+          "CENTRAL_ORGANIZATION_ID",
           "HUB_CENTRAL_ACCESS_MODE",
           "HUB_CENTRAL_ACCESS_APP_ID",
           "HUB_CENTRAL_ACCESS_BYPASS_EMAILS",

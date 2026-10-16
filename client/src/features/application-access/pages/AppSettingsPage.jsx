@@ -23,6 +23,7 @@ import { AppActivityTab } from "../components/AppActivityTab.jsx";
 import { CopyableId } from "../components/CopyableId.jsx";
 import { AddressLink } from "../components/AddressLink.jsx";
 import { DifferentDomainNote } from "../components/DifferentDomainNote.jsx";
+import { OrganizationCheck } from "../components/OrganizationCheck.jsx";
 import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
 import { useApplicationManagement } from "../hooks/useApplicationManagement.js";
 import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.js";
@@ -288,7 +289,12 @@ export function AppSettingsPage() {
             rows={[
               ["Name", app.name],
               ["Application ID", mono(app.application_id)],
-              ...(setup.is_hub ? [] : [["Organization ID", <CopyableId key="org" value={setup.organization_id} />]]),
+              ["Organization ID", (
+                <div key="org" className="space-y-1">
+                  <CopyableId value={setup.organization_id} />
+                  <p className="text-xs"><OrganizationCheck organization={setup.organization} /></p>
+                </div>
+              )],
               ...(setup.is_hub
                 ? (setup.hub?.base_url ? [["Address", <AddressLink key="addr" url={setup.hub.base_url} />]] : [])
                 : [["Address", app.launch_url ? <AddressLink key="addr" url={appHomeUrl(app.launch_url)} /> : "Not set"]]),
@@ -319,6 +325,7 @@ export function AppSettingsPage() {
               rows={[
                 ["Token", more?.token ? `Made ${formatDate(more.token.created_at)}` : "None Yet"],
                 ["Environment", more?.token?.environment ? titleCase(more.token.environment.toLowerCase()) : setup.environment ? titleCase(setup.environment) : "-"],
+                ["Organization ID Sent", <OrganizationCheck key="orgcheck" organization={setup.organization} />],
                 ["Permissions Received", setup.permissions.synced_at ? `${formatDateTime(setup.permissions.synced_at)} (${timeAgo(setup.permissions.synced_at)} Ago)` : "Not yet"],
                 ["Data Access", <NameList key="d" names={setup.data_access.scope_names} noun="Scopes" title="Data access scopes" plain="None" />],
                 ...(setup.application.launch_mode === "sso" && setup.application.uses_hub && !setup.hub
