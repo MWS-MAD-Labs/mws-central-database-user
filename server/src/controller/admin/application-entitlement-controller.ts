@@ -38,14 +38,32 @@ function listQuery(value: string | undefined): string[] | undefined {
   return items?.length ? items : undefined;
 }
 
-// The address apps reach Central on. CENTRAL_API_PUBLIC_URL wins, otherwise what the proxy forwarded.
-function publicBaseUrl(c: Context<{ Variables: AdminVariables }>): string {
-  const configured = process.env.CENTRAL_API_PUBLIC_URL?.trim();
-  if (configured) return configured.replace(/\/+$/, "");
-  const url = new URL(c.req.url);
-  const proto = c.req.header("x-forwarded-proto")?.split(",")[0]?.trim() || url.protocol.replace(":", "");
-  const host = c.req.header("x-forwarded-host")?.split(",")[0]?.trim() || c.req.header("host") || url.host;
+// Hosts where plain http is expected: local work and private networks.
+const LOCAL_HOST = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?)/i;
+
+// The address apps reach Central on. CENTRAL_API_PUBLIC_URL wins, otherwise what the proxy forwarded. In production a
+// public host is never given as http: a proxy that ends TLS and forgets the header must not put http in a .env.
+export function publicBaseUrlFrom(
+  configured: string | undefined,
+  headers: { proto?: string; host?: string },
+  url: URL,
+  production = process.env.NODE_ENV === "production",
+): string {
+  const fixed = configured?.trim();
+  if (fixed) return fixed.replace(/\/+$/, "");
+  const first = (value: string | undefined) => value?.split(",")[0]?.trim() || undefined;
+  let proto = first(headers.proto) || url.protocol.replace(":", "");
+  const host = first(headers.host) || url.host;
+  if (production && proto === "http" && !LOCAL_HOST.test(host)) proto = "https";
   return `${proto}://${host}`;
+}
+
+function publicBaseUrl(c: Context<{ Variables: AdminVariables }>): string {
+  return publicBaseUrlFrom(
+    process.env.CENTRAL_API_PUBLIC_URL,
+    { proto: c.req.header("x-forwarded-proto"), host: c.req.header("x-forwarded-host") || c.req.header("host") },
+    new URL(c.req.url),
+  );
 }
 
 function requireApplicationId(c: Context<{ Variables: AdminVariables }>): string {
