@@ -2,6 +2,7 @@ import {
   AuditAction,
   AuditSource,
   EmployeeStatus,
+  InternStatus,
   PersonType,
   StudentStatus,
 } from "../generated/prisma/client";
@@ -14,7 +15,9 @@ import {
   type PersonLookupRequest,
   type PersonLookupResponse,
 } from "../model/person-api-model";
+import { API_SCOPES } from "../constants/api-scopes";
 import { EMPLOYEE_INCLUDE } from "./employee-api-service";
+import { INTERN_INCLUDE } from "./intern-api-service";
 import type { ApiClientVariables } from "../type/hono-context";
 import { AuditService } from "./audit-service";
 import { PersonApiValidation } from "../validation/person-api-validation";
@@ -32,9 +35,11 @@ export class PersonApiService {
       request,
     );
 
+    // Interns are found only by a client that may read them, so a caller without the scope sees what it always saw.
+    const withInterns = client.scopes.includes(API_SCOPES.INTERNS_READ);
     const { value: person, cached } = await withLookupCache(
       "person",
-      [lookupRequest.email],
+      [lookupRequest.email, withInterns ? "with-interns" : ""],
       async () =>
         (await prismaClient.person.findFirst({
           where: {
@@ -48,6 +53,9 @@ export class PersonApiService {
                 person_type: PersonType.EMPLOYEE,
                 employee: { status: EmployeeStatus.ACTIVE, deleted_at: null },
               },
+              ...(withInterns
+                ? [{ person_type: PersonType.INTERN, intern: { status: InternStatus.ACTIVE, deleted_at: null } }]
+                : []),
               {
                 person_type: PersonType.STUDENT,
                 student: {
@@ -59,6 +67,7 @@ export class PersonApiService {
           },
           include: {
             ...EMPLOYEE_INCLUDE,
+            ...(withInterns ? INTERN_INCLUDE : {}),
             student: { include: { current_grade: true, current_class: true } },
           },
         })) as PersonLookupPerson | null,
@@ -70,11 +79,11 @@ export class PersonApiService {
         source: AuditSource.API,
         api_client_id: client.clientId,
         entity_type: "Person",
-        entity_id: person?.employee?.id ?? person?.student?.id,
+        entity_id: person?.employee?.id ?? person?.intern?.id ?? person?.student?.id,
         new_values: {
           requested_email: lookupRequest.email,
           found: person !== null,
-          source: person?.employee ? "employee" : person?.student ? "student" : null,
+          source: person?.employee ? "employee" : person?.intern ? "intern" : person?.student ? "student" : null,
           full_name: person?.full_name ?? null,
         },
         ip_address: context.ip_address,
@@ -82,7 +91,7 @@ export class PersonApiService {
       });
     }
 
-    if (!person || (!person.employee && !person.student)) {
+    if (!person || (!person.employee && !person.intern && !person.student)) {
       throw new ResponseError(404, "Person not found");
     }
 

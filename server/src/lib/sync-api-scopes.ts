@@ -10,6 +10,7 @@ const SCOPE_DEFINITIONS: Record<
 > = {
   [API_SCOPES.EMPLOYEES_READ]: { description: "Read employee profile data" },
   [API_SCOPES.STUDENTS_READ]: { description: "Read student profile data" },
+  [API_SCOPES.INTERNS_READ]: { description: "Read intern profile data" },
   [API_SCOPES.STUDENTS_ACADEMIC_HISTORY_READ]: {
     description: "Read student academic history",
   },

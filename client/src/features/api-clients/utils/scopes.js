@@ -11,6 +11,11 @@ const SCOPE_INFO = {
     title: "View employee profiles",
     description: "Names, job positions, units and employment details.",
   },
+  "interns:read": {
+    group: "Interns",
+    title: "View intern profiles",
+    description: "Names, units, job positions and internship dates.",
+  },
   "students:read": {
     group: "Students",
     title: "View student profiles",
@@ -72,6 +77,7 @@ const SCOPE_INFO = {
 
 export const SCOPE_GROUP_ORDER = [
   "Employees",
+  "Interns",
   "Students",
   "Classes and Teachers",
   "Application Access",

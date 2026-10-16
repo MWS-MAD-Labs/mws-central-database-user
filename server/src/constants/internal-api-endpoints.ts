@@ -8,7 +8,7 @@ export type InternalApiEndpointDoc = {
   also_scopes?: string[];
   // Plain-language name and grouping for the admin-facing reference.
   title: string;
-  group: "Students" | "Employees" | "Classes and Teachers" | "Application Access";
+  group: "Students" | "Employees" | "Interns" | "Classes and Teachers" | "Application Access";
   purpose: string;
   // A short extra line shown with the endpoint.
   note?: string;
@@ -90,13 +90,29 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
+    path: "/api/internal/interns",
+    scope: API_SCOPES.INTERNS_READ,
+    title: "List interns",
+    group: "Interns",
+    purpose: "Gets the list of interns so another app can show or sync them.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/interns/lookup?email=intern@millennia21.id",
+    scope: API_SCOPES.INTERNS_READ,
+    title: "Find one intern",
+    group: "Interns",
+    purpose: "Finds a single intern by email, person ID or intern ID.",
+  },
+  {
+    method: "GET",
     path: "/api/internal/persons/lookup?email=person@millennia21.id",
     scope: API_SCOPES.EMPLOYEES_READ,
     also_scopes: [API_SCOPES.STUDENTS_READ],
     title: "Find one person",
     group: "Employees",
-    purpose: "Finds a person by email whether they are an employee or a student.",
-    note: "The token needs both the employee and the student scope.",
+    purpose: "Finds a person by email whether they are an employee, a student or an intern.",
+    note: "The token needs both the employee and the student scope. Interns are found when it also has the intern scope.",
   },
   {
     method: "GET",

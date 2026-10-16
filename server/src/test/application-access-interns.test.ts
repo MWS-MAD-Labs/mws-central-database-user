@@ -242,9 +242,9 @@ describe("group access for interns (API)", () => {
     expect((await grant("LEAD")).status).toBe(200);
   });
 
-  it("keeps interns out of what the applications read, until they can look an intern up", async () => {
+  it("lists an intern for the applications once a group of interns gives them access, and looks them up", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const intern = await addIntern("test_intern_hidden@millennia21.id");
+    const intern = await addIntern("test_intern_listed@millennia21.id");
     const employee = await EmployeeTest.create({
       email: "test_intern_employee@millennia21.id",
       unitId: masterData.unit.id,
@@ -252,20 +252,112 @@ describe("group access for interns (API)", () => {
       jobLevelId: masterData.level.id,
       buildingId: masterData.building.id,
     });
-    expect((await addRule(accessToken, { audiences: ["EMPLOYEES", "INTERNS"], default_role_key: "LEAD" })).status).toBe(200);
     const { token, client } = await ApiClientTest.createWithToken({ scopeNames: [API_SCOPES.APPLICATION_ENTITLEMENTS_READ] });
     apiClientIds.push(client.id);
-    const list = await (
-      await TestRequest.get(`/api/internal/application-entitlements?application_id=${appId}`, undefined, { Authorization: `Bearer ${token}` })
-    ).json();
-    const ids = list.data.map((item: { person_id: string }) => item.person_id);
-    expect(ids).toContain(employee.id);
-    expect(ids).not.toContain(intern.person_id);
+    const headers = { Authorization: `Bearer ${token}` };
+    const list = async () =>
+      (await (await TestRequest.get(`/api/internal/application-entitlements?application_id=${appId}`, undefined, headers)).json()).data.map(
+        (item: { person_id: string }) => item.person_id,
+      );
+
+    // No group of interns yet: only the employees of the group.
+    expect((await addRule(accessToken, { audiences: ["EMPLOYEES"], default_role_key: "STAFF" })).status).toBe(200);
+    expect(await list()).toEqual([employee.id]);
+    clearActiveSnapshotsForTest();
+
+    expect((await addRule(accessToken, { audiences: ["INTERNS"] })).status).toBe(200);
+    expect(await list()).toContain(intern.person_id);
     const lookup = await TestRequest.get(
       `/api/internal/application-entitlements/lookup?person_id=${intern.person_id}&application_id=${appId}`,
       undefined,
-      { Authorization: `Bearer ${token}` },
+      headers,
     );
-    expect(lookup.status).toBe(404);
+    expect(lookup.status).toBe(200);
+    expect((await lookup.json()).data.role).toBe("INTERN_ONLY");
+  });
+});
+
+describe("internal API for interns", () => {
+  let masterData: Awaited<ReturnType<typeof MasterDataTest.create>>;
+  const apiClientIds: string[] = [];
+
+  beforeEach(async () => {
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await prismaClient.auditLog.deleteMany({ where: { api_client_id: { in: apiClientIds } } });
+    if (apiClientIds.length) await prismaClient.apiClient.deleteMany({ where: { id: { in: apiClientIds } } });
+    apiClientIds.length = 0;
+    await InternTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  async function headersFor(scopeNames: string[]) {
+    const { token, client } = await ApiClientTest.createWithToken({ scopeNames });
+    apiClientIds.push(client.id);
+    return { Authorization: `Bearer ${token}` };
+  }
+
+  const addIntern = (email: string, status: InternStatus = InternStatus.ACTIVE) =>
+    InternTest.create({
+      email,
+      status,
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+
+  it("finds an intern by email, person ID or intern ID, without an employee ID or a job level", async () => {
+    const intern = await addIntern("test_intern_api@millennia21.id");
+    const headers = await headersFor([API_SCOPES.INTERNS_READ]);
+    for (const query of [`email=${intern.email}`, `person_id=${intern.person_id}`, `id=${intern.id}`]) {
+      const response = await TestRequest.get(`/api/internal/interns/lookup?${query}`, undefined, headers);
+      expect(response.status).toBe(200);
+      const data = (await response.json()).data;
+      expect(data).toMatchObject({
+        id: intern.id,
+        person_id: intern.person_id,
+        email: intern.email,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        status: "ACTIVE",
+      });
+      expect(data).not.toHaveProperty("employee_id");
+      expect(data).not.toHaveProperty("job_level");
+    }
+  });
+
+  it("does not find an intern who is no longer active, and needs the scope", async () => {
+    const ended = await addIntern("test_intern_ended@millennia21.id", InternStatus.COMPLETED);
+    const headers = await headersFor([API_SCOPES.INTERNS_READ]);
+    expect((await TestRequest.get(`/api/internal/interns/lookup?email=${ended.email}`, undefined, headers)).status).toBe(404);
+    expect((await TestRequest.get("/api/internal/interns/lookup", undefined, headers)).status).toBe(400);
+    const other = await headersFor([API_SCOPES.EMPLOYEES_READ]);
+    expect((await TestRequest.get(`/api/internal/interns/lookup?email=${ended.email}`, undefined, other)).status).toBe(403);
+    expect((await TestRequest.get("/api/internal/interns", undefined, other)).status).toBe(403);
+  });
+
+  it("lists the active interns, filtered", async () => {
+    const one = await addIntern("test_intern_list1@millennia21.id");
+    await addIntern("test_intern_list2@millennia21.id", InternStatus.TERMINATED);
+    const headers = await headersFor([API_SCOPES.INTERNS_READ]);
+    const response = await TestRequest.get(`/api/internal/interns?unit_id=${masterData.unit.id}&q=test_intern_list`, undefined, headers);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.map((item: { id: string }) => item.id)).toEqual([one.id]);
+    expect(body.paging.total_item).toBe(1);
+  });
+
+  it("finds an intern through the combined person lookup only for a token that may read interns", async () => {
+    const intern = await addIntern("test_intern_person@millennia21.id");
+    const base = [API_SCOPES.EMPLOYEES_READ, API_SCOPES.STUDENTS_READ];
+    const without = await headersFor(base);
+    expect((await TestRequest.get(`/api/internal/persons/lookup?email=${intern.email}`, undefined, without)).status).toBe(404);
+    const withScope = await headersFor([...base, API_SCOPES.INTERNS_READ]);
+    const response = await TestRequest.get(`/api/internal/persons/lookup?email=${intern.email}`, undefined, withScope);
+    expect(response.status).toBe(200);
+    expect((await response.json()).data).toMatchObject({ source: "intern", person_id: intern.person_id, unit_id: masterData.unit.id });
   });
 });

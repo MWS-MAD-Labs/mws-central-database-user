@@ -53,6 +53,7 @@ describe("application integration profiles", () => {
       "application_entitlements:read",
       "application_permissions:write",
       "employees:read",
+      "interns:read",
       "students:read",
     ]);
     expect(body.environment).toBeDefined();
@@ -82,6 +83,7 @@ describe("application integration profiles", () => {
         "application_entitlements:read",
         "application_permissions:write",
         "employees:read",
+        "interns:read",
         "students:read",
       ]);
       expect(body.data.credentials).toHaveLength(1);
