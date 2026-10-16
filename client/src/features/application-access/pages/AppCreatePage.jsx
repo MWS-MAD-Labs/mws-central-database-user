@@ -99,6 +99,7 @@ export function AppCreatePage() {
         submitLabel="Add Application"
         hubExists={hubExists}
         hubKnown={hubQuery.isSuccess}
+        hubAddress={contextQuery.data?.hub_address ?? ""}
         suggestedHubUrl={contextQuery.data?.suggested_hub_url ?? ""}
         deploymentEnvironment={contextQuery.data?.environment ?? ""}
         submitting={mutation.isPending}

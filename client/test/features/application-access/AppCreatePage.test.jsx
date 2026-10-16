@@ -588,6 +588,23 @@ describe('AppCreatePage', () => {
     expect(screen.queryByRole('button', { name: 'Shared Hub Session' })).toBeNull()
   })
 
+  it('marks an application on the shared session that is not under the same parent domain as the Hub', async () => {
+    globalThis.fetch = createFetchRouter([
+      SCOPES,
+      HUB_EXISTS,
+      { ...CONTEXT, response: () => jsonResponse({ data: { environment: 'staging', suggested_hub_url: null, hub_address: 'https://app.mws.web.id' } }) },
+      TAXONOMY,
+      APP_OK,
+    ])
+    const { user } = await renderPage()
+    await user.type(screen.getByLabelText('Application Address'), 'app.millenniaws.sch.id/daily-checkin')
+    expect(await screen.findByText('Different Domain')).toBeVisible()
+    expect(screen.getByText(/The Hub is under mws\.web\.id and this application is under millenniaws\.sch\.id/)).toBeVisible()
+    await user.clear(screen.getByLabelText('Application Address'))
+    await user.type(screen.getByLabelText('Application Address'), 'daily.mws.web.id')
+    await waitFor(() => expect(screen.queryByText('Different Domain')).toBeNull())
+  })
+
   it('keeps the Hub choice switched off once a Hub exists', async () => {
     globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
     await renderPage()

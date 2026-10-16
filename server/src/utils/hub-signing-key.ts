@@ -10,7 +10,7 @@ export type HubSigningKey = {
 
 
 // RFC 7638: SHA-256 of the required members in order, base64url.
-export function thumbprintOf(jwk: Record<string, unknown>): string | null {
+export function thumbprintOf(jwk: JsonWebKey | Record<string, unknown>): string | null {
   if (jwk.kty !== "RSA" || typeof jwk.n !== "string" || typeof jwk.e !== "string") return null;
   return createHash("sha256").update(JSON.stringify({ e: jwk.e, kty: "RSA", n: jwk.n })).digest("base64url");
 }

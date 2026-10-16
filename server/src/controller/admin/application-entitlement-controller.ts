@@ -245,6 +245,8 @@ export class ApplicationAccessController {
       data: {
         environment: getIntegrationEnvironment().toLowerCase(),
         suggested_hub_url: suggestedHubUrl,
+        // The address the Hub was added with, to tell whether an application sits under the same parent domain.
+        hub_address: await ApplicationOnboardingService.savedHubAddress(),
       },
     });
   }

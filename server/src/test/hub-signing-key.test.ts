@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { createPrivateKey, createPublicKey, createSign, createVerify, randomBytes } from "node:crypto";
+import { createPublicKey, createSign, createVerify, randomBytes } from "node:crypto";
 import { prismaClient } from "../lib/prisma";
 import { hubKeyEnvItems } from "../utils/application-env";
 import { defaultKid, makeHubSigningKey, pemForEnv, thumbprintOf } from "../utils/hub-signing-key";
@@ -12,7 +12,7 @@ describe("hub signing key", () => {
     const key = makeHubSigningKey("k-test");
     expect(key.kid).toBe("k-test");
     expect(key.privatePem).toStartWith("-----BEGIN PRIVATE KEY-----");
-    const jwk = createPublicKey(key.privatePem).export({ format: "jwk" });
+    const jwk = createPublicKey(key.privatePem).export({ format: "jwk" }) as Record<string, unknown>;
     expect(thumbprintOf(jwk)).toBe(key.thumbprint);
     expect(key.thumbprint).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const signature = createSign("RSA-SHA256").update("hello").sign(key.privatePem);
@@ -32,7 +32,7 @@ describe("hub signing key", () => {
     const value = line!.line.slice('HUB_SSO_PRIVATE_KEY="'.length, -1);
     const restored = value.replace(/\\n/g, "\n");
     expect(restored.trim()).toBe(key.privatePem.trim());
-    expect(thumbprintOf(createPublicKey(createPrivateKey(restored)).export({ format: "jwk" }))).toBe(key.thumbprint);
+    expect(thumbprintOf(createPublicKey(restored).export({ format: "jwk" }))).toBe(key.thumbprint);
   });
 
   it("writes the PEM on one line and ignores things that are not RSA keys", () => {

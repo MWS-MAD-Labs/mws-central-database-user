@@ -193,6 +193,38 @@ describe("AppSettingsPage", () => {
     expect(screen.getByText("Blocked").previousElementSibling).toHaveTextContent("1");
   });
 
+  it("shows the people of a role as a plain number, without an icon", async () => {
+    renderPage(setup(), "/application-access/apps/demo/settings?tab=access");
+    const cell = (await screen.findByText("120")).closest("td");
+    expect(cell.querySelector("svg")).toBeNull();
+  });
+
+  it("links the address of the application so it can be opened from here", async () => {
+    renderPage(setup());
+    const link = await screen.findByRole("link", { name: "https://demo.example.com/" });
+    expect(link).toHaveAttribute("href", "https://demo.example.com/");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
+    // The sign-in address stays visible next to it.
+    expect(screen.getByText("https://demo.example.com/auth/sso")).toBeVisible();
+  });
+
+  it("marks an application on the shared session that is under another domain than the Hub", async () => {
+    const shared = { ...APP, session_mode: "shared", launch_url: "https://app.millenniaws.sch.id/daily-checkin/auth/sso" };
+    const other = renderPage(setup({ application: shared, hub_address: "https://app.mws.web.id", hub_secret: { mode: "shared", version: 1, applies: false } }));
+    await other.user.click(await screen.findByRole("tab", { name: "Connection" }));
+    expect(screen.getByText("Sign-In Way").nextElementSibling).toHaveTextContent("Shared Hub Session (Different Domain)");
+    expect(screen.getByText(/The Hub is under mws\.web\.id and this application is under millenniaws\.sch\.id/)).toBeVisible();
+    other.unmount();
+
+    const same = renderPage(
+      setup({ application: { ...shared, launch_url: "https://daily.mws.web.id/auth/sso" }, hub_address: "https://app.mws.web.id", hub_secret: { mode: "shared", version: 1, applies: false } }),
+    );
+    await same.user.click(await screen.findByRole("tab", { name: "Connection" }));
+    expect(screen.getByText("Sign-In Way").nextElementSibling).toHaveTextContent(/^Shared Hub Session$/);
+    expect(screen.queryByText("Different Domain")).toBeNull();
+  });
+
   it("filters the activity by date range, with this month as the start", async () => {
     const { user } = renderPage(setup(), "/application-access/apps/demo/settings?tab=activity");
     await screen.findByText("Details Changed");

@@ -177,6 +177,10 @@ describe("AppSetupPage", () => {
         /In production, the deploy pipeline should run the sync/,
       ),
     ).toBeVisible();
+    // The page to open once, so the application connects, one click away.
+    const open = screen.getByRole("link", { name: /^https?:\/\// });
+    expect(open).toHaveAttribute("target", "_blank");
+    expect(open.getAttribute("href")).not.toContain("/auth/sso");
     expect(screen.queryByText(/Still nothing after 10 minutes/)).toBeNull();
   });
 

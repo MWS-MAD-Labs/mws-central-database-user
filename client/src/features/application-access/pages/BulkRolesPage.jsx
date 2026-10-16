@@ -98,7 +98,7 @@ function Editor({ applicationId, roles, options }) {
   }
 
   const copyOptions = [
-    ...items.filter((item) => item.id !== selected.id && item.permissions.length > 0).map((item) => ({ value: item.id, label: item.label.trim() || "Untitled role" })),
+    ...items.filter((item) => item.id !== selected.id && item.permissions.length > 0).map((item) => ({ value: item.id, label: item.label.trim() || "Untitled Role" })),
     ...roles.filter((role) => role.is_active).map((role) => ({ value: `existing:${role.id}`, label: role.key })),
   ];
   function copyFrom(value) {
@@ -175,7 +175,7 @@ function Editor({ applicationId, roles, options }) {
               return (
                 <li key={item.id} className={`flex items-center gap-2 px-4 py-2.5 ${item.id === selected.id ? "bg-(--mws-soft)" : ""}`}>
                   <button type="button" aria-current={item.id === selected.id} onClick={() => select(item.id)} className="min-w-0 flex-1 cursor-pointer text-left">
-                    <span className={`block truncate text-sm font-semibold ${item.label ? "text-(--mws-charcoal)" : "text-(--mws-muted)"}`}>{item.label || "Untitled role"}</span>
+                    <span className={`block truncate text-sm font-semibold ${item.label ? "text-(--mws-charcoal)" : "text-(--mws-muted)"}`}>{item.label || "Untitled Role"}</span>
                     <span className="block truncate text-xs text-(--mws-muted)">
                       {AUDIENCES.find((entry) => entry.value === item.audience)?.label}, {item.permissions.length} permission{item.permissions.length === 1 ? "" : "s"}
                       {bad || errors[item.id] ? <span className="text-[#a43c41]"> · Needs a look</span> : null}
@@ -209,8 +209,10 @@ function Editor({ applicationId, roles, options }) {
         <section aria-label="Role details" className="min-w-0 space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Name" error={nameError}>
-              <TextInput aria-label="Role name" value={selected.label} maxLength={64} placeholder="Role name" invalid={Boolean(nameError)} onChange={(event) => update(selected.id, { label: cleanLabelInput(event.target.value) })} />
-              <p className="mt-1 font-mono text-[11px] text-(--mws-muted)">{keyFromLabel(selected.label) || "KEY"}</p>
+              <TextInput aria-label="Role name" value={selected.label} maxLength={64} placeholder="Role Name" invalid={Boolean(nameError)} onChange={(event) => update(selected.id, { label: cleanLabelInput(event.target.value) })} />
+            </Field>
+            <Field label="Key" hint="Made from the name. It cannot be changed here.">
+              <TextInput aria-label="Role key" value={keyFromLabel(selected.label)} placeholder="Made from the name" disabled readOnly className="font-mono" />
             </Field>
             <Field label="For">
               <SearchableSelect value={selected.audience} onChange={(value) => update(selected.id, { audience: value || "employees" })} options={AUDIENCE_OPTIONS} placeholder="Select who it is for" />

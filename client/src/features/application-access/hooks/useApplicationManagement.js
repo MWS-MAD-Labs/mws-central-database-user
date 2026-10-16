@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { differentDomainText, sameParentDomain } from "../utils/sessionDomain.js";
 
 // Everything a person can do to an application besides the steps: edit, connect, rotate, Hub secret, show or hide in
 // the Hub, retire, restore and delete. Shared by the setup steps and the Settings page, with their dialogs in
@@ -122,9 +123,12 @@ export function useApplicationManagement(applicationId, setup) {
   async function changeSessionMode() {
     const toShared = setup.application.session_mode !== "shared";
     const name = setup.application.name;
+    const elsewhere = toShared && sameParentDomain(setup.hub_address, setup.application.launch_url) === false;
     const confirmed = await confirm({
       title: toShared ? "Switch To Shared Hub Session" : "Switch To Hub Code & Token (Legacy)",
-      description: toShared
+      description: elsewhere
+        ? differentDomainText(name, setup.hub_address, setup.application.launch_url)
+        : toShared
         ? `${name} will read the Hub session. Update its code first.`
         : `${name} will get a code and token from the Hub again. Update its code first.`,
       confirmLabel: toShared ? "Switch To Shared Session" : "Switch To Code & Token",

@@ -717,6 +717,10 @@ describe("application baseline access rules", () => {
     expect(listed.find((row: { application_id: string }) => row.application_id === appId).organization_id).toBe(
       one.data.organization_id,
     );
+    // Only the Hub's own row says so: it reads no Organization ID.
+    expect(listed.find((row: { application_id: string }) => row.application_id === appId).is_hub).toBe(false);
+    const hubRow = listed.find((row: { application_id: string }) => row.application_id === "hub");
+    if (hubRow) expect(hubRow.is_hub).toBe(true);
     const dbAdmin = await AdminUserTest.createDatabaseAdmin();
     expect((await TestRequest.get("/api/admin/application-organizations", dbAdmin.accessToken)).status).toBe(403);
   });
