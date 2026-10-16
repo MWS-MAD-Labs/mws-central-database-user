@@ -19,6 +19,7 @@ import { useInternalEndpoints } from "../hooks/useInternalEndpoints.js";
 import { buildSteps, stepsDone } from "../utils/setupSteps.js";
 import { canManageApplications } from "../utils/canManageApplications.js";
 import { appHomeUrl } from "../utils/sessionDomain.js";
+import { githubEnvironmentOf } from "../utils/setupGuide.js";
 
 const POLL_MS = 5000;
 const STALLED_MS = 10 * 60 * 1000;
@@ -54,6 +55,7 @@ export function AppSetupPage() {
     },
   });
   const guideBase = `/application-access/apps/${applicationId}/guide`;
+  const githubEnvironment = githubEnvironmentOf(setupQuery.data?.environment);
   const mgmt = useApplicationManagement(applicationId, setupQuery.data);
   const { setEditing, setRotating, setDataAccess, setRemoving, setRemovalGuide, navigate, restoreMutation, publishMutation, connectMutation, appSecretMutation, retire, changeAppSecret } = mgmt;
 
@@ -344,8 +346,18 @@ export function AppSetupPage() {
                 <p className="font-display text-sm font-bold text-(--mws-charcoal)">Do This Next</p>
                 <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-(--mws-charcoal)">
                   <li>Put the .env values you copied in the application.</li>
+                  {githubEnvironment ? (
+                    <li>
+                      In the repository, add the token as a secret and the Central address and Organization ID as variables to the GitHub
+                      environment <span className="font-mono">{githubEnvironment}</span>. The{" "}
+                      <Link to={`${guideBase}?part=deploy`} className="font-semibold underline">
+                        Setup Guide
+                      </Link>{" "}
+                      lists the names and the workflow job. The deploy cannot send the permissions without them.
+                    </li>
+                  ) : null}
                   <li>On your machine, run the permission sync by hand or start the application if it sends them on start.</li>
-                  <li>In production, the deploy pipeline should run the sync after Central is deployed.</li>
+                  <li>When it is deployed, the pipeline runs the sync with those values.</li>
                 </ol>
                 <p className="mt-2 text-xs text-(--mws-muted)">
                   Cannot run the application yet? The setup guide has one command that does the same from a terminal.

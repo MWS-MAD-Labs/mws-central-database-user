@@ -160,6 +160,7 @@ describe("AppSetupPage", () => {
     renderPage([
       setupRoute(
         makeSetup({
+          environment: "staging",
           connection: { client_id: "c1", created: true, last_used_at: null },
         }),
       ),
@@ -172,11 +173,11 @@ describe("AppSetupPage", () => {
     expect(screen.getByRole("button", { name: "Rotate Token" })).toBeVisible();
     // Tells what to do next instead of leaving the person guessing.
     expect(screen.getByText("Do This Next")).toBeVisible();
-    expect(
-      screen.getByText(
-        /In production, the deploy pipeline should run the sync/,
-      ),
-    ).toBeVisible();
+    expect(screen.getByText(/When it is deployed, the pipeline runs the sync/)).toBeVisible();
+    // The GitHub values are not left for the guide to mention: the step says so, with the environment of this Central.
+    expect(screen.getByText(/add the token as a secret and the Central address and Organization ID as variables/)).toBeVisible();
+    const guideLinks = screen.getAllByRole("link", { name: "Setup Guide" });
+    expect(guideLinks.some((link) => link.getAttribute("href")?.includes("?part=deploy"))).toBe(true);
     // The page to open once, so the application connects, one click away.
     const open = screen.getByRole("link", { name: /^https?:\/\// });
     expect(open).toHaveAttribute("target", "_blank");
