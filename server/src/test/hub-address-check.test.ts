@@ -112,10 +112,10 @@ describe("hub address check", () => {
         const { accessToken } = await AdminUserTest.createSuperAdmin();
         const response = await TestRequest.get(`${ACCESS}/context`, accessToken);
         expect(response.status).toBe(200);
-        expect((await response.json()).data).toEqual({
-          environment: "staging",
-          suggested_hub_url: "https://app-stg.mws.web.id",
-        });
+        const data = (await response.json()).data;
+        expect(data).toMatchObject({ environment: "staging", suggested_hub_url: "https://app-stg.mws.web.id" });
+        // The address the Hub was added with, or nothing while it has none.
+        expect(data).toHaveProperty("hub_address");
       } finally {
         if (previousEnvironment === undefined) delete process.env.DEPLOYMENT_ENVIRONMENT;
         else process.env.DEPLOYMENT_ENVIRONMENT = previousEnvironment;
