@@ -60,6 +60,23 @@ describe("hub address check", () => {
     }
   });
 
+  it("says a Hub has no keys when its nginx front answers /health with plain ok", async () => {
+    const front = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const path = new URL(request.url).pathname;
+        if (path === "/health") return new Response("ok\n", { headers: { "Content-Type": "text/plain" } });
+        if (path === "/.well-known/jwks.json") return new Response("bad gateway", { status: 502 });
+        return new Response("<html></html>");
+      },
+    });
+    try {
+      expect(await checkHubAddress(`http://127.0.0.1:${front.port}`)).toBe("no_keys");
+    } finally {
+      front.stop(true);
+    }
+  });
+
   it("says unreachable when nothing answers", async () => {
     const closed = Bun.serve({ port: 0, fetch: () => new Response("x") });
     const port = closed.port;

@@ -17,7 +17,7 @@ function refusedHost(hostname: string): boolean {
   return host.startsWith("169.254.") || host === "metadata.google.internal" || host === "[fd00:ec2::254]";
 }
 
-// The Hub answers /health with { data: "ok" }. Nothing else is read from it.
+// The Hub answers /health with { data: "ok" }, and its nginx front with plain "ok". Nothing else is read from it.
 async function answersLikeHub(url: URL): Promise<boolean> {
   try {
     const response = await fetch(new URL("/health", url.origin), {
@@ -26,7 +26,9 @@ async function answersLikeHub(url: URL): Promise<boolean> {
       headers: { Accept: "application/json" },
     });
     if (response.status !== 200) return false;
-    const body = JSON.parse((await response.text()).slice(0, MAX_BYTES)) as { data?: unknown };
+    const text = (await response.text()).slice(0, MAX_BYTES).trim();
+    if (text === "ok") return true;
+    const body = JSON.parse(text) as { data?: unknown };
     return body.data === "ok";
   } catch {
     return false;
