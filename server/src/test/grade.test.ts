@@ -992,3 +992,18 @@ describe("DELETE /api/admin/grades/:id", () => {
     expect(body.errors).toBeDefined();
   });
 });
+
+describe("GradeTest.freeLevel", () => {
+  it("gives a level above every grade, also right after one was made with it", async () => {
+    const first = await GradeTest.freeLevel();
+    const unit = await prismaClient.masterUnit.findFirstOrThrow();
+    await prismaClient.grade.create({ data: { name: `TEST_FreeLevel_${Date.now()}`, level: first, unit_id: unit.id } });
+    try {
+      const second = await GradeTest.freeLevel();
+      expect(second).toBeGreaterThan(first);
+      expect(first).toBeGreaterThanOrEqual(9000);
+    } finally {
+      await GradeTest.delete();
+    }
+  });
+});

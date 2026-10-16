@@ -9,6 +9,7 @@ import {
   ClassTest,
   EnrollmentTest,
   InternTest,
+  GradeTest,
 } from "./test-utils";
 import {
   AuditAction,
@@ -365,7 +366,7 @@ describe("GET /api/admin/students/export", () => {
     const otherGrade = await prismaClient.grade.create({
       data: {
         name: `TEST_EXPORT_OTHER_GRADE_${Date.now()}`,
-        level: 9500 + Math.floor(Math.random() * 100),
+        level: await GradeTest.freeLevel(),
         unit_id: otherUnit.id,
       },
     });

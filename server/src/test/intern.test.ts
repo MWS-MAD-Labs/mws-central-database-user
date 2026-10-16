@@ -7,6 +7,7 @@ import {
   MasterDataTest,
   InternTest,
   StudentTest,
+  GradeTest,
 } from "./test-utils";
 import {
   AuditAction,
@@ -437,7 +438,7 @@ describe("GET /api/admin/interns/:id/teaching-assignments", () => {
     const grade = await prismaClient.grade.create({
       data: {
         name: `TEST_INTERN_HISTORY_GRADE_${Date.now()}`,
-        level: 9000 + Math.floor(Math.random() * 1000),
+        level: await GradeTest.freeLevel(),
         unit_id: masterData.unit.id,
       },
     });
