@@ -126,6 +126,10 @@ Redis:
 - `REDIS_PORT`
 - `REDIS_PASSWORD`
 
+Optional:
+
+- `CENTRAL_API_PUBLIC_URL`: alamat Central yang ditulis ke blok `.env` aplikasi lain, tanpa `/api/internal`, misalnya `https://db-stg.mws.web.id`. Bila kosong, alamat dibaca dari header `X-Forwarded-Proto` dan `X-Forwarded-Host`. Isi bila gateway tidak mengirim header itu.
+
 ### Frontend
 
 Required:
