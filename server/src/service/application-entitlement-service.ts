@@ -1499,7 +1499,6 @@ export class ApplicationOrganizationService {
     return rows.map((row) => ({
       application_id: row.application_id,
       organization_id: row.organization_id,
-      is_hub: row.application_id === hubApplicationId(),
     }));
   }
 }

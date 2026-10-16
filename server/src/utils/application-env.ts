@@ -121,6 +121,7 @@ export function buildEnvItems(facts: Facts): EnvItem[] {
     return [
       item("CENTRAL_API_BASE_URL", `${facts.publicUrl}/api/internal`, 0, false, HEADINGS.hubOwnCentral),
       item("CENTRAL_API_TOKEN", facts.token, 0, true),
+      item("CENTRAL_ORGANIZATION_ID", facts.organizationId, 0),
       item("HUB_CENTRAL_ACCESS_MODE", settings.hub_access_mode, 1, false, HEADINGS.hubSignIn),
       item("HUB_CENTRAL_ACCESS_APP_ID", facts.applicationId, 1),
       item("HUB_CENTRAL_ACCESS_BYPASS_EMAILS", settings.hub_bypass_emails.join(","), 1),

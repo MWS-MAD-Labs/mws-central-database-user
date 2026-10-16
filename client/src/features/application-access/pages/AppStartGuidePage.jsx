@@ -192,7 +192,7 @@ function HubPart({ hubUrl }) {
         <SubHeading>3. Copy the block once</SubHeading>
         <Paragraph>
           After Add Hub one block of lines appears, once: the signing key (HUB_SSO_PRIVATE_KEY and HUB_SSO_KEY_ID), the token, the
-          sign-in lines and the secret. Copy all of it into the Hub's environment and deploy or restart the Hub. HUB_COOKIE_DOMAIN, the
+          sign-in lines, CENTRAL_ORGANIZATION_ID and the secret. Copy all of it into the Hub's environment and deploy or restart the Hub. HUB_COOKIE_DOMAIN, the
           parent domain the Hub and the applications on the shared sign-in share, like mws.web.id, can wait until an application uses it.
         </Paragraph>
       </div>
@@ -239,7 +239,7 @@ function AppPart() {
           items={[
             "Applications, Add Application: name it. The ID is made from the name and cannot change later.",
             "Say how the Hub shows it (icon, group, description) and what it may read from Central. Employees is the default.",
-            "Add it. A block of environment lines appears once, with the token. Copy it before you close the box. If you lose it, rotate the token.",
+            "Add it. A block of environment lines appears once, with the token and CENTRAL_ORGANIZATION_ID. Copy it before you close the box. If you lose it, rotate the token.",
           ]}
         />
       </div>
@@ -258,6 +258,7 @@ function AppPart() {
           items={[
             "Put the lines from step 1 in the application's environment on the server, and in its .env on your machine.",
             "Deploy the application. Central shows it as connected as soon as it calls Central with the token.",
+            "The application sends CENTRAL_ORGANIZATION_ID with every call. Settings shows Matches when it is the one Central made, and Does Not Match when it was copied wrong or taken from another environment.",
             "The address of the application is checked every few minutes. If its page says it is down, open that address yourself first.",
           ]}
         />

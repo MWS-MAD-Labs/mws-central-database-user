@@ -84,6 +84,8 @@ export type SetupStatus = {
   environment: "development" | "test" | "staging" | "production";
   central_url: string;
   hub_address: string | null;
+  // The Organization ID Central made, and whether the application sends the same one when it calls.
+  organization: { id: string; check: "matches" | "mismatch" | "not_reported"; reported: string | null; checked_at: string | null };
   // How an application gets the Hub secret. Null for the Hub, which holds the master.
   hub_secret: { mode: "shared" | "own"; version: number; applies: boolean } | null;
   // The names this application reads in its .env, so the guides can name them.
@@ -594,6 +596,12 @@ export class ApplicationOnboardingService {
       environment: getIntegrationEnvironment().toLowerCase() as SetupStatus["environment"],
       central_url: publicUrl,
       hub_address: applicationId === hubApplicationId() ? null : (await loadHubFacts(false)).baseUrl,
+      organization: {
+        id: organizationId,
+        check: app.organization_checked_at ? (app.organization_check_ok ? "matches" : "mismatch") : "not_reported",
+        reported: app.organization_reported,
+        checked_at: app.organization_checked_at ? app.organization_checked_at.toISOString() : null,
+      },
       hub_secret:
         applicationId === hubApplicationId()
           ? null

@@ -225,6 +225,26 @@ describe("AppSettingsPage", () => {
     expect(screen.queryByText("Different Domain")).toBeNull();
   });
 
+  it("says whether the application sends the Organization ID Central made, for the Hub too", async () => {
+    const organization = (check, reported = null) => ({ id: "org_demo_abcdefghijklmnopqrst", check, reported, checked_at: reported ? new Date().toISOString() : null });
+    const none = renderPage(setup({ organization: organization("not_reported") }));
+    expect(await screen.findByText(/Not Reported Yet/)).toBeVisible();
+    none.unmount();
+
+    const good = renderPage(setup({ organization: organization("matches", "org_demo_abcdefghijklmnopqrst") }));
+    expect(await screen.findAllByText("Matches")).not.toHaveLength(0);
+    good.unmount();
+
+    const bad = renderPage(setup({ organization: organization("mismatch", "org_other_zzzzzzzzzzzzzzzzzzzz") }));
+    expect(await screen.findAllByText(/Does Not Match, it sent/)).not.toHaveLength(0);
+    expect(screen.getAllByText("org_other_zzzzzzzzzzzzzzzzzzzz").length).toBeGreaterThan(0);
+    bad.unmount();
+
+    renderPage(setup({ is_hub: true, application: { ...APP, application_id: "hub" }, hub: { base_url: "https://hub.example.com", secret_set: true, key_ready: true }, env_settings: { hub_access_mode: "warn", hub_bypass_emails: [] }, organization: organization("matches", "org_demo_abcdefghijklmnopqrst") }));
+    expect(await screen.findByText("Organization ID")).toBeVisible();
+    expect(screen.getByText("Matches")).toBeVisible();
+  });
+
   it("filters the activity by date range, with this month as the start", async () => {
     const { user } = renderPage(setup(), "/application-access/apps/demo/settings?tab=activity");
     await screen.findByText("Details Changed");

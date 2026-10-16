@@ -1701,6 +1701,11 @@ model Application {
   hub_signing_kid        String?
   hub_signing_thumbprint String?
   hub_signing_created_at DateTime?
+  // What the application says its Organization ID is, when it calls Central, and whether that is the one Central made.
+  // Null until it sends one. It is only noted, a call is never refused for it.
+  organization_check_ok  Boolean?
+  organization_reported  String?
+  organization_checked_at DateTime?
   // sso: opened through the Hub's sign-in handoff. link: a plain address, nothing to connect.
   launch_mode    ApplicationLaunchMode @default(SSO)
   session_mode   ApplicationSessionMode @default(RELAY)

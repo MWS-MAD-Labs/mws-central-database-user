@@ -16,18 +16,17 @@ const ORGANIZATIONS = {
 }
 
 describe('OrganizationNote', () => {
-  it('says nothing for the Hub, which reads no Organization ID', async () => {
+  it('shows the Organization ID of the Hub like any other application', async () => {
     globalThis.fetch = createFetchRouter([ORGANIZATIONS])
-    const { container } = renderWithProviders(<OrganizationNote applicationId="hub" />)
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    expect(screen.queryByText('Organization ID')).toBeNull()
-    expect(container).toBeEmptyDOMElement()
+    renderWithProviders(<OrganizationNote applicationId="hub" />)
+    expect(await screen.findByText('org_hub_aaaaaaaaaaaaaaaaaaaa')).toBeVisible()
+    expect(screen.getByText(/Central checks it when hub calls/)).toBeVisible()
   })
 
   it('shows the ID of another application and says it is already in its .env', async () => {
     globalThis.fetch = createFetchRouter([ORGANIZATIONS])
     renderWithProviders(<OrganizationNote applicationId="exima" />)
     expect(await screen.findByText('org_exima_bbbbbbbbbbbbbbbbbbbb')).toBeVisible()
-    expect(screen.getByText(/already in the \.env of exima as CENTRAL_ORGANIZATION_ID/)).toBeVisible()
+    expect(screen.getByText(/already in the \.env block as CENTRAL_ORGANIZATION_ID/)).toBeVisible()
   })
 })
