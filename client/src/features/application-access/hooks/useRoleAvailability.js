@@ -11,9 +11,9 @@ export function useRoleAvailability(request) {
     const timer = window.setTimeout(() => setSettled(wanted), 300);
     return () => window.clearTimeout(timer);
   }, [wanted]);
-  const { applicationId, audience, scope, groupId } = JSON.parse(settled);
+  const { applicationId, audiences, scope, groupId } = JSON.parse(settled);
   const key = [
-    audience,
+    audiences.join("+"),
     scope.unit_ids.join(","),
     scope.job_position_ids.join(","),
     scope.job_level_ids.join(","),
@@ -23,7 +23,7 @@ export function useRoleAvailability(request) {
     queryKey: ["application-access", "role-options", applicationId, ...key],
     queryFn: () =>
       applicationAccessApi.roleOptions(applicationId, {
-        audience,
+        audiences: audiences.join(","),
         unit_ids: scope.unit_ids.join(","),
         job_position_ids: scope.job_position_ids.join(","),
         job_level_ids: scope.job_level_ids.join(","),

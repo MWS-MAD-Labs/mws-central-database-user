@@ -1,4 +1,4 @@
-import { audienceLabels } from "./groupFilterState.js";
+import { audienceLabelOf, countOf as countOfAudiences, hasEmployees, hasStaff } from "./audiences.js";
 import { UNKNOWN_LEGACY_UNIT_NAME } from "./legacyUnit.js";
 
 // Plain text for where a group reaches, from the card the server returns.
@@ -6,12 +6,14 @@ export function groupScopeSummary(group) {
   const parts = [
     group.units.length ? `Units: ${group.units.map((item) => item.name).join(", ")}` : "All Units",
   ];
-  if (group.audience !== "STUDENTS") {
+  if (hasStaff(group.audiences)) {
     parts.push(
       group.job_positions.length
         ? `Positions: ${group.job_positions.map((item) => item.name).join(", ")}`
         : "All Positions",
     );
+  }
+  if (hasEmployees(group.audiences)) {
     parts.push(
       group.job_levels.length
         ? `Levels: ${group.job_levels.map((item) => item.name).join(", ")}`
@@ -24,11 +26,11 @@ export function groupScopeSummary(group) {
 // The scope as label, plural noun and names. No names means "All".
 export function groupScopeChips(group) {
   const chips = [{ label: "Units", noun: "units", names: group.units.map((item) => item.name).filter((name) => name !== UNKNOWN_LEGACY_UNIT_NAME) }];
-  if (group.audience !== "STUDENTS") {
-    chips.push(
-      { label: "Positions", noun: "positions", names: group.job_positions.map((item) => item.name) },
-      { label: "Levels", noun: "levels", names: group.job_levels.map((item) => item.name) },
-    );
+  if (hasStaff(group.audiences)) {
+    chips.push({ label: "Positions", noun: "positions", names: group.job_positions.map((item) => item.name) });
+  }
+  if (hasEmployees(group.audiences)) {
+    chips.push({ label: "Levels", noun: "levels", names: group.job_levels.map((item) => item.name) });
   }
   return chips;
 }
@@ -46,7 +48,7 @@ export function groupScopeBrief(group) {
 }
 
 export function groupTitle(group) {
-  return audienceLabels[group.audience];
+  return audienceLabelOf(group.audiences);
 }
 
 // Permissions grouped by the part before the first dot, for reading.
@@ -64,16 +66,7 @@ export function groupShortTitle(group) {
   return groupTitle(group).replace(/^All /, "");
 }
 
-const audienceNoun = {
-  EMPLOYEES: ["Employee", "Employees"],
-  STUDENTS: ["Student", "Students"],
-  EMPLOYEES_AND_STUDENTS: ["Person", "People"],
-};
-
 // "3 Employees", "1 Student".
-export function countOf(count, audience) {
-  const [one, many] = audienceNoun[audience];
-  return `${count} ${count === 1 ? one : many}`;
-}
+export const countOf = countOfAudiences;
 
 

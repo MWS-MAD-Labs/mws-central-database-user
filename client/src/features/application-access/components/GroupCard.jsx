@@ -51,7 +51,7 @@ export function GroupCard({
             />
             <span className="flex items-center gap-2 font-display text-base font-bold text-(--mws-charcoal)">
               <span className="text-(--mws-burgundy)">
-                <AudienceIcon audience={group.audience} />
+                <AudienceIcon audiences={group.audiences} />
               </span>
               {groupShortTitle(group)}
               {group.is_active ? null : (
@@ -66,7 +66,7 @@ export function GroupCard({
             </span>
             <span className="ml-auto flex items-center gap-4 text-sm font-normal">
               <RoleName>{group.default_role_key}</RoleName>
-              <span className="text-(--mws-muted)">{countOf(group.covered_count ?? 0, group.audience)}</span>
+              <span className="text-(--mws-muted)">{countOf(group.covered_count ?? 0, group.audiences)}</span>
               <span className="text-(--mws-muted)">
                 {group.exception_count} Exception{group.exception_count === 1 ? "" : "s"}
               </span>
@@ -116,7 +116,7 @@ export function GroupCard({
             <ScopeGrid group={group} />
             <RolePill roleKey={group.default_role_key} permissions={group.permissions} applicationId={group.application_id ?? applicationId} />
           </div>
-          {group.audience === "EMPLOYEES_AND_STUDENTS" ? (
+          {group.audiences.includes("STUDENTS") && group.audiences.length > 1 ? (
             <p className="rounded-xl bg-[#fff8e8] px-3 py-2 text-xs text-[#805b18]">
               Covers employees and students together. Create one group for each and remove this one.
             </p>

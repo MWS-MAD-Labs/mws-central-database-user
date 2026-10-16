@@ -1,11 +1,7 @@
 import { useMemo, useState } from "react";
 import { hasRemoved } from "./scopeRules.js";
 
-export const audienceLabels = {
-  EMPLOYEES: "All Active Employees",
-  STUDENTS: "All Active Students",
-  EMPLOYEES_AND_STUDENTS: "All Active Employees and Students",
-};
+export { audienceLabels } from "./audiences.js";
 
 const toSelection = (ids = []) => (ids.length > 0 ? ids : null);
 
@@ -81,8 +77,13 @@ const isNone = (selection) => selection.selected !== null && selection.selected.
 const names = (list) => list.map((item) => item.name).join(", ");
 
 // Nothing may end up unchecked: "none" is not a valid filter.
+// `audience` is the key of the audiences (see audiences.js): STUDENTS, EMPLOYEES, INTERNS or EMPLOYEES_AND_INTERNS.
+// Job levels exist for employees only.
+const usesLevels = (audience) => audience.includes("EMPLOYEES");
+
 export function groupFilterErrors(state, audience, knownUnitIds, studentUnitIds) {
   const employeesOnly = audience !== "STUDENTS";
+  const withLevels = employeesOnly && usesLevels(audience);
   return {
     units: isNone(state.units)
       ? "Pick at least one unit, or choose All Units."
@@ -98,9 +99,9 @@ export function groupFilterErrors(state, audience, knownUnitIds, studentUnitIds)
         ? "Pick at least one job position, or choose All Positions."
         : undefined,
     levels:
-      employeesOnly && isNone(state.levels)
+      withLevels && isNone(state.levels)
         ? "Pick at least one job level, or choose All Levels."
-        : employeesOnly && state.unsupported?.levels?.length > 0
+        : withLevels && state.unsupported?.levels?.length > 0
           ? `${names(state.unsupported.levels)} ${state.unsupported.levels.length === 1 ? "has" : "have"} no matching unit or position in this scope. Remove ${state.unsupported.levels.length === 1 ? "it" : "them"} or change the units.`
           : undefined,
   };
@@ -117,6 +118,6 @@ export function groupFilterPayload(state, audience, knownUnitIds) {
   return {
     unit_ids: knownUnitIds ? units.filter((id) => knownUnitIds.has(id)) : units,
     job_position_ids: employeesOnly ? selectionIds(state.positions) : [],
-    job_level_ids: employeesOnly ? selectionIds(state.levels) : [],
+    job_level_ids: employeesOnly && usesLevels(audience) ? selectionIds(state.levels) : [],
   };
 }

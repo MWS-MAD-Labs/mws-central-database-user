@@ -156,10 +156,12 @@ export function GroupFilters({
   onReviewChange,
 }) {
   const employeesOnly = audience !== "STUDENTS";
+  // Interns have a job position and no job level.
+  const withLevels = employeesOnly && audience.includes("EMPLOYEES");
   const steps = employeesOnly
     ? [
         { key: "units", label: "Units" },
-        { key: "levels", label: "Job Levels" },
+        ...(withLevels ? [{ key: "levels", label: "Job Levels" }] : []),
         { key: "positions", label: "Job Positions" },
         { key: "review", label: "Review" },
       ]
@@ -239,7 +241,7 @@ export function GroupFilters({
           selection={state.units}
           hint={
             employeesOnly
-              ? audience === "EMPLOYEES_AND_STUDENTS"
+              ? audience.includes("STUDENTS")
                 ? "Choose the units this group covers. Units without students add employees only."
                 : "Choose the units this group covers."
               : "Pick the school units whose students this group covers."
@@ -298,7 +300,7 @@ export function GroupFilters({
               unitChoices,
               employeesOnly ? "All Units" : "All School Units",
             ],
-            ...(employeesOnly
+            ...(withLevels
               ? [
                   [
                     "Job Levels",
@@ -306,6 +308,10 @@ export function GroupFilters({
                     options.jobLevels || [],
                     "All Levels",
                   ],
+                ]
+              : []),
+            ...(employeesOnly
+              ? [
                   [
                     "Job Positions",
                     state.positions.selected,

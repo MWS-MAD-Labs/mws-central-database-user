@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { ChecklistPicker } from "../../../components/ui/ChecklistPicker.jsx";
-import { Field, SearchableSelect, TextInput } from "../../../components/ui/FormControls.jsx";
+import { Field, SearchableSelect, TextInput, ToggleChip } from "../../../components/ui/FormControls.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
@@ -13,12 +13,11 @@ import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { useApplicationPermissions } from "../hooks/useApplicationPermissions.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
-import { AUDIENCES, columnProblems, keyFromLabel, newColumn, requiredBy, togglePermission } from "../utils/bulkRoles.js";
+import { ROLE_AUDIENCES, audienceText, columnProblems, keyFromLabel, newColumn, requiredBy, togglePermission } from "../utils/bulkRoles.js";
 import { cleanLabelInput, labelProblem } from "../utils/roleLabel.js";
 import { canManageApplications } from "../utils/canManageApplications.js";
 
 const LIST_PAGE = 6;
-const AUDIENCE_OPTIONS = AUDIENCES.map((item) => ({ value: item.value, label: item.label }));
 
 export function BulkRolesPage() {
   const { user } = useAuth();
@@ -118,15 +117,15 @@ function Editor({ applicationId, roles, options }) {
     const left = [];
     let added = 0;
     for (const item of items) {
-      const audience = AUDIENCES.find((entry) => entry.value === item.audience);
       try {
         await applicationAccessApi.createRole({
           application_id: applicationId,
           key: keyFromLabel(item.label),
           label: item.label.trim(),
           permissions: item.permissions,
-          allows_employees: audience.allows_employees,
-          allows_students: audience.allows_students,
+          allows_employees: item.employees,
+          allows_interns: item.interns,
+          allows_students: item.students,
         });
         added += 1;
       } catch (error) {
@@ -177,7 +176,7 @@ function Editor({ applicationId, roles, options }) {
                   <button type="button" aria-current={item.id === selected.id} onClick={() => select(item.id)} className="min-w-0 flex-1 cursor-pointer text-left">
                     <span className={`block truncate text-sm font-semibold ${item.label ? "text-(--mws-charcoal)" : "text-(--mws-muted)"}`}>{item.label || "Untitled Role"}</span>
                     <span className="block truncate text-xs text-(--mws-muted)">
-                      {AUDIENCES.find((entry) => entry.value === item.audience)?.label}, {item.permissions.length} permission{item.permissions.length === 1 ? "" : "s"}
+                      {audienceText(item)}, {item.permissions.length} permission{item.permissions.length === 1 ? "" : "s"}
                       {bad || errors[item.id] ? <span className="text-[#a43c41]"> · Needs a look</span> : null}
                     </span>
                   </button>
@@ -215,7 +214,21 @@ function Editor({ applicationId, roles, options }) {
               <TextInput aria-label="Role key" value={keyFromLabel(selected.label)} placeholder="Made from the name" disabled readOnly className="font-mono" />
             </Field>
             <Field label="For">
-              <SearchableSelect value={selected.audience} onChange={(value) => update(selected.id, { audience: value || "employees" })} options={AUDIENCE_OPTIONS} placeholder="Select who it is for" />
+              <div className="flex flex-wrap gap-2" role="group" aria-label="For">
+                {ROLE_AUDIENCES.map((item) => (
+                  <ToggleChip
+                    key={item.key}
+                    checked={selected[item.key]}
+                    onChange={(checked) => {
+                      // A role is always for somebody, so the last one stays ticked.
+                      const others = ROLE_AUDIENCES.some((other) => other.key !== item.key && selected[other.key]);
+                      if (checked || others) update(selected.id, { [item.key]: checked });
+                    }}
+                  >
+                    {item.label}
+                  </ToggleChip>
+                ))}
+              </div>
             </Field>
           </div>
           {copyOptions.length > 0 ? (

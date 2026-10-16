@@ -112,6 +112,7 @@ describe('RoleFormPage', () => {
         label: 'Cashier',
         permissions: ['pos.checkout'],
         allows_employees: true,
+        allows_interns: false,
         allows_students: true,
       })
     })

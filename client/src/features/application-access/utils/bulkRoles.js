@@ -9,14 +9,20 @@ export function keyFromLabel(label) {
   return /^[A-Z]/.test(key) ? key : `ROLE_${key}`
 }
 
-export const AUDIENCES = [
-  { value: 'employees', label: 'Employees', allows_employees: true, allows_students: false },
-  { value: 'students', label: 'Students', allows_employees: false, allows_students: true },
-  { value: 'both', label: 'Both', allows_employees: true, allows_students: true },
+// Who a new role is for: employees, interns, students, or more than one. At least one stays ticked.
+export const ROLE_AUDIENCES = [
+  { key: 'employees', label: 'Employees' },
+  { key: 'interns', label: 'Interns' },
+  { key: 'students', label: 'Students' },
 ]
 
+export const audienceText = (column) =>
+  ROLE_AUDIENCES.filter((item) => column[item.key])
+    .map((item) => item.label)
+    .join(' and ')
+
 let counter = 0
-export const newColumn = () => ({ id: `new-${(counter += 1)}`, label: '', audience: 'employees', permissions: [] })
+export const newColumn = () => ({ id: `new-${(counter += 1)}`, label: '', employees: true, interns: false, students: false, permissions: [] })
 
 // Everything a permission needs, directly or through the ones it needs.
 export function requiredBy(options) {

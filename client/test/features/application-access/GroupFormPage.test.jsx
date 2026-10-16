@@ -213,7 +213,7 @@ describe('GroupFormPage', () => {
     expect(await screen.findByText('Only a protected Super Admin can manage application access.')).toBeVisible()
   })
 
-  it('offers only the active roles of this application and shows the organization id', async () => {
+  it('offers only the active roles of this application', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
     expect(await screen.findByText('Add Group to exima')).toBeVisible()
@@ -225,7 +225,8 @@ describe('GroupFormPage', () => {
     await user.click(screen.getByRole('option', { name: /STAFF/ }))
     await user.click(screen.getByRole('button', { name: '1 permission' }))
     expect(within(screen.getByRole('dialog', { name: 'Permissions' })).getByText('store.use')).toBeVisible()
-    expect(await screen.findByText('org_exima_a1b2c3')).toBeVisible()
+    // The organization is in the .env block and in Settings, not on this form.
+    expect(screen.queryByText('org_exima_a1b2c3')).not.toBeInTheDocument()
   })
 
   it('keeps All and the checked items in step, and sends an empty list for All', async () => {
@@ -256,7 +257,7 @@ describe('GroupFormPage', () => {
         url === '/api/admin/application-access-rules' && options.method === 'POST')
       expect(JSON.parse(call[1].body)).toEqual({
         application_id: 'exima',
-        audience: 'EMPLOYEES',
+        audiences: ['EMPLOYEES'],
         unit_ids: [],
         job_position_ids: [],
         job_level_ids: [],
@@ -287,7 +288,7 @@ describe('GroupFormPage', () => {
         url === '/api/admin/application-access-rules' && options.method === 'POST')
       expect(JSON.parse(call[1].body)).toEqual({
         application_id: 'exima',
-        audience: 'EMPLOYEES',
+        audiences: ['EMPLOYEES'],
         unit_ids: ['unit-1'],
         job_position_ids: ['pos-1'],
         job_level_ids: [],
@@ -302,8 +303,7 @@ describe('GroupFormPage', () => {
     await screen.findByText('Add Group to exima')
     expect(screen.getByText('Job Positions')).toBeVisible()
 
-    await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
-    await user.click(screen.getByRole('option', { name: 'All Active Students' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Students' }))
     expect(screen.getByRole('switch', { name: 'All Units' })).toBeVisible()
     expect(within(screen.getByLabelText('Scope Steps')).queryByText('Job Positions')).not.toBeInTheDocument()
   })
@@ -317,8 +317,7 @@ describe('GroupFormPage', () => {
     await screen.findByText('Add Group to exima')
     expect(screen.queryByLabelText(/Allow Exceptions/)).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
-    await user.click(screen.getByRole('option', { name: 'All Active Students' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Students' }))
     const allow = await screen.findByLabelText(/Allow Exceptions/)
     expect(allow).not.toBeChecked()
     expect(screen.getByText(/requires a specific role/)).toBeVisible()
@@ -330,7 +329,7 @@ describe('GroupFormPage', () => {
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url, options]) =>
         url === '/api/admin/application-access-rules' && options.method === 'POST')
-      expect(JSON.parse(call[1].body)).toMatchObject({ audience: 'STUDENTS', allows_exceptions: true, default_role_key: 'STAFF' })
+      expect(JSON.parse(call[1].body)).toMatchObject({ audiences: ['STUDENTS'], allows_exceptions: true, default_role_key: 'STAFF' })
     })
   })
 
@@ -340,20 +339,63 @@ describe('GroupFormPage', () => {
     await screen.findByText('Add Group to exima')
     await waitFor(() => expect(screen.getByRole('switch', { name: 'MAD Lab' })).toBeVisible())
 
-    await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
-    await user.click(screen.getByRole('option', { name: 'All Active Students' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Students' }))
     // MAD Lab has employees only; Elementary has grades.
     expect(await screen.findByRole('switch', { name: 'Elementary' })).toBeVisible()
     expect(screen.queryByRole('switch', { name: 'MAD Lab' })).not.toBeInTheDocument()
     expect(screen.getByText('Pick the school units whose students this group covers.')).toBeVisible()
   })
 
-  it('no longer offers the audience for employees and students together', async () => {
+  it('lets employees and interns be ticked together, and keeps students apart', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPage()
     await screen.findByText('Add Group to exima')
-    await user.click(screen.getByRole('button', { name: 'All Active Employees' }))
-    expect(screen.getByRole('option', { name: 'All Active Students' })).toBeVisible()
-    expect(screen.queryByRole('option', { name: 'All Active Employees and Students' })).not.toBeInTheDocument()
+    const employees = screen.getByRole('checkbox', { name: 'Employees' })
+    const interns = screen.getByRole('checkbox', { name: 'Interns' })
+    const students = screen.getByRole('checkbox', { name: 'Students' })
+    expect(employees).toBeChecked()
+    expect(interns).not.toBeChecked()
+
+    await user.click(interns)
+    expect(employees).toBeChecked()
+    expect(interns).toBeChecked()
+    expect(screen.getByText(/Interns are matched by unit and job position/)).toBeVisible()
+
+    // Students stand alone.
+    await user.click(students)
+    expect(students).toBeChecked()
+    expect(employees).not.toBeChecked()
+    expect(interns).not.toBeChecked()
+    await user.click(interns)
+    expect(students).not.toBeChecked()
+    expect(interns).toBeChecked()
+
+    // There is always one left.
+    await user.click(interns)
+    expect(interns).toBeChecked()
+  })
+
+  it('leaves out job levels for a group of interns, and sends the audiences', async () => {
+    const fetchMock = createFetchRouter(routes([
+      { path: '/api/admin/application-access-rules', method: 'POST', response: () => jsonResponse({ data: { id: 'rule-5' } }) },
+    ]))
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await screen.findByText('Add Group to exima')
+    expect(within(screen.getByLabelText('Scope Steps')).getByText('Job Levels')).toBeVisible()
+    await user.click(screen.getByRole('checkbox', { name: 'Interns' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Employees' }))
+    expect(within(screen.getByLabelText('Scope Steps')).queryByText('Job Levels')).not.toBeInTheDocument()
+    expect(within(screen.getByLabelText('Scope Steps')).getByText('Job Positions')).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Select a role' }))
+    await user.click(screen.getByRole('option', { name: /STAFF/ }))
+    await next(user, 2)
+    await user.click(screen.getByRole('button', { name: 'Add Group' }))
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url, options]) =>
+        url === '/api/admin/application-access-rules' && options.method === 'POST')
+      expect(JSON.parse(call[1].body)).toMatchObject({ audiences: ['INTERNS'], job_level_ids: [], default_role_key: 'STAFF' })
+    })
   })
 })

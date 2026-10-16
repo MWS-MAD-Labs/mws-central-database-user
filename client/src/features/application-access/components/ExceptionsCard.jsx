@@ -2,13 +2,14 @@ import { ChevronDown, UserPlus, UserRound } from "lucide-react";
 import { useState } from "react";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { ExceptionsPanel } from "./ExceptionsPanel.jsx";
+import { studentsOnly } from "../utils/audiences.js";
 
 // The exceptions of one group as a card of their own, sitting under that group.
 export function ExceptionsCard({ group, applicationId, roles, onAdd }) {
   const [open, setOpen] = useState(false);
   const total = group.exception_count;
   const blockedCount = group.blocked_count > 0 ? group.blocked_count : 0;
-  const studentsOff = group.audience === "STUDENTS" && !group.allows_exceptions;
+  const studentsOff = studentsOnly(group.audiences) && !group.allows_exceptions;
   const cannotAdd = !group.is_active || studentsOff;
 
   return (
@@ -65,7 +66,7 @@ export function ExceptionsCard({ group, applicationId, roles, onAdd }) {
             applicationId={applicationId}
             groupId={group.id}
             groupRole={group.default_role_key}
-            students={group.audience === "STUDENTS"}
+            students={studentsOnly(group.audiences)}
             roles={roles}
             canChange
             total={total}
