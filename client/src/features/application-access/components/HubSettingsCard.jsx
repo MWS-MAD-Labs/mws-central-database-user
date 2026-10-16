@@ -45,8 +45,9 @@ export function HubSettingsCard({ settings, hub, applicationId }) {
         <dt className="text-(--mws-muted)">Sign-in</dt>
         <dd>
           {MODE_LABEL[settings.hub_access_mode]}
-          {settings.hub_access_mode === "enforce" ? `, ${settings.hub_bypass_emails.length} emergency` : ""}
         </dd>
+        <dt className="text-(--mws-muted)">Emergency Admins</dt>
+        <dd>{settings.hub_bypass_emails.length === 0 ? "None" : settings.hub_bypass_emails.length}</dd>
       </dl>
       <div className="flex justify-end">
         <TextAction icon={Copy} onClick={() => setLines(true)}>

@@ -40,7 +40,7 @@ function signInSummary(settings) {
   if (settings.hub_access_mode === "off") return "Access in Central is not checked.";
   if (settings.hub_access_mode === "warn") return "Everyone still gets in. Whoever would be turned away is only logged.";
   const count = settings.hub_bypass_emails.length;
-  const emergency = count === 0 ? "No one gets in without access." : `${count} ${count === 1 ? "email always gets" : "emails always get"} in.`;
+  const emergency = count === 0 ? "No emergency admins." : `${count} emergency ${count === 1 ? "admin" : "admins"}.`;
   return `People without access in Central are turned away. ${emergency}`;
 }
 

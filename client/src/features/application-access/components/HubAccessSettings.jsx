@@ -14,14 +14,12 @@ import {
   toEmail,
 } from "../utils/hubSettings.js";
 
-// How strictly the Hub checks who may sign in, and who can always open it. Both go into the Hub's .env.
+// How strictly the Hub checks who may sign in, and the emergency admins who still can when Central gives them nothing. Both go into the Hub's .env.
 // The parent keeps `value` as { hub_access_mode, hub_bypass_emails } and is told of each change.
 export function HubAccessSettings({ value, onChange }) {
   const emails = value.hub_bypass_emails;
   const [draft, setDraft] = useState("");
   const [draftProblem, setDraftProblem] = useState(null);
-
-  const enforcing = value.hub_access_mode === "enforce";
 
   function add() {
     const name = draft.trim();
@@ -82,94 +80,92 @@ export function HubAccessSettings({ value, onChange }) {
           );
         })}
       </div>
-      {enforcing ? (
-        <div className="space-y-3">
-          <Field
-            label="Emergency Sign-in"
-            hint={`Can always open the Hub, even if Central access is wrong or Central is down. Keep it to one or two admins, up to ${MAX_BYPASS_EMAILS}.`}
-            error={draftProblem ?? undefined}
+      <div className="space-y-3">
+        <Field
+          label="Emergency Admins"
+          hint={`Can open the Hub and its Admin Dashboard when Central gives them no access or is down. With access in Central they follow their role. Keep it to one or two people, up to ${MAX_BYPASS_EMAILS}.`}
+          error={draftProblem ?? undefined}
+        >
+          <div
+            className={cn(
+              "flex h-11 min-w-0 items-center overflow-hidden rounded-xl border bg-white focus-within:border-(--mws-burgundy)",
+              draftProblem ? "border-[#c75f64]" : "border-(--mws-line)",
+            )}
           >
-            <div
-              className={cn(
-                "flex h-11 min-w-0 items-center overflow-hidden rounded-xl border bg-white focus-within:border-(--mws-burgundy)",
-                draftProblem ? "border-[#c75f64]" : "border-(--mws-line)",
-              )}
+            <input
+              aria-label="Add an emergency admin email"
+              maxLength={LIMITS.EMAIL_MAX}
+              value={draft}
+              disabled={emails.length >= MAX_BYPASS_EMAILS}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Email"
+              className="h-full min-w-0 flex-1 bg-transparent px-3 text-sm text-(--mws-charcoal) outline-none placeholder:text-(--mws-muted) disabled:cursor-not-allowed"
+              onChange={(event) => {
+                const read = readNameInput(event.target.value);
+                setDraft(read.name);
+                setDraftProblem(read.problem);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  add();
+                }
+              }}
+            />
+            <span className="shrink-0 pr-2 text-sm text-(--mws-muted)">
+              @{LIMITS.EMAIL_DOMAIN}
+            </span>
+            <button
+              type="button"
+              aria-label="Add"
+              title="Add"
+              onClick={add}
+              disabled={!draft.trim() || emails.length >= MAX_BYPASS_EMAILS}
+              className="mr-1.5 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-(--mws-burgundy) transition-colors hover:bg-[#7E15180D] focus-visible:outline-2 focus-visible:outline-(--mws-burgundy) disabled:cursor-not-allowed disabled:text-(--mws-muted) disabled:opacity-50 disabled:hover:bg-transparent"
             >
-              <input
-                aria-label="Add an email that always gets in"
-                maxLength={LIMITS.EMAIL_MAX}
-                value={draft}
-                disabled={emails.length >= MAX_BYPASS_EMAILS}
-                autoComplete="off"
-                spellCheck={false}
-                placeholder="Email"
-                className="h-full min-w-0 flex-1 bg-transparent px-3 text-sm text-(--mws-charcoal) outline-none placeholder:text-(--mws-muted) disabled:cursor-not-allowed"
-                onChange={(event) => {
-                  const read = readNameInput(event.target.value);
-                  setDraft(read.name);
-                  setDraftProblem(read.problem);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    add();
-                  }
-                }}
-              />
-              <span className="shrink-0 pr-2 text-sm text-(--mws-muted)">
-                @{LIMITS.EMAIL_DOMAIN}
-              </span>
-              <button
-                type="button"
-                aria-label="Add"
-                title="Add"
-                onClick={add}
-                disabled={!draft.trim() || emails.length >= MAX_BYPASS_EMAILS}
-                className="mr-1.5 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-(--mws-burgundy) transition-colors hover:bg-[#7E15180D] focus-visible:outline-2 focus-visible:outline-(--mws-burgundy) disabled:cursor-not-allowed disabled:text-(--mws-muted) disabled:opacity-50 disabled:hover:bg-transparent"
+              <Plus size={18} aria-hidden="true" />
+            </button>
+          </div>
+        </Field>
+        {emails.length === 0 ? (
+          <p className="text-xs text-(--mws-muted)">
+            No one yet. Add one or two admins so a wrong setup cannot lock them
+            out.
+          </p>
+        ) : (
+          <ul className="flex flex-wrap gap-2">
+            {emails.map((email) => (
+              <li
+                key={email}
+                className="inline-flex items-center gap-1.5 rounded-full border border-(--mws-line) bg-(--mws-soft) py-1 pr-1 pl-3 text-xs text-(--mws-charcoal)"
               >
-                <Plus size={18} aria-hidden="true" />
-              </button>
-            </div>
-          </Field>
-          {emails.length === 0 ? (
-            <p className="text-xs text-(--mws-muted)">
-              No one yet. Add one or two admins so a wrong setup cannot lock
-              them out.
-            </p>
-          ) : (
-            <ul className="flex flex-wrap gap-2">
-              {emails.map((email) => (
-                <li
-                  key={email}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-(--mws-line) bg-(--mws-soft) py-1 pr-1 pl-3 text-xs text-(--mws-charcoal)"
-                >
-                  <span>
-                    {emailName(email)}
-                    <span className="text-(--mws-muted)">
-                      @{LIMITS.EMAIL_DOMAIN}
-                    </span>
+                <span>
+                  {emailName(email)}
+                  <span className="text-(--mws-muted)">
+                    @{LIMITS.EMAIL_DOMAIN}
                   </span>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${email}`}
-                    onClick={() =>
-                      onChange({
-                        ...value,
-                        hub_bypass_emails: emails.filter(
-                          (item) => item !== email,
-                        ),
-                      })
-                    }
-                    className="flex size-6 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) hover:bg-white hover:text-(--mws-burgundy)"
-                  >
-                    <X size={12} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : null}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${email}`}
+                  onClick={() =>
+                    onChange({
+                      ...value,
+                      hub_bypass_emails: emails.filter(
+                        (item) => item !== email,
+                      ),
+                    })
+                  }
+                  className="flex size-6 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) hover:bg-white hover:text-(--mws-burgundy)"
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

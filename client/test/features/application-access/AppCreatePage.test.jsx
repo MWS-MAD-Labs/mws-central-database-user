@@ -423,15 +423,15 @@ describe('AppCreatePage', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     await user.click(await screen.findByRole('button', { name: 'Continue' }))
     expect(screen.getByRole('radio', { name: /Warn/ })).toHaveAttribute('aria-checked', 'true')
-    // The emergency list is only for Enforce.
-    expect(screen.queryByLabelText('Add an email that always gets in')).toBeNull()
+    // The emergency admins count in every mode, since they get in when Central gives them nothing.
+    expect(screen.getByLabelText('Add an emergency admin email')).toBeVisible()
     await user.click(screen.getByRole('radio', { name: /Enforce/ }))
-    await user.click(screen.getByLabelText('Add an email that always gets in'))
+    await user.click(screen.getByLabelText('Add an emergency admin email'))
     await user.paste('nope@gmail.com')
     expect(screen.getByText(/Only millennia21.id emails/)).toBeVisible()
-    expect(screen.getByLabelText('Add an email that always gets in')).toHaveValue('nope')
-    await user.click(screen.getByRole('radio', { name: /Warn/ }))
-    expect(screen.queryByLabelText('Add an email that always gets in')).toBeNull()
+    expect(screen.getByLabelText('Add an emergency admin email')).toHaveValue('nope')
+    await user.click(screen.getByRole('radio', { name: /Off/ }))
+    expect(screen.getByLabelText('Add an emergency admin email')).toBeVisible()
   })
 
   it('adds up to three emergency emails one by one, keeping only characters an email name can have', async () => {
@@ -443,7 +443,7 @@ describe('AppCreatePage', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     await user.click(await screen.findByRole('button', { name: 'Continue' }))
     await user.click(screen.getByRole('radio', { name: /Enforce/ }))
-    const input = screen.getByLabelText('Add an email that always gets in')
+    const input = screen.getByLabelText('Add an emergency admin email')
     expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled()
     await user.type(input, 'Me!# x{Enter}')
     expect(screen.getByRole('button', { name: 'Remove mex@millennia21.id' })).toBeVisible()

@@ -959,7 +959,7 @@ describe("AppSetupPage", () => {
       expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
       await user.click(screen.getByRole("radio", { name: /Enforce/ }));
       await user.type(
-        screen.getByLabelText("Add an email that always gets in"),
+        screen.getByLabelText("Add an emergency admin email"),
         "Boss{Enter}",
       );
       await user.click(
@@ -1230,7 +1230,7 @@ describe("AppSetupPage", () => {
       await user.click(screen.getByRole("button", { name: "Continue" }));
       await user.click(screen.getByRole("radio", { name: /Enforce/ }));
       await user.click(
-        screen.getByLabelText("Add an email that always gets in"),
+        screen.getByLabelText("Add an emergency admin email"),
       );
       await user.paste("nonsense@gmail.com");
       expect(screen.getByText(/Only millennia21.id emails/)).toBeVisible();
