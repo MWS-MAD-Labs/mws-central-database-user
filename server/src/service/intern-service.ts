@@ -5,6 +5,7 @@ import {
   AuditSource,
   InternStatus,
   InternMutationField,
+  PersonType,
   Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
@@ -379,8 +380,25 @@ export class InternService {
           unitId: createRequest.unit_id,
           occupiesSlot: resolvedStatus === InternStatus.ACTIVE,
         });
+        // The person behind the intern, so group access can reach them. A blank birth place or date gets the same
+        // placeholder as the import.
+        const person = await tx.person.create({
+          data: {
+            full_name: createRequest.full_name,
+            nick_name: createRequest.nick_name,
+            email: createRequest.email,
+            person_type: PersonType.INTERN,
+            gender: createRequest.gender,
+            religion: createRequest.religion,
+            religion_other: createRequest.religion_other,
+            birth_place: createRequest.birth_place ?? "Unknown",
+            birth_date: createRequest.birth_date ? new Date(createRequest.birth_date) : new Date("1900-01-01"),
+          },
+          select: { id: true },
+        });
         const created = await tx.intern.create({
           data: {
+            person_id: person.id,
             full_name: createRequest.full_name,
             nick_name: createRequest.nick_name,
             email: createRequest.email,
@@ -630,6 +648,19 @@ export class InternService {
             institution_name: updateRequest.institution_name,
             major: updateRequest.major,
             graduation_year: updateRequest.graduation_year,
+          },
+        });
+        await tx.person.update({
+          where: { id: updated.person_id },
+          data: {
+            full_name: updateRequest.full_name,
+            nick_name: updateRequest.nick_name,
+            email: updateRequest.email,
+            gender: updateRequest.gender,
+            religion: updateRequest.religion,
+            religion_other: updateRequest.religion_other,
+            birth_place: updateRequest.birth_place ?? undefined,
+            birth_date: updateRequest.birth_date ? new Date(updateRequest.birth_date) : undefined,
           },
         });
 

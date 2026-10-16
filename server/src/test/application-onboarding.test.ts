@@ -135,7 +135,7 @@ describe("application onboarding", () => {
     status = await setup();
     expect(status.roles.active_count).toBe(1);
 
-    const group = await TestRequest.post(RULES, { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF" }, accessToken);
+    const group = await TestRequest.post(RULES, { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "STAFF" }, accessToken);
     expect(group.status).toBe(200);
     status = await setup();
     expect(status.groups.active_count).toBe(1);
@@ -204,7 +204,7 @@ describe("application onboarding", () => {
       { application_id: appId, key: "STAFF", label: "Staff", permissions: ["app.use"], allows_employees: true },
       accessToken,
     );
-    await TestRequest.post(RULES, { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF" }, accessToken);
+    await TestRequest.post(RULES, { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "STAFF" }, accessToken);
     await TestRequest.patch(`${ACCESS}/apps/${appId}/details`, { launch_url: "https://onb.example.com/auth/sso" }, accessToken);
 
     const published = await TestRequest.post(`${ACCESS}/apps/${appId}/publish`, {}, accessToken);
@@ -1095,7 +1095,7 @@ describe("application onboarding", () => {
       expect(setup.missing).toEqual(["roles", "groups"]);
 
       await TestRequest.post(ROLES, { application_id: appId, key: "STAFF", label: "Staff", permissions: [], allows_employees: true }, accessToken);
-      await TestRequest.post(RULES, { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF" }, accessToken);
+      await TestRequest.post(RULES, { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "STAFF" }, accessToken);
       expect((await TestRequest.post(`${ACCESS}/apps/${appId}/publish`, {}, accessToken)).status).toBe(200);
 
       const { token } = await ApiClientTest.createWithToken({ scopeNames: [API_SCOPES.APPLICATION_ENTITLEMENTS_READ] });
@@ -1532,7 +1532,7 @@ describe("application onboarding", () => {
       const { data } = await (await TestRequest.post(`${ACCESS}/apps/${appId}/connect`, {}, accessToken)).json();
       await prismaClient.applicationPermission.create({ data: { application_id: appId, key: "app.use", source: "MANIFEST" } });
       await TestRequest.post(ROLES, { application_id: appId, key: "STAFF", label: "Staff", permissions: ["app.use"], allows_employees: true }, accessToken);
-      await TestRequest.post(RULES, { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF" }, accessToken);
+      await TestRequest.post(RULES, { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "STAFF" }, accessToken);
       const old = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
       await prismaClient.apiClient.updateMany({ where: { profile: { code: appId } }, data: { last_used_at: old } });
       await prismaClient.apiClientCredential.updateMany({ where: { client: { profile: { code: appId } } }, data: { last_used_at: old } });

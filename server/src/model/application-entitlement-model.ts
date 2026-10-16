@@ -1,7 +1,7 @@
 import type { ApplicationHealth } from "../service/application-health";
+import { audiencesOf, type AudienceName } from "../utils/audience";
 import type {
   ApplicationAccessRule,
-  ApplicationAudience,
   ApplicationEntitlement,
   ApplicationRole,
 } from "../generated/prisma/client";
@@ -63,7 +63,7 @@ export type BulkGrantApplicationEntitlementRequest = {
 
 export type CreateApplicationAccessRuleRequest = {
   application_id: string;
-  audience: ApplicationAudience;
+  audiences: AudienceName[];
   unit_ids?: string[];
   job_position_ids?: string[];
   job_level_ids?: string[];
@@ -116,8 +116,8 @@ export type ListApplicationCandidatesRequest = {
 // An active employee with what the application's groups already give them.
 export type ApplicationCandidate = {
   person_id: string;
-  // Set for students, who have no employee id, job position or level.
-  kind?: "EMPLOYEE" | "STUDENT";
+  // Set for interns and students. Interns have no employee id or level, students no job position either.
+  kind?: "EMPLOYEE" | "INTERN" | "STUDENT";
   nis?: string | null;
   grade?: string | null;
   class_name?: string | null;
@@ -136,7 +136,7 @@ export type ApplicationCandidate = {
 export type ApplicationAccessRuleResponse = {
   id: string;
   application_id: string;
-  audience: ApplicationAudience;
+  audiences: AudienceName[];
   unit_ids: string[];
   job_position_ids: string[];
   job_level_ids: string[];
@@ -155,14 +155,14 @@ export function toApplicationAccessRuleResponse(
   return {
     id: rule.id,
     application_id: rule.application_id,
-    audience: rule.audience,
+    audiences: audiencesOf(rule),
     unit_ids: rule.unit_ids,
     job_position_ids: rule.job_position_ids,
     job_level_ids: rule.job_level_ids,
     default_role_key: rule.default_role_key,
     organization_id: rule.organization_id,
     is_active: rule.is_active,
-    allows_exceptions: rule.audience === "STUDENTS" ? rule.allows_exceptions : true,
+    allows_exceptions: rule.for_students && !rule.for_employees && !rule.for_interns ? rule.allows_exceptions : true,
     created_at: rule.created_at.toISOString(),
     updated_at: rule.updated_at.toISOString(),
   };
@@ -216,7 +216,7 @@ export type UpdateApplicationRequest = { application_id: string } & ApplicationD
 export type ApplicationExceptionRow = {
   id: string;
   person_id: string;
-  kind: "EMPLOYEE" | "STUDENT";
+  kind: "EMPLOYEE" | "INTERN" | "STUDENT";
   nis: string | null;
   grade: string | null;
   class_name: string | null;
@@ -277,7 +277,7 @@ export type ApplicationScopeCatalog = {
 };
 
 export type ListRoleOptionsRequest = {
-  audience: ApplicationAudience;
+  audiences: AudienceName[];
   unit_ids?: string[];
   job_position_ids?: string[];
   job_level_ids?: string[];
@@ -308,7 +308,7 @@ export type ApplicationAccessRow = {
   granted_at: string;
   updated_at: string;
   group: {
-    audience: ApplicationAudience;
+    audiences: AudienceName[];
     units: { id: string; name: string }[];
     job_positions: { id: string; name: string }[];
     job_levels: { id: string; name: string }[];
@@ -329,6 +329,7 @@ export type ApplicationRoleResponse = {
   rank: number;
   is_active: boolean;
   allows_employees: boolean;
+  allows_interns: boolean;
   allows_students: boolean;
   active_entitlement_count: number;
   // Active groups that hand this role out.
@@ -345,6 +346,7 @@ export type CreateApplicationRoleRequest = {
   label: string;
   permissions: string[];
   allows_employees?: boolean;
+  allows_interns?: boolean;
   allows_students?: boolean;
 };
 
@@ -353,6 +355,7 @@ export type UpdateApplicationRoleRequest = {
   label?: string;
   permissions?: string[];
   allows_employees?: boolean;
+  allows_interns?: boolean;
   allows_students?: boolean;
   is_active?: boolean;
 };
@@ -381,6 +384,7 @@ export function toApplicationRoleResponse(
     permissions: role.permissions,
     rank: role.rank,
     allows_employees: role.allows_employees,
+    allows_interns: role.allows_interns,
     allows_students: role.allows_students,
     is_active: role.is_active,
     active_entitlement_count: activeEntitlementCount,

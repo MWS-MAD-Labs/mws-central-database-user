@@ -87,7 +87,7 @@ describe("application role registry", () => {
       data: { application_id: appId, key: "BASE", label: "Base", permissions: [] },
     });
     await prismaClient.applicationAccessRule.create({
-      data: { application_id: appId, audience: "EMPLOYEES", default_role_key: "BASE", organization_id: "org_test" },
+      data: { application_id: appId, for_employees: true, default_role_key: "BASE", organization_id: "org_test" },
     });
     const granted = await TestRequest.post(
       "/api/admin/application-entitlements",
@@ -136,7 +136,7 @@ describe("application role registry", () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const role = (await (await post(accessToken, "GIVEN")).json()).data;
       const group = await prismaClient.applicationAccessRule.create({
-        data: { application_id: appId, audience: "EMPLOYEES", default_role_key: "GIVEN", organization_id: "org_test", is_active: false },
+        data: { application_id: appId, for_employees: true, default_role_key: "GIVEN", organization_id: "org_test", is_active: false },
       });
       const off = await TestRequest.delete(`${BASE}/${role.id}`, accessToken);
       expect(off.status).toBe(400);
@@ -159,7 +159,7 @@ describe("application role registry", () => {
       });
       await prismaClient.applicationRole.create({ data: { application_id: appId, key: "BASE", label: "Base", permissions: [] } });
       await prismaClient.applicationAccessRule.create({
-        data: { application_id: appId, audience: "EMPLOYEES", default_role_key: "BASE", organization_id: "org_test" },
+        data: { application_id: appId, for_employees: true, default_role_key: "BASE", organization_id: "org_test" },
       });
       const granted = await TestRequest.post(
         "/api/admin/application-entitlements",
@@ -271,7 +271,7 @@ describe("application role registry", () => {
     const role = (await (await TestRequest.post(BASE, { application_id: appId, key: "MEMBER", label: "Member", permissions: ["a.read"] }, accessToken)).json()).data;
     const group = await (await TestRequest.post(
       "/api/admin/application-access-rules",
-      { application_id: appId, audience: "EMPLOYEES", default_role_key: "MEMBER" },
+      { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "MEMBER" },
       accessToken,
     )).json();
 
@@ -292,7 +292,7 @@ describe("application role registry", () => {
     await TestRequest.post(BASE, { application_id: appId, key: "MEMBER", label: "Member", permissions: ["a.read"] }, accessToken);
     const group = await (await TestRequest.post(
       "/api/admin/application-access-rules",
-      { application_id: appId, audience: "EMPLOYEES", default_role_key: "MEMBER" },
+      { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "MEMBER" },
       accessToken,
     )).json();
     // Older data: the role was switched off before groups were counted.
@@ -315,7 +315,7 @@ describe("application role registry", () => {
 
     await TestRequest.post(
       "/api/admin/application-access-rules",
-      { application_id: appId, audience: "STUDENTS", default_role_key: "LEARNER" },
+      { application_id: appId, audiences: ["STUDENTS"], default_role_key: "LEARNER" },
       accessToken,
     );
     const refused = await TestRequest.patch(`${BASE}/${fresh.id}`, { allows_students: false }, accessToken);

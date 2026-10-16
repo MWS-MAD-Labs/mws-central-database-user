@@ -59,7 +59,7 @@ describe("application access per application", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const person = await createEmployee("test_apps_a@millennia21.id");
     const blocked = await createEmployee("test_apps_a2@millennia21.id");
-    await TestRequest.post(RULES, { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF" }, accessToken);
+    await TestRequest.post(RULES, { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "STAFF" }, accessToken);
     await TestRequest.post(ENTITLEMENTS, { person_id: person.id, application_id: appId, role: "ADMIN" }, accessToken);
     const blockedGrant = await (await TestRequest.post(ENTITLEMENTS, { person_id: blocked.id, application_id: appId, role: "ADMIN" }, accessToken)).json();
     await TestRequest.patch(`${ENTITLEMENTS}/revoke/${blockedGrant.data.id}`, {}, accessToken);
@@ -117,10 +117,10 @@ describe("application access per application", () => {
     const blocked = await createEmployee("test_apps_d@millennia21.id");
     const outsider = await createEmployee("test_apps_e@millennia21.id");
 
-    const baseline = await (await TestRequest.post(RULES, { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF" }, accessToken)).json();
+    const baseline = await (await TestRequest.post(RULES, { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "STAFF" }, accessToken)).json();
     const narrow = await (await TestRequest.post(
       RULES,
-      { application_id: appId, audience: "EMPLOYEES", default_role_key: "ADMIN", job_position_ids: [position.id] },
+      { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "ADMIN", job_position_ids: [position.id] },
       accessToken,
     )).json();
     // The narrow group is ADMIN, so STAFF is a real exception for the person inside it.
@@ -201,10 +201,10 @@ describe("application access per application", () => {
     const stays = await createEmployee("test_apps_keep@millennia21.id");
     const moves = await createEmployee("test_apps_take@millennia21.id", masterData.position.id, takenUnit.id);
 
-    const broad = await (await TestRequest.post(RULES, { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF" }, accessToken)).json();
+    const broad = await (await TestRequest.post(RULES, { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "STAFF" }, accessToken)).json();
     const narrow = await (await TestRequest.post(
       RULES,
-      { application_id: appId, audience: "EMPLOYEES", default_role_key: "ADMIN", unit_ids: [takenUnit.id] },
+      { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "ADMIN", unit_ids: [takenUnit.id] },
       accessToken,
     )).json();
 
@@ -248,7 +248,7 @@ describe("application access per application", () => {
       data: { name: `TEST_APPS_TEACHER_${suffix}`, is_teaching_position: true },
     });
     const post = (body: Record<string, unknown>) =>
-      TestRequest.post(RULES, { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF", ...body }, accessToken);
+      TestRequest.post(RULES, { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "STAFF", ...body }, accessToken);
 
     // Dead values are refused: a position not used in the unit, a teaching position with a non-teaching level.
     const wrongUnit = await post({ unit_ids: [awayUnit.id], job_position_ids: [homeOnly.id] });

@@ -83,7 +83,7 @@ describe("application baseline access rules", () => {
   async function addRule(token: string, body: Record<string, unknown> = {}) {
     return TestRequest.post(
       RULES,
-      { application_id: appId, audience: "EMPLOYEES", default_role_key: "STAFF", ...body },
+      { application_id: appId, audiences: ["EMPLOYEES"], default_role_key: "STAFF", ...body },
       token,
     );
   }
@@ -232,7 +232,7 @@ describe("application baseline access rules", () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const person = await createEmployee("test_block_twice@millennia21.id");
       // Only students are covered, so the employee has nothing to block.
-      await addRule(accessToken, { audience: "STUDENTS", default_role_key: "MEMBER" });
+      await addRule(accessToken, { audiences: ["STUDENTS"], default_role_key: "MEMBER" });
       const uncovered = await TestRequest.post(BULK, { person_ids: [person.id], application_id: appId, blocked: true }, accessToken);
       // The call goes through, the employee fails: no group covers employees.
       const uncoveredBody = JSON.stringify(await uncovered.json());
@@ -310,7 +310,7 @@ describe("application baseline access rules", () => {
 
   describe("exceptions for students", () => {
     const studentGroup = (token: string, extra: Record<string, unknown> = {}) =>
-      addRule(token, { audience: "STUDENTS", default_role_key: "MEMBER", ...extra });
+      addRule(token, { audiences: ["STUDENTS"], default_role_key: "MEMBER", ...extra });
     const grant = (token: string, personId: string, role: string) =>
       TestRequest.post(ENTITLEMENTS, { person_id: personId, application_id: appId, role }, token);
 
@@ -486,19 +486,19 @@ describe("application baseline access rules", () => {
       data: { application_id: appId, key: "KIDS_ONLY", label: "Kids only", permissions: ["b.read"], allows_employees: false, allows_students: true },
     });
 
-    const toStudents = await addRule(accessToken, { audience: "STUDENTS", default_role_key: "TEACHER_ONLY" });
+    const toStudents = await addRule(accessToken, { audiences: ["STUDENTS"], default_role_key: "TEACHER_ONLY" });
     expect(toStudents.status).toBe(400);
     expect(String((await toStudents.json()).errors)).toContain('Role "TEACHER_ONLY" is not for students');
-    const toEmployees = await addRule(accessToken, { audience: "EMPLOYEES", default_role_key: "KIDS_ONLY" });
+    const toEmployees = await addRule(accessToken, { audiences: ["EMPLOYEES"], default_role_key: "KIDS_ONLY" });
     expect(toEmployees.status).toBe(400);
     expect(String((await toEmployees.json()).errors)).toContain('Role "KIDS_ONLY" is not for employees');
 
-    expect((await addRule(accessToken, { audience: "STUDENTS", default_role_key: "KIDS_ONLY" })).status).toBe(200);
-    expect((await addRule(accessToken, { audience: "EMPLOYEES", default_role_key: "TEACHER_ONLY" })).status).toBe(200);
+    expect((await addRule(accessToken, { audiences: ["STUDENTS"], default_role_key: "KIDS_ONLY" })).status).toBe(200);
+    expect((await addRule(accessToken, { audiences: ["EMPLOYEES"], default_role_key: "TEACHER_ONLY" })).status).toBe(200);
 
     // The role picker says the same.
     const options = await (await TestRequest.get(
-      `/api/admin/application-access/apps/${appId}/role-options?audience=STUDENTS`,
+      `/api/admin/application-access/apps/${appId}/role-options?audiences=STUDENTS`,
       accessToken,
     )).json();
     const reasons = Object.fromEntries(options.data.unavailable.map((item: { role: string; reason: string }) => [item.role, item.reason]));
@@ -510,14 +510,19 @@ describe("application baseline access rules", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const noGrades = await prismaClient.masterUnit.create({ data: { name: `TEST_RULE_NOSTUDENTS_${randomBytes(3).toString("hex")}` } });
 
-    const refused = await addRule(accessToken, { audience: "STUDENTS", unit_ids: [noGrades.id] });
+    const refused = await addRule(accessToken, { audiences: ["STUDENTS"], unit_ids: [noGrades.id] });
     expect(refused.status).toBe(400);
     expect(String((await refused.json()).errors)).toContain(`Unit "${noGrades.name}" has no students`);
 
-    // A group is for employees or for students, not both.
-    const both = await addRule(accessToken, { audience: "EMPLOYEES_AND_STUDENTS" });
+    // A group is for employees and interns, or for students, not both.
+    const both = await addRule(accessToken, { audiences: ["EMPLOYEES", "STUDENTS"] });
     expect(both.status).toBe(400);
-    expect(String((await both.json()).errors)).toContain("one group for employees and another for students");
+    expect(String((await both.json()).errors)).toContain("cannot include employees or interns");
+    const internsToo = await addRule(accessToken, { audiences: ["INTERNS", "STUDENTS"] });
+    expect(internsToo.status).toBe(400);
+    const nobody = await addRule(accessToken, { audiences: [] });
+    expect(nobody.status).toBe(400);
+    expect(String((await nobody.json()).errors)).toContain("Pick who the group is for");
   });
 
   it("keeps serving a group of employees and students that was made before they were split", async () => {
@@ -529,7 +534,8 @@ describe("application baseline access rules", () => {
     await prismaClient.applicationAccessRule.create({
       data: {
         application_id: appId,
-        audience: "EMPLOYEES_AND_STUDENTS",
+        for_employees: true,
+        for_students: true,
         organization_id: organization.organization_id,
         default_role_key: "STAFF",
       },
@@ -558,9 +564,9 @@ describe("application baseline access rules", () => {
     expect((await lookup(student.id)).status).toBe(404);
 
     // Students have their own baseline, and a unit narrows it too.
-    const studentBaseline = await ruleId(await addRule(accessToken, { audience: "STUDENTS", default_role_key: "ADMIN" }));
+    const studentBaseline = await ruleId(await addRule(accessToken, { audiences: ["STUDENTS"], default_role_key: "ADMIN" }));
     expect(await role(student.id)).toBe("ADMIN");
-    const studentUnit = await ruleId(await addRule(accessToken, { audience: "STUDENTS", unit_ids: [masterData.unit.id] }));
+    const studentUnit = await ruleId(await addRule(accessToken, { audiences: ["STUDENTS"], unit_ids: [masterData.unit.id] }));
     expect(await role(student.id)).toBe("STAFF");
 
     // The baseline cannot go while the narrower group depends on it.
@@ -598,7 +604,7 @@ describe("application baseline access rules", () => {
     expect((await addRule(accessToken)).status).toBe(200);
     expect((await addRule(accessToken, { default_role_key: "ADMIN" })).status).toBe(400);
     // Students and employees never share a person, so a student-only baseline is fine.
-    expect((await addRule(accessToken, { audience: "STUDENTS" })).status).toBe(200);
+    expect((await addRule(accessToken, { audiences: ["STUDENTS"] })).status).toBe(200);
 
     expect((await addRule(accessToken, { unit_ids: [masterData.unit.id], default_role_key: "ADMIN" })).status).toBe(200);
     expect((await addRule(accessToken, { unit_ids: [masterData.unit.id, otherUnit.id], default_role_key: "ADMIN" })).status).toBe(400);
@@ -618,7 +624,7 @@ describe("application baseline access rules", () => {
     expect((await addRule(accessToken, { default_role_key: "NOPE" })).status).toBe(400);
     expect((await addRule(accessToken, { unit_ids: ["missing-unit"] })).status).toBe(400);
     expect((await addRule(accessToken, { job_position_ids: ["missing-position"] })).status).toBe(400);
-    expect((await addRule(accessToken, { audience: "STUDENTS", job_level_ids: [masterData.level.id] })).status).toBe(400);
+    expect((await addRule(accessToken, { audiences: ["STUDENTS"], job_level_ids: [masterData.level.id] })).status).toBe(400);
 
     const dbAdmin = await AdminUserTest.createDatabaseAdmin();
     expect((await addRule(dbAdmin.accessToken)).status).toBe(403);
@@ -637,7 +643,7 @@ describe("application baseline access rules", () => {
   it("lists group accesses before people in one paged list and filters by type", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await addRule(accessToken);
-    await addRule(accessToken, { audience: "STUDENTS" });
+    await addRule(accessToken, { audiences: ["STUDENTS"] });
     for (const email of ["test_rule_list_a@millennia21.id", "test_rule_list_b@millennia21.id"]) {
       const person = await createEmployee(email);
       await TestRequest.post(
@@ -651,7 +657,7 @@ describe("application baseline access rules", () => {
     const first = await (await TestRequest.get(`${url}&size=3`, accessToken)).json();
     expect(first.paging.total_item).toBe(4);
     expect(first.data.map((row: { kind: string }) => row.kind)).toEqual(["GROUP", "GROUP", "PERSON"]);
-    expect(first.data[0].group.audience).toBeDefined();
+    expect(first.data[0].group.audiences).toBeDefined();
     expect(first.data[0].permissions).toEqual(["store.use"]);
     expect(first.data[2].person.email).toContain("@millennia21.id");
 

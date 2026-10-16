@@ -6,7 +6,7 @@ import {
   AuditSource,
   EmployeeStatus,
   EmploymentType,
-  ApplicationAudience,
+  InternStatus,
   PersonType,
   Prisma,
   StudentStatus,
@@ -14,6 +14,7 @@ import {
   type ApplicationEntitlement,
 } from "../generated/prisma/client";
 import { evaluateRemoval, usedRecently } from "../utils/application-removal";
+import { audiencesOf, flagsOf, type AudienceFlags, type AudienceName } from "../utils/audience";
 import { hubApplicationId } from "../constants/hub-application";
 import { slugifyApplicationId } from "../utils/application-id";
 import { encryptSecret, newSecret } from "../utils/secret-box";
@@ -97,6 +98,7 @@ import {
   ruleMatches,
   inheritedRole,
   groupAllowsExceptions,
+  studentsOnly,
   parentRule,
   toRuleSubject,
   ruleSpecificity,
@@ -183,7 +185,7 @@ async function resolveRolePermissions(
   role: string,
   permissions: string[] | undefined,
   // Who the role is given to. ANY only checks that the role exists and is active.
-  audience: "EMPLOYEE" | "STUDENT" | "ANY" = "EMPLOYEE",
+  audience: "EMPLOYEE" | "INTERN" | "STUDENT" | "ANY" = "EMPLOYEE",
 ): Promise<string[]> {
   const entry = await prismaClient.applicationRole.findUnique({
     where: { application_id_key: { application_id: applicationId, key: role } },
@@ -197,6 +199,9 @@ async function resolveRolePermissions(
   // Own access rows (exceptions) follow who the role is for.
   if (audience === "EMPLOYEE" && !entry.allows_employees) {
     throw new ResponseError(400, `Role "${role}" is not for employees`);
+  }
+  if (audience === "INTERN" && !entry.allows_interns) {
+    throw new ResponseError(400, `Role "${role}" is not for interns`);
   }
   if (audience === "STUDENT" && !entry.allows_students) {
     throw new ResponseError(400, `Role "${role}" is not for students`);
@@ -212,16 +217,17 @@ async function resolveRolePermissions(
   return entry.permissions;
 }
 
-// An employee or a student that can have access rows of their own.
+// An employee, an intern or a student that can have access rows of their own.
 async function findExceptionPerson(
   personId: string,
-): Promise<{ id: string; full_name: string; kind: "EMPLOYEE" | "STUDENT" } | null> {
+): Promise<{ id: string; full_name: string; kind: "EMPLOYEE" | "INTERN" | "STUDENT" } | null> {
   const person = await prismaClient.person.findFirst({
     where: {
       id: personId,
       deleted_at: null,
       OR: [
         { person_type: PersonType.EMPLOYEE, employee: { status: EmployeeStatus.ACTIVE, deleted_at: null } },
+        { person_type: PersonType.INTERN, intern: { status: InternStatus.ACTIVE, deleted_at: null } },
         { person_type: PersonType.STUDENT, student: { status: StudentStatus.ACTIVE, deleted_at: null } },
       ],
     },
@@ -231,7 +237,7 @@ async function findExceptionPerson(
   return {
     id: person.id,
     full_name: person.full_name,
-    kind: person.person_type === PersonType.STUDENT ? "STUDENT" : "EMPLOYEE",
+    kind: person.person_type === PersonType.STUDENT ? "STUDENT" : person.person_type === PersonType.INTERN ? "INTERN" : "EMPLOYEE",
   };
 }
 
@@ -252,7 +258,8 @@ async function resolveBaselineEntitlement(
   if (explicit) return null;
 
   const subject = await loadRuleSubject(personId);
-  if (!subject) return null;
+  // Interns have access in Central, but the applications cannot look one up yet (stage two).
+  if (!subject || subject.kind === "INTERN") return null;
   // The most specific matching rule wins. Saving a rule rejects overlaps, so
   // there is never a tie.
   const rule = rules
@@ -438,10 +445,10 @@ export class ApplicationEntitlementService {
   ): Promise<ApplicationEntitlementResponse> {
     assertSuperAdmin(admin);
     const person = await findExceptionPerson(personId);
-    if (!person) throw new ResponseError(404, "Active employee or student not found");
+    if (!person) throw new ResponseError(404, "Active employee, intern or student not found");
 
     const rules = await loadActiveRules(applicationId);
-    if (person.kind === "EMPLOYEE") assertHasGroup(applicationId, rules);
+    if (person.kind !== "STUDENT") assertHasGroup(applicationId, rules);
     const subject = await loadRuleSubject(personId);
     const inherited = subject ? inheritedRole(subject, rules) : undefined;
     if (inherited && person.kind === "STUDENT" && !groupAllowsExceptions(inherited)) {
@@ -694,7 +701,7 @@ export class ApplicationEntitlementService {
       existing.application_id,
       existing.role,
       undefined,
-      subject?.kind === "STUDENT" ? "STUDENT" : "EMPLOYEE",
+      subject?.kind === "STUDENT" ? "STUDENT" : subject?.kind === "INTERN" ? "INTERN" : "EMPLOYEE",
     );
     await assertPersonException(existing.application_id, existing.person_id, existing.role, rules);
     await prismaClient.$transaction(async (tx) => {
@@ -791,8 +798,10 @@ export class ApplicationEntitlementService {
     const roleByKey = new Map(roles.map((role) => [role.key, role]));
     const explicitByPerson = new Map(explicit.map((row) => [row.person_id, row]));
 
-    const wantsEmployees = rules.some((rule) => rule.audience !== ApplicationAudience.STUDENTS);
-    const wantsStudents = rules.some((rule) => rule.audience !== ApplicationAudience.EMPLOYEES);
+    // Interns are left out on purpose until the Hub and the applications can read them (stage two): this is what the
+    // applications get, and an application cannot look an intern up yet.
+    const wantsEmployees = rules.some((rule) => rule.for_employees);
+    const wantsStudents = rules.some((rule) => rule.for_students);
     const people = await prismaClient.person.findMany({
       where: {
         deleted_at: null,
@@ -942,6 +951,7 @@ function roleAuditSnapshot(role: {
   label: string;
   permissions: string[];
   allows_employees: boolean;
+  allows_interns: boolean;
   allows_students: boolean;
   is_active: boolean;
 }) {
@@ -951,6 +961,7 @@ function roleAuditSnapshot(role: {
     label: role.label,
     permissions: role.permissions,
     allows_employees: role.allows_employees,
+    allows_interns: role.allows_interns,
     allows_students: role.allows_students,
     is_active: role.is_active,
   };
@@ -1043,6 +1054,7 @@ export class ApplicationRoleService {
         data: {
           ...input,
           allows_employees: input.allows_employees ?? true,
+          allows_interns: input.allows_interns ?? false,
           allows_students: input.allows_students ?? false,
           rank: (lowest._max.rank ?? -1) + 1,
         },
@@ -1191,9 +1203,18 @@ export class ApplicationRoleService {
 
     // Taking away who a role is for must not strand a group or person that uses it.
     const nextEmployees = input.allows_employees ?? existing.allows_employees;
+    const nextInterns = input.allows_interns ?? existing.allows_interns;
     const nextStudents = input.allows_students ?? existing.allows_students;
-    if (!nextEmployees && !nextStudents) {
-      throw new ResponseError(400, "A role has to be for employees, students or both");
+    if (!nextEmployees && !nextInterns && !nextStudents) {
+      throw new ResponseError(400, "A role has to be for employees, interns or students");
+    }
+    if (existing.allows_interns && !nextInterns) {
+      const usedByInternGroups = await prismaClient.applicationAccessRule.count({
+        where: { application_id: existing.application_id, default_role_key: existing.key, is_active: true, for_interns: true },
+      });
+      if (usedByInternGroups > 0) {
+        throw new ResponseError(400, `${usedByInternGroups} active group(s) of interns still give this role. Change those groups first.`);
+      }
     }
     if (existing.allows_students && !nextStudents) {
       const used = await prismaClient.applicationAccessRule.count({
@@ -1201,7 +1222,7 @@ export class ApplicationRoleService {
           application_id: existing.application_id,
           default_role_key: existing.key,
           is_active: true,
-          audience: { in: [ApplicationAudience.STUDENTS, ApplicationAudience.EMPLOYEES_AND_STUDENTS] },
+          for_students: true,
         },
       });
       if (used > 0) {
@@ -1214,7 +1235,7 @@ export class ApplicationRoleService {
           application_id: existing.application_id,
           default_role_key: existing.key,
           is_active: true,
-          audience: { in: [ApplicationAudience.EMPLOYEES, ApplicationAudience.EMPLOYEES_AND_STUDENTS] },
+          for_employees: true,
         },
       });
       if (usedByGroups > 0 || activeCount > 0) {
@@ -1251,6 +1272,7 @@ export class ApplicationRoleService {
           label: input.label,
           permissions: input.permissions,
           allows_employees: input.allows_employees,
+          allows_interns: input.allows_interns,
           allows_students: input.allows_students,
           is_active: input.is_active,
         },
@@ -1284,14 +1306,11 @@ export class ApplicationRoleService {
   }
 }
 
-const AUDIENCE_APPLIES_TO_EMPLOYEES = new Set<ApplicationAudience>([
-  ApplicationAudience.EMPLOYEES,
-  ApplicationAudience.EMPLOYEES_AND_STUDENTS,
-]);
-const AUDIENCE_APPLIES_TO_STUDENTS = new Set<ApplicationAudience>([
-  ApplicationAudience.STUDENTS,
-  ApplicationAudience.EMPLOYEES_AND_STUDENTS,
-]);
+const pickFlags = (rule: AudienceFlags): AudienceFlags => ({
+  for_employees: rule.for_employees,
+  for_interns: rule.for_interns,
+  for_students: rule.for_students,
+});
 
 function intersects(left: string[], right: string[]) {
   return left.some((id) => right.includes(id));
@@ -1308,12 +1327,13 @@ async function assertNoOverlap(
     where: { application_id: applicationId, is_active: true, ...(excludeId ? { id: { not: excludeId } } : {}) },
   });
   for (const other of others) {
-    if (ruleSpecificity(other) !== ruleSpecificity(candidate)) continue;
-    const sharesEmployees =
-      AUDIENCE_APPLIES_TO_EMPLOYEES.has(other.audience) && AUDIENCE_APPLIES_TO_EMPLOYEES.has(candidate.audience);
-    const sharesStudents =
-      AUDIENCE_APPLIES_TO_STUDENTS.has(other.audience) && AUDIENCE_APPLIES_TO_STUDENTS.has(candidate.audience);
-    // Positions and levels only exist for employees, so students only share units.
+    const sameForStaff = ruleSpecificity(other) === ruleSpecificity(candidate);
+    // An intern has no level, so levels do not count when two rules compete for an intern.
+    const sameForInterns = ruleSpecificity(other, true) === ruleSpecificity(candidate, true);
+    const sharesEmployees = sameForStaff && other.for_employees && candidate.for_employees;
+    const sharesInterns = sameForInterns && other.for_interns && candidate.for_interns;
+    const sharesStudents = sameForStaff && other.for_students && candidate.for_students;
+    // Positions and levels only exist for employees, positions for interns, so students only share units.
     const overlapsFor = (dimensions: { a: string[]; b: string[] }[]) =>
       dimensions.every(({ a, b }) => (a.length === 0 && b.length === 0) || intersects(a, b));
     const employeeOverlap =
@@ -1323,9 +1343,15 @@ async function assertNoOverlap(
         { a: other.job_position_ids, b: candidate.job_position_ids },
         { a: other.job_level_ids, b: candidate.job_level_ids },
       ]);
+    const internOverlap =
+      sharesInterns &&
+      overlapsFor([
+        { a: other.unit_ids, b: candidate.unit_ids },
+        { a: other.job_position_ids, b: candidate.job_position_ids },
+      ]);
     const studentOverlap =
       sharesStudents && overlapsFor([{ a: other.unit_ids, b: candidate.unit_ids }]);
-    if (employeeOverlap || studentOverlap) {
+    if (employeeOverlap || internOverlap || studentOverlap) {
       throw new ResponseError(
         400,
         "Another active group access already covers the same people. Narrow one of them so they do not overlap.",
@@ -1338,7 +1364,9 @@ async function assertRuleReferences(
   rule: {
     application_id: string;
     default_role_key: string;
-    audience: ApplicationAudience;
+    for_employees: boolean;
+    for_interns: boolean;
+    for_students: boolean;
     unit_ids: string[];
     job_position_ids: string[];
     job_level_ids: string[];
@@ -1355,20 +1383,21 @@ async function assertRuleReferences(
     throw new ResponseError(400, `Role "${rule.default_role_key}" is not an active role of ${rule.application_id}`);
   }
   if (checkRole && role) {
-    const forEmployees = rule.audience !== ApplicationAudience.STUDENTS;
-    const forStudents = rule.audience !== ApplicationAudience.EMPLOYEES;
-    if (forEmployees && !role.allows_employees) {
+    if (rule.for_employees && !role.allows_employees) {
       throw new ResponseError(400, `Role "${role.key}" is not for employees`);
     }
-    if (forStudents && !role.allows_students) {
+    if (rule.for_interns && !role.allows_interns) {
+      throw new ResponseError(400, `Role "${role.key}" is not for interns`);
+    }
+    if (rule.for_students && !role.allows_students) {
       throw new ResponseError(400, `Role "${role.key}" is not for students`);
     }
   }
-  if (
-    rule.audience === ApplicationAudience.STUDENTS &&
-    (rule.job_position_ids.length > 0 || rule.job_level_ids.length > 0)
-  ) {
-    throw new ResponseError(400, "Job positions and job levels only apply to employees");
+  if (!rule.for_employees && !rule.for_interns && (rule.job_position_ids.length > 0 || rule.job_level_ids.length > 0)) {
+    throw new ResponseError(400, "Job positions and job levels only apply to employees and interns");
+  }
+  if (!rule.for_employees && rule.job_level_ids.length > 0) {
+    throw new ResponseError(400, "Job levels only apply to employees");
   }
   const [units, positions, levels] = await Promise.all([
     rule.unit_ids.length ? prismaClient.masterUnit.count({ where: { id: { in: rule.unit_ids } } }) : 0,
@@ -1388,9 +1417,12 @@ async function assertRuleReferences(
   }
   if (positions !== rule.job_position_ids.length) throw new ResponseError(400, "One or more job positions do not exist");
   if (levels !== rule.job_level_ids.length) throw new ResponseError(400, "One or more job levels do not exist");
-  if (checkScope && rule.audience !== ApplicationAudience.STUDENTS) await assertScopeCanHoldPeople(rule);
+  // Employees follow the master data rules for units, positions and levels. Interns have no level, so only the
+  // units and positions are checked for them.
+  if (checkScope && rule.for_employees) await assertScopeCanHoldPeople(rule);
+  else if (checkScope && rule.for_interns) await assertScopeCanHoldPeople({ ...rule, job_level_ids: [] });
   // Students only exist in units that have grades.
-  if (checkScope && rule.audience === ApplicationAudience.STUDENTS && rule.unit_ids.length > 0) {
+  if (checkScope && rule.for_students && rule.unit_ids.length > 0) {
     const withGrades = await prismaClient.grade.findMany({
       where: { unit_id: { in: rule.unit_ids } },
       distinct: ["unit_id"],
@@ -1422,9 +1454,8 @@ async function assertScopeCanHoldPeople(rule: ScopeIds) {
   check(rule.unit_ids, used.units, catalog.units, "Unit", "job positions and levels");
 }
 
-function ruleAuditSnapshot(rule: {
+function ruleAuditSnapshot(rule: AudienceFlags & {
   application_id: string;
-  audience: string;
   unit_ids: string[];
   job_position_ids: string[];
   job_level_ids: string[];
@@ -1435,7 +1466,7 @@ function ruleAuditSnapshot(rule: {
 }) {
   return {
     application_id: rule.application_id,
-    audience: rule.audience,
+    audiences: audiencesOf(rule),
     unit_ids: rule.unit_ids,
     job_position_ids: rule.job_position_ids,
     job_level_ids: rule.job_level_ids,
@@ -1446,9 +1477,8 @@ function ruleAuditSnapshot(rule: {
   };
 }
 
-function toGateRule(rule: {
+function toGateRule(rule: AudienceFlags & {
   id: string;
-  audience: ApplicationAudience;
   unit_ids: string[];
   job_position_ids: string[];
   job_level_ids: string[];
@@ -1458,7 +1488,7 @@ function toGateRule(rule: {
 }): GateRule {
   return {
     id: rule.id,
-    audience: rule.audience,
+    ...pickFlags(rule),
     unit_ids: rule.unit_ids,
     job_position_ids: rule.job_position_ids,
     job_level_ids: rule.job_level_ids,
@@ -1518,20 +1548,23 @@ export class ApplicationAccessRuleService {
   ): Promise<ApplicationAccessRuleResponse> {
     assertSuperAdmin(admin);
     const validated = Validation.validate(ApplicationAccessRuleValidation.CREATE, request);
+    const { audiences, ...rest } = validated;
+    const flags = flagsOf(audiences);
     const input = {
-      ...validated,
+      ...rest,
+      ...flags,
       unit_ids: validated.unit_ids ?? [],
       job_position_ids: validated.job_position_ids ?? [],
       job_level_ids: validated.job_level_ids ?? [],
       is_active: validated.is_active ?? true,
       // Only a group of students needs the flag.
-      allows_exceptions: validated.audience === "STUDENTS" ? (validated.allows_exceptions ?? false) : false,
+      allows_exceptions: studentsOnly(flags) ? (validated.allows_exceptions ?? false) : false,
     };
     await assertRuleReferences(input);
     if (input.is_active) await assertNoOverlap(input.application_id, input);
     await assertRuleGate(input.application_id, null, {
       id: "new",
-      audience: input.audience,
+      ...pickFlags(input),
       unit_ids: input.unit_ids,
       job_position_ids: input.job_position_ids,
       job_level_ids: input.job_level_ids,
@@ -1574,16 +1607,16 @@ export class ApplicationAccessRuleService {
 
     const next = {
       application_id: existing.application_id,
-      audience: existing.audience,
+      ...pickFlags(existing),
       unit_ids: input.unit_ids ?? existing.unit_ids,
       job_position_ids: input.job_position_ids ?? existing.job_position_ids,
       job_level_ids: input.job_level_ids ?? existing.job_level_ids,
       default_role_key: input.default_role_key ?? existing.default_role_key,
       is_active: input.is_active ?? existing.is_active,
       allows_exceptions:
-        existing.audience === "STUDENTS" ? (input.allows_exceptions ?? existing.allows_exceptions) : false,
+        studentsOnly(existing) ? (input.allows_exceptions ?? existing.allows_exceptions) : false,
     };
-    if (existing.allows_exceptions && !next.allows_exceptions && existing.audience === "STUDENTS") {
+    if (existing.allows_exceptions && !next.allows_exceptions && studentsOnly(existing)) {
       await assertNoStudentExceptions(existing.application_id, toGateRule(existing));
     }
     await assertRuleReferences(
@@ -1594,7 +1627,7 @@ export class ApplicationAccessRuleService {
     if (next.is_active) await assertNoOverlap(existing.application_id, next, existing.id);
     await assertRuleGate(existing.application_id, toGateRule(existing), {
       id: existing.id,
-      audience: next.audience,
+      ...pickFlags(next),
       unit_ids: next.unit_ids,
       job_position_ids: next.job_position_ids,
       job_level_ids: next.job_level_ids,
@@ -1672,6 +1705,12 @@ const employeeScope = (rule: ScopeIds): Prisma.EmployeeWhereInput => ({
   ...(rule.job_level_ids.length ? { job_level_id: { in: rule.job_level_ids } } : {}),
 });
 
+// An intern has a unit and a position, and no level.
+const internScope = (rule: ScopeIds): Prisma.InternWhereInput => ({
+  ...(rule.unit_ids.length ? { unit_id: { in: rule.unit_ids } } : {}),
+  ...(rule.job_position_ids.length ? { job_position_id: { in: rule.job_position_ids } } : {}),
+});
+
 const studentScope = (rule: ScopeIds): Prisma.StudentWhereInput =>
   rule.unit_ids.length ? { current_grade: { unit_id: { in: rule.unit_ids } } } : {};
 
@@ -1687,10 +1726,11 @@ function remainingScope(
     list.filter((item) => ids.has(item.id)).map((item) => ({ id: item.id, name: item.name }));
   const unitsOf = (rule: GateRule) =>
     rule.unit_ids.length ? catalog.units.filter((unit) => rule.unit_ids.includes(unit.id)) : catalog.units;
-  const withEmployees = (rule: GateRule) => rule.audience !== ApplicationAudience.STUDENTS;
-  const withStudents = (rule: GateRule) => rule.audience !== ApplicationAudience.EMPLOYEES;
+  // Staff are employees and interns: both have a unit and a position, only employees have a level.
+  const withEmployees = (rule: GateRule) => rule.for_employees || rule.for_interns;
+  const withStudents = (rule: GateRule) => rule.for_students;
 
-  // Employees: the feasible triples, minus those a narrower group holds.
+  // Employees and interns: the feasible triples, minus those a narrower group holds.
   const all = withEmployees(group) ? feasibility.combos(group) : [];
   const taken = new Set(
     children.filter(withEmployees).flatMap((child) => feasibility.combos(child).map(comboKey)),
@@ -1726,7 +1766,7 @@ function remainingScope(
       new Set([...after.units, ...studentAfter]),
     ),
     job_positions: withEmployees(group) ? dimension(catalog.positions, before.positions, after.positions) : null,
-    job_levels: withEmployees(group) ? dimension(catalog.levels, before.levels, after.levels) : null,
+    job_levels: group.for_employees ? dimension(catalog.levels, before.levels, after.levels) : null,
   };
 }
 
@@ -2008,6 +2048,7 @@ export class ApplicationAccessService {
               person_type: true,
               full_name: true,
               email: true,
+              intern: { select: { status: true, deleted_at: true, unit_id: true, job_position_id: true } },
               student: {
                 select: {
                   status: true,
@@ -2038,7 +2079,7 @@ export class ApplicationAccessService {
     ]);
     const gateRules: GateRule[] = rules.map((rule) => ({
       id: rule.id,
-      audience: rule.audience,
+      ...pickFlags(rule),
       unit_ids: rule.unit_ids,
       job_position_ids: rule.job_position_ids,
       job_level_ids: rule.job_level_ids,
@@ -2086,19 +2127,28 @@ export class ApplicationAccessService {
     const counts = await Promise.all(
       rules.map(async (rule) => {
         const children = childrenOf(rule);
-        const employeeChildren = children.filter((child) => child.audience !== ApplicationAudience.STUDENTS);
-        const studentChildren = children.filter((child) => child.audience !== ApplicationAudience.EMPLOYEES);
+        const employeeChildren = children.filter((child) => child.for_employees);
+        const internChildren = children.filter((child) => child.for_interns);
+        const studentChildren = children.filter((child) => child.for_students);
         const employeeWhere = { status: EmployeeStatus.ACTIVE, deleted_at: null, ...employeeScope(rule) };
+        const internWhere = { status: InternStatus.ACTIVE, deleted_at: null, ...internScope(rule) };
         const studentWhere = { status: StudentStatus.ACTIVE, deleted_at: null, ...studentScope(rule) };
-        const withEmployees = rule.audience !== ApplicationAudience.STUDENTS;
-        const withStudents = rule.audience !== ApplicationAudience.EMPLOYEES;
-        const [employees, ownEmployees, students, ownStudents] = await Promise.all([
+        const withEmployees = rule.for_employees;
+        const withInterns = rule.for_interns;
+        const withStudents = rule.for_students;
+        const [employees, ownEmployees, interns, ownInterns, students, ownStudents] = await Promise.all([
           withEmployees ? prismaClient.employee.count({ where: employeeWhere }) : 0,
           withEmployees
             ? prismaClient.employee.count({
                 where: employeeChildren.length
                   ? { ...employeeWhere, NOT: { OR: employeeChildren.map(employeeScope) } }
                   : employeeWhere,
+              })
+            : 0,
+          withInterns ? prismaClient.intern.count({ where: internWhere }) : 0,
+          withInterns
+            ? prismaClient.intern.count({
+                where: internChildren.length ? { ...internWhere, NOT: { OR: internChildren.map(internScope) } } : internWhere,
               })
             : 0,
           withStudents ? prismaClient.student.count({ where: studentWhere }) : 0,
@@ -2110,7 +2160,7 @@ export class ApplicationAccessService {
               })
             : 0,
         ]);
-        return { covered: employees + students, own: ownEmployees + ownStudents };
+        return { covered: employees + interns + students, own: ownEmployees + ownInterns + ownStudents };
       }),
     );
 
@@ -2180,18 +2230,23 @@ export class ApplicationAccessService {
       loadGateState(applicationId),
       prismaClient.applicationRole.findMany({
         where: { application_id: applicationId, is_active: true },
-        select: { key: true, allows_employees: true, allows_students: true },
+        select: { key: true, allows_employees: true, allows_interns: true, allows_students: true },
       }),
     ]);
+    const flags = flagsOf(input.audiences);
     const previous = input.group_id ? (state.before.find((rule) => rule.id === input.group_id) ?? null) : null;
     const unavailable: ApplicationRoleOptions["unavailable"] = [];
     for (const role of roles) {
-      // A role is for employees, students or both, and a group can only hand out what fits.
-      if (input.audience !== ApplicationAudience.STUDENTS && !role.allows_employees) {
+      // A role says who it is for, and a group can only hand out what fits.
+      if (flags.for_employees && !role.allows_employees) {
         unavailable.push({ role: role.key, reason: "Not for employees" });
         continue;
       }
-      if (input.audience !== ApplicationAudience.EMPLOYEES && !role.allows_students) {
+      if (flags.for_interns && !role.allows_interns) {
+        unavailable.push({ role: role.key, reason: "Not for interns" });
+        continue;
+      }
+      if (flags.for_students && !role.allows_students) {
         unavailable.push({ role: role.key, reason: "Not for students" });
         continue;
       }
@@ -2201,7 +2256,7 @@ export class ApplicationAccessService {
           previous,
           {
             id: previous?.id ?? "new",
-            audience: input.audience,
+            ...flags,
             unit_ids: input.unit_ids ?? [],
             job_position_ids: input.job_position_ids ?? [],
             job_level_ids: input.job_level_ids ?? [],
@@ -2251,7 +2306,7 @@ export class ApplicationAccessService {
     const rows: ApplicationExceptionRow[] = matching.slice((page - 1) * size, page * size).map(({ row }) => ({
       id: row.id,
       person_id: row.person_id,
-      kind: row.person.person_type === PersonType.STUDENT ? "STUDENT" : "EMPLOYEE",
+      kind: row.person.person_type === PersonType.STUDENT ? "STUDENT" : row.person.person_type === PersonType.INTERN ? "INTERN" : "EMPLOYEE",
       nis: row.person.student?.nis ?? null,
       grade: row.person.student?.current_grade?.name ?? null,
       class_name: row.person.student?.current_class?.name ?? null,
@@ -2295,7 +2350,7 @@ export class ApplicationAccessService {
     if (!groupAllowsExceptions(group)) {
       throw new ResponseError(400, "Exceptions are off for this group of students. Turn them on in the group first.");
     }
-    const studentRules = rules.filter((rule) => rule.audience === ApplicationAudience.STUDENTS);
+    const studentRules = rules.filter((rule) => rule.for_students);
     const fragment = (rule: GateRule): Prisma.StudentWhereInput =>
       rule.unit_ids.length ? { current_grade: { unit_id: { in: rule.unit_ids } } } : {};
     // Students of a narrower group belong to that group.
@@ -2370,6 +2425,75 @@ export class ApplicationAccessService {
     });
   }
 
+  // The interns of one group of interns, to pick the ones who get an exception. A group of employees and interns lists
+  // its employees here, its interns are reached through a group of their own.
+  private static async internCandidates(
+    filters: { application_id: string; exclude_own_access?: boolean; unit_id?: string; search?: string },
+    group: GateRule,
+    rules: GateRule[],
+    page: number,
+    size: number,
+  ): Promise<Pageable<ApplicationCandidate>> {
+    const internRules = rules.filter((rule) => rule.for_interns);
+    // Interns of a narrower group belong to that group.
+    const narrower = internRules.filter((rule) => rule.id !== group.id && parentRule(rule, rules)?.id === group.id);
+    const where: Prisma.InternWhereInput = {
+      status: InternStatus.ACTIVE,
+      deleted_at: null,
+      AND: [
+        internScope(group),
+        ...(narrower.length ? [{ NOT: { OR: narrower.map(internScope) } }] : []),
+        ...(filters.unit_id ? [{ unit_id: filters.unit_id }] : []),
+        ...(filters.exclude_own_access
+          ? [{ person: { application_entitlements: { none: { application_id: filters.application_id } } } }]
+          : []),
+        ...(filters.search
+          ? [
+              {
+                OR: [
+                  { full_name: { contains: filters.search, mode: "insensitive" as const } },
+                  { email: { contains: filters.search, mode: "insensitive" as const } },
+                ],
+              },
+            ]
+          : []),
+      ],
+    };
+    return paginate(page, size, {
+      count: () => prismaClient.intern.count({ where }),
+      findMany: async () => {
+        const interns = await prismaClient.intern.findMany({
+          where,
+          include: { unit: { select: { name: true } }, job_position: { select: { name: true } } },
+          orderBy: [{ full_name: "asc" }, { id: "asc" }],
+          skip: (page - 1) * size,
+          take: size,
+        });
+        const own = await prismaClient.applicationEntitlement.findMany({
+          where: { application_id: filters.application_id, person_id: { in: interns.map((intern) => intern.person_id) } },
+          select: { person_id: true, role: true, is_active: true },
+        });
+        return interns.map((intern) => {
+          const ownRow = own.find((row) => row.person_id === intern.person_id);
+          return {
+            person_id: intern.person_id,
+            kind: "INTERN" as const,
+            employee_id: "",
+            full_name: intern.full_name,
+            email: intern.email,
+            unit: intern.unit.name,
+            job_position: intern.job_position.name,
+            job_level: "",
+            employment_type: "",
+            inherited_role: group.default_role_key,
+            inherited_group_id: group.id,
+            own_access: ownRow ? { role: ownRow.role, is_active: ownRow.is_active } : null,
+          };
+        });
+      },
+    });
+  }
+
   // Active employees to pick from, filterable by how the application's groups cover them.
   static async candidates(
     admin: AdminUser,
@@ -2383,10 +2507,12 @@ export class ApplicationAccessService {
 
     const rules = await loadActiveRules(filters.application_id);
     if (coverage === "GROUP") {
-      const studentGroup = rules.find((rule) => rule.id === filters.group_id && rule.audience === ApplicationAudience.STUDENTS);
+      const studentGroup = rules.find((rule) => rule.id === filters.group_id && studentsOnly(rule));
       if (studentGroup) return this.studentCandidates(filters, studentGroup, rules, page, size);
+      const internGroup = rules.find((rule) => rule.id === filters.group_id && rule.for_interns && !rule.for_employees);
+      if (internGroup) return this.internCandidates(filters, internGroup, rules, page, size);
     }
-    const employeeRules = rules.filter((rule) => rule.audience !== ApplicationAudience.STUDENTS);
+    const employeeRules = rules.filter((rule) => rule.for_employees);
     const fragment = (rule: GateRule): Prisma.EmployeeWhereInput => ({
       ...(rule.unit_ids.length ? { unit_id: { in: rule.unit_ids } } : {}),
       ...(rule.job_position_ids.length ? { job_position_id: { in: rule.job_position_ids } } : {}),
@@ -2596,7 +2722,7 @@ export class ApplicationAccessService {
       granted_at: rule.created_at.toISOString(),
       updated_at: rule.updated_at.toISOString(),
       group: {
-        audience: rule.audience,
+        audiences: audiencesOf(rule),
         units: named(units, rule.unit_ids),
         job_positions: named(positions, rule.job_position_ids),
         job_levels: named(levels, rule.job_level_ids),

@@ -751,6 +751,7 @@ export class EmployeeTest {
         email: { contains: "@millennia21.id" },
         student: null,
         employee: null,
+        intern: null,
       },
     });
   }
@@ -812,6 +813,23 @@ export class EmployeeTest {
   }
 }
 
+// An intern is a person too, so group access can reach them.
+export async function createInternPerson(params: { email: string; fullName?: string }) {
+  return prismaClient.person.create({
+    data: {
+      full_name: params.fullName ?? "Test Intern",
+      nick_name: "Test",
+      email: params.email,
+      person_type: PersonType.INTERN,
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2003-01-01"),
+    },
+    select: { id: true },
+  });
+}
+
 export class InternTest {
   static async delete() {
     const internFilter = { intern: { email: { contains: "test_intern_" } } };
@@ -827,6 +845,9 @@ export class InternTest {
     await prismaClient.intern.deleteMany({
       where: { email: { contains: "test_intern_" } },
     });
+    await prismaClient.person.deleteMany({
+      where: { email: { contains: "test_intern_" }, person_type: PersonType.INTERN },
+    });
   }
 
   static async create(params: {
@@ -838,8 +859,10 @@ export class InternTest {
     mobilePhone?: string;
     residentialAddress?: string;
   }) {
+    const person = await createInternPerson({ email: params.email });
     return prismaClient.intern.create({
       data: {
+        person_id: person.id,
         full_name: "Test Intern",
         nick_name: "Test",
         email: params.email,
@@ -903,11 +926,12 @@ export class StudentTest {
     await prismaClient.student.deleteMany({
       where: { person: { email: { contains: "@millennia21.id" } } },
     });
-    // Preserve Person rows still owned by employees.
+    // Preserve Person rows still owned by employees or interns.
     await prismaClient.person.deleteMany({
       where: {
         email: { contains: "@millennia21.id" },
         employee: null,
+        intern: null,
       },
     });
     await prismaClient.pcActivityRoom.deleteMany({

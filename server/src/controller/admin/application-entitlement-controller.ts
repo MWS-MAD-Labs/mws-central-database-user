@@ -1,5 +1,6 @@
 import { checkApplicationAddress, checkHubAddressDetailed, checkHubSecret } from "../../service/hub-address-check";
 import { keyReady } from "../../utils/secret-box";
+import { AUDIENCE_NAMES, audienceProblem, type AudienceName } from "../../utils/audience";
 import { ApplicationTaxonomyService } from "../../service/application-taxonomy-service";
 import { ApplicationOnboardingService } from "../../service/application-onboarding-service";
 import type { Context } from "hono";
@@ -467,12 +468,14 @@ export class ApplicationAccessController {
   static async roleOptions(c: Context<{ Variables: AdminVariables }>) {
     const applicationId = c.req.param("applicationId");
     if (!applicationId) throw new ResponseError(400, "Application ID is required");
-    const audience = c.req.query("audience");
-    if (!audience || !["EMPLOYEES", "STUDENTS", "EMPLOYEES_AND_STUDENTS"].includes(audience)) {
-      throw new ResponseError(400, "audience must be EMPLOYEES, STUDENTS or EMPLOYEES_AND_STUDENTS");
+    const audiences = listQuery(c.req.query("audiences")) ?? [];
+    if (audiences.some((name) => !AUDIENCE_NAMES.includes(name as AudienceName))) {
+      throw new ResponseError(400, "audiences must be EMPLOYEES, INTERNS or STUDENTS");
     }
+    const problem = audienceProblem(audiences as AudienceName[]);
+    if (problem) throw new ResponseError(400, problem);
     const response = await ApplicationAccessService.roleOptions(c.var.admin, applicationId, {
-      audience: audience as "EMPLOYEES" | "STUDENTS" | "EMPLOYEES_AND_STUDENTS",
+      audiences: audiences as AudienceName[],
       unit_ids: listQuery(c.req.query("unit_ids")),
       job_position_ids: listQuery(c.req.query("job_position_ids")),
       job_level_ids: listQuery(c.req.query("job_level_ids")),
