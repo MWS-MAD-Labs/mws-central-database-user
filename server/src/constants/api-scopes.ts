@@ -1,6 +1,7 @@
 export const API_SCOPES = {
   EMPLOYEES_READ: "employees:read",
   STUDENTS_READ: "students:read",
+  INTERNS_READ: "interns:read",
   STUDENTS_ACADEMIC_HISTORY_READ: "students:academic_history:read",
   STUDENTS_HEALTH_READ: "students:health:read",
   STUDENTS_CONSENT_READ: "students:consent:read",

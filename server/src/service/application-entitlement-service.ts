@@ -258,8 +258,7 @@ async function resolveBaselineEntitlement(
   if (explicit) return null;
 
   const subject = await loadRuleSubject(personId);
-  // Interns have access in Central, but the applications cannot look one up yet (stage two).
-  if (!subject || subject.kind === "INTERN") return null;
+  if (!subject) return null;
   // The most specific matching rule wins. Saving a rule rejects overlaps, so
   // there is never a tie.
   const rule = rules
@@ -315,6 +314,7 @@ export class ApplicationEntitlementService {
           deleted_at: null,
           OR: [
             { person_type: PersonType.EMPLOYEE, employee: { status: EmployeeStatus.ACTIVE, deleted_at: null } },
+            { person_type: PersonType.INTERN, intern: { status: InternStatus.ACTIVE, deleted_at: null } },
             { person_type: PersonType.STUDENT, student: { status: StudentStatus.ACTIVE, deleted_at: null } },
           ],
         },
@@ -798,9 +798,9 @@ export class ApplicationEntitlementService {
     const roleByKey = new Map(roles.map((role) => [role.key, role]));
     const explicitByPerson = new Map(explicit.map((row) => [row.person_id, row]));
 
-    // Interns are left out on purpose until the Hub and the applications can read them (stage two): this is what the
-    // applications get, and an application cannot look an intern up yet.
+    // Interns are listed only for an application that has a group of interns or an intern with access of their own.
     const wantsEmployees = rules.some((rule) => rule.for_employees);
+    const wantsInterns = rules.some((rule) => rule.for_interns);
     const wantsStudents = rules.some((rule) => rule.for_students);
     const people = await prismaClient.person.findMany({
       where: {
@@ -808,6 +808,9 @@ export class ApplicationEntitlementService {
         OR: [
           ...(wantsEmployees || explicit.length > 0
             ? [{ person_type: PersonType.EMPLOYEE, employee: { status: EmployeeStatus.ACTIVE, deleted_at: null } }]
+            : []),
+          ...(wantsInterns || explicit.length > 0
+            ? [{ person_type: PersonType.INTERN, intern: { status: InternStatus.ACTIVE, deleted_at: null } }]
             : []),
           ...(wantsStudents || explicit.length > 0
             ? [{ person_type: PersonType.STUDENT, student: { status: StudentStatus.ACTIVE, deleted_at: null } }]

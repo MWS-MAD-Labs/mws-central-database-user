@@ -9,6 +9,7 @@ import {
   type StudentLookupResponse,
 } from "./student-api-model";
 import type { PersonWithEmployee } from "./employee-model";
+import { toInternLookupResponse, type InternLookupResponse, type InternPerson } from "./intern-api-model";
 
 export type PersonLookupRequest = {
   email: string;
@@ -16,6 +17,7 @@ export type PersonLookupRequest = {
 
 export type PersonLookupPerson = Person & {
   employee: PersonWithEmployee["employee"];
+  intern?: InternPerson["intern"];
   student: StudentLookupPerson["student"];
 };
 
@@ -24,6 +26,7 @@ export type PersonLookupPerson = Person & {
 // see resolveCentralIdentity() in mws-hub's central-client.ts.
 export type PersonLookupResponse =
   | ({ source: "employee" } & EmployeeLookupResponse)
+  | ({ source: "intern" } & InternLookupResponse)
   | ({ source: "student" } & StudentLookupResponse);
 
 export function toPersonLookupResponse(
@@ -34,6 +37,10 @@ export function toPersonLookupResponse(
       source: "employee",
       ...toEmployeeLookupResponse(person as PersonWithEmployee),
     };
+  }
+
+  if (person.intern) {
+    return { source: "intern", ...toInternLookupResponse(person as InternPerson) };
   }
 
   return {
