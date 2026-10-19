@@ -39,7 +39,7 @@ function renderEmployeeForm({
       const identity = employee?.identity || {}
       return jsonResponse({
         data: Object.fromEntries(
-          ['gender', 'religion', 'religion_other', 'birth_place', 'birth_date', 'marital_status', 'nik', 'npwp', 'bank_account_number', 'bpjs_number', 'bpjs_employment_number', 'kpj_number']
+          ['gender', 'religion', 'religion_other', 'birth_place', 'birth_date', 'marital_status', 'nik', 'npwp', 'bank_account_number', 'bpjs_number', 'bpjs_employment_number', 'kpj_number', 'children']
             .map((key) => [key, identity[key] ?? null]),
         ),
       })
@@ -197,6 +197,63 @@ describe('EmployeeForm', () => {
     for (const key of ['gender', 'religion', 'religion_other', 'birth_place', 'birth_date', 'marital_status', 'nik', 'npwp', 'bank_account_number', 'bpjs_number', 'bpjs_employment_number', 'kpj_number']) {
       expect(payload).not.toHaveProperty(key)
     }
+  })
+
+  const employeeWithOneChild = () => {
+    const employee = employeeFixture()
+    employee.identity.marital_status = 'MARRIED'
+    employee.identity.children = {
+      summary: { total: 1, under_23: 1, age_23_plus: 0, allowance_eligible: 1 },
+      items: [{ id: 'c1', birth_date: '2015-04-23', relation: 'BIOLOGICAL' }],
+    }
+    return employee
+  }
+
+  async function showSensitiveFields(user) {
+    await user.click(screen.getByRole('button', { name: 'Show Sensitive Fields' }))
+    const revealDialog = await screen.findByRole('dialog', { name: 'View sensitive fields' })
+    await user.click(within(revealDialog).getByRole('button', { name: 'View' }))
+    await screen.findByText(/^1 child: 1 under 23/)
+  }
+
+  it('leaves the children out when only something else changed', async () => {
+    const onSubmit = mock(() => {})
+    const { user } = renderEmployeeForm({ employee: employeeWithOneChild(), onSubmit })
+    await showSensitiveFields(user)
+
+    const name = field('full_name').querySelector('input')
+    await user.clear(name)
+    await user.type(name, 'Changed Employee')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    const review = await screen.findByRole('dialog', { name: /Review changes/ })
+    await user.click(within(review).getByRole('button', { name: /Save changes/ }))
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('children')
+  })
+
+  it('sends an empty list when the last child is removed, and shows only the count in the review', async () => {
+    const onSubmit = mock(() => {})
+    const { user } = renderEmployeeForm({ employee: employeeWithOneChild(), onSubmit })
+    await showSensitiveFields(user)
+
+    await user.click(screen.getByRole('button', { name: 'Remove child 1' }))
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    const review = await screen.findByRole('dialog', { name: /Review changes/ })
+    expect(within(review).getByText('No children')).toBeVisible()
+    expect(within(review).queryByText(/2015/)).not.toBeInTheDocument()
+    await user.click(within(review).getByRole('button', { name: /Save changes/ }))
+    expect(onSubmit.mock.calls[0][0].children).toEqual([])
+  })
+
+  it('does not send children for an employee whose sensitive fields were never shown', async () => {
+    const onSubmit = mock(() => {})
+    const { user } = renderEmployeeForm({ onSubmit })
+    const name = field('full_name').querySelector('input')
+    await user.clear(name)
+    await user.type(name, 'Changed Employee')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    const review = await screen.findByRole('dialog', { name: /Review changes/ })
+    await user.click(within(review).getByRole('button', { name: /Save changes/ }))
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('children')
   })
 
   it('does not mark the form dirty when Show loads the hidden values', async () => {

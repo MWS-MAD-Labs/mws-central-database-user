@@ -12,7 +12,14 @@ const revealed = {
   religion: 'OTHER',
   birth_place: 'Jakarta',
   birth_date: '1990-01-01T00:00:00.000Z',
-  marital_status: 'SINGLE',
+  marital_status: 'MARRIED',
+  children: {
+    summary: { total: 2, under_23: 1, age_23_plus: 1, allowance_eligible: 1 },
+    items: [
+      { id: 'c1', birth_date: '2000-01-01', relation: 'BIOLOGICAL' },
+      { id: 'c2', birth_date: '2016-02-02', relation: 'ADOPTED' },
+    ],
+  },
   nik: '3171000000000001',
   npwp: 'NPWP-PRIVATE',
   bank_account_number: 'BANK-PRIVATE',
@@ -92,6 +99,7 @@ describe('EmployeeDetailPage sensitive reveal', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Taylor Employee' })).toBeVisible()
     expect(screen.getByText(/PII .* are hidden by default/)).toBeVisible()
     expect(screen.queryByText('3171000000000001')).not.toBeInTheDocument()
+    expect(screen.queryByText('2 children: 1 under 23, 1 aged 23 or over')).not.toBeInTheDocument()
     expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/sensitive-fields/access'))).toBe(false)
 
     await user.click(screen.getByRole('button', { name: 'Show Sensitive Fields' }))
@@ -103,11 +111,14 @@ describe('EmployeeDetailPage sensitive reveal', () => {
       url.endsWith('/sensitive-fields/access') && options.method === 'POST',
     )).toBe(true))
     expect(await screen.findByText('3171000000000001')).toBeVisible()
+    expect(screen.getByText('2 children: 1 under 23, 1 aged 23 or over')).toBeVisible()
+    expect(screen.getByText('1 of 2 (under 23)')).toBeVisible()
     expect(sessionStorage.getItem('pii-reveal:employee:employee-1')).not.toBeNull()
 
     // Hiding forgets the reveal, so a reload starts hidden again.
     await user.click(screen.getByRole('button', { name: 'Hide' }))
     expect(sessionStorage.getItem('pii-reveal:employee:employee-1')).toBeNull()
     expect(screen.queryByText('3171000000000001')).not.toBeInTheDocument()
+    expect(screen.queryByText('2 children: 1 under 23, 1 aged 23 or over')).not.toBeInTheDocument()
   })
 })

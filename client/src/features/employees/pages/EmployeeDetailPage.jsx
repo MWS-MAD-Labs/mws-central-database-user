@@ -1,3 +1,4 @@
+import { describeChildren } from '../utils/childrenRules.js'
 import { ArrowLeft, Camera, CalendarClock, Edit, Eye, EyeOff, Mail, Phone, Trash2, UserRound, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
@@ -465,6 +466,23 @@ export function EmployeeDetailPage() {
                 <DetailRow compact label="Birth Place" value={pii.birth_place} />
                 <DetailRow compact label="Birth Date" value={formatDate(pii.birth_date)} warning={birthDateWarning} />
                 <DetailRow compact label="Marital Status" value={formatStatus(pii.marital_status)} />
+                <DetailRow compact label="Children" value={describeChildren(pii.children?.summary)} />
+                {pii.children?.items?.length ? (
+                  <DetailRow
+                    compact
+                    label="Children Born"
+                    value={pii.children.items
+                      .map((child) => `${formatDate(child.birth_date)} (${formatStatus(child.relation)})`)
+                      .join(', ')}
+                  />
+                ) : null}
+                {pii.children?.items?.length ? (
+                  <DetailRow
+                    compact
+                    label="Allowance Eligible"
+                    value={`${pii.children.summary.allowance_eligible} of ${pii.children.summary.total} (under 23)`}
+                  />
+                ) : null}
                 <DetailRow compact label="NIK" value={pii.nik} />
                 <DetailRow compact label="NPWP" value={pii.npwp} />
                 <DetailRow compact label="Bank Account" value={pii.bank_account_number} />
