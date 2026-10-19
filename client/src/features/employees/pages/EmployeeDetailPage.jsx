@@ -467,6 +467,14 @@ export function EmployeeDetailPage() {
                 <DetailRow compact label="Birth Date" value={formatDate(pii.birth_date)} warning={birthDateWarning} />
                 <DetailRow compact label="Marital Status" value={formatStatus(pii.marital_status)} />
                 <DetailRow compact label="Children" value={describeChildren(pii.children?.summary)} />
+                {pii.children?.mode === 'COUNTS' ? (
+                  <DetailRow
+                    compact
+                    label="Children Recorded"
+                    value={`As numbers on ${formatDate(pii.children.declared_at)}`}
+                    warning={pii.children.needs_review ? 'Needs review, last confirmed more than a year ago' : undefined}
+                  />
+                ) : null}
                 {pii.children?.items?.length ? (
                   <DetailRow
                     compact
@@ -476,7 +484,7 @@ export function EmployeeDetailPage() {
                       .join(', ')}
                   />
                 ) : null}
-                {pii.children?.items?.length ? (
+                {pii.children?.summary?.total ? (
                   <DetailRow
                     compact
                     label="Allowance Eligible"

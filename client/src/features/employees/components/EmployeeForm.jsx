@@ -76,7 +76,13 @@ import { RequestStatusHint } from "../../change-requests/components/RequestStatu
 import { useMyRequestsForRecord } from "../../change-requests/hooks/useMyRequestsForRecord.js";
 import { rememberReveal } from "../../../lib/piiRevealMemory.js";
 import { ChildrenField } from "./ChildrenField.jsx";
-import { describeChildren, findChildrenProblems, summarizeChildren } from "../utils/childrenRules.js";
+import {
+  childrenPayload,
+  childrenValueFromResponse,
+  describeChildren,
+  findProblemsFor,
+  summarizeChildrenValue,
+} from "../utils/childrenRules.js";
 
 const employeePiiScope = (employeeId) => `employee:${employeeId}`;
 import {
@@ -1029,15 +1035,6 @@ export function EmployeeForm({
               name="children"
               error={errors.children}
               className="md:col-span-2"
-              hint={
-                sensitiveFieldsRevealed ? (
-                  <span className="text-xs text-(--mws-muted)">
-                    Only each child&apos;s birth date and how they are related
-                    are kept. The numbers are worked out from the dates, so
-                    they stay right as children grow up.
-                  </span>
-                ) : undefined
-              }
             >
               {!sensitiveFieldsRevealed ? (
                 <SensitiveFieldPlaceholder />
@@ -1506,10 +1503,7 @@ function getInitialValues(mode, employee, options) {
     ),
     kpj_number: formatKpjNumber(identity.kpj_number || ""),
     is_kpj_number: Boolean(identity.kpj_number),
-    children: (identity.children?.items || []).map(({ birth_date, relation }) => ({
-      birth_date,
-      relation,
-    })),
+    children: childrenValueFromResponse(identity.children),
     education_level: identity.education_level || "",
     institution_name: identity.institution_name || "",
     major: identity.major || "",
@@ -1539,7 +1533,7 @@ const SENSITIVE_VALUE_KEYS = [
 
 function buildPayload(
   values,
-  { includeSensitive = true, isCreate = false, initialChildren = [] } = {},
+  { includeSensitive = true, isCreate = false, initialChildren } = {},
 ) {
   const payload = buildFullPayload(values);
   if (!includeSensitive) {
@@ -1547,13 +1541,8 @@ function buildPayload(
     for (const key of SENSITIVE_VALUE_KEYS) delete payload[key];
     return payload;
   }
-  // The children are sent as a whole list: on create only when there are some, on edit only when they changed
-  // (an empty list then clears them).
-  const rows = values.children
-    .filter((child) => child.birth_date)
-    .map(({ birth_date, relation }) => ({ birth_date, relation }));
-  const changed = JSON.stringify(values.children) !== JSON.stringify(initialChildren);
-  if (isCreate ? rows.length > 0 : changed) payload.children = rows;
+  // Children go as birth dates or as numbers, only when they changed (on create, only when there are some).
+  Object.assign(payload, childrenPayload(values.children, { isCreate, initial: initialChildren }));
   return payload;
 }
 
@@ -1789,7 +1778,7 @@ const EMPLOYEE_FIELD_FORMATTERS = {
   bpjs_employment_number: maskSensitiveValue,
   kpj_number: maskSensitiveValue,
   // Only how many, never the birth dates of the children.
-  children: (rows) => describeChildren(summarizeChildren(rows || [])),
+  children: (value) => describeChildren(summarizeChildrenValue(value)) + (value?.mode === "COUNTS" ? " (numbers only)" : ""),
 };
 
 // contract_duration_months is a scratch input that only computes
@@ -1871,10 +1860,9 @@ function computeEmployeeErrors(
     }
   }
   if (
-    findChildrenProblems({
+    findProblemsFor(values.children, {
       maritalStatus: values.marital_status,
       parentBirthDate: values.birth_date,
-      children: values.children || [],
     }).hasProblems
   ) {
     errors.children = "Fix the children marked in red before saving.";

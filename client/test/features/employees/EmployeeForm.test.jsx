@@ -203,6 +203,7 @@ describe('EmployeeForm', () => {
     const employee = employeeFixture()
     employee.identity.marital_status = 'MARRIED'
     employee.identity.children = {
+      mode: 'BIRTH_DATES',
       summary: { total: 1, under_23: 1, age_23_plus: 0, allowance_eligible: 1 },
       items: [{ id: 'c1', birth_date: '2015-04-23', relation: 'BIOLOGICAL' }],
     }
@@ -242,6 +243,36 @@ describe('EmployeeForm', () => {
     expect(within(review).queryByText(/2015/)).not.toBeInTheDocument()
     await user.click(within(review).getByRole('button', { name: /Save changes/ }))
     expect(onSubmit.mock.calls[0][0].children).toEqual([])
+  })
+
+  it('sends the numbers, and clears the birth dates, when the children are switched to numbers only', async () => {
+    const onSubmit = mock(() => {})
+    const { user } = renderEmployeeForm({ employee: employeeWithOneChild(), onSubmit })
+    await showSensitiveFields(user)
+
+    await user.click(screen.getByRole('radio', { name: 'Numbers only' }))
+    await user.type(screen.getByLabelText('Under 23'), '2')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    const review = await screen.findByRole('dialog', { name: /Review changes/ })
+    expect(within(review).getByText(/2 children: 2 under 23, 0 aged 23 or over \(numbers only\)/)).toBeVisible()
+    await user.click(within(review).getByRole('button', { name: /Save changes/ }))
+    const payload = onSubmit.mock.calls[0][0]
+    expect(payload.children_counts).toEqual({ under_23: 2, age_23_plus: 0, adopted: 0 })
+    expect(payload).not.toHaveProperty('children')
+  })
+
+  it('sends an empty list and no numbers when the children are set to none', async () => {
+    const onSubmit = mock(() => {})
+    const { user } = renderEmployeeForm({ employee: employeeWithOneChild(), onSubmit })
+    await showSensitiveFields(user)
+
+    await user.click(screen.getByRole('radio', { name: 'No children recorded' }))
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    const review = await screen.findByRole('dialog', { name: /Review changes/ })
+    await user.click(within(review).getByRole('button', { name: /Save changes/ }))
+    const payload = onSubmit.mock.calls[0][0]
+    expect(payload.children).toEqual([])
+    expect(payload.children_counts).toBeNull()
   })
 
   it('does not send children for an employee whose sensitive fields were never shown', async () => {

@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'bun:test'
 import {
   ageOn,
+  childrenPayload,
+  childrenValueFromResponse,
+  countsAreStale,
   describeChildren,
+  emptyChildrenValue,
   findChildrenProblems,
+  findCountsProblems,
   summarizeChildren,
 } from '../../../src/features/employees/utils/childrenRules.js'
 
@@ -55,5 +60,51 @@ describe('children rules in the form', () => {
     expect(findChildrenProblems({ maritalStatus: 'MARRIED', parentBirthDate: '1980-01-01', children: [child('2027-01-01')], today }).byRow[0]).toContain('future')
     const many = Array.from({ length: 21 }, () => child('2015-01-01'))
     expect(findChildrenProblems({ maritalStatus: 'MARRIED', parentBirthDate: '1980-01-01', children: many, today }).list).toContain('at most 20')
+  })
+})
+
+describe('typed numbers in the form', () => {
+  const counts = (under_23, age_23_plus, adopted = 0) => ({ under_23: String(under_23), age_23_plus: String(age_23_plus), adopted: String(adopted) })
+  const base = { maritalStatus: 'MARRIED', parentBirthDate: '1985-01-01', today: '2026-10-28' }
+
+  it('applies the same rules as the server', () => {
+    expect(findCountsProblems({ ...base, counts: counts(2, 1, 0) })).toBeNull()
+    expect(findCountsProblems({ ...base, counts: counts(1, 0, 2) })).toContain('Adopted')
+    expect(findCountsProblems({ ...base, maritalStatus: 'SINGLE', counts: counts(2, 0, 1) })).toContain('single')
+    expect(findCountsProblems({ ...base, parentBirthDate: '1986-01-01', counts: counts(0, 1, 0) })).toContain('at least 41')
+    expect(findCountsProblems({ ...base, parentBirthDate: '1986-01-01', counts: counts(0, 1, 1) })).toBeNull()
+    expect(findCountsProblems({ ...base, counts: counts(20, 1, 0) })).toContain('at most 20')
+  })
+
+  it('reads the response of the server back into the form', () => {
+    const value = childrenValueFromResponse({
+      mode: 'COUNTS',
+      items: [],
+      counts: { under_23: 2, age_23_plus: 0, adopted: 1 },
+      declared_at: '2026-01-01T00:00:00.000Z',
+      needs_review: true,
+    })
+    expect(value.mode).toBe('COUNTS')
+    expect(value.counts).toEqual({ under_23: '2', age_23_plus: '0', adopted: '1' })
+    expect(value.needs_review).toBe(true)
+    expect(childrenValueFromResponse(undefined)).toEqual(emptyChildrenValue())
+  })
+
+  it('sends nothing when nothing changed, the right field when it did, and a clear for none', () => {
+    const initial = { ...emptyChildrenValue(), mode: 'COUNTS', counts: counts(1, 0) }
+    expect(childrenPayload(initial, { initial })).toEqual({})
+    expect(childrenPayload({ ...initial, confirmed: true }, { initial })).toEqual({ children_counts: { under_23: 1, age_23_plus: 0, adopted: 0 } })
+    expect(childrenPayload({ ...initial, counts: counts(2, 0) }, { initial })).toEqual({ children_counts: { under_23: 2, age_23_plus: 0, adopted: 0 } })
+    const dates = { ...emptyChildrenValue(), mode: 'BIRTH_DATES', rows: [{ birth_date: '2015-01-01', relation: 'BIOLOGICAL' }] }
+    expect(childrenPayload(dates, { initial })).toEqual({ children: [{ birth_date: '2015-01-01', relation: 'BIOLOGICAL' }] })
+    expect(childrenPayload(emptyChildrenValue(), { initial })).toEqual({ children: [], children_counts: null })
+    expect(childrenPayload(emptyChildrenValue(), { isCreate: true })).toEqual({})
+    expect(childrenPayload({ ...initial, counts: counts(0, 0) }, { isCreate: true })).toEqual({})
+  })
+
+  it('is stale a year after it was confirmed', () => {
+    expect(countsAreStale('2025-10-28T00:00:00.000Z', new Date('2026-10-28T00:00:00.000Z'))).toBe(false)
+    expect(countsAreStale('2025-10-27T00:00:00.000Z', new Date('2026-10-28T00:00:00.000Z'))).toBe(true)
+    expect(countsAreStale(null)).toBe(false)
   })
 })
