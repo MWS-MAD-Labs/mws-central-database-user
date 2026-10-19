@@ -120,10 +120,15 @@ describe("AppGuidePage", () => {
 
       const stagingSecrets = within(staging).getAllByRole("table")[0];
       expect(within(stagingSecrets).getByText("CENTRAL_API_TOKEN")).toBeVisible();
-      expect(within(stagingSecrets).getByText("HUB_INTERNAL_SECRET")).toBeVisible();
+      // Only the three names of the pipeline are set in GitHub. The rest is for the server.
+      expect(within(stagingSecrets).queryByText("HUB_INTERNAL_SECRET")).toBeNull();
+      const server = screen.getByRole("region", { name: "Not in GitHub" });
+      expect(within(server).getByText("HUB_INTERNAL_SECRET")).toBeVisible();
+      expect(within(server).getByText("HUB_BASE_URL")).toBeVisible();
+      expect(within(server).queryByText("CENTRAL_API_TOKEN")).toBeNull();
       const stagingVariables = within(staging).getAllByRole("table")[1];
       expect(within(stagingVariables).getByText("https://staging-db.example.com/api/internal")).toBeVisible();
-      expect(within(stagingVariables).getByText("https://staging-hub.example.com")).toBeVisible();
+      expect(within(stagingVariables).queryByText("https://staging-hub.example.com")).toBeNull();
       expect(within(stagingVariables).getByText("org_demo_abcdefghijklmnopqrst")).toBeVisible();
       // A token is never filled in.
       expect(within(stagingSecrets).getAllByText(/Shown once/).length).toBeGreaterThan(0);
@@ -170,6 +175,10 @@ describe("AppGuidePage", () => {
       expect(message.textContent).toContain("PRODUCTION_CENTRAL_API_BASE_URL: (from the production Central, I will send it)");
       expect(message.textContent).toContain("STAGING_CENTRAL_API_TOKEN: (from the staging Central, I will send it)");
       expect(message.textContent).toContain("node scripts/sync-permissions.mjs");
+      // The lines for the server are not asked for in GitHub.
+      expect(message.textContent).not.toContain("HUB_BASE_URL");
+      expect(message.textContent).not.toContain("HUB_INTERNAL_SECRET");
+      expect(message.textContent).toContain("Only these three names are needed in GitHub");
       expect(screen.getByRole("button", { name: "Copy Message" })).toBeVisible();
       expect(screen.queryByRole("region", { name: /GitHub environment/ })).toBeNull();
       expect(screen.getByText(/finish On your machine and Send the permissions/)).toBeVisible();
@@ -180,10 +189,11 @@ describe("AppGuidePage", () => {
       const hub = workflowJob({ keys: KEYS, isHub: true, mode: "prefixed" });
       expect(hub).toContain("bun run permissions:sync --retries 5 --wait 20");
       expect(hub).not.toContain("environment:");
-      expect(hub).toContain("CENTRAL_ORGANIZATION_ID: ${{ github.ref_name == 'main' && secrets.PRODUCTION_CENTRAL_ORGANIZATION_ID");
+      expect(hub).toContain("PRODUCTION_CENTRAL_ORGANIZATION_ID: ${{ secrets.PRODUCTION_CENTRAL_ORGANIZATION_ID }}");
+      expect(hub).not.toContain("&&");
       const withEnvironments = workflowJob({ keys: KEYS, isHub: false, mode: "environments" });
       expect(withEnvironments).toContain("environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}");
-      expect(withEnvironments).toContain("CENTRAL_ORGANIZATION_ID: ${{ vars.CENTRAL_ORGANIZATION_ID }}");
+      expect(withEnvironments).toContain("CENTRAL_ORGANIZATION_ID: ${{ vars.CENTRAL_ORGANIZATION_ID || secrets.CENTRAL_ORGANIZATION_ID }}");
       expect(ownerMessage({ applicationName: "X", keys: KEYS, isHub: false, environment: "development", centralUrl: "http://localhost:3000", applicationId: "x" })).toContain(
         "(from the staging Central, I will send it)",
       );
@@ -195,7 +205,9 @@ describe("AppGuidePage", () => {
     expect(await screen.findByText("Rotate the token of this application")).toBeVisible();
     expect(screen.getByText("Replace CENTRAL_API_TOKEN in the .env of the application.")).toBeVisible();
     expect(
-      screen.getByText("In GitHub open Settings, then Environments, then staging, and replace the secret CENTRAL_API_TOKEN with the new value."),
+      screen.getByText(
+        "In GitHub replace the secret CENTRAL_API_TOKEN with the new value. It is in the environment staging, or among the repository secrets as STAGING_CENTRAL_API_TOKEN if you do not use Environments.",
+      ),
     ).toBeVisible();
     expect(screen.getByText("Rotate the Hub secret of this application")).toBeVisible();
     expect(screen.getByText("Rotate the Hub's master secret")).toBeVisible();
