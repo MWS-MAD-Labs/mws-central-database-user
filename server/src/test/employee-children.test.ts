@@ -237,4 +237,114 @@ describe("employee children", () => {
     const basic = await TestRequest.get("/api/admin/employees/export?format=csv&search=Export Kids", accessToken);
     expect(await basic.text()).not.toContain("Children Under 23");
   });
+
+  describe("typed counts", () => {
+    const counts = (under_23: number, age_23_plus: number, adopted = 0) => ({ under_23, age_23_plus, adopted });
+
+    it("records the numbers without any birth dates and works them into the reveal", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { response, body } = await create(accessToken, { children_counts: counts(2, 1, 1) });
+      expect(response.status).toBe(200);
+      const revealed = await reveal(accessToken, body.data.id);
+      expect(revealed.children.mode).toBe("COUNTS");
+      expect(revealed.children.summary).toEqual({ total: 3, under_23: 2, age_23_plus: 1, allowance_eligible: 2 });
+      expect(revealed.children.items).toEqual([]);
+      expect(revealed.children.needs_review).toBe(false);
+      expect(await prismaClient.employeeChild.count({ where: { employee_id: body.data.id } })).toBe(0);
+    });
+
+    it("refuses birth dates and numbers together", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { response } = await create(accessToken, {
+        children: [{ birth_date: yearsAgo(5) }],
+        children_counts: counts(1, 0),
+      });
+      expect(response.status).toBe(400);
+    });
+
+    it("applies the numbers rules: single is adopted only, and old biological children need an old parent", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const single = await create(accessToken, { marital_status: MaritalStatus.SINGLE, children_counts: counts(1, 0, 0) });
+      expect(single.response.status).toBe(400);
+      const adopted = await create(accessToken, { marital_status: MaritalStatus.SINGLE, children_counts: counts(1, 0, 1) });
+      expect(adopted.response.status).toBe(200);
+      // 40 years old in the default body, so a child of 23 or more is not possible.
+      const tooOld = await create(accessToken, { children_counts: counts(0, 1, 0) });
+      expect(tooOld.response.status).toBe(400);
+    });
+
+    it("replaces the rows with numbers and the numbers with rows", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { body } = await create(accessToken, { children: [{ birth_date: yearsAgo(5) }] });
+      const id = body.data.id as string;
+
+      const toCounts = await TestRequest.patch(`/api/admin/employees/${id}`, { children_counts: counts(2, 0) }, accessToken);
+      expect(toCounts.status).toBe(200);
+      expect(await prismaClient.employeeChild.count({ where: { employee_id: id } })).toBe(0);
+      expect((await reveal(accessToken, id)).children.mode).toBe("COUNTS");
+
+      const toRows = await TestRequest.patch(`/api/admin/employees/${id}`, { children: [{ birth_date: yearsAgo(3) }] }, accessToken);
+      expect(toRows.status).toBe(200);
+      const back = (await reveal(accessToken, id)).children;
+      expect(back.mode).toBe("BIRTH_DATES");
+      expect(back.counts).toBeNull();
+
+      await TestRequest.patch(`/api/admin/employees/${id}`, { children_counts: counts(1, 0) }, accessToken);
+      await TestRequest.patch(`/api/admin/employees/${id}`, { children_counts: null }, accessToken);
+      expect((await reveal(accessToken, id)).children.mode).toBe("NONE");
+    });
+
+    it("keeps the numbers when children are not sent, and asks for a review after a year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { body } = await create(accessToken, { children_counts: counts(1, 0) });
+      const id = body.data.id as string;
+      await TestRequest.patch(`/api/admin/employees/${id}`, { notes: "unrelated" }, accessToken);
+      expect((await reveal(accessToken, id)).children.mode).toBe("COUNTS");
+
+      const old = new Date();
+      old.setUTCFullYear(old.getUTCFullYear() - 2);
+      await prismaClient.employee.update({ where: { id }, data: { children_declared_at: old } });
+      expect((await reveal(accessToken, id)).children.needs_review).toBe(true);
+
+      await TestRequest.patch(`/api/admin/employees/${id}`, { children_counts: counts(1, 0) }, accessToken);
+      expect((await reveal(accessToken, id)).children.needs_review).toBe(false);
+    });
+
+    it("refuses a marital status change that no longer fits the numbers", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { body } = await create(accessToken, { children_counts: counts(1, 0) });
+      const single = await TestRequest.patch(
+        `/api/admin/employees/${body.data.id}`,
+        { marital_status: MaritalStatus.SINGLE },
+        accessToken,
+      );
+      expect(single.status).toBe(400);
+    });
+
+    it("writes only the counts to the audit log, and needs PII access to write them", async () => {
+      const blocked = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      expect((await create(blocked.accessToken, { children_counts: counts(1, 0) })).response.status).toBe(403);
+
+      await AdminUserTest.delete();
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { body } = await create(accessToken, { children_counts: counts(2, 0) });
+      const entry = await prismaClient.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.CREATE_EMPLOYEE, entity_id: body.data.id },
+      });
+      expect(JSON.stringify(entry.new_values)).toContain('"total":2');
+    });
+
+    it("releases the numbers when the employee is archived and shows them in the export", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { body } = await create(accessToken, { full_name: "Test Emp Export Counts", children_counts: counts(2, 0) });
+      const sensitive = await TestRequest.get("/api/admin/employees/export?format=csv&search=Export Counts&export_mode=sensitive", accessToken);
+      expect(await sensitive.text()).toContain("Children Under 23");
+
+      const id = body.data.id as string;
+      expect((await TestRequest.patch(`/api/admin/employees/delete/${id}`, {}, accessToken)).status).toBe(200);
+      const row = await prismaClient.employee.findUniqueOrThrow({ where: { id } });
+      expect(row.children_declared_under_23).toBeNull();
+      expect(row.children_declared_at).toBeNull();
+    });
+  });
 });

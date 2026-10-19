@@ -74,6 +74,20 @@ const CHILDREN = z
   )
   .max(MAX_CHILDREN, `An employee can have at most ${MAX_CHILDREN} children on record`);
 
+// The numbers-only way to record children. null clears it. The rules that need the parent's data run in the service.
+const CHILDREN_COUNT = z
+  .number({ message: "Children count must be a whole number" })
+  .int("Children count must be a whole number")
+  .min(0, "Children count cannot be negative")
+  .max(MAX_CHILDREN, `An employee can have at most ${MAX_CHILDREN} children on record`);
+const CHILDREN_COUNTS = z
+  .object({
+    under_23: CHILDREN_COUNT,
+    age_23_plus: CHILDREN_COUNT,
+    adopted: CHILDREN_COUNT,
+  })
+  .nullable();
+
 const EDUCATION_LEVEL_VALUES = Object.keys(EducationLevel) as [
   keyof typeof EducationLevel,
   ...(keyof typeof EducationLevel)[],
@@ -152,6 +166,7 @@ export class EmployeeValidation {
         message: "Marital status is required and must be a valid format",
       }),
       children: CHILDREN.optional(),
+      children_counts: CHILDREN_COUNTS.optional(),
       mobile_phone: indonesianPhone().optional(),
       residential_address: z
         .string()
@@ -481,6 +496,7 @@ export class EmployeeValidation {
       })
       .optional(),
     children: CHILDREN.optional(),
+    children_counts: CHILDREN_COUNTS.optional(),
     mobile_phone: indonesianPhone().optional(),
     residential_address: z
       .string()

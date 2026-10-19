@@ -2,9 +2,12 @@ import { describe, expect, it } from "bun:test";
 import { ChildRelation, MaritalStatus } from "../generated/prisma/client";
 import {
   ageOn,
+  countsNeedReview,
   findChildrenProblems,
+  findCountsProblems,
   MAX_CHILDREN,
   summarizeChildren,
+  summarizeCounts,
 } from "../utils/employee-children-rules";
 
 const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
@@ -89,5 +92,48 @@ describe("findChildrenProblems", () => {
     const many = Array.from({ length: MAX_CHILDREN + 1 }, () => child("2015-01-01"));
     expect(check("1980-01-01", many)[0]).toContain(`at most ${MAX_CHILDREN}`);
     expect(check("1990-05-10", [child("2015-01-01"), child("2006-01-01")])[0]).toContain("Child 2");
+  });
+});
+
+describe("typed counts", () => {
+  const parent = day("1985-01-01"); // 41 on the test day
+  const problems = (counts: { under_23: number; age_23_plus: number; adopted: number }, marital: MaritalStatus = MaritalStatus.MARRIED, birth = parent) =>
+    findCountsProblems({ marital_status: marital, parent_birth_date: birth, counts, today });
+
+  it("adds up the numbers and counts the under 23s for the allowance", () => {
+    expect(summarizeCounts({ under_23: 2, age_23_plus: 1, adopted: 0 })).toEqual({
+      total: 3,
+      under_23: 2,
+      age_23_plus: 1,
+      allowance_eligible: 2,
+    });
+  });
+
+  it("accepts a normal family", () => {
+    expect(problems({ under_23: 2, age_23_plus: 1, adopted: 0 })).toEqual([]);
+  });
+
+  it("refuses more adopted children than children", () => {
+    expect(problems({ under_23: 1, age_23_plus: 0, adopted: 2 })).toHaveLength(1);
+  });
+
+  it("lets a single employee have only adopted children", () => {
+    expect(problems({ under_23: 2, age_23_plus: 0, adopted: 1 }, MaritalStatus.SINGLE)).toHaveLength(1);
+    expect(problems({ under_23: 2, age_23_plus: 0, adopted: 2 }, MaritalStatus.SINGLE)).toEqual([]);
+  });
+
+  it("needs a parent of at least 41 for children of 23 or older who are not adopted", () => {
+    const young = day("1986-01-01"); // 40
+    expect(problems({ under_23: 0, age_23_plus: 1, adopted: 0 }, MaritalStatus.MARRIED, young)).toHaveLength(1);
+    expect(problems({ under_23: 0, age_23_plus: 1, adopted: 1 }, MaritalStatus.MARRIED, young)).toEqual([]);
+  });
+
+  it("refuses too many children", () => {
+    expect(problems({ under_23: MAX_CHILDREN, age_23_plus: 1, adopted: 0 })).not.toHaveLength(0);
+  });
+
+  it("asks for a review after a year", () => {
+    expect(countsNeedReview(day("2025-10-28"), today)).toBe(false);
+    expect(countsNeedReview(day("2025-10-27"), today)).toBe(true);
   });
 });

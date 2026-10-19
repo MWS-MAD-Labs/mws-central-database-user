@@ -10,6 +10,11 @@ export const MAX_CHILDREN = 20;
 // A child counts for the allowance until the day they turn this age.
 export const ALLOWANCE_AGE_LIMIT = 23;
 
+// Numbers typed in for a parent who does not share birth dates. They cannot age, so they are reviewed after this long.
+export const COUNTS_REVIEW_AFTER_MONTHS = 12;
+
+export type ChildrenCounts = { under_23: number; age_23_plus: number; adopted: number };
+
 export type ChildDraft = { birth_date: Date; relation: ChildRelation };
 
 export type ChildrenSummary = {
@@ -98,5 +103,57 @@ export function findChildrenProblems(input: {
     }
   });
 
+  return problems;
+}
+
+export function summarizeCounts(counts: ChildrenCounts): ChildrenSummary {
+  return {
+    total: counts.under_23 + counts.age_23_plus,
+    under_23: counts.under_23,
+    age_23_plus: counts.age_23_plus,
+    allowance_eligible: counts.under_23,
+  };
+}
+
+// Typed numbers are stale once they have not been confirmed for a year.
+export function countsNeedReview(declaredAt: Date, today: Date = new Date()): boolean {
+  const limit = toUtcDate(declaredAt);
+  limit.setUTCMonth(limit.getUTCMonth() + COUNTS_REVIEW_AFTER_MONTHS);
+  return toUtcDate(today) > limit;
+}
+
+// Same idea as findChildrenProblems, with only the three numbers to go on. A child who is not adopted is taken as
+// biological, so the oldest ones still need a parent old enough.
+export function findCountsProblems(input: {
+  marital_status: MaritalStatus;
+  parent_birth_date: Date;
+  counts: ChildrenCounts;
+  today?: Date;
+}): string[] {
+  const today = input.today ?? new Date();
+  const { under_23, age_23_plus, adopted } = input.counts;
+  const total = under_23 + age_23_plus;
+  const problems: string[] = [];
+
+  if (total > MAX_CHILDREN) {
+    problems.push(`An employee can have at most ${MAX_CHILDREN} children on record`);
+  }
+  if (adopted > total) {
+    problems.push("Adopted children cannot be more than the children in total");
+    return problems;
+  }
+  if (input.marital_status === MaritalStatus.SINGLE && adopted < total) {
+    problems.push("An employee who is single can only have adopted children on record");
+    return problems;
+  }
+
+  // At least this many of the children aged 23 or older are not adopted.
+  const olderNotAdopted = Math.max(0, age_23_plus - adopted);
+  const minParentAge = ALLOWANCE_AGE_LIMIT + MIN_PARENT_AGE_GAP_YEARS;
+  if (olderNotAdopted > 0 && ageOn(input.parent_birth_date, today) < minParentAge) {
+    problems.push(
+      `Children aged ${ALLOWANCE_AGE_LIMIT} or older who are not adopted need a parent of at least ${minParentAge} (the employee was born ${iso(input.parent_birth_date)})`,
+    );
+  }
   return problems;
 }

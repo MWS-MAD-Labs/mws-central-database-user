@@ -824,6 +824,12 @@ model Employee {
   disciplinary_actions                EmployeeDisciplinaryAction[]
   // Sensitive family data. Counts are derived from these rows, never stored.
   children                            EmployeeChild[]
+  // The other way to record children, for a parent who does not share birth dates: three typed numbers. All null
+  // when the children are recorded as rows (or not at all).
+  children_declared_under_23          Int?
+  children_declared_23_plus           Int?
+  children_declared_adopted           Int?
+  children_declared_at                DateTime?
 
   @@map("employees")
 }

@@ -20,7 +20,13 @@ import {
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 import { maskSensitiveValue } from "../utils/sensitive-data";
-import { summarizeChildren, type ChildrenSummary } from "../utils/employee-children-rules";
+import {
+  countsNeedReview,
+  summarizeChildren,
+  summarizeCounts,
+  type ChildrenCounts,
+  type ChildrenSummary,
+} from "../utils/employee-children-rules";
 import type { BulkActionResponse, BulkIdsRequest } from "./bulk-action-model";
 import {
   isBirthDateNotFuture,
@@ -73,6 +79,7 @@ export type CreateEmployeeRequest = {
   marital_status: MaritalStatus;
   // Replaces the whole list when given. Needs the employee PII permission.
   children?: { birth_date: string; relation: ChildRelation }[];
+  children_counts?: ChildrenCounts | null;
   mobile_phone?: string;
   residential_address?: string;
   nik?: string;
@@ -120,6 +127,7 @@ export type UpdateEmployeeRequest = {
   marital_status?: MaritalStatus;
   // Replaces the whole list when given (an empty list clears it). Needs the employee PII permission.
   children?: { birth_date: string; relation: ChildRelation }[];
+  children_counts?: ChildrenCounts | null;
   mobile_phone?: string;
   residential_address?: string;
   nik?: string;
@@ -278,14 +286,57 @@ export type EmployeeResponse = {
 };
 
 export type EmployeeChildrenResponse = {
+  // How the children were recorded: with birth dates, as typed numbers, or not at all.
+  mode: "NONE" | "BIRTH_DATES" | "COUNTS";
   summary: ChildrenSummary;
   items: { id: string; birth_date: string; relation: ChildRelation }[];
+  // Typed numbers only. The oldest of them is reviewed after a year.
+  counts: ChildrenCounts | null;
+  declared_at: string | null;
+  needs_review: boolean;
 };
+
+type ChildrenDeclared = Pick<
+  Employee,
+  | "children_declared_under_23"
+  | "children_declared_23_plus"
+  | "children_declared_adopted"
+  | "children_declared_at"
+>;
+
+// The typed numbers of an employee, or null when the children are not recorded that way.
+export function toDeclaredCounts(employee: Partial<ChildrenDeclared>): ChildrenCounts | null {
+  if (
+    employee.children_declared_under_23 == null ||
+    employee.children_declared_23_plus == null ||
+    employee.children_declared_adopted == null
+  ) {
+    return null;
+  }
+  return {
+    under_23: employee.children_declared_under_23,
+    age_23_plus: employee.children_declared_23_plus,
+    adopted: employee.children_declared_adopted,
+  };
+}
 
 export function toEmployeeChildrenResponse(
   rows: Pick<EmployeeChild, "id" | "birth_date" | "relation">[],
+  employee: Partial<ChildrenDeclared> = {},
   today: Date = new Date(),
 ): EmployeeChildrenResponse {
+  const counts = toDeclaredCounts(employee);
+  if (counts) {
+    const declaredAt = employee.children_declared_at ?? null;
+    return {
+      mode: "COUNTS",
+      summary: summarizeCounts(counts),
+      items: [],
+      counts,
+      declared_at: declaredAt ? declaredAt.toISOString() : null,
+      needs_review: declaredAt ? countsNeedReview(declaredAt, today) : true,
+    };
+  }
   const items = [...rows]
     .sort((a, b) => a.birth_date.getTime() - b.birth_date.getTime())
     .map((row) => ({
@@ -293,7 +344,14 @@ export function toEmployeeChildrenResponse(
       birth_date: row.birth_date.toISOString().slice(0, 10),
       relation: row.relation,
     }));
-  return { summary: summarizeChildren(rows, today), items };
+  return {
+    mode: rows.length > 0 ? "BIRTH_DATES" : "NONE",
+    summary: summarizeChildren(rows, today),
+    items,
+    counts: null,
+    declared_at: null,
+    needs_review: false,
+  };
 }
 
 export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
@@ -477,7 +535,7 @@ export const toEmployeeDetailResponse = (
       birth_date: person.birth_date.toISOString(),
       photo_url: person.photo_url,
       marital_status: employee.marital_status,
-      children: toEmployeeChildrenResponse(employee.children ?? []),
+      children: toEmployeeChildrenResponse(employee.children ?? [], employee),
       nik: employee.nik,
       npwp: employee.npwp,
       bank_account_number: employee.bank_account_number,
