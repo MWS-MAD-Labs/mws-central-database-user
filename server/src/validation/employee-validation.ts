@@ -6,8 +6,10 @@ import {
   EmployeeStatus,
   MaritalStatus,
   EducationLevel,
+  ChildRelation,
 } from "../generated/prisma/client";
 import { EMPLOYEE_SORT_FIELDS } from "../model/employee-model";
+import { MAX_CHILDREN } from "../utils/employee-children-rules";
 import {
   emailWithAllowedDomain,
   indonesianPhone,
@@ -53,6 +55,24 @@ const MARITAL_STATUS_VALUES = Object.keys(MaritalStatus) as [
   keyof typeof MaritalStatus,
   ...(keyof typeof MaritalStatus)[],
 ];
+
+const CHILD_RELATION_VALUES = Object.keys(ChildRelation) as [
+  keyof typeof ChildRelation,
+  ...(keyof typeof ChildRelation)[],
+];
+
+// A child's birth date is a calendar day. The rules that need the parent's data run in the service.
+const CHILDREN = z
+  .array(
+    z.object({
+      birth_date: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "Child birth date must be a date like 2015-04-23")
+        .refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)), "Child birth date is not a real date"),
+      relation: z.enum(CHILD_RELATION_VALUES).default("BIOLOGICAL"),
+    }),
+  )
+  .max(MAX_CHILDREN, `An employee can have at most ${MAX_CHILDREN} children on record`);
 
 const EDUCATION_LEVEL_VALUES = Object.keys(EducationLevel) as [
   keyof typeof EducationLevel,
@@ -131,6 +151,7 @@ export class EmployeeValidation {
       marital_status: z.enum(MARITAL_STATUS_VALUES, {
         message: "Marital status is required and must be a valid format",
       }),
+      children: CHILDREN.optional(),
       mobile_phone: indonesianPhone().optional(),
       residential_address: z
         .string()
@@ -459,6 +480,7 @@ export class EmployeeValidation {
         message: "Marital status must be a valid format",
       })
       .optional(),
+    children: CHILDREN.optional(),
     mobile_phone: indonesianPhone().optional(),
     residential_address: z
       .string()
