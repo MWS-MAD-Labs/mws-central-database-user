@@ -74,6 +74,13 @@ enum MaritalStatus {
   WIDOWED
 }
 
+// How a child is related to the employee. Only BIOLOGICAL needs a minimum age gap; see utils/employee-children-rules.ts.
+enum ChildRelation {
+  BIOLOGICAL
+  ADOPTED
+  STEP
+}
+
 enum InternStatus {
   ACTIVE
   COMPLETED
@@ -815,8 +822,25 @@ model Employee {
   pc_activity_room_mentor_assignments PcActivityRoomMentorAssignment[]
   mutation_history                    EmployeeMutationHistory[]
   disciplinary_actions                EmployeeDisciplinaryAction[]
+  // Sensitive family data. Counts are derived from these rows, never stored.
+  children                            EmployeeChild[]
 
   @@map("employees")
+}
+
+// One row per child of an employee. Only the birth date and the relation are kept, so the number of children, how many
+// are under 23 and the allowance status can be worked out for any day and never go stale.
+model EmployeeChild {
+  id          String        @id @default(cuid())
+  employee_id String
+  employee    Employee      @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  birth_date  DateTime      @db.Date
+  relation    ChildRelation @default(BIOLOGICAL)
+  created_at  DateTime      @default(now())
+  updated_at  DateTime      @updatedAt
+
+  @@index([employee_id])
+  @@map("employee_children")
 }
 
 model EmployeePcMentorUnit {
