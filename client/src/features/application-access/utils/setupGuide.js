@@ -22,11 +22,14 @@ export function guideRows({ keys, applicationId, selected, environment, centralU
   const here = selected === environment
   const hub = hubAddress ? hubAddress.replace(/\/+$/, '') : null
   return keys.map((item) => {
-    // Without Environments every value goes in as a repository secret, named for its environment.
-    const prefixed = mode === 'prefixed'
-    const kind = prefixed || item.secret ? 'Secret' : 'Variable'
-    const name = prefixed ? prefixedName(item.key, selected) : item.key
+    // Only three names are read by the deploy pipeline. Every other line of the block is read by the server.
     const inPipeline = item.key === base || item.key === token || item.key.endsWith('ORGANIZATION_ID')
+    const target = inPipeline ? 'github' : 'server'
+    // Without Environments every value in GitHub is a repository secret, named for its environment. The server
+    // always reads the plain names.
+    const prefixed = mode === 'prefixed' && inPipeline
+    const kind = target === 'server' ? 'Server' : prefixed || item.secret ? 'Secret' : 'Variable'
+    const name = prefixed ? prefixedName(item.key, selected) : item.key
     const usedBy = inPipeline ? 'Pipeline and server' : 'Server only'
     let value = null
     let source = `From the block of the ${selected} Central.`
@@ -48,7 +51,7 @@ export function guideRows({ keys, applicationId, selected, environment, centralU
     } else if (item.secret) {
       source = 'Shown once, in the block you copy when the connection is made or rotated.'
     }
-    return { key: item.key, name, kind, usedBy, value, source }
+    return { key: item.key, name, kind, usedBy, target, value, source }
   })
 }
 
@@ -109,7 +112,7 @@ export function rotationSteps({ keys, environment }) {
   const github = githubEnvironmentOf(environment)
   const inGithub = (name) =>
     github
-      ? `In GitHub open Settings, then Environments, then ${github}, and replace the secret ${name} with the new value.`
+      ? `In GitHub replace the secret ${name} with the new value. It is in the environment ${github}, or among the repository secrets as ${prefixedName(name, github)} if you do not use Environments.`
       : `This is a development Central. If the application also runs in staging or production, those have their own values, rotate them in their own Central.`
   return {
     token: [
@@ -150,19 +153,74 @@ export function prefixedName(key, environment) {
   return `${environment.toUpperCase()}_${key}`
 }
 
+// A read-only call to check the address and the token by hand before the first deploy.
+export function checkCommand({ keys, baseValue }) {
+  const { path } = connectionKeys(keys)
+  return `curl -i -H "Authorization: Bearer <the token>" "${baseValue || '<the address of Central>'}${path}"`
+}
+
+// The shell of the job: it picks the values of the branch, says which one is missing, checks the shape of the address and
+// then runs the command that sends the permissions. One text for the guide, the owner message and the tests.
+export function sendScript({ keys, mode, command }) {
+  const { base, token, short } = connectionKeys(keys)
+  const organization = keys.find((item) => item.key.endsWith('ORGANIZATION_ID'))?.key
+  const prefixed = mode === 'prefixed' || mode === 'owner-prefixed'
+  const names = [base, token]
+  const lines = []
+  let missing
+  if (prefixed) {
+    // main reads PRODUCTION_ and everything else reads STAGING_, so a missing production value is an error and
+    // never a quiet fall back to the staging one.
+    lines.push(
+      'if [ "$GITHUB_REF" = "refs/heads/main" ]; then P=PRODUCTION; else P=STAGING; fi',
+      'pick() { local name="${P}_$1"; printf \'%s\' "${!name}"; }',
+      `export ${base}="$(pick ${base})"`,
+      `export ${token}="$(pick ${token})"`,
+    )
+    if (organization) lines.push(`export ${organization}="$(pick ${organization})"`)
+    missing = (name) => `\${P}_${name} is not set. Add it under Settings, Secrets and variables, Actions, as a repository secret.`
+  } else {
+    missing = (name) => `${name} is not set in the GitHub Environment $ENVIRONMENT_NAME. Add it there.`
+  }
+  for (const name of names) {
+    lines.push(`if [ -z "$${name}" ]; then echo "::error::${missing(name)}"; exit 1; fi`)
+  }
+  const shape = short ? 'https://*/api/internal' : 'https://*'
+  const rule = short ? 'start with https:// and end with /api/internal' : 'start with https://'
+  lines.push(
+    `case "\${${base}%/}" in`,
+    `  ${shape}) ;;`,
+    `  *) echo "::error::The address in ${base} must ${rule}."; exit 1 ;;`,
+    'esac',
+    command,
+  )
+  return lines.join('\n')
+}
+
 // The job that sends the permissions on a deploy. With Environments it takes the values of the environment named for
-// the branch. Without them it picks the prefixed secrets with an expression on the branch.
+// the branch. Without them it reads the repository secrets with STAGING_ or PRODUCTION_ in front.
 export function workflowJob({ keys, isHub, mode }) {
   const { base, token } = connectionKeys(keys)
   const organization = keys.find((item) => item.key.endsWith('ORGANIZATION_ID'))?.key
   const prefixed = mode === 'prefixed' || mode === 'owner-prefixed'
-  const pick = (key) =>
-    `\${{ github.ref_name == 'main' && secrets.${prefixedName(key, 'production')} || secrets.${prefixedName(key, 'staging')} }}`
-  const baseValue = prefixed ? pick(base) : `\${{ vars.${base} }}`
-  const tokenValue = prefixed ? pick(token) : `\${{ secrets.${token} }}`
-  const organizationLine = organization
-    ? `\n          ${organization}: ${prefixed ? pick(organization) : `\${{ vars.${organization} }}`}`
-    : ''
+  const command = isHub ? 'bun install --frozen-lockfile\nbun run permissions:sync --retries 5 --wait 20' : 'node scripts/sync-permissions.mjs'
+  const env = []
+  if (prefixed) {
+    for (const environment of STANDARD_ENVIRONMENTS) {
+      for (const key of [base, token, organization].filter(Boolean)) {
+        env.push(`${prefixedName(key, environment)}: \${{ secrets.${prefixedName(key, environment)} }}`)
+      }
+    }
+  } else {
+    env.push(`${base}: \${{ vars.${base} || secrets.${base} }}`, `${token}: \${{ secrets.${token} }}`)
+    if (organization) env.push(`${organization}: \${{ vars.${organization} || secrets.${organization} }}`)
+    env.push("ENVIRONMENT_NAME: ${{ github.ref_name == 'main' && 'production' || 'staging' }}")
+  }
+  const indent = (text, spaces) =>
+    text
+      .split('\n')
+      .map((line) => `${' '.repeat(spaces)}${line}`)
+      .join('\n')
   const header = prefixed
     ? `  send-permissions:
     needs: deploy
@@ -174,24 +232,13 @@ export function workflowJob({ keys, isHub, mode }) {
     # the staging branch uses the staging environment, main uses production
     environment: \${{ github.ref_name == 'main' && 'production' || 'staging' }}
     steps:`
-  const run = isHub
-    ? `      - uses: oven-sh/setup-bun@v2
-      - name: Send the Hub's permissions to Central
-        working-directory: backend
-        env:
-          CENTRAL_API_BASE_URL: ${baseValue}
-          CENTRAL_API_TOKEN: ${tokenValue}${organizationLine}
-        run: |
-          bun install --frozen-lockfile
-          bun run permissions:sync --retries 5 --wait 20`
-    : `      - name: Send the permissions to Central
-        env:
-          ${base}: ${baseValue}
-          ${token}: ${tokenValue}${organizationLine}
-        run: node scripts/sync-permissions.mjs`
   return `${header}
       - uses: actions/checkout@v4
-${run}`
+${isHub ? '      - uses: oven-sh/setup-bun@v2\n' : ''}      - name: Send the permissions to Central${isHub ? '\n        working-directory: backend' : ''}
+        env:
+${indent(env.join('\n'), 10)}
+        run: |
+${indent(sendScript({ keys, mode, command }), 10)}`
 }
 
 // What to send the owner of a repository when you cannot change its settings yourself.
@@ -200,6 +247,7 @@ export function ownerMessage({ applicationName, keys, isHub, environment, centra
     guideRows({ keys, applicationId, selected, environment, centralUrl, hubAddress, organizationId, mode: 'prefixed' })
   const lines = (selected) =>
     known(selected)
+      .filter((row) => row.target === 'github')
       .map((row) => `  - ${row.name}: ${row.value ?? `(from the ${selected} Central, I will send it)`}`)
       .join('\n')
   return `Hi, I am setting up ${applicationName} to connect to Central. I cannot change this repository's settings, so could you add these repository secrets (Settings, Secrets and variables, Actions, New repository secret)?
@@ -209,6 +257,8 @@ ${lines('staging')}
 
 Production:
 ${lines('production')}
+
+Only these three names are needed in GitHub. The other lines of the block are read by the server and do not go there.
 
 Then please add this job to the deploy workflow, after the deploy job:
 

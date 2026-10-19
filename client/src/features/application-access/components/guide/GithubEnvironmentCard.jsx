@@ -42,8 +42,10 @@ function Table({ rows, showValue }) {
 
 // One GitHub environment (staging or production) with what to add in it. The values are only known for the Central
 // that is being looked at. For the other one the card says where they come from.
-export function GithubEnvironmentCard({ name, here, rows, mode = "environments" }) {
+export function GithubEnvironmentCard({ name, here, rows: allRows, mode = "environments" }) {
   const prefixed = mode === "prefixed";
+  // Only what the deploy pipeline reads is set in GitHub. The rest is in ServerEnvCard.
+  const rows = allRows.filter((row) => row.target === "github");
   const secrets = rows.filter((row) => row.kind === "Secret");
   const variables = rows.filter((row) => row.kind === "Variable");
   return (
@@ -56,8 +58,8 @@ export function GithubEnvironmentCard({ name, here, rows, mode = "environments" 
         <ol className="list-decimal space-y-1 pl-5 text-sm text-(--mws-muted)">
           <li>In the repository open Settings, then Secrets and variables, then Actions, then New repository secret.</li>
           <li>
-            Add each name below. The {name.toUpperCase()}_ in front keeps {name} apart from the other environment. The application
-            itself reads the plain names without it, in its own .env.
+            Add each name below, and only these. The {name.toUpperCase()}_ in front keeps {name} apart from the other environment. The
+            application itself reads the plain names without it, in the .env of its server.
           </li>
           {here ? null : (
             <li>
@@ -71,7 +73,7 @@ export function GithubEnvironmentCard({ name, here, rows, mode = "environments" 
             In the repository open Settings, then Environments, then New environment, and name it{" "}
             <span className="font-mono text-(--mws-charcoal)">{name}</span>.
           </li>
-          <li>Inside it, under Environment secrets and Environment variables, add the names below.</li>
+          <li>Inside it, under Environment secrets and Environment variables, add the names below, and only these.</li>
           {here ? null : (
             <li>
               The values come from the {name} Central. Open this application there, make the connection, and copy them from its block.
@@ -96,6 +98,26 @@ export function GithubEnvironmentCard({ name, here, rows, mode = "environments" 
           </div>
         </>
       )}
+    </section>
+  );
+}
+
+// The lines of the block that are not set in GitHub: the server reads them from its own environment.
+export function ServerEnvCard({ rows, environment }) {
+  const server = rows.filter((row) => row.target === "server");
+  if (server.length === 0) return null;
+  return (
+    <section aria-label="Not in GitHub" className="min-w-0 space-y-3 rounded-2xl border border-(--mws-line) bg-(--mws-soft) p-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <h4 className="font-display text-base font-bold text-(--mws-charcoal)">Not In GitHub</h4>
+        <StatusBadge tone="neutral">Server only</StatusBadge>
+      </div>
+      <p className="text-sm text-(--mws-muted)">
+        Do not add these to GitHub. Put them in the .env of the server, which is the Environment field of the stack in Komodo, with
+        these plain names. They come from the block Central shows when the connection is made, in the {environment} Central. If you
+        already made them in GitHub, you can delete them. Nothing reads them there.
+      </p>
+      <Table rows={server} showValue={false} />
     </section>
   );
 }

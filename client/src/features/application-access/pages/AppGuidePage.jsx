@@ -8,13 +8,14 @@ import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { cn } from "../../../lib/cn.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { GithubEnvironmentCard } from "../components/guide/GithubEnvironmentCard.jsx";
+import { GithubEnvironmentCard, ServerEnvCard } from "../components/guide/GithubEnvironmentCard.jsx";
 import { GuideNav } from "../components/guide/GuideNav.jsx";
 import { Code, DoneWhen, Paragraph, Steps, SubHeading } from "../components/guide/GuidePieces.jsx";
 import { copyText } from "../utils/copyText.js";
 import {
   GITHUB_MODES,
   STANDARD_ENVIRONMENTS,
+  checkCommand,
   connectionKeys,
   githubEnvironmentOf,
   guideRows,
@@ -280,6 +281,8 @@ function DeployPart({ setup, isHub, keys, environment, github, mode, application
       mode: mode === "owner" ? "prefixed" : mode,
     });
   const job = workflowJob({ keys, isHub, mode });
+  const checkBase = rowsOf(github ?? "staging").find((row) => row.target === "github" && row.key === connectionKeys(keys).base)?.value;
+  const checkText = checkCommand({ keys, baseValue: checkBase });
   const message = ownerMessage({
     applicationName: setup.application.name,
     keys,
@@ -347,21 +350,34 @@ function DeployPart({ setup, isHub, keys, environment, github, mode, application
         </div>
       ) : (
         <>
+          <Paragraph>
+            Only three names are set in GitHub: the address of Central, the token and the Organization ID. The deploy job reads these and
+            nothing else. Every other line of the block is for the server and is not set in GitHub.
+          </Paragraph>
           <div className="grid gap-5 2xl:grid-cols-2">
             {STANDARD_ENVIRONMENTS.map((name) => (
               <GithubEnvironmentCard key={name} name={name} here={name === github} rows={rowsOf(name)} mode={mode} />
             ))}
           </div>
+          <ServerEnvCard rows={rowsOf(github ?? "staging")} environment={github ?? "staging"} />
           <div>
             <SubHeading>Send the permissions on every deploy</SubHeading>
+            <div role="note" className="mb-3 rounded-xl border border-[#d8b45b] bg-[#fff8e8] p-4 text-sm leading-6 text-[#745716]">
+              <p className="font-semibold">Does the repository already have a job that sends the permissions?</p>
+              <p className="mt-1">
+                Replace it with the job below, or make it read exactly the names in the table above. A job that reads other names finds
+                them empty and fails with "not set".
+                {mode === "environments"
+                  ? " With Environments the job has an environment: line and reads the plain names."
+                  : " Without Environments the job has no environment: line and reads the names with STAGING_ or PRODUCTION_ in front."}
+              </p>
+            </div>
             <Paragraph>
               Add this job to the deploy workflow. It runs after the deploy job and after Central itself is deployed in that environment.
               {mode === "environments"
                 ? " The staging branch uses the staging environment and main uses production, so each takes the values of its own Central."
-                : " It picks the staging secrets on the staging branch and the production secrets on main."}{" "}
-              Change deploy if your deploy job has another name. The names marked "Pipeline and server" are the ones this job reads. The names
-              marked "Server only" are read by the application where it runs, so they go into its environment on the server, with the plain
-              names, and not into the pipeline.
+                : " The main branch reads the PRODUCTION_ names and every other branch reads the STAGING_ names. A missing production value is an error, it never falls back to staging."}{" "}
+              Change deploy if your deploy job has another name. If the job stops, the message names the value that is missing.
             </Paragraph>
             <Paragraph>
               To stop a deploy when Central refuses the list, run this job before the deploy job instead: remove needs: deploy here and add
@@ -372,6 +388,17 @@ function DeployPart({ setup, isHub, keys, environment, github, mode, application
               Copy Job
             </TextAction>
             <Paragraph>It fails the deploy if Central says no.</Paragraph>
+          </div>
+          <div>
+            <SubHeading>Check The Values</SubHeading>
+            <Paragraph>
+              Before the first deploy, run this on your machine with the token of that Central. It only reads. A list in the answer means the
+              address and the token are right.
+            </Paragraph>
+            <Code>{checkText}</Code>
+            <TextAction className="mt-2" icon={Copy} onClick={() => copyText(checkText)}>
+              Copy Command
+            </TextAction>
           </div>
         </>
       )}
