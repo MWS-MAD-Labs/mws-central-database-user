@@ -93,6 +93,7 @@ export function EmailField({
   sanitize,
   field = "email_local",
   required = true,
+  note,
 }) {
   const value = values[field];
   const error = errors?.[field];
@@ -103,6 +104,7 @@ export function EmailField({
       error={error}
       required={required}
       counter={{ value, max, count: textLength }}
+      hint={note}
     >
       <div className="flex min-w-0 items-stretch">
         <TextInput
