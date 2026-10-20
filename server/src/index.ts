@@ -107,6 +107,12 @@ void (async () => {
   );
 })();
 
+if (process.env.NODE_ENV === "production" && !process.env.DEPLOYMENT_ENVIRONMENT?.trim()) {
+  logger.warn(
+    "DEPLOYMENT_ENVIRONMENT is not set, so this Central names its application connections DEVELOPMENT",
+  );
+}
+
 web.get("/", (c) => {
   return c.text("Halo, School Center is Running");
 });
