@@ -15,6 +15,7 @@ import { getIntegrationEnvironment } from "../utils/integration-environment";
 import { DirectoryError, type DirectoryUser } from "../lib/google-workspace/directory-client";
 import type { AuditRequestContext, EntityAuditAction } from "../model/audit-log-model";
 import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
+import { emailProblem } from "../validation/validation";
 import { AuditService } from "./audit-service";
 
 // Central makes and updates the Google Workspace account behind a person's email. A person who is in Central gets an
@@ -125,7 +126,63 @@ async function load(personId: string): Promise<GooglePerson> {
   return person;
 }
 
+export type EmailAvailability = {
+  // False only when the email cannot be used for a new person.
+  available: boolean;
+  reason: "FREE" | "IN_CENTRAL" | "IN_GOOGLE" | "NOT_ALLOWED" | "INVALID" | "NOT_CHECKED" | "CHECK_FAILED";
+  message: string;
+  mode: "google" | "simulated";
+};
+
 export class GoogleWorkspaceService {
+  // Whether this email can be given to a new person: clean, on our domain, not in Central, allowed to reach Google and
+  // not already a Google account. A Google that cannot be asked, or is not the real one, does not block.
+  static async checkEmailAvailable(rawEmail: string): Promise<EmailAvailability> {
+    const email = rawEmail.trim().toLowerCase();
+    const client = getDirectoryClient();
+    const answer = (reason: EmailAvailability["reason"], available: boolean, message: string): EmailAvailability => ({
+      available,
+      reason,
+      message,
+      mode: client.mode,
+    });
+
+    const problem = emailProblem(email);
+    if (problem) return answer("INVALID", false, problem);
+    const domain = process.env.ALLOWED_DOMAIN?.trim().toLowerCase();
+    if (!domain || !email.endsWith(`@${domain}`)) {
+      return answer("INVALID", false, `Email must end with @${domain}`);
+    }
+    if (await prismaClient.person.findFirst({ where: { email }, select: { id: true } })) {
+      return answer("IN_CENTRAL", false, "This email is already used in Central");
+    }
+    try {
+      assertAllowedTarget(email);
+    } catch (error) {
+      return answer("NOT_ALLOWED", false, error instanceof ResponseError ? error.message : "This email is not allowed here");
+    }
+    if (client.mode === "simulated") {
+      return answer("NOT_CHECKED", true, "Not checked against Google in this environment");
+    }
+    try {
+      const existing = await client.findUser(email);
+      return existing
+        ? answer("IN_GOOGLE", false, "This email already has a Google account")
+        : answer("FREE", true, "Available");
+    } catch (error) {
+      logger.error("Google email availability check failed", error);
+      return answer("CHECK_FAILED", true, "Could not check Google, try again");
+    }
+  }
+
+  // For the form that creates a person: it is not written when Google already has the email or would not take it.
+  static async assertCanCreate(email: string): Promise<void> {
+    const check = await this.checkEmailAvailable(email);
+    if (check.reason === "IN_GOOGLE" || check.reason === "NOT_ALLOWED") {
+      throw new ResponseError(400, check.message);
+    }
+  }
+
   // Link the account that is already in Google, or make one. Safe to run again: the lookup comes first.
   static async provision(
     personId: string,

@@ -18,6 +18,12 @@ export function getDirectoryClient(): DirectoryClient {
   if (override) return override;
   if (cached) return cached;
 
+  // Tests never talk to Google, whatever the .env of the machine says. They bring a fake with setDirectoryClientForTests.
+  if (process.env.NODE_ENV === "test") {
+    cached = new SimulatedDirectoryClient();
+    return cached;
+  }
+
   const live =
     process.env.GOOGLE_WORKSPACE_ENABLED === "true" &&
     (getIntegrationEnvironment() === IntegrationEnvironment.PRODUCTION || Boolean(testPrefix()));

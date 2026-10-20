@@ -22,6 +22,7 @@ import {
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { setDirectoryClientForTests } from "../lib/google-workspace";
+import { SimulatedDirectoryClient } from "../lib/google-workspace/simulated-directory-client";
 import {
   DirectoryError,
   type CreateDirectoryUser,
@@ -158,15 +159,35 @@ describe("google workspace accounts", () => {
     expect(JSON.stringify(person)).not.toContain("rizqi.pribadi@gmail.com");
   });
 
-  it("links the account Google already has instead of making another", async () => {
+  it("links the account Google already has to a person who is already in Central", async () => {
     google.users.set("existing", {
       id: "existing", primaryEmail: "test_google_existing@millennia21.id", givenName: "A", familyName: "B",
       suspended: false, isAdmin: false, changePasswordAtNextLogin: false,
     });
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
-    const { json } = await create(accessToken, { email: "test_google_existing@millennia21.id" });
+    const person = await EmployeeTest.create({
+      email: "test_google_existing@millennia21.id",
+      unitId: master.unit.id,
+      jobPositionId: master.position.id,
+      jobLevelId: master.level.id,
+      buildingId: master.building.id,
+    });
+    const response = await TestRequest.post(`/api/admin/employees/${person.employee!.id}/google/provision`, {}, accessToken);
+    expect(response.status).toBe(200);
     expect(google.created).toHaveLength(0);
-    expect((await personOf(json.data.id)).google_user_id).toBe("existing");
+    expect((await personOf(person.employee!.id)).google_user_id).toBe("existing");
+  });
+
+  it("does not create a person whose email already has a Google account", async () => {
+    google.users.set("existing", {
+      id: "existing", primaryEmail: "test_google_taken@millennia21.id", givenName: "A", familyName: "B",
+      suspended: false, isAdmin: false, changePasswordAtNextLogin: false,
+    });
+    const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+    const { response, json } = await create(accessToken, { email: "test_google_taken@millennia21.id" });
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(json)).toContain("already has a Google account");
+    expect(await prismaClient.person.count({ where: { email: "test_google_taken@millennia21.id" } })).toBe(0);
   });
 
   it("keeps the employee and shows a failed status when Google fails", async () => {
@@ -185,29 +206,75 @@ describe("google workspace accounts", () => {
     expect((await personOf(json.data.id)).google_sync_status).toBe(GoogleSyncStatus.ACTIVE);
   });
 
-  it("does not touch a Workspace admin account", async () => {
+  it("does not create a person on the email of a Workspace admin", async () => {
     google.users.set("boss", {
       id: "boss", primaryEmail: "test_google_boss@millennia21.id", givenName: "A", familyName: "B",
       suspended: false, isAdmin: true, changePasswordAtNextLogin: false,
     });
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
-    const { json } = await create(accessToken, { email: "test_google_boss@millennia21.id" });
-    expect((await personOf(json.data.id)).google_sync_status).toBe(GoogleSyncStatus.FAILED);
+    const { response } = await create(accessToken, { email: "test_google_boss@millennia21.id" });
+    expect(response.status).toBe(400);
     expect(google.created).toHaveLength(0);
     expect(google.updated).toHaveLength(0);
   });
 
-  it("outside production, only sends test addresses to a Google that is real", async () => {
+  it("outside production, does not create a person whose address Google would not take", async () => {
     process.env.GOOGLE_WORKSPACE_TEST_PREFIX = "test.central.";
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
-    const { json } = await create(accessToken);
+    const { response, json } = await create(accessToken);
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(json)).toContain("test.central.");
     expect(google.created).toHaveLength(0);
-    const person = await personOf(json.data.id);
-    expect(person.google_sync_status).toBe(GoogleSyncStatus.NONE);
-    // Asked for by hand, it says why.
-    const retry = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/provision`, { recovery_email: "me@gmail.com" }, accessToken);
-    expect(retry.status).toBe(400);
-    expect(JSON.stringify(await retry.json())).toContain("test.central.");
+    expect(await prismaClient.person.count({ where: { email: { startsWith: "test_google_" } } })).toBe(0);
+  });
+
+  describe("the email check before create", () => {
+    const check = async (token: string, email: string) => {
+      const response = await TestRequest.get(`/api/admin/google/email-availability?email=${encodeURIComponent(email)}`, token);
+      return { response, json: await response.json() };
+    };
+
+    it("says an email is free, taken in Google, taken in Central, or outside the domain", async () => {
+      google.users.set("g1", {
+        id: "g1", primaryEmail: "test_google_ingoogle@millennia21.id", givenName: "A", familyName: "B",
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false,
+      });
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json: created } = await create(accessToken, { email: "test_google_incentral@millennia21.id" });
+      expect(created.data.id).toBeTruthy();
+
+      expect((await check(accessToken, "test_google_free@millennia21.id")).json.data).toMatchObject({ available: true, reason: "FREE" });
+      expect((await check(accessToken, "test_google_ingoogle@millennia21.id")).json.data).toMatchObject({ available: false, reason: "IN_GOOGLE" });
+      expect((await check(accessToken, "test_google_incentral@millennia21.id")).json.data).toMatchObject({ available: false, reason: "IN_CENTRAL" });
+      expect((await check(accessToken, "someone@gmail.com")).json.data).toMatchObject({ available: false, reason: "INVALID" });
+      expect((await check(accessToken, "a+b@millennia21.id")).json.data).toMatchObject({ available: false, reason: "INVALID" });
+    });
+
+    it("says outside production which addresses may not be sent to Google", async () => {
+      process.env.GOOGLE_WORKSPACE_TEST_PREFIX = "test.central.";
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      expect((await check(accessToken, "test_google_other@millennia21.id")).json.data).toMatchObject({ available: false, reason: "NOT_ALLOWED" });
+      expect((await check(accessToken, "test.central.ok@millennia21.id")).json.data).toMatchObject({ available: true, reason: "FREE" });
+    });
+
+    it("does not block when Google cannot be asked, or when it is only simulated", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      google.findUser = async () => {
+        throw new DirectoryError("FAILED", "down");
+      };
+      expect((await check(accessToken, "test_google_down@millennia21.id")).json.data).toMatchObject({ available: true, reason: "CHECK_FAILED" });
+
+      setDirectoryClientForTests(new SimulatedDirectoryClient());
+      expect((await check(accessToken, "test_google_sim@millennia21.id")).json.data).toMatchObject({ available: true, reason: "NOT_CHECKED" });
+    });
+
+    it("is for the admins who can create employees", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      await AdminUserTest.delete();
+      const viewer = await AdminUserTest.createViewer(master.unit.id);
+      expect((await check(viewer.accessToken, "test_google_x@millennia21.id")).response.status).toBe(403);
+      expect(accessToken).toBeTruthy();
+    });
   });
 
   it("refuses a recovery email that is an organization address", async () => {

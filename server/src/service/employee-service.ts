@@ -674,6 +674,10 @@ export class EmployeeService {
     if (options.requireRecoveryEmail && !createRequest.recovery_email) {
       throw new ResponseError(400, "Recovery email is required: it is how the person sets the password of their new Google account");
     }
+    // Before anything is written: a Google that already has the email, or would not take it, stops the create here.
+    if (options.requireRecoveryEmail) {
+      await GoogleWorkspaceService.assertCanCreate(createRequest.email);
+    }
     await assertCanWriteEmployeePii(admin, createRequest, context);
 
     const existingUser = await prismaClient.person.findFirst({
