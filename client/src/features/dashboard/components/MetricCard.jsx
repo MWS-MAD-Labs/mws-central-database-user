@@ -28,9 +28,11 @@ export function MetricCard({ metric, isLoading, isSyncing }) {
             : formatNumber(metric.value || 0)}
       </p>
       <p className="mt-1 text-sm text-(--mws-muted)">{metric.label}</p>
-      <p className="mt-3 text-xs leading-5 text-(--mws-muted)">
-        {metric.caption}
-      </p>
+      {metric.caption ? (
+        <p className="mt-3 text-xs leading-5 text-(--mws-muted)">
+          {metric.caption}
+        </p>
+      ) : null}
     </div>
   );
 }

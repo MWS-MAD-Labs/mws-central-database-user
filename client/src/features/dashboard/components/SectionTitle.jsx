@@ -10,7 +10,7 @@ export function SectionTitle({ icon: Icon, title, caption }) {
         <h2 className="font-display text-base font-bold text-(--mws-charcoal)">
           {title}
         </h2>
-        <p className="text-sm leading-6 text-(--mws-muted)">{caption}</p>
+        {caption ? <p className="text-sm leading-6 text-(--mws-muted)">{caption}</p> : null}
       </div>
     </div>
   );
