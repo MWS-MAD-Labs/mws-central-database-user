@@ -2,7 +2,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { Button } from "./Button.jsx";
 
 // Show or hide button for the sensitive fields, kept in the top right of the card it belongs to.
-export function SensitiveToggle({ revealed, onShow, onHide, loading = false }) {
+export function SensitiveToggle({ revealed, onShow, onHide, loading = false, label = "Show Sensitive Fields" }) {
   if (revealed) {
     if (!onHide) return null;
     return (
@@ -12,7 +12,7 @@ export function SensitiveToggle({ revealed, onShow, onHide, loading = false }) {
     );
   }
   return (
-    <Button type="button" loading={loading} onClick={onShow} size="icon" aria-label="Show Sensitive Fields" title="Show Sensitive Fields">
+    <Button type="button" loading={loading} onClick={onShow} size="icon" aria-label={label} title={label}>
       <Eye size={15} />
     </Button>
   );
