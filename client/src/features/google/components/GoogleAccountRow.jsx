@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, MessageSquareText, RefreshCw, UserPlus } from "lucide-react";
+import { ArchiveRestore, KeyRound, MessageSquareText, Pause, Play, RefreshCw, UserPlus } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
@@ -84,6 +84,26 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
     onError: (error) => showErrorToast(error, "Password was not reset."),
   });
 
+  const restore = useMutation({
+    mutationFn: () => googleAccountApi.restore(resource, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      setDialog(null);
+      showSuccessToast("Google account restored.");
+    },
+    onError: (error) => showErrorToast(error, "Google account was not restored."),
+  });
+
+  const suspend = useMutation({
+    mutationFn: (suspended) => googleAccountApi.setSuspended(resource, id, suspended),
+    onSuccess: (_, suspended) => {
+      queryClient.invalidateQueries({ queryKey });
+      setDialog(null);
+      showSuccessToast(suspended ? "Google account suspended." : "Google account unsuspended.");
+    },
+    onError: (error) => showErrorToast(error, "Could not change the Google account."),
+  });
+
   function closeResult() {
     setPassword(null);
     setDialog(null);
@@ -135,6 +155,21 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
               onClick={() => setDialog("instructions")}
             >
               <MessageSquareText size={15} />
+            </Button>
+          ) : null}
+          {deleted ? (
+            <Button type="button" variant="ghost" size="icon" aria-label="Restore Google account" title="Restore Google account" onClick={() => setDialog("restore")}>
+              <ArchiveRestore size={15} />
+            </Button>
+          ) : null}
+          {status.status === "ACTIVE" ? (
+            <Button type="button" variant="ghost" size="icon" aria-label="Suspend Google account" title="Suspend Google account" onClick={() => setDialog("suspend")}>
+              <Pause size={15} />
+            </Button>
+          ) : null}
+          {status.status === "SUSPENDED" ? (
+            <Button type="button" variant="ghost" size="icon" aria-label="Unsuspend Google account" title="Unsuspend Google account" onClick={() => setDialog("unsuspend")}>
+              <Play size={15} />
             </Button>
           ) : null}
           {status.linked ? (
@@ -214,6 +249,52 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
 
       {dialog === "instructions" ? (
         <GoogleInstructionsDialog title="Sign-in Instructions" email={email} onClose={() => setDialog(null)} />
+      ) : null}
+
+      {dialog === "restore" ? (
+        <CrudDialog
+          title="Restore Google Account"
+          description="Brings back this person's own account with its mail and files, as they were when it was deleted."
+          panelClassName="max-w-lg"
+          onClose={() => setDialog(null)}
+          footer={
+            <>
+              <Button type="button" variant="secondary" onClick={() => setDialog(null)}>
+                Cancel
+              </Button>
+              <Button type="button" loading={restore.isPending} onClick={() => restore.mutate()}>
+                Restore
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-(--mws-muted)">{restoreNote(status)}</p>
+        </CrudDialog>
+      ) : null}
+
+      {dialog === "suspend" || dialog === "unsuspend" ? (
+        <CrudDialog
+          title={dialog === "suspend" ? "Suspend Google Account" : "Unsuspend Google Account"}
+          description={
+            dialog === "suspend"
+              ? "The person cannot sign in to Google until it is unsuspended. Nothing is deleted."
+              : "The person can sign in to Google again."
+          }
+          panelClassName="max-w-lg"
+          onClose={() => setDialog(null)}
+          footer={
+            <>
+              <Button type="button" variant="secondary" onClick={() => setDialog(null)}>
+                Cancel
+              </Button>
+              <Button type="button" loading={suspend.isPending} onClick={() => suspend.mutate(dialog === "suspend")}>
+                {dialog === "suspend" ? "Suspend" : "Unsuspend"}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-(--mws-muted)">{email}</p>
+        </CrudDialog>
       ) : null}
 
       {dialog === "confirm" ? (

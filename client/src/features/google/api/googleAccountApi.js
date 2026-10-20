@@ -20,4 +20,12 @@ export const googleAccountApi = {
     const response = await apiRequest(`/api/admin/${resource}/${id}/google/reset-password`, { method: 'POST' })
     return response.data
   },
+  async restore(resource, id) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/restore`, { method: 'POST' })
+    return response.data
+  },
+  async setSuspended(resource, id, suspended) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/${suspended ? 'suspend' : 'unsuspend'}`, { method: 'POST' })
+    return response.data
+  },
 }

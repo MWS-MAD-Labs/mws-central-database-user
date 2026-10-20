@@ -16,6 +16,34 @@ function setup(statusData, extraRoutes = []) {
 }
 
 describe('GoogleAccountRow', () => {
+  it('restores a deleted account after asking', async () => {
+    const { user, fetchMock } = setup(
+      status({ status: 'MISSING', last_error: 'Deleted in Google, can be restored for about 20 days', restorable_until: new Date(Date.now() + 5 * 86_400_000).toISOString() }),
+      [{ path: '/api/admin/employees/e1/google/restore', method: 'POST', response: jsonResponse({ data: { status: 'ACTIVE' } }) }],
+    )
+    await user.click(await screen.findByRole('button', { name: 'Restore Google account' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Restore Google Account' })
+    await user.click(within(dialog).getByRole('button', { name: 'Restore' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) => String(url).endsWith('/google/restore') && options.method === 'POST')).toBe(true))
+  })
+
+  it('suspends an active account after asking, and unsuspends a suspended one', async () => {
+    const { user, fetchMock } = setup(status(), [
+      { path: '/api/admin/employees/e1/google/suspend', method: 'POST', response: jsonResponse({ data: { status: 'SUSPENDED' } }) },
+    ])
+    expect(screen.queryByRole('button', { name: 'Restore Google account' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Suspend Google account' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Suspend Google Account' })
+    await user.click(within(dialog).getByRole('button', { name: 'Suspend' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/google/suspend'))).toBe(true))
+  })
+
+  it('offers Unsuspend only for a suspended account', async () => {
+    setup(status({ status: 'SUSPENDED', last_error: 'Suspended in Google' }))
+    expect(await screen.findByRole('button', { name: 'Unsuspend Google account' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Suspend Google account' })).not.toBeInTheDocument()
+  })
+
   it('shows a deleted account and how to bring it back', async () => {
     setup(status({ status: 'MISSING', last_error: 'Deleted in Google, can be restored for about 20 days', password_state: null }))
     expect(await screen.findByText('Deleted in Google')).toBeVisible()
