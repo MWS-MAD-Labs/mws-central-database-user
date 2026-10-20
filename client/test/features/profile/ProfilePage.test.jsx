@@ -55,4 +55,23 @@ describe('ProfilePage access summary', () => {
     expect(screen.getAllByText('Enabled').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Disabled').length).toBeGreaterThan(0)
   })
+
+  it('lets an employee change their own photo, and nobody else', () => {
+    globalThis.fetch = createFetchRouter([])
+    const employee = { id: 'e1', type: 'employee', full_name: 'Taylor Employee', email: 'taylor@example.test', employment: {} }
+    const { unmount } = renderWithProviders(
+      <AuthContext.Provider value={{ user: employee }}>
+        <ProfilePage />
+      </AuthContext.Provider>,
+    )
+    expect(screen.getByRole('button', { name: 'Change photo' })).toBeVisible()
+    unmount()
+
+    renderWithProviders(
+      <AuthContext.Provider value={{ user: { id: 'a1', type: 'admin', role: 'SUPER_ADMIN', full_name: 'Root', email: 'root@example.test' } }}>
+        <ProfilePage />
+      </AuthContext.Provider>,
+    )
+    expect(screen.queryByRole('button', { name: 'Change photo' })).not.toBeInTheDocument()
+  })
 })

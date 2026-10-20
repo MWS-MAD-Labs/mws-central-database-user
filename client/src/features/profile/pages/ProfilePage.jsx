@@ -1,4 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Camera } from "lucide-react";
+import { useRef, useState } from "react";
+import { Button } from "../../../components/ui/Button.jsx";
+import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
+import { employeesApi } from "../../employees/api/employeesApi.js";
+import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from "../../../lib/fileSize.js";
+import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { formatDate, formatDateTime, formatStatus } from "../../../lib/format.js";
@@ -56,6 +63,19 @@ export function ProfilePage() {
   const { user } = useAuth();
   const isAdmin = user?.type === "admin";
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const queryClient = useQueryClient();
+  const photoInputRef = useRef(null);
+  const [cropFile, setCropFile] = useState(null);
+  // An employee changes their own photo, and Google follows. Nobody else can.
+  const ownPhoto = useMutation({
+    mutationFn: (file) => employeesApi.uploadOwnPhoto(file),
+    onSuccess: () => {
+      setCropFile(null);
+      queryClient.invalidateQueries();
+      showSuccessToast("Photo updated.");
+    },
+    onError: (error) => showErrorToast(error, "Photo upload failed."),
+  });
 
   const myUnitQuery = useQuery({
     queryKey: ["units", user?.unit_id],
@@ -92,7 +112,7 @@ export function ProfilePage() {
               getUserInitials(user)
             )}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h2 className="truncate text-lg font-semibold text-(--mws-charcoal)">
               {getUserDisplayName(user)}
             </h2>
@@ -100,7 +120,44 @@ export function ProfilePage() {
               {getUserEmail(user)}
             </p>
           </div>
+          {!isAdmin && user?.type === "employee" ? (
+            <>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                data-testid="own-photo-input"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (!file) return;
+                  const problem = validateFileSize(file, MAX_PHOTO_SIZE_BYTES);
+                  if (problem) return showErrorToast(new Error(problem));
+                  setCropFile(file);
+                }}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                aria-label="Change photo"
+                title="Change photo"
+                onClick={() => photoInputRef.current?.click()}
+              >
+                <Camera size={16} />
+              </Button>
+            </>
+          ) : null}
         </div>
+        {cropFile ? (
+          <PhotoCropDialog
+            file={cropFile}
+            isSaving={ownPhoto.isPending}
+            onCancel={() => setCropFile(null)}
+            onCropped={(blob) => ownPhoto.mutate(blob)}
+          />
+        ) : null}
 
         <dl className="p-5">
           {isAdmin ? (

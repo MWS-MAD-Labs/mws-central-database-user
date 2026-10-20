@@ -86,6 +86,18 @@ export const employeesApi = {
     return response.data
   },
 
+  // The signed-in employee's own photo, in Central and in their Google account.
+  async uploadOwnPhoto(file) {
+    const formData = new FormData()
+    if (file instanceof Blob && !(file instanceof File)) {
+      formData.set('file', file, 'photo.jpg')
+    } else {
+      formData.set('file', file)
+    }
+    const response = await apiRequest('/api/auth/employee/me/photo', { method: 'PUT', body: formData })
+    return response.data
+  },
+
   async uploadPhoto(id, file) {
     const formData = new FormData()
     if (file instanceof Blob && !(file instanceof File)) {

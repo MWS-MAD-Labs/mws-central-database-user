@@ -667,6 +667,22 @@ export function EmployeeForm({
               errors={errors}
               updateValue={updateValue}
             />
+            {isCreate ? (
+              <Field
+                label="Recovery Email"
+                hint="A personal address for the new Google account. Google sends the reset code there. It is not kept here."
+              >
+                <TextInput
+                  type="email"
+                  value={values.recovery_email}
+                  maxLength={100}
+                  placeholder="name@gmail.com"
+                  onChange={(event) =>
+                    updateValue("recovery_email", event.target.value)
+                  }
+                />
+              </Field>
+            ) : null}
             {!isCreate ? (
               <Field
                 label="Photo URL"
@@ -1455,6 +1471,7 @@ function getInitialValues(mode, employee, options) {
     full_name: identity.full_name || "",
     nick_name: identity.nick_name || "",
     email_local: emailLocalPart(identity.email),
+    recovery_email: "",
     gender: identity.gender || "",
     religion: identity.religion || "",
     religion_other: identity.religion_other || "",
@@ -1543,6 +1560,7 @@ function buildFullPayload(values) {
     full_name: trimmedOrUndefined(values.full_name),
     nick_name: trimmedOrUndefined(values.nick_name),
     email: buildEmail(values.email_local),
+    recovery_email: trimmedOrUndefined(values.recovery_email),
     gender: values.gender,
     religion: values.religion,
     religion_other:

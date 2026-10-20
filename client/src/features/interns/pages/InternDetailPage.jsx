@@ -25,6 +25,7 @@ import {
 } from '../../../lib/format.js'
 import { DetailRow } from '../../employees/components/DetailRow.jsx'
 import { ContactRow } from '../../employees/components/ContactRow.jsx'
+import { GoogleAccountRow } from '../../google/components/GoogleAccountRow.jsx'
 import { InternTeachingAssignmentsPanel } from '../components/InternTeachingAssignmentsPanel.jsx'
 import { InternSupportAssignmentsPanel } from '../components/InternSupportAssignmentsPanel.jsx'
 import { InternPcActivityMentorshipsPanel } from '../components/InternPcActivityMentorshipsPanel.jsx'
@@ -234,6 +235,7 @@ export function InternDetailPage() {
               {canViewContactPii ? (
                 <ContactRow icon={Phone} value={intern.identity.mobile_phone || '-'} />
               ) : null}
+              <GoogleAccountRow resource="interns" id={internId} canManage={user?.role === 'SUPER_ADMIN'} />
             </div>
 
             {hasDetail ? (

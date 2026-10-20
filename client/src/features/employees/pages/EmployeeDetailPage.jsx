@@ -19,6 +19,7 @@ import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from '../../../lib/fileSize.js
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { DetailRow } from '../components/DetailRow.jsx'
 import { ContactRow } from '../components/ContactRow.jsx'
+import { GoogleAccountRow } from '../../google/components/GoogleAccountRow.jsx'
 import { EmployeeMutationHistoryPanel } from '../components/EmployeeMutationHistoryPanel.jsx'
 import { EmployeeDisciplinaryActionsPanel } from '../components/EmployeeDisciplinaryActionsPanel.jsx'
 import { EmployeeTeachingAssignmentsPanel } from '../components/EmployeeTeachingAssignmentsPanel.jsx'
@@ -403,6 +404,7 @@ export function EmployeeDetailPage() {
                 icon={Phone}
                 value={employee.identity.mobile_phone || '-'}
               />
+              <GoogleAccountRow resource="employees" id={employeeId} canManage={user?.role === 'SUPER_ADMIN'} />
             </div>
             {'residential_address' in employee.identity ? (
               <dl className="mt-3 border-t border-(--mws-line) pt-1">
