@@ -10,6 +10,7 @@ import {
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
+import { SensitiveToggle } from '../../../components/ui/SensitiveToggle.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
   DateField,
@@ -199,26 +200,23 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage, canEdi
   if (!revealed) {
     return (
       <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="border-b border-(--mws-line) p-5">
-          <h2 className="text-base font-semibold text-(--mws-charcoal)">
-            Disciplinary Actions
-          </h2>
-          <p className="text-sm text-(--mws-muted)">
-            Warning Letter and Reprimand Letter history. Validity length is set per record.
-          </p>
-        </div>
-        <div className="flex flex-col items-center gap-3 py-8 text-center">
-          <p className="text-sm text-(--mws-muted)">Hidden. Viewing this history is logged.</p>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-(--mws-line) p-5">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-(--mws-charcoal)">
+              Disciplinary Actions
+            </h2>
+            <p className="text-sm text-(--mws-muted)">
+              Warning Letter and Reprimand Letter history. Validity length is set per record.
+            </p>
+          </div>
+          <SensitiveToggle
+            revealed={false}
             loading={revealMutation.isPending}
-            onClick={handleReveal}
-          >
-            Show Disciplinary Actions
-          </Button>
+            onShow={handleReveal}
+            label="Show Disciplinary Actions"
+          />
         </div>
+        <p className="py-8 text-center text-sm text-(--mws-muted)">Hidden. Viewing this history is logged.</p>
       </section>
     )
   }

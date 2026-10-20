@@ -1,5 +1,6 @@
 import { Button } from '../../../../components/ui/Button.jsx'
 import { LiveIndicator } from '../../../../components/ui/LiveIndicator.jsx'
+import { SensitiveHiddenNote, SensitiveToggle } from '../../../../components/ui/SensitiveToggle.jsx'
 import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
 
 
@@ -27,11 +28,14 @@ export function PanelFrame({ title, icon: Icon, isFetching, action, children }) 
 
 export function SensitiveDataReveal({ icon, title, onReveal }) {
   return (
-    <PanelFrame title={title} icon={icon} isFetching={false}>
-      <div className="flex flex-col items-center gap-3 py-6 text-center">
-        <Button type="button" variant="secondary" size="sm" onClick={onReveal}>
-          Show {title}
-        </Button>
+    <PanelFrame
+      title={title}
+      icon={icon}
+      isFetching={false}
+      action={<SensitiveToggle revealed={false} onShow={onReveal} label={`Show ${title}`} />}
+    >
+      <div className="py-6 text-center">
+        <SensitiveHiddenNote />
       </div>
     </PanelFrame>
   )
