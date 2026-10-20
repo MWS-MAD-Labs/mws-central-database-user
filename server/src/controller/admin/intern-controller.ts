@@ -26,6 +26,8 @@ export class InternController {
       admin,
       request,
       getAuditRequestContext(c),
+      new Date(),
+      { requireRecoveryEmail: true },
     );
 
     return c.json({ data: response });

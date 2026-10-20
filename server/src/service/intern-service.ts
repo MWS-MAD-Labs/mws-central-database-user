@@ -321,6 +321,8 @@ export class InternService {
     request: CreateInternRequest,
     context: AuditRequestContext = {},
     now: Date = new Date(),
+    // The form always asks for it. An import has no such column, so it does not.
+    options: { requireRecoveryEmail?: boolean } = {},
   ): Promise<InternResponse> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedInternAction(admin, "create", context);
@@ -358,6 +360,9 @@ export class InternService {
     }
 
     const createRequest = Validation.validate(InternValidation.CREATE, request);
+    if (options.requireRecoveryEmail && !createRequest.recovery_email) {
+      throw new ResponseError(400, "Recovery email is required: it is how the person sets the password of their new Google account");
+    }
     await assertCanWriteInternContactPii(admin, createRequest, context);
 
     assertMinInternAgeAtJoin(createRequest.birth_date, createRequest.join_date);
@@ -494,11 +499,13 @@ export class InternService {
     );
 
     // The intern exists in Central either way. A failure here shows as a Google status they can retry.
-    await GoogleWorkspaceService.provision(withRelations.person_id, {
-      recoveryEmail: createRequest.recovery_email,
-      admin,
-      context,
-    }).catch((error) => logger.error("Google account for the new intern was not made", error));
+    if (createRequest.recovery_email) {
+      await GoogleWorkspaceService.provision(withRelations.person_id, {
+        recoveryEmail: createRequest.recovery_email,
+        admin,
+        context,
+      }).catch((error) => logger.error("Google account for the new intern was not made", error));
+    }
 
     return toInternResponse(withRelations, admin);
   }

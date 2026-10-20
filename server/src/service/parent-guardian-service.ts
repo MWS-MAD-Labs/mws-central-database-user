@@ -1,3 +1,4 @@
+import { emailProblem } from "../validation/validation";
 import {
   AdminRole,
   AuditAction,
@@ -186,6 +187,15 @@ export class ParentGuardianService {
         400,
         "Cannot update a deleted parent/guardian contact. Restore it first.",
       );
+    }
+
+    // The clean-email rule applies to an email that is written or changed. One saved before the rule keeps working.
+    if (updateRequest.email !== undefined) {
+      updateRequest.email = updateRequest.email.trim().toLowerCase();
+      if (updateRequest.email !== (existing.email ?? "").toLowerCase()) {
+        const problem = emailProblem(updateRequest.email);
+        if (problem) throw new ResponseError(400, problem);
+      }
     }
 
     await assertNoDuplicateContact(

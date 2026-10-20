@@ -628,6 +628,9 @@ export class EmployeeService {
     request: CreateEmployeeRequest,
     context: AuditRequestContext = {},
     now: Date = new Date(),
+    // The form always asks for it. An import has no such column, so it does not, and its people get a Google
+    // account later.
+    options: { requireRecoveryEmail?: boolean } = {},
   ): Promise<EmployeeResponse> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedEmployeeAction(admin, "create", context);
@@ -668,6 +671,9 @@ export class EmployeeService {
       EmployeeValidation.CREATE,
       request,
     );
+    if (options.requireRecoveryEmail && !createRequest.recovery_email) {
+      throw new ResponseError(400, "Recovery email is required: it is how the person sets the password of their new Google account");
+    }
     await assertCanWriteEmployeePii(admin, createRequest, context);
 
     const existingUser = await prismaClient.person.findFirst({
@@ -988,11 +994,13 @@ export class EmployeeService {
     );
 
     // The person exists in Central either way. A failure here shows as a Google status they can retry.
-    await GoogleWorkspaceService.provision(createdPersonId, {
-      recoveryEmail: createRequest.recovery_email,
-      admin,
-      context,
-    }).catch((error) => logger.error("Google account for the new employee was not made", error));
+    if (createRequest.recovery_email) {
+      await GoogleWorkspaceService.provision(createdPersonId, {
+        recoveryEmail: createRequest.recovery_email,
+        admin,
+        context,
+      }).catch((error) => logger.error("Google account for the new employee was not made", error));
+    }
 
     return toEmployeeResponse(personWithRelations, admin);
   }

@@ -6,13 +6,48 @@ export class Validation {
   }
 }
 
+// One rule for every email Central stores: before the @ only lowercase letters, digits and the separators . _ -, and a
+// separator never starts, ends or doubles up. So no + % ' ! or spaces. The domain is an ordinary domain name.
+const CLEAN_LOCAL_PART = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
+const CLEAN_DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
+
+// What is wrong with an email, in plain words, or null when it is fine. Expects the lowercase form.
+export function emailProblem(email: string): string | null {
+  const at = email.lastIndexOf("@");
+  if (at < 1 || at === email.length - 1) return "Invalid email format";
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  if (!CLEAN_LOCAL_PART.test(local)) {
+    return "Email can only use letters, numbers, dots, underscores and hyphens before the @";
+  }
+  if (!CLEAN_DOMAIN.test(domain)) return "Invalid email domain";
+  return null;
+}
+
+// Any email that is written: lowercase, trimmed, and clean.
+export const cleanEmail = () =>
+  z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(100, "Email is too long")
+    .superRefine((email, context) => {
+      const problem = emailProblem(email);
+      if (problem) context.addIssue({ code: "custom", message: problem });
+    });
+
 // Store emails lowercase because the database comparison is case-sensitive.
 export const emailWithAllowedDomain = () =>
   z
-    .email("Invalid email format")
+    .string()
+    .trim()
+    .toLowerCase()
     .min(1, "Email is required")
     .max(50, "Email is too long")
-    .toLowerCase()
+    .superRefine((email, context) => {
+      const problem = emailProblem(email);
+      if (problem) context.addIssue({ code: "custom", message: problem });
+    })
     .refine(
       (email) => email.endsWith(`@${process.env.ALLOWED_DOMAIN!}`),
       "Email must use an allowed organization domain",
@@ -21,14 +56,10 @@ export const emailWithAllowedDomain = () =>
 // Where Google sends the code when someone forgets the password of a new account. Outside the organization's domain,
 // or it could not help. It goes to Google and is not kept in Central.
 export const recoveryEmail = () =>
-  z
-    .email("Invalid recovery email")
-    .max(100, "Recovery email is too long")
-    .toLowerCase()
-    .refine(
-      (email) => !email.endsWith(`@${process.env.ALLOWED_DOMAIN!}`),
-      "Recovery email must be a personal address, not an organization address",
-    );
+  cleanEmail().refine(
+    (email) => !email.endsWith(`@${process.env.ALLOWED_DOMAIN!}`),
+    "Recovery email must be a personal address, not an organization address",
+  );
 
 // Normalize Indonesian mobile numbers to the stored 62-prefixed form.
 export const normalizeIndonesianPhone = (value: string) => {

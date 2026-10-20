@@ -33,6 +33,8 @@ export class EmployeeController {
       admin,
       request,
       getAuditRequestContext(c),
+      new Date(),
+      { requireRecoveryEmail: true },
     );
 
     return c.json({ data: response });

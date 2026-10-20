@@ -450,7 +450,29 @@ export class TestRequest {
     };
   }
 
+  // Creating an employee or an intern needs a recovery email, like the form. Tests that are about something else get one
+  // here, so they do not each repeat it. postRaw sends the body as it is.
   static async post<T>(
+    url: string,
+    body: T,
+    accessToken?: string,
+    customHeaders?: Record<string, string>,
+  ): Promise<Response> {
+    const path = url.split("?")[0];
+    const needsRecovery =
+      (path === "/api/admin/employees" || path === "/api/admin/interns") &&
+      body !== null &&
+      typeof body === "object" &&
+      !("recovery_email" in (body as object));
+    return this.postRaw(
+      url,
+      needsRecovery ? { ...body, recovery_email: "test.person@gmail.com" } : body,
+      accessToken,
+      customHeaders,
+    );
+  }
+
+  static async postRaw<T>(
     url: string,
     body: T,
     accessToken?: string,
