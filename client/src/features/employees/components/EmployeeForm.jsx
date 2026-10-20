@@ -16,7 +16,6 @@ import {
   DateField,
   EmailField,
   Field,
-  LengthHint,
   LimitedField,
   PhoneField,
   ReligionFields,
@@ -51,6 +50,7 @@ import {
   emailProblem,
   sanitizeEmail,
   sanitizeEmailLocalPart,
+  textLength,
 } from "../../../lib/form.js";
 import {
   enumOptions,
@@ -575,6 +575,9 @@ export function EmployeeForm({
     isFieldPastGracePeriod(identity.nik_set_at) && Boolean(identity.nik);
   const npwpLocked =
     isFieldPastGracePeriod(identity.npwp_set_at) && Boolean(identity.npwp);
+  // The count under a sensitive field shows only when it can be typed in.
+  const editableCounter = (value, max, locked, count) =>
+    sensitiveFieldsRevealed && canEditEmployeePii && !locked ? { value, max, count } : undefined;
   const bankAccountLocked =
     isFieldPastGracePeriod(identity.bank_account_number_set_at) &&
     Boolean(identity.bank_account_number);
@@ -675,8 +678,9 @@ export function EmployeeForm({
                 label="Recovery Email"
                 name="recovery_email"
                 error={errors.recovery_email}
-                required={hasAttemptedSubmit}
-                hint="A personal address for the new Google account. Google sends the reset code there. It is not kept here."
+                required
+                counter={{ value: values.recovery_email, max: 100, count: textLength }}
+                hint="A personal address. Google sends the reset code there."
               >
                 <TextInput
                   type="email"
@@ -822,14 +826,8 @@ export function EmployeeForm({
               name="employee_id"
               error={errors.employee_id}
               required
-              hint={
-                <LengthHint
-                  value={values.employee_id}
-                  max={7}
-                  label="digits"
-                  prefix="Format: 11.11.111"
-                />
-              }
+              hint="Format: 11.11.111"
+              counter={{ value: values.employee_id, max: 7 }}
             >
               <TextInput
                 invalid={Boolean(errors.employee_id)}
@@ -1083,15 +1081,14 @@ export function EmployeeForm({
             />
             <Field
               label="NIK"
+              counter={editableCounter(values.nik, 16, nikLocked)}
               hint={
                 !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
                 ) : nikLocked ? (
                   <LockedHint onRequestChange={requestChangeFor("nik")}
  request={myRequestFor("nik")} />
-                ) : (
-                  <LengthHint value={values.nik} max={16} label="digits" />
-                )
+                ) : undefined
               }
             >
               {sensitiveFieldsRevealed ? (
@@ -1110,15 +1107,14 @@ export function EmployeeForm({
             </Field>
             <Field
               label="NPWP"
+              counter={editableCounter(values.npwp, 15, npwpLocked)}
               hint={
                 !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
                 ) : npwpLocked ? (
                   <LockedHint onRequestChange={requestChangeFor("npwp")}
  request={myRequestFor("npwp")} />
-                ) : (
-                  <LengthHint value={values.npwp} max={15} label="digits" />
-                )
+                ) : undefined
               }
             >
               {sensitiveFieldsRevealed ? (
@@ -1137,6 +1133,7 @@ export function EmployeeForm({
             </Field>
             <Field
               label="Bank Account Number"
+              counter={editableCounter(values.bank_account_number, 10, bankAccountLocked)}
               hint={
                 !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
@@ -1146,11 +1143,7 @@ export function EmployeeForm({
  request={myRequestFor("bank_account_number")}
                   />
                 ) : (
-                  <LengthHint
-                    value={values.bank_account_number}
-                    max={10}
-                    label="digits, BCA"
-                  />
+                  "BCA"
                 )
               }
             >
@@ -1173,6 +1166,7 @@ export function EmployeeForm({
             </Field>
             <Field
               label="BPJS Kesehatan"
+              counter={editableCounter(values.bpjs_number, 13, bpjsLocked)}
               hint={
                 !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
@@ -1181,13 +1175,7 @@ export function EmployeeForm({
                     onRequestChange={requestChangeFor("bpjs_number")}
  request={myRequestFor("bpjs_number")}
                   />
-                ) : (
-                  <LengthHint
-                    value={values.bpjs_number}
-                    max={13}
-                    label="digits"
-                  />
-                )
+                ) : undefined
               }
             >
               {sensitiveFieldsRevealed ? (
@@ -1213,6 +1201,11 @@ export function EmployeeForm({
                   ? "KPJ Number (Legacy)"
                   : "BPJS Ketenagakerjaan"
               }
+              counter={
+                values.is_kpj_number
+                  ? editableCounter(values.kpj_number, 11, kpjLocked, countAlphanumeric)
+                  : editableCounter(values.bpjs_employment_number, 11, bpjsEmploymentLocked)
+              }
               hint={
                 !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
@@ -1222,26 +1215,13 @@ export function EmployeeForm({
                       onRequestChange={requestChangeFor("kpj_number")}
  request={myRequestFor("kpj_number")}
                     />
-                  ) : (
-                    <LengthHint
-                      value={values.kpj_number}
-                      max={11}
-                      label="letters/digits"
-                      count={countAlphanumeric}
-                    />
-                  )
+                  ) : undefined
                 ) : bpjsEmploymentLocked ? (
                   <LockedHint
                     onRequestChange={requestChangeFor("bpjs_employment_number")}
  request={myRequestFor("bpjs_employment_number")}
                   />
-                ) : (
-                  <LengthHint
-                    value={values.bpjs_employment_number}
-                    max={11}
-                    label="digits"
-                  />
-                )
+                ) : undefined
               }
             >
               {sensitiveFieldsRevealed ? (

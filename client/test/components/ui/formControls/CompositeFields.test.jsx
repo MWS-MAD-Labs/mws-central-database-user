@@ -28,8 +28,8 @@ describe('composite form fields', () => {
 
     await user.type(screen.getByPlaceholderText('Enter name'), 'ari')
     expect(updateValue).toHaveBeenLastCalledWith('full_name', 'I')
-    expect(screen.getByText('Up to 10 characters')).toBeVisible()
-    expect(screen.getByText('0/10 characters')).toBeVisible()
+    expect(screen.getByText('0/10')).toBeVisible()
+    expect(screen.queryByText(/Up to/)).not.toBeInTheDocument()
   })
 
   it('normalizes phone input and supports custom field names', async () => {
@@ -70,8 +70,8 @@ describe('composite form fields', () => {
     expect(screen.getByText('@millennia21.id')).toBeVisible()
     await user.type(screen.getByRole('textbox'), 'Ari 1')
     expect(updateValue).toHaveBeenLastCalledWith('email_local', '')
-    expect(screen.getByText('Format: name@millennia21.id')).toBeVisible()
-    expect(screen.getByText(/0\/20 characters/)).toBeVisible()
+    expect(screen.queryByText(/Format:/)).not.toBeInTheDocument()
+    expect(screen.getByText('0/20')).toBeVisible()
   })
 
   it('shows and clears the OTHER religion detail field', async () => {

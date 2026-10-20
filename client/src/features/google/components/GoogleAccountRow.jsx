@@ -5,7 +5,7 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
-import { emailProblem, sanitizeEmail } from "../../../lib/form.js";
+import { emailProblem, sanitizeEmail, textLength } from "../../../lib/form.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { googleAccountApi } from "../api/googleAccountApi.js";
 
@@ -121,11 +121,13 @@ export function GoogleAccountRow({ resource, id, canManage }) {
           <Field
             label="Recovery Email"
             required
+            counter={{ value: recoveryEmail, max: 100, count: textLength }}
             error={recoveryEmail.trim() ? recoveryProblem || undefined : undefined}
-            hint="A personal address. Google sends the reset code there. It is not kept here."
+            hint="A personal address. Google sends the reset code there."
           >
             <TextInput
               type="email"
+              maxLength={100}
               value={recoveryEmail}
               invalid={Boolean(recoveryEmail.trim() && recoveryProblem)}
               placeholder="name@gmail.com"

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { screen } from '@testing-library/react'
 import { renderWithProviders } from '../../../helpers/render.jsx'
-import { Field, LengthHint } from '../../../../src/components/ui/formControls/Field.jsx'
+import { Field } from '../../../../src/components/ui/formControls/Field.jsx'
 
 describe('Field', () => {
   it('renders labels, field markers, hints, and errors', () => {
@@ -24,22 +24,39 @@ describe('Field', () => {
     expect(screen.queryByText('Required field')).not.toBeInTheDocument()
   })
 
-  it('counts digits by default and supports custom text counting', () => {
+  it('shows the count in the label row, digits by default, and turns green when full and red when over', () => {
     const { rerender } = renderWithProviders(
-      <LengthHint value="12-34" max={4} label="digits" />,
+      <Field label="NIK" counter={{ value: '12-34', max: 4 }}>
+        <input aria-label="nik" />
+      </Field>,
     )
-    expect(screen.getByText('4/4 digits')).toHaveClass('text-[#476b43]')
+    expect(screen.getByText('4/4')).toHaveClass('text-[#476b43]')
+    // Nothing but the count: no "Up to", no unit.
+    expect(screen.queryByText(/Up to|digits/)).not.toBeInTheDocument()
 
     rerender(
-      <LengthHint
-        value="Ari"
-        max={10}
-        label="characters"
-        prefix="Required"
-        count={(value) => value.length}
-      />,
+      <Field label="Name" counter={{ value: 'Ari', max: 10, count: (value) => value.length }}>
+        <input aria-label="name" />
+      </Field>,
     )
-    expect(screen.getByText('Required')).toBeVisible()
-    expect(screen.getByText('3/10 characters')).toBeVisible()
+    expect(screen.getByText('3/10')).toHaveClass('text-(--mws-muted)')
+
+    rerender(
+      <Field label="Name" counter={{ value: 'Ari Employee', max: 10, count: (value) => value.length }}>
+        <input aria-label="name" />
+      </Field>,
+    )
+    expect(screen.getByText('12/10')).toHaveClass('text-[#a43c41]')
+  })
+
+  it('keeps the star and the count on the same row as the label', () => {
+    renderWithProviders(
+      <Field label="Recovery Email" required counter={{ value: '', max: 100, count: (value) => value.length }}>
+        <input aria-label="recovery" />
+      </Field>,
+    )
+    const label = screen.getByText('Recovery Email')
+    expect(label.textContent).toContain('*')
+    expect(label.parentElement).toContainElement(screen.getByText('0/100'))
   })
 })

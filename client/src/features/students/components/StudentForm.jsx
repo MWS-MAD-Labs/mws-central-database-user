@@ -11,7 +11,6 @@ import {
   DateField,
   EmailField,
   Field,
-  LengthHint,
   LimitedField,
   ReligionFields,
   SearchableSelect,
@@ -457,18 +456,11 @@ export function StudentForm({
                 name="legacy_nis"
                 error={errors.legacy_nis}
                 required={values.is_legacy}
+                counter={values.is_legacy ? { value: values.legacy_nis, max: 50, count: textLength } : undefined}
                 hint={
-                  values.is_legacy ? (
-                    <LengthHint
-                      value={values.legacy_nis}
-                      max={50}
-                      label="characters"
-                      count={textLength}
-                      prefix="Enter the exact historical NIS. If it matches the standard 7-digit format, it will automatically become the official NIS."
-                    />
-                  ) : (
-                    "Generated after save from academic year, join grade, and entry type."
-                  )
+                  values.is_legacy
+                    ? "Enter the exact historical NIS. If it matches the standard 7-digit format, it will automatically become the official NIS."
+                    : "Generated after save from academic year, join grade, and entry type."
                 }
               >
                 <div className="space-y-3">
@@ -536,6 +528,7 @@ export function StudentForm({
             ) : null}
             <Field
               label="NISN"
+              counter={nisnLocked ? undefined : { value: values.nisn, max: 10 }}
               hint={
                 nisnLocked ? (
                   <LockedHint
@@ -546,9 +539,7 @@ export function StudentForm({
                         : undefined
                     }
                   />
-                ) : (
-                  <LengthHint value={values.nisn} max={10} label="digits" />
-                )
+                ) : undefined
               }
             >
               <TextInput

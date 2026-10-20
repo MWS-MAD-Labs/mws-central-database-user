@@ -1,6 +1,6 @@
 import { phoneDigitsOnly, textLength } from "../../../lib/form.js";
 import { enumOptions } from "../../../lib/format.js";
-import { Field, LengthHint } from "./Field.jsx";
+import { Field } from "./Field.jsx";
 import { SearchableSelect } from "./SearchableSelect.jsx";
 import { TextAreaInput, TextInput } from "./TextControls.jsx";
 
@@ -32,14 +32,7 @@ export function LimitedField({
       error={error}
       className={className}
       required={required}
-      hint={
-        <LengthHint
-          value={value}
-          max={max}
-          label="characters"
-          count={textLength}
-        />
-      }
+      counter={{ value, max, count: textLength }}
     >
       <Input
         invalid={Boolean(error)}
@@ -74,14 +67,7 @@ export function PhoneField({
       label={label}
       name={field}
       error={errors?.[field]}
-      hint={
-        <LengthHint
-          value={values[field]}
-          max={16}
-          label="characters"
-          count={textLength}
-        />
-      }
+      counter={{ value: values[field], max: 16, count: textLength }}
     >
       <TextInput
         inputMode="tel"
@@ -116,17 +102,7 @@ export function EmailField({
       name={field}
       error={error}
       required={required}
-      hint={
-        <span className="inline-flex flex-wrap gap-x-2 gap-y-0.5">
-          <span>{`Format: name@${domain}`}</span>
-          <LengthHint
-            value={value}
-            max={max}
-            label="characters"
-            count={textLength}
-          />
-        </span>
-      }
+      counter={{ value, max, count: textLength }}
     >
       <div className="flex min-w-0 items-stretch">
         <TextInput

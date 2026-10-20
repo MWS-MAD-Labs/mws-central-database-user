@@ -37,6 +37,7 @@ import {
   emailProblem,
   sanitizeEmail,
   sanitizeEmailLocalPart,
+  textLength,
 } from "../../../lib/form.js";
 import { enumOptions, formatEducationLevel } from "../../../lib/format.js";
 import {
@@ -333,8 +334,9 @@ export function InternForm({
                 label="Recovery Email"
                 name="recovery_email"
                 error={errors.recovery_email}
-                required={hasAttemptedSubmit}
-                hint="A personal address for the new Google account. Google sends the reset code there. It is not kept here."
+                required
+                counter={{ value: values.recovery_email, max: 100, count: textLength }}
+                hint="A personal address. Google sends the reset code there."
               >
                 <TextInput
                   type="email"
