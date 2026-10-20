@@ -1,5 +1,4 @@
 import { admin_directory_v1, auth } from "@googleapis/admin";
-import { logger } from "../logger";
 import {
   DirectoryError,
   type CreateDirectoryUser,
@@ -79,21 +78,11 @@ export class RealDirectoryClient implements DirectoryClient {
     }
   }
 
-  async findDeletedUser(email: string): Promise<DirectoryUser | null> {
-    try {
-      const { data } = await this.directory.users.list({
-        customer: "my_customer",
-        showDeleted: "true",
-        query: `email:${email}`,
-        maxResults: 10,
-      });
-      const wanted = email.toLowerCase();
-      const found = (data.users ?? []).find((user) => user.primaryEmail?.toLowerCase() === wanted);
-      return found ? toDirectoryUser(found) : null;
-    } catch (error) {
-      logger.error("Google deleted-user lookup failed", toDirectoryError(error));
-      return null;
-    }
+  async findDeletedUser(email: string, userId?: string | null): Promise<DirectoryUser | null> {
+    // The query filter does not match deleted users, so read the list: only the last 20 days of deletions are in it.
+    const wanted = email.toLowerCase();
+    const deleted = await this.listUsers({ deleted: true });
+    return deleted.find((user) => (userId && user.id === userId) || user.primaryEmail.toLowerCase() === wanted) ?? null;
   }
 
   async listUsers({ deleted }: { deleted: boolean }): Promise<DirectoryUser[]> {

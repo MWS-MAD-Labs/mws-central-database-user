@@ -49,7 +49,7 @@ Central only reads here, it never blocks anyone because of it.
 - **Status**: the detail page asks Google when the last look is more than 5 minutes old, and a Super Admin can force it with the refresh icon. A daily sweep checks every linked person with two list calls. States: Linked, Suspended, Deleted in Google, Not in Google.
 - **Password**: Google keeps `changePasswordAtNextLogin` true until the person sets their own password. The row shows "Waiting for the first sign-in", then **Password not set** after 7 days, then "Signed in" with the last login. Reset Google password starts the wait again.
 - **Deleted accounts**: a deleted user keeps its address reserved for about 20 days. The email check refuses such an address (`DELETED_IN_GOOGLE`), and a create that Google still refuses says the same. Central never restores an account by itself, because that hands the old mailbox to whoever has the address now. Restore it in the Admin Console if it is the same person, then refresh.
-- The deleted-user lookup uses `users.list` with `showDeleted` and `query=email:...`. If Google ever stops matching that, the 409 on create still gives the same message.
+- Deleted accounts are found by reading Google's list of deleted users and matching the Google id or the email, because Google's `query` filter does not match deleted users. A Google that cannot answer leaves the last status as it was.
 - Simulated Google (every environment but production, or without the test prefix) is never checked, because it forgets its users on restart.
 
 ## Not done yet

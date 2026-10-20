@@ -46,9 +46,9 @@ export interface DirectoryClient {
   readonly mode: "google" | "simulated";
   // null when Google has no such user.
   findUser(userKey: string): Promise<DirectoryUser | null>;
-  // A user deleted in Google, still inside the restore window (about 20 days), found by email. Its address is still
-  // reserved. null when none, or when Google cannot say.
-  findDeletedUser(email: string): Promise<DirectoryUser | null>;
+  // A user deleted in Google, still inside the restore window (about 20 days), matched by Google id or by email. Its
+  // address is still reserved. null only when there is none: a Google that cannot answer throws.
+  findDeletedUser(email: string, userId?: string | null): Promise<DirectoryUser | null>;
   // Every user of the Workspace, or every deleted one that can still be restored. For checking many people in one go.
   listUsers(options: { deleted: boolean }): Promise<DirectoryUser[]>;
   createUser(input: CreateDirectoryUser): Promise<DirectoryUser>;

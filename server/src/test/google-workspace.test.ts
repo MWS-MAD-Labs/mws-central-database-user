@@ -49,8 +49,8 @@ class FakeDirectory implements DirectoryClient {
   async findUser(userKey: string) {
     return [...this.users.values()].find((user) => user.id === userKey || user.primaryEmail === userKey) ?? null;
   }
-  async findDeletedUser(email: string) {
-    return [...this.deleted.values()].find((user) => user.primaryEmail === email) ?? null;
+  async findDeletedUser(email: string, userId?: string | null) {
+    return [...this.deleted.values()].find((user) => user.primaryEmail === email || (userId && user.id === userId)) ?? null;
   }
   async listUsers({ deleted }: { deleted: boolean }) {
     return [...(deleted ? this.deleted : this.users).values()];
@@ -473,6 +473,29 @@ describe("google workspace accounts", () => {
       expect((await statusOf(accessToken, id)).status).toBe(GoogleSyncStatus.ACTIVE);
       await prismaClient.person.update({ where: { id: person.id }, data: { google_checked_at: new Date(Date.now() - 10 * 60 * 1000) } });
       expect((await statusOf(accessToken, id)).status).toBe(GoogleSyncStatus.SUSPENDED);
+    });
+
+    it("still finds a deleted account by its id when its email no longer matches", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person } = await linkedPerson(accessToken);
+      const user = google.users.get(person.google_user_id!)!;
+      google.users.delete(user.id);
+      google.deleted.set(user.id, { ...user, primaryEmail: "test_google_renamed@millennia21.id" });
+      expect(await statusOf(accessToken, id, true)).toMatchObject({
+        status: GoogleSyncStatus.MISSING,
+        last_error: "Deleted in Google, can be restored for about 20 days",
+      });
+    });
+
+    it("does not call an account gone when the deleted list cannot be read", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person } = await linkedPerson(accessToken);
+      const user = google.users.get(person.google_user_id!)!;
+      google.users.delete(user.id);
+      google.findDeletedUser = async () => {
+        throw new DirectoryError("FAILED", "down");
+      };
+      expect((await statusOf(accessToken, id, true)).status).toBe(GoogleSyncStatus.ACTIVE);
     });
 
     it("keeps the last answer when Google cannot be reached", async () => {

@@ -388,7 +388,7 @@ export class GoogleWorkspaceService {
         });
         return;
       }
-      const deleted = await client.findDeletedUser(person.email);
+      const deleted = await client.findDeletedUser(person.email, person.google_user_id);
       await markStatus(person.id, GoogleSyncStatus.MISSING, {
         error: deleted ? "Deleted in Google, can be restored for about 20 days" : "Not found in Google",
       });
