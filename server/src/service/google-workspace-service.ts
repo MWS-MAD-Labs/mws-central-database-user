@@ -76,9 +76,32 @@ export function assertAllowedTarget(email: string): void {
   }
 }
 
+// What to show for a failure. Google's own errors carry their message. Anything else is ours (the database, a bug) and
+// is not passed on as it is: the log has it.
 function messageOf(error: unknown): string {
   if (error instanceof DirectoryError) return error.message;
-  return "Google Workspace could not be reached";
+  if ((error as { code?: string } | null)?.code === "P2002") {
+    return "This Google account is already linked to someone else in Central";
+  }
+  const name = (error as { name?: string } | null)?.name;
+  const code = (error as { code?: string } | null)?.code;
+  const kind = [name, code].filter((part) => typeof part === "string" && /^[A-Za-z0-9_ ]{1,60}$/.test(part)).join(" ");
+  return `Unexpected error${kind ? ` (${kind})` : ""} while handling the Google account, see the server log`;
+}
+
+// The Google account may already belong to another person in Central, for instance one who was archived. Linking it
+// again would break the unique link, so say so instead.
+async function assertNotLinkedElsewhere(googleUserId: string, personId: string): Promise<void> {
+  const other = await prismaClient.person.findFirst({
+    where: { google_user_id: googleUserId, NOT: { id: personId } },
+    select: { full_name: true, deleted_at: true },
+  });
+  if (other) {
+    throw new DirectoryError(
+      "EXISTS",
+      `This Google account is already linked to ${other.full_name}${other.deleted_at ? " (archived)" : ""} in Central. Restore that person or unlink it first`,
+    );
+  }
 }
 
 async function markStatus(
@@ -213,6 +236,7 @@ export class GoogleWorkspaceService {
         outcome = "created";
       }
 
+      await assertNotLinkedElsewhere(user.id, person.id);
       await markStatus(person.id, GoogleSyncStatus.ACTIVE, { google_user_id: user.id });
       await record("GOOGLE_ACCOUNT_PROVISION", person, options.admin, options.context ?? {}, {
         outcome,
@@ -243,6 +267,7 @@ export class GoogleWorkspaceService {
     try {
       const { givenName, familyName } = splitName(person.full_name);
       const user = await client.updateUser(person.google_user_id, { primaryEmail: person.email, givenName, familyName });
+      await assertNotLinkedElsewhere(user.id, person.id);
       await markStatus(person.id, GoogleSyncStatus.ACTIVE, { google_user_id: user.id });
       await record("GOOGLE_ACCOUNT_UPDATE", person, options.admin, options.context ?? {}, { mode: client.mode });
       return { status: GoogleSyncStatus.ACTIVE, google_user_id: user.id, outcome: "updated" };

@@ -180,6 +180,54 @@ describe("google workspace accounts", () => {
     expect((await personOf(person.employee!.id)).google_user_id).toBe("existing");
   });
 
+  it("says so when the Google account already belongs to another person in Central", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+    const first = await EmployeeTest.create({
+      email: "test_google_first@millennia21.id",
+      unitId: master.unit.id,
+      jobPositionId: master.position.id,
+      jobLevelId: master.level.id,
+      buildingId: master.building.id,
+    });
+    await prismaClient.person.update({ where: { id: first.id }, data: { google_user_id: "shared", deleted_at: new Date() } });
+    const second = await EmployeeTest.create({
+      email: "test_google_second@millennia21.id",
+      unitId: master.unit.id,
+      jobPositionId: master.position.id,
+      jobLevelId: master.level.id,
+      buildingId: master.building.id,
+    });
+    google.users.set("shared", {
+      id: "shared", primaryEmail: "test_google_second@millennia21.id", givenName: "A", familyName: "B",
+      suspended: false, isAdmin: false, changePasswordAtNextLogin: false,
+    });
+    const response = await TestRequest.post(`/api/admin/employees/${second.employee!.id}/google/provision`, {}, accessToken);
+    const result = (await response.json()).data;
+    expect(result.status).toBe("FAILED");
+    expect(result.message).toContain("already linked to Test Employee (archived)");
+    expect((await prismaClient.person.findUniqueOrThrow({ where: { id: second.id } })).google_user_id).toBeNull();
+    expect((await prismaClient.person.findUniqueOrThrow({ where: { id: first.id } })).google_user_id).toBe("shared");
+  });
+
+  it("does not call an error of ours a Google problem", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+    const person = await EmployeeTest.create({
+      email: "test_google_boom@millennia21.id",
+      unitId: master.unit.id,
+      jobPositionId: master.position.id,
+      jobLevelId: master.level.id,
+      buildingId: master.building.id,
+    });
+    google.findUser = async () => {
+      throw new TypeError("something of ours broke");
+    };
+    const response = await TestRequest.post(`/api/admin/employees/${person.employee!.id}/google/provision`, {}, accessToken);
+    const result = (await response.json()).data;
+    expect(result.message).toContain("Unexpected error (TypeError)");
+    expect(result.message).not.toContain("could not be reached");
+    expect(result.message).not.toContain("something of ours broke");
+  });
+
   it("does not create a person whose email already has a Google account", async () => {
     google.users.set("existing", {
       id: "existing", primaryEmail: "test_google_taken@millennia21.id", givenName: "A", familyName: "B",
