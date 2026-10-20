@@ -127,9 +127,9 @@ export function ApplicationAccessPage() {
             <Button
               type="button"
               onClick={() => navigate("/application-access/apps/new")}
+              size="icon" aria-label="Add Application" title="Add Application"
             >
               <Plus size={16} />
-              Add Application
             </Button>
           </div>
         }

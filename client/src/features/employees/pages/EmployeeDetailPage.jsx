@@ -244,9 +244,9 @@ export function EmployeeDetailPage() {
                 type="button"
                 variant="secondary"
                 onClick={() => setIsExtendDialogOpen(true)}
+                size="icon" aria-label="Extend contract" title="Extend contract"
               >
                 <CalendarClock size={16} />
-                Extend contract
               </Button>
             ) : null}
             {canDelete ? (

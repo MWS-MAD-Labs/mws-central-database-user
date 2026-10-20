@@ -283,17 +283,17 @@ export function AcademicYearsPanel() {
             variant="secondary"
             disabled={!canWrite}
             onClick={() => setBulkDialogOpen(true)}
+            size="icon" aria-label="Bulk Create" title="Bulk Create"
           >
             <Layers size={16} />
-            Bulk Create
           </Button>
           <Button
             type="button"
             disabled={!canWrite}
             onClick={() => setDialog({ mode: "create" })}
+            size="icon" aria-label="New Year" title="New Year"
           >
             <Plus size={16} />
-            New Year
           </Button>
         </>
       }

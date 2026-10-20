@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import {
@@ -355,7 +355,6 @@ export function GroupFilters({
           disabled={stepIndex === 0}
           onClick={() => move(stepIndex - 1)}
         >
-          <ChevronLeft size={15} />
           Back
         </Button>
         {step !== "review" ? (
@@ -365,7 +364,6 @@ export function GroupFilters({
             onClick={() => move(stepIndex + 1)}
           >
             Next
-            <ChevronRight size={15} />
           </Button>
         ) : unsupported.length === 0 ? (
           <p className="text-xs font-medium text-[#476b43]">

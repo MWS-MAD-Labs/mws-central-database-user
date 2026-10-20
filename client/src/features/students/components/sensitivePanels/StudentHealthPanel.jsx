@@ -138,16 +138,16 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
       isFetching={recordQuery.isFetching || notesQuery.isFetching}
       action={
         <>
-          <Button type="button" variant="ghost" size="sm" onClick={() => {
+          <Button type="button" variant="ghost" onClick={() => {
             forgetReveal(studentHealthPiiScope(studentId))
             setRevealed(false)
-          }}>
+          }}
+            size="icon" aria-label="Hide" title="Hide"
+          >
             <EyeOff size={15} />
-            Hide
           </Button>
-          <Button type="button" size="sm" disabled={!canWrite} onClick={() => setNoteDialog({ mode: 'create' })}>
+          <Button type="button" disabled={!canWrite} onClick={() => setNoteDialog({ mode: 'create' })} size="icon" aria-label="Add Health Note" title="Add Health Note">
             <Plus size={15} />
-            Health Note
           </Button>
           <ActionsMenu label="More Actions" disabled={!canWrite}>
             {(close) => (
@@ -231,13 +231,12 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
                     <Button
                       type="button"
                       variant="ghost"
-                      size="sm"
                        disabled={!canWrite}
                        loading={isPendingFor(restoreNoteMutation, note.id)}
                       onClick={() => restoreNoteMutation.mutate(note.id)}
+                      size="icon" aria-label="Restore" title="Restore"
                     >
                       <RotateCcw size={15} />
-                      Restore
                     </Button>
                   ) : (
                     <>

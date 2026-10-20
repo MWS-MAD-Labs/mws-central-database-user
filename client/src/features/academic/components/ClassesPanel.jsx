@@ -124,9 +124,9 @@ export function ClassesPanel() {
           type="button"
           disabled={!canWrite || optionsQuery.isLoading}
           onClick={() => setDialog({ mode: "create" })}
+          size="icon" aria-label="New Class" title="New Class"
         >
           <Plus size={16} />
-          New Class
         </Button>
       }
       toolbar={

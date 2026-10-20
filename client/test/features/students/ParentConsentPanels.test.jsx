@@ -41,7 +41,7 @@ describe('StudentParentsPanel', () => {
     const { user } = renderPanel(<StudentParentsPanel studentId="student-1" canWrite />)
 
     await screen.findByText('Sam Parent')
-    await user.click(screen.getByRole('button', { name: 'Parent' }))
+    await user.click(screen.getByRole('button', { name: 'Add Parent' }))
     const dialog = screen.getByRole('dialog', { name: 'New Parent / Guardian' })
     // No shortcuts while the new parent is itself a Father.
     expect(within(dialog).queryByLabelText('Same address as Father')).not.toBeInTheDocument()
@@ -120,7 +120,7 @@ describe('StudentParentsPanel', () => {
     expect(await screen.findByText('Jordan Parent')).toBeVisible()
     expect(screen.getByText('Primary')).toBeVisible()
 
-    await user.click(screen.getByRole('button', { name: 'Parent' }))
+    await user.click(screen.getByRole('button', { name: 'Add Parent' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
     expect(screen.getByText('Full name is required.')).toBeVisible()
     const createDialog = screen.getByRole('dialog', { name: 'New Parent / Guardian' })
@@ -165,7 +165,7 @@ describe('StudentParentsPanel', () => {
     ])
     renderPanel(<StudentParentsPanel studentId="student-1" canWrite={false} />)
     expect(await screen.findByText('No parent or guardian records yet.')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Parent' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add Parent' })).toBeDisabled()
   })
 })
 
@@ -217,7 +217,7 @@ describe('StudentConsentPanel', () => {
     expect(screen.getByRole('link', { name: 'PDF' })).toHaveAttribute('href', '/preview/attachment-1')
     expect(screen.getAllByRole('link').some((link) => link.href.includes('/download'))).toBe(true)
 
-    await user.click(screen.getByRole('button', { name: 'Consent' }))
+    await user.click(screen.getByRole('button', { name: 'Add Consent' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
       url === '/api/admin/students/student-1/consents' && options.method === 'POST',

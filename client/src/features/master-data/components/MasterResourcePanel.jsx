@@ -131,11 +131,13 @@ export function MasterResourcePanel({ resource }) {
       action={
         <Button
           type="button"
+          size="icon"
+          aria-label={`New ${resource.singular}`}
+          title={`New ${resource.singular}`}
           disabled={!canWrite}
           onClick={() => setDialog({ mode: "create" })}
         >
           <Plus size={16} />
-          New {resource.singular}
         </Button>
       }
       toolbar={

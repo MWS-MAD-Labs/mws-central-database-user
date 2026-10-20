@@ -122,9 +122,9 @@ export function AppAccessPage() {
                 disabled={!hasActiveRole}
                 title={hasActiveRole ? undefined : "Add a role first"}
                 onClick={() => navigate(`/application-access/apps/${applicationId}/groups/new`)}
+                size="icon" aria-label="Add Group"
               >
                 <Plus size={16} />
-                Add Group
               </Button>
             ) : null}
           </>

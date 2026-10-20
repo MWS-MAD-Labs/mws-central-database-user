@@ -1,10 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CalendarDays,
   GraduationCap,
   Plus,
-  Repeat,
-  LogOut,
   RotateCcw,
   Trash2,
   Wrench,
@@ -352,9 +349,9 @@ export function EnrollmentsPanel() {
           type="button"
           disabled={!canWrite || optionsQuery.isLoading}
           onClick={() => setDialog({ mode: "create" })}
+          size="icon" aria-label="New Enrollment" title="New Enrollment"
         >
           <Plus size={16} />
-          New Enrollment
         </Button>
       }
       toolbar={
@@ -440,7 +437,6 @@ export function EnrollmentsPanel() {
             setDialog({ mode: "bulk-promote", records: selectedEnrollments })
           }
         >
-          <GraduationCap size={15} />
           Promote
         </Button>
         <Button
@@ -451,7 +447,6 @@ export function EnrollmentsPanel() {
             setDialog({ mode: "bulk-transfer", records: selectedEnrollments })
           }
         >
-          <Repeat size={15} />
           Move
         </Button>
         <Button
@@ -460,7 +455,6 @@ export function EnrollmentsPanel() {
           disabled={!canWrite || selectedEnrollments.length === 0}
           onClick={() => setStartDateRecords(selectedEnrollments)}
         >
-          <CalendarDays size={15} />
           Edit date
         </Button>
         <Button
@@ -471,7 +465,6 @@ export function EnrollmentsPanel() {
             setDialog({ mode: "bulk-close", records: selectedEnrollments })
           }
         >
-          <LogOut size={15} />
           Close
         </Button>
       </BulkActionBar>

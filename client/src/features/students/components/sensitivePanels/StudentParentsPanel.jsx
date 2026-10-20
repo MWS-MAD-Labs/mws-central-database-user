@@ -90,12 +90,11 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
           </ToggleChip>
           <Button
             type="button"
-            size="sm"
             disabled={!canWrite}
             onClick={() => setDialog({ mode: 'create' })}
+            size="icon" aria-label="Add Parent" title="Add Parent"
           >
             <Plus size={15} />
-            Parent
           </Button>
         </>
       }
@@ -130,12 +129,11 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
                     <Button
                       type="button"
                       variant="ghost"
-                      size="sm"
                       disabled={!canWrite || isPendingFor(restoreMutation, parent.id)}
                       onClick={() => restoreMutation.mutate(parent.id)}
+                      size="icon" aria-label="Restore" title="Restore"
                     >
                       <RotateCcw size={15} />
-                      Restore
                     </Button>
                   ) : (
                     <>

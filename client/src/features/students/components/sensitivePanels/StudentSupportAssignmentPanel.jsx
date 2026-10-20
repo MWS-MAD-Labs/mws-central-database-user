@@ -125,12 +125,11 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
         !activeAssignment ? (
           <Button
             type="button"
-            size="sm"
             disabled={!canWrite}
             onClick={() => setDialog({ mode: 'create' })}
+            size="icon" aria-label="Assign" title="Assign"
           >
             <Plus size={15} />
-            Assign
           </Button>
         ) : null
       }

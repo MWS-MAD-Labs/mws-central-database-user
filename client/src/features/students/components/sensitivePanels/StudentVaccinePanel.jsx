@@ -105,24 +105,24 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
       isFetching={vaccinesQuery.isFetching}
       action={
         <>
-          <Button type="button" variant="ghost" size="sm" onClick={() => {
+          <Button type="button" variant="ghost" onClick={() => {
             forgetReveal(studentVaccinePiiScope(studentId))
             setRevealed(false)
-          }}>
+          }}
+            size="icon" aria-label="Hide" title="Hide"
+          >
             <EyeOff size={15} />
-            Hide
           </Button>
           <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
             Show Deleted
           </ToggleChip>
           <Button
             type="button"
-            size="sm"
             disabled={!canWrite}
             onClick={() => setDialog({ mode: 'create' })}
+            size="icon" aria-label="Add Vaccine" title="Add Vaccine"
           >
             <Plus size={15} />
-            Vaccine
           </Button>
         </>
       }
@@ -153,12 +153,11 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
                     <Button
                       type="button"
                       variant="ghost"
-                      size="sm"
                       disabled={!canWrite || isPendingFor(restoreMutation, record.id)}
                       onClick={() => restoreMutation.mutate(record.id)}
+                      size="icon" aria-label="Restore" title="Restore"
                     >
                       <RotateCcw size={15} />
-                      Restore
                     </Button>
                   ) : (
                     <>

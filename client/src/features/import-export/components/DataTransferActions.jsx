@@ -3,7 +3,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
-  RefreshCw,
   Upload,
   X,
 } from "lucide-react";
@@ -703,7 +702,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               loading={previewMutation.isPending}
               onClick={() => previewSelectedSheet()}
             >
-              <Upload size={16} />
               Preview
             </Button>
           </div>
@@ -761,7 +759,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                   }
                   onClick={() => previewSelectedSheet(selectedSheetName)}
                 >
-                  <RefreshCw size={16} />
                   Preview Sheet
                 </Button>
               </div>

@@ -756,9 +756,9 @@ export function ClassDetailPage() {
                 variant="secondary"
                 disabled={optionsQuery.isLoading}
                 onClick={() => setEditDialogOpen(true)}
+                size="icon" aria-label="Edit class" title="Edit class"
               >
                 <Edit size={16} />
-                Edit class
               </Button>
             ) : null}
             <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">

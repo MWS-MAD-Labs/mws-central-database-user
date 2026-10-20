@@ -157,9 +157,8 @@ export function InternalApiPanel({ endpoints, profiles = [], isLoading }) {
                           >
                             <ChevronDown size={16} className={`transition-transform ${expanded ? "" : "-rotate-90"}`} />
                           </button>
-                          <Button type="button" variant="ghost" size="sm" onClick={() => setTrying(endpoint)}>
+                          <Button type="button" variant="ghost" onClick={() => setTrying(endpoint)} size="icon" aria-label="Try" title="Try">
                             <Play size={14} />
-                            Try
                           </Button>
                         </div>
                       </td>

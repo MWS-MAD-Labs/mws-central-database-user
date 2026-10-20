@@ -83,14 +83,13 @@ export function AppActivityTab({ data, range, isDefaultRange, isFetching, onRang
                     <Button
                       type="button"
                       variant="ghost"
-                      size="sm"
                       onClick={(event) => {
                         event.stopPropagation();
                         setSelected(item);
                       }}
+                      size="icon" aria-label="View Details" title="View Details"
                     >
                       <Eye size={15} />
-                      View Details
                     </Button>
                   </td>
                 </tr>

@@ -239,9 +239,8 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage, canEdi
           </p>
         </div>
         {canManage ? (
-          <Button type="button" size="sm" onClick={() => setIssueDialogOpen(true)}>
+          <Button type="button" onClick={() => setIssueDialogOpen(true)} size="icon" aria-label="Issue Record" title="Issue Record">
             <Plus size={15} />
-            Issue Record
           </Button>
         ) : null}
       </div>

@@ -289,12 +289,11 @@ function buildColumns({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
             disabled={!canRestore || restoringId === row.original.id}
             onClick={() => onRestore?.(row.original.id)}
+            size="icon" aria-label="Restore" title="Restore"
           >
             <RotateCcw size={15} />
-            Restore
           </Button>
         )
       }

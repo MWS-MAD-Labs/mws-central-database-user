@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Undo2, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 import { Tabs } from "../../../components/ui/Tabs.jsx";
@@ -213,7 +212,6 @@ export function ChangeRequestsPage() {
                               size="sm"
                               onClick={() => setDecisionDialog({ mode: "approve", request })}
                             >
-                              <Check size={15} />
                               Approve
                             </Button>
                             <Button
@@ -222,7 +220,6 @@ export function ChangeRequestsPage() {
                               variant="secondary"
                               onClick={() => setDecisionDialog({ mode: "reject", request })}
                             >
-                              <X size={15} />
                               Reject
                             </Button>
                           </>
@@ -246,7 +243,6 @@ export function ChangeRequestsPage() {
                               }
                             }}
                           >
-                            <Undo2 size={15} />
                             Cancel
                           </Button>
                         ) : null}

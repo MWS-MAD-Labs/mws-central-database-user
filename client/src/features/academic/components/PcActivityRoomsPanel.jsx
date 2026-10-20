@@ -262,11 +262,10 @@ export function PcActivityRoomsPanel() {
         canWrite ? (
           <Button
             type="button"
-            size="sm"
             onClick={() => setFormDialog({ mode: "create" })}
+            size="icon" aria-label="Create Room" title="Create Room"
           >
             <Plus size={16} />
-            Create Room
           </Button>
         ) : null
       }
@@ -1121,11 +1120,10 @@ export function RoomStudentsSection({ room, canManage }) {
           <Button
             type="button"
             variant="secondary"
-            size="sm"
             onClick={() => setAddOpen(true)}
+            size="icon" aria-label="Add Students" title="Add Students"
           >
             <UserRoundPlus size={15} />
-            Add Students
           </Button>
         ) : null}
       </div>
@@ -1767,11 +1765,10 @@ export function RoomMentorsSection({ room, units, canManage }) {
           <Button
             type="button"
             variant="secondary"
-            size="sm"
             onClick={() => setAddOpen(true)}
+            size="icon" aria-label="Add Mentor" title="Add Mentor"
           >
             <Users size={15} />
-            Add Mentor
           </Button>
         ) : null}
       </div>
@@ -2237,7 +2234,6 @@ function AddMentorDialog({ room, existingMentorIds, onClose, onAdded }) {
             disabled={!targetValue || atCap}
             loading={assignMutation.isPending}
           >
-            <Plus size={16} />
             Add assignment
           </Button>
         </>

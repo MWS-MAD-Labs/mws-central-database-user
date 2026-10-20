@@ -98,9 +98,9 @@ export function GradesPanel() {
           type="button"
           disabled={!canWrite}
           onClick={() => setDialog({ mode: "create" })}
+          size="icon" aria-label="New Grade" title="New Grade"
         >
           <Plus size={16} />
-          New Grade
         </Button>
       }
       toolbar={

@@ -644,7 +644,6 @@ export function TeacherAssignmentsSection({
                 disabled={picked.size === 0 || !startDate}
                 loading={isAssigning}
               >
-                <Plus size={16} />
                 {picked.size > 1 ? `Add ${picked.size} assignments` : "Add assignment"}
               </Button>
             </>
@@ -1034,7 +1033,6 @@ function MoveTeacherAssignmentsDialog({
             disabled={isSubmitting || !targetClassId || promoteWindowBlocked}
             loading={isSubmitting}
           >
-            <MoveRight size={16} />
             {isPromote ? "Promote" : "Move"}
           </Button>
         </>

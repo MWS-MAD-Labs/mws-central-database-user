@@ -512,7 +512,6 @@ function AdminUsersPanel() {
               onReset={resetFilters}
             />
             <Button type="button" onClick={() => setPromoteOpen(true)}>
-              <Plus size={16} />
               Promote
             </Button>
           </div>
@@ -1079,9 +1078,8 @@ function WorkingDaysPanel() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <LiveIndicator isSyncing={workingDaysQuery.isFetching} />
-          <Button type="button" onClick={() => setCreateOpen(true)}>
+          <Button type="button" onClick={() => setCreateOpen(true)} size="icon" aria-label="Add Saturday" title="Add Saturday">
             <Plus size={16} />
-            Saturday
           </Button>
         </div>
       </div>
@@ -1132,12 +1130,11 @@ function WorkingDaysPanel() {
                     <Button
                       type="button"
                       variant="ghost"
-                      size="sm"
                       disabled={isPendingFor(deleteMutation, day.id)}
                       onClick={() => handleDelete(day)}
+                      size="icon" aria-label="Remove" title="Remove"
                     >
                       <Trash2 size={15} />
-                      Remove
                     </Button>
                   </td>
                 </tr>

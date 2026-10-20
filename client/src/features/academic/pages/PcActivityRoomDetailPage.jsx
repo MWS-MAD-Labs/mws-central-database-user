@@ -99,9 +99,8 @@ export function PcActivityRoomDetailPage() {
         actions={
           <>
             {canEditRoom && room ? (
-              <Button type="button" variant="secondary" onClick={() => setEditOpen(true)}>
+              <Button type="button" variant="secondary" onClick={() => setEditOpen(true)} size="icon" aria-label="Edit room" title="Edit room">
                 <Edit size={16} />
-                Edit room
               </Button>
             ) : null}
             {backAction}

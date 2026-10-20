@@ -336,9 +336,9 @@ export function StudentDetailPage() {
                 variant="secondary"
                 loading={reactivateMutation.isPending}
                 onClick={() => reactivateMutation.mutate()}
+                size="icon" aria-label="Reactivate" title="Reactivate"
               >
                 <UserCheck size={16} />
-                Reactivate
               </Button>
             ) : canWrite ? (
               <Button
@@ -590,7 +590,6 @@ export function StudentDetailPage() {
                           <Button
                             type="button"
                             variant="secondary"
-                            size="sm"
                             disabled={reissueNisMutation.isPending}
                             onClick={() => {
                               setReissueEntryType("");
@@ -602,9 +601,9 @@ export function StudentDetailPage() {
                               );
                               setIsReissueModalOpen(true);
                             }}
+                            size="icon" aria-label="Reissue NIS" title="Reissue NIS"
                           >
                             <RefreshCw size={14} />
-                            Reissue NIS
                           </Button>
                         ) : null}
                       </span>

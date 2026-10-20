@@ -393,14 +393,13 @@ export function AuditLogsPage() {
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
                         onClick={(event) => {
                           event.stopPropagation();
                           setSelectedLog(log);
                         }}
+                        size="icon" aria-label="View Details" title="View Details"
                       >
                         <Eye size={15} />
-                        View Details
                       </Button>
                     </td>
                   </tr>

@@ -224,9 +224,15 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
           <SelectFilter value={params.status} options={STATUS_OPTIONS} onChange={(status) => updateParams({ page: 1, status })} placeholder="All statuses" />
         </div>
         {canManage ? (
-          <Button type="button" variant="secondary" size="sm" onClick={() => setDialog({ type: "add" })}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            aria-label={`Add ${isStudent ? "Students" : "Mentors"}`}
+            title={`Add ${isStudent ? "Students" : "Mentors"}`}
+            onClick={() => setDialog({ type: "add" })}
+          >
             {isStudent ? <UserRoundPlus size={15} /> : <Users size={15} />}
-            Add {isStudent ? "Students" : "Mentors"}
           </Button>
         ) : null}
       </div>

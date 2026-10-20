@@ -88,12 +88,11 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
           </ToggleChip>
           <Button
             type="button"
-            size="sm"
             disabled={!canWrite}
             onClick={() => setDialog({ mode: 'create' })}
+            size="icon" aria-label="Add Consent" title="Add Consent"
           >
             <Plus size={15} />
-            Consent
           </Button>
         </>
       }
