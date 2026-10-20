@@ -208,36 +208,42 @@ export const CONTRACT_DURATION_OPTIONS = [
 // One rule for every email: before the @ only lowercase letters, digits and the separators . _ -, and a separator never
 // starts, ends or doubles up. No + % ' or spaces. Mirrors server/src/validation/validation.ts.
 const CLEAN_LOCAL_PART = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/
+// At someone else's provider (a parent, a recovery email) a +label is fine: Gmail and others deliver it to the plain
+// mailbox. A Google Workspace account name of ours may not have one.
+const CLEAN_EXTERNAL_LOCAL_PART = /^[a-z0-9]+(?:[._+-][a-z0-9]+)*$/
 const CLEAN_DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/
 
 // What is typed in the part before the @: lowercase, only the allowed characters, no separator at the start and no two
 // in a row. A separator at the end is allowed while typing; emailProblem catches it when the form is checked.
-export function sanitizeEmailLocalPart(value) {
+export function sanitizeEmailLocalPart(value, { external = false } = {}) {
+  const separators = external ? '._+-' : '._-'
   return String(value || '')
     .toLowerCase()
-    .replace(/[^a-z0-9._-]/g, '')
-    .replace(/^[._-]+/, '')
-    .replace(/([._-])[._-]+/g, '$1')
+    .replace(external ? /[^a-z0-9._+-]/g : /[^a-z0-9._-]/g, '')
+    .replace(external ? /^[._+-]+/ : /^[._-]+/, '')
+    .replace(external ? /([._+-])[._+-]+/g : /([._-])[._-]+/g, '$1')
 }
 
-// A whole email typed freely (parents, recovery): the same rule for the local part, and a domain of letters, digits,
+// A whole email typed freely (parents, recovery): the local part may also carry a +label, and a domain of letters, digits,
 // dots and hyphens.
 export function sanitizeEmail(value) {
   const text = String(value || '').toLowerCase().replace(/\s/g, '')
   const at = text.indexOf('@')
-  if (at === -1) return sanitizeEmailLocalPart(text)
+  if (at === -1) return sanitizeEmailLocalPart(text, { external: true })
   const domain = text.slice(at + 1).replace(/[^a-z0-9.-]/g, '')
-  return `${sanitizeEmailLocalPart(text.slice(0, at))}@${domain}`
+  return `${sanitizeEmailLocalPart(text.slice(0, at), { external: true })}@${domain}`
 }
 
 // What is wrong with an email, in plain words, or null when it is fine (or empty: whether it is needed is another rule).
-export function emailProblem(value) {
+export function emailProblem(value, { external = false } = {}) {
   const email = String(value || '').trim().toLowerCase()
   if (!email) return null
   const at = email.lastIndexOf('@')
   if (at < 1 || at === email.length - 1) return 'Enter a full email address.'
-  if (!CLEAN_LOCAL_PART.test(email.slice(0, at))) {
-    return 'Use only letters, numbers, dots, underscores and hyphens before the @, with none at the start, the end or twice in a row.'
+  if (!(external ? CLEAN_EXTERNAL_LOCAL_PART : CLEAN_LOCAL_PART).test(email.slice(0, at))) {
+    return external
+      ? 'Use only letters, numbers, dots, underscores, hyphens and + before the @, with none at the start, the end or twice in a row.'
+      : 'Use only letters, numbers, dots, underscores and hyphens before the @, with none at the start, the end or twice in a row.'
   }
   if (!CLEAN_DOMAIN.test(email.slice(at + 1))) return 'The part after the @ is not a valid domain.'
   return null

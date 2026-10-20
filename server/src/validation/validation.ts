@@ -9,22 +9,27 @@ export class Validation {
 // One rule for every email Central stores: before the @ only lowercase letters, digits and the separators . _ -, and a
 // separator never starts, ends or doubles up. So no + % ' ! or spaces. The domain is an ordinary domain name.
 const CLEAN_LOCAL_PART = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
+// An address at someone else's provider (a parent, a recovery email) may also carry a +label, which Gmail and others
+// deliver to the plain mailbox. A Google Workspace account name of ours may not.
+const CLEAN_EXTERNAL_LOCAL_PART = /^[a-z0-9]+(?:[._+-][a-z0-9]+)*$/;
 const CLEAN_DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
 
 // What is wrong with an email, in plain words, or null when it is fine. Expects the lowercase form.
-export function emailProblem(email: string): string | null {
+export function emailProblem(email: string, options: { external?: boolean } = {}): string | null {
   const at = email.lastIndexOf("@");
   if (at < 1 || at === email.length - 1) return "Invalid email format";
   const local = email.slice(0, at);
   const domain = email.slice(at + 1);
-  if (!CLEAN_LOCAL_PART.test(local)) {
-    return "Email can only use letters, numbers, dots, underscores and hyphens before the @";
+  if (!(options.external ? CLEAN_EXTERNAL_LOCAL_PART : CLEAN_LOCAL_PART).test(local)) {
+    return options.external
+      ? "Email can only use letters, numbers, dots, underscores, hyphens and + before the @"
+      : "Email can only use letters, numbers, dots, underscores and hyphens before the @";
   }
   if (!CLEAN_DOMAIN.test(domain)) return "Invalid email domain";
   return null;
 }
 
-// Any email that is written: lowercase, trimmed, and clean.
+// An email at someone else's provider (parents, recovery): lowercase, trimmed, and clean.
 export const cleanEmail = () =>
   z
     .string()
@@ -32,7 +37,7 @@ export const cleanEmail = () =>
     .toLowerCase()
     .max(100, "Email is too long")
     .superRefine((email, context) => {
-      const problem = emailProblem(email);
+      const problem = emailProblem(email, { external: true });
       if (problem) context.addIssue({ code: "custom", message: problem });
     });
 

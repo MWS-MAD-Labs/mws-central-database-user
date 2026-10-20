@@ -97,7 +97,7 @@ describe('EmployeeForm', () => {
     // The symbol is not accepted in the first place.
     expect(field('email_local').querySelector('input').value).toBe('ari.employee')
     await user.type(field('recovery_email').querySelector('input'), 'Ari+Pribadi@Gmail.com')
-    expect(field('recovery_email').querySelector('input').value).toBe('aripribadi@gmail.com')
+    expect(field('recovery_email').querySelector('input').value).toBe('ari+pribadi@gmail.com')
     await chooseSelect(user, 'Select Gender', 'Male')
     await chooseSelect(user, 'Select Religion', 'Islam')
     await user.type(field('birth_place').querySelector('input'), 'jakarta')
@@ -120,7 +120,7 @@ describe('EmployeeForm', () => {
       full_name: 'Ari Employee',
       nick_name: 'Ari',
       email: 'ari.employee@millennia21.id',
-      recovery_email: 'aripribadi@gmail.com',
+      recovery_email: 'ari+pribadi@gmail.com',
       gender: 'MALE',
       religion: 'ISLAM',
       religion_other: null,

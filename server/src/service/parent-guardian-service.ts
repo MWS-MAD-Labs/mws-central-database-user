@@ -193,7 +193,7 @@ export class ParentGuardianService {
     if (updateRequest.email !== undefined) {
       updateRequest.email = updateRequest.email.trim().toLowerCase();
       if (updateRequest.email !== (existing.email ?? "").toLowerCase()) {
-        const problem = emailProblem(updateRequest.email);
+        const problem = emailProblem(updateRequest.email, { external: true });
         if (problem) throw new ResponseError(400, problem);
       }
     }

@@ -217,7 +217,7 @@ function ParentDialog({ dialog, siblings = [], isSubmitting, onClose, onSubmit }
     hasAttemptedSubmit && !values.full_name.trim() ? 'Full name is required.' : undefined
   // An email saved before the rule keeps working: it is only checked when it is changed.
   const emailChanged = values.email.trim().toLowerCase() !== (dialog.record?.email || '').toLowerCase()
-  const emailError = (emailChanged ? emailProblem(values.email) : null) || undefined
+  const emailError = (emailChanged ? emailProblem(values.email, { external: true }) : null) || undefined
 
   function submit(event) {
     event.preventDefault()

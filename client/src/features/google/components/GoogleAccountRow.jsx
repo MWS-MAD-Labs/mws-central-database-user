@@ -26,7 +26,7 @@ export function GoogleAccountRow({ resource, id, canManage }) {
   // Needed for the person to get in: Google sends the reset code there.
   const recoveryProblem = !recoveryEmail.trim()
     ? "Recovery email is required."
-    : emailProblem(recoveryEmail) || (recoveryEmail.trim().toLowerCase().endsWith("@millennia21.id") ? "Use a personal address, not an organization address." : null);
+    : emailProblem(recoveryEmail, { external: true }) || (recoveryEmail.trim().toLowerCase().endsWith("@millennia21.id") ? "Use a personal address, not an organization address." : null);
   const statusQuery = useQuery({ queryKey, queryFn: () => googleAccountApi.status(resource, id) });
   const status = statusQuery.data;
 

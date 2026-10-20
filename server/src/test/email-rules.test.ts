@@ -23,6 +23,14 @@ describe("the clean email rule", () => {
     }
   });
 
+  it("lets an address at someone else's provider carry a +label, and nothing else extra", () => {
+    expect(emailProblem("budi+sekolah@gmail.com", { external: true })).toBeNull();
+    expect(emailProblem("budi+sekolah@gmail.com")).not.toBeNull();
+    for (const email of ["a%b@x.id", "a'b@x.id", "+a@x.id", "a+@x.id", "a++b@x.id"]) {
+      expect(emailProblem(email, { external: true })).not.toBeNull();
+    }
+  });
+
   it("refuses symbols, capitals, spaces and badly placed separators", () => {
     for (const email of ["a+b@x.id", "a%b@x.id", "a'b@x.id", "a!b@x.id", "a b@x.id", "a..b@x.id", ".a@x.id", "a.@x.id", "a-@x.id", "_a@x.id", "A@x.id", "a@x", "a@-x.id", "@x.id", "a@", "a@x..id"]) {
       expect(emailProblem(email)).not.toBeNull();
@@ -99,10 +107,16 @@ describe("email rules and the recovery email on create", () => {
 
   it("refuses a recovery email with symbols or on the organization domain", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
-    for (const recovery_email of ["me+tag@gmail.com", "me%x@gmail.com", "someone@millennia21.id"]) {
+    for (const recovery_email of ["me%x@gmail.com", "me..x@gmail.com", "someone@millennia21.id"]) {
       const response = await TestRequest.postRaw("/api/admin/employees", employeeBody({ recovery_email }), accessToken);
       expect(response.status).toBe(400);
     }
+  });
+
+  it("takes a recovery email with a +label, at Google as well", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+    const response = await TestRequest.post("/api/admin/employees", employeeBody({ recovery_email: "Me+Pribadi@Gmail.com" }), accessToken);
+    expect(response.status).toBe(200);
   });
 
   it("refuses an organization email with symbols or capitals typed in", async () => {
@@ -124,29 +138,29 @@ describe("email rules and the recovery email on create", () => {
   });
 
   describe("parents", () => {
-    it("refuses a new parent email with symbols, and lowercases a good one", async () => {
+    it("refuses a new parent email with symbols, and lowercases a good one that may carry a +label", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const student = await StudentTest.create({ email: "test_email_rule_student@millennia21.id", nis: "9100099" });
       const url = `/api/admin/students/${student.student!.id}/parents`;
-      const bad = await TestRequest.post(url, { type: "FATHER", full_name: "Budi", email: "budi+x@gmail.com" }, accessToken);
+      const bad = await TestRequest.post(url, { type: "FATHER", full_name: "Budi", email: "budi%x@gmail.com" }, accessToken);
       expect(bad.status).toBe(400);
-      const good = await TestRequest.post(url, { type: "FATHER", full_name: "Budi", email: "Budi.Santoso@Gmail.com" }, accessToken);
+      const good = await TestRequest.post(url, { type: "FATHER", full_name: "Budi", email: "Budi.Santoso+Sekolah@Gmail.com" }, accessToken);
       expect(good.status).toBe(200);
-      expect((await good.json()).data.email).toBe("budi.santoso@gmail.com");
+      expect((await good.json()).data.email).toBe("budi.santoso+sekolah@gmail.com");
     });
 
     it("lets an old email with symbols stay while other things change, and refuses a new one", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const student = await StudentTest.create({ email: "test_email_rule_student2@millennia21.id", nis: "9100098" });
       const studentId = student.student!.id;
-      const parent = await ParentGuardianTest.create({ studentId, email: "old+style@gmail.com" });
+      const parent = await ParentGuardianTest.create({ studentId, email: "old_@gmail.com" });
       const url = `/api/admin/students/${studentId}/parents/${parent.id}`;
 
-      const same = await TestRequest.patch(url, { full_name: "Renamed", email: "old+style@gmail.com" }, accessToken);
+      const same = await TestRequest.patch(url, { full_name: "Renamed", email: "old_@gmail.com" }, accessToken);
       expect(same.status).toBe(200);
-      const changed = await TestRequest.patch(url, { email: "new+style@gmail.com" }, accessToken);
+      const changed = await TestRequest.patch(url, { email: "new_@gmail.com" }, accessToken);
       expect(changed.status).toBe(400);
-      const fixed = await TestRequest.patch(url, { email: "new.style@gmail.com" }, accessToken);
+      const fixed = await TestRequest.patch(url, { email: "new+style@gmail.com" }, accessToken);
       expect(fixed.status).toBe(200);
     });
   });

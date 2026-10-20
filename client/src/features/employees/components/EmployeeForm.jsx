@@ -1879,7 +1879,7 @@ function computeEmployeeErrors(
   }
   if (isCreate && values.recovery_email) {
     const problem =
-      emailProblem(values.recovery_email) ||
+      emailProblem(values.recovery_email, { external: true }) ||
       (values.recovery_email.trim().toLowerCase().endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)
         ? "Use a personal address, not an organization address."
         : null);
