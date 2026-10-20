@@ -6,16 +6,83 @@ export function maskEmail(email) {
   return `${text[0]}***${text.slice(at)}`
 }
 
-// What the new person has to do. Nobody has been emailed: Google sends the code only when they ask for it.
-export function signInInstructions(email, maskedRecovery) {
-  const where = maskedRecovery ? `to your recovery email (${maskedRecovery})` : 'to your recovery email'
+export const INSTRUCTION_LANGUAGES = [
+  { id: 'id', label: 'Bahasa Indonesia' },
+  { id: 'en', label: 'English' },
+]
+
+const COPY = {
+  id: {
+    heading: 'Akun Google Millennia kamu sudah siap',
+    account: 'Email',
+    recovery: 'Kode dikirim ke',
+    stepsHeading: 'Cara masuk pertama kali',
+    steps: (recovery) => [
+      'Buka accounts.google.com, lalu masukkan email di atas.',
+      'Pilih "Lupa sandi" (Forgot password).',
+      `Google mengirim kode ke email pemulihan${recovery ? ` (${recovery})` : ''}. Masukkan kodenya.`,
+      'Buat sandi baru, minimal 8 karakter dan jangan dipakai di akun lain.',
+      'Setelah itu pakai email ini untuk masuk ke Central, Hub, dan aplikasi sekolah.',
+    ],
+    troubleHeading: 'Kalau kode tidak datang',
+    trouble: [
+      'Cek folder spam, lalu coba lagi beberapa menit kemudian.',
+      'Kalau tetap tidak datang, hubungi admin untuk dibuatkan sandi sementara.',
+    ],
+    warning: 'Jangan bagikan kode kepada siapa pun.',
+  },
+  en: {
+    heading: 'Your Millennia Google account is ready',
+    account: 'Email',
+    recovery: 'Code goes to',
+    stepsHeading: 'How to sign in the first time',
+    steps: (recovery) => [
+      'Open accounts.google.com and enter the email above.',
+      'Choose "Forgot password".',
+      `Google sends a code to your recovery email${recovery ? ` (${recovery})` : ''}. Enter it.`,
+      'Set a new password, at least 8 characters and not used on another account.',
+      'Then use this email to sign in to Central, Hub, and the school apps.',
+    ],
+    troubleHeading: 'If the code does not arrive',
+    trouble: [
+      'Check spam, then try again after a few minutes.',
+      'If it still does not arrive, ask an admin for a temporary password.',
+    ],
+    warning: 'Never share the code with anyone.',
+  },
+}
+
+// The instructions as data, so the dialog can lay them out and the copy button can flatten them.
+export function signInGuide(email, maskedRecovery, language = 'id') {
+  const copy = COPY[language] || COPY.id
+  return {
+    heading: copy.heading,
+    account: { label: copy.account, value: email },
+    recovery: maskedRecovery ? { label: copy.recovery, value: maskedRecovery } : null,
+    stepsHeading: copy.stepsHeading,
+    steps: copy.steps(maskedRecovery),
+    troubleHeading: copy.troubleHeading,
+    trouble: copy.trouble,
+    warning: copy.warning,
+  }
+}
+
+// Plain text with blank lines between blocks, so it survives pasting into WhatsApp or email.
+// Nobody has been emailed: Google sends the code only when they ask for it.
+export function signInInstructions(email, maskedRecovery, language = 'id') {
+  const guide = signInGuide(email, maskedRecovery, language)
   return [
-    `Your Millennia Google account: ${email}`,
+    guide.heading,
     '',
-    '1. Open accounts.google.com and enter the email above.',
-    '2. Choose "Forgot password".',
-    `3. Google sends a code ${where}. Enter it and set your own password.`,
+    `${guide.account.label}: ${guide.account.value}`,
+    ...(guide.recovery ? [`${guide.recovery.label}: ${guide.recovery.value}`] : []),
     '',
-    'If the code does not arrive, check spam and try again. If it still does not, ask an admin to reset your password.',
+    `${guide.stepsHeading}:`,
+    ...guide.steps.map((step, index) => `${index + 1}. ${step}`),
+    '',
+    `${guide.troubleHeading}:`,
+    ...guide.trouble.map((line) => `- ${line}`),
+    '',
+    guide.warning,
   ].join('\n')
 }

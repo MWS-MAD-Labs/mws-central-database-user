@@ -10,22 +10,35 @@ describe('sign-in instructions', () => {
     expect(maskEmail('nope')).toBe('')
   })
 
-  it('tells the person what to do and that nobody was emailed', () => {
+  it('writes the steps in Indonesian by default with blank lines between blocks', () => {
     const text = signInInstructions('ari@millennia21.id', 'a***@gmail.com')
-    expect(text).toContain('ari@millennia21.id')
-    expect(text).toContain('Forgot password')
+    expect(text).toContain('Email: ari@millennia21.id')
+    expect(text).toContain('Lupa sandi')
     expect(text).toContain('a***@gmail.com')
-    expect(signInInstructions('ari@millennia21.id', '')).toContain('to your recovery email.')
+    expect(text).toContain('1. Buka accounts.google.com')
+    expect(text).toContain('\n\nCara masuk pertama kali:\n')
+    expect(text).toContain('Jangan bagikan kode')
   })
 
-  it('shows them in a dialog with Copy and Done', async () => {
+  it('has an English version and leaves out the recovery line when unknown', () => {
+    const text = signInInstructions('ari@millennia21.id', '', 'en')
+    expect(text).toContain('Forgot password')
+    expect(text).toContain('to your recovery email.')
+    expect(text).not.toContain('Code goes to')
+  })
+
+  it('shows them as numbered steps with a copy button per language', async () => {
     let closed = false
     const { user } = renderWithProviders(
       <GoogleInstructionsDialog email="ari@millennia21.id" maskedRecovery="a***@gmail.com" onClose={() => { closed = true }} />,
     )
     const dialog = screen.getByRole('dialog', { name: 'Google Account Ready' })
     expect(within(dialog).getByText('Nobody has been emailed. Pass this on to the person.')).toBeVisible()
-    expect(within(dialog).getByRole('button', { name: 'Copy instructions' })).toBeVisible()
+    expect(within(dialog).getAllByRole('listitem').length).toBeGreaterThanOrEqual(5)
+    expect(within(dialog).getByRole('button', { name: 'Copy (Bahasa Indonesia)' })).toBeVisible()
+    await user.click(within(dialog).getByRole('tab', { name: 'English' }))
+    expect(within(dialog).getByText(/Choose "Forgot password"/)).toBeVisible()
+    expect(within(dialog).getByRole('button', { name: 'Copy (English)' })).toBeVisible()
     await user.click(within(dialog).getByRole('button', { name: 'Done' }))
     expect(closed).toBe(true)
   })
