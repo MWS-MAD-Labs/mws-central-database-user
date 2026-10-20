@@ -216,7 +216,6 @@ const CLEAN_DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/
 // What is typed in the part before the @: lowercase, only the allowed characters, no separator at the start and no two
 // in a row. A separator at the end is allowed while typing; emailProblem catches it when the form is checked.
 export function sanitizeEmailLocalPart(value, { external = false } = {}) {
-  const separators = external ? '._+-' : '._-'
   return String(value || '')
     .toLowerCase()
     .replace(external ? /[^a-z0-9._+-]/g : /[^a-z0-9._-]/g, '')
