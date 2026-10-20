@@ -721,6 +721,8 @@ model Person {
   google_last_login_at      DateTime?
   // When Google deleted the account, kept while it can still be restored.
   google_deleted_at         DateTime?
+  // True when Central suspended the account because the person left, so only then does Central open it again.
+  google_suspended_by_central Boolean @default(false)
   created_at       DateTime   @default(now())
   updated_at       DateTime   @updatedAt
   deleted_at       DateTime?

@@ -1,7 +1,9 @@
 import { randomInt } from "node:crypto";
 import {
   AuditSource,
+  EmployeeStatus,
   GoogleSyncStatus,
+  InternStatus,
   IntegrationEnvironment,
   PersonType,
   type AdminUser,
@@ -36,6 +38,13 @@ function deletedMessage(deletedAt?: Date | null): string {
   const when = left === null ? "less than 20 days ago" : `${RESTORE_WINDOW_DAYS - left} days ago`;
   const wait = left === null ? "" : `, and the address is free again in about ${left} ${left === 1 ? "day" : "days"}`;
   return `This email belongs to a Google account that was deleted ${when}, so it cannot be reused yet${wait}. Use another address, or restore that account in the Admin Console if it is the same person`;
+}
+
+// "budi.santoso@gmail.com" -> "b***@gmail.com". Never the whole address.
+export function maskEmail(email: string | null | undefined): string | null {
+  const text = (email ?? "").trim();
+  const at = text.lastIndexOf("@");
+  return at < 1 ? null : `${text[0]}***${text.slice(at)}`;
 }
 
 const PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
@@ -251,6 +260,7 @@ export class GoogleWorkspaceService {
   ): Promise<GoogleSyncResult> {
     const person = await load(personId);
     assertAllowedTarget(person.email);
+    await this.assertNotLocked(personId);
     const client = getDirectoryClient();
     await markStatus(person.id, GoogleSyncStatus.PENDING);
 
@@ -340,6 +350,7 @@ export class GoogleWorkspaceService {
     if (!person.google_user_id) {
       throw new ResponseError(404, "This person has no Google account yet. Create it first");
     }
+    await this.assertNotLocked(personId);
     const client = getDirectoryClient();
     const password = generateTemporaryPassword();
 
@@ -360,6 +371,148 @@ export class GoogleWorkspaceService {
     });
     await record("GOOGLE_PASSWORD_RESET", person, admin, context, { mode: client.mode });
     return { password };
+  }
+
+  // Whether the account of this person should be locked: the person left, or was archived. People on leave or inactive
+  // keep their account.
+  static async lockState(personId: string): Promise<{ locked: boolean; reason: string } | null> {
+    const person = await prismaClient.person.findUnique({
+      where: { id: personId },
+      select: {
+        deleted_at: true,
+        employee: { select: { status: true, deleted_at: true } },
+        intern: { select: { status: true, deleted_at: true } },
+      },
+    });
+    if (!person) return null;
+    const { employee, intern } = person;
+    if (employee) {
+      if (employee.deleted_at || employee.status === EmployeeStatus.ARCHIVED) return { locked: true, reason: "ARCHIVED" };
+      if (employee.status === EmployeeStatus.RESIGNED) return { locked: true, reason: "RESIGNED" };
+      return { locked: false, reason: employee.status };
+    }
+    if (intern) {
+      if (intern.deleted_at) return { locked: true, reason: "ARCHIVED" };
+      if (intern.status === InternStatus.COMPLETED || intern.status === InternStatus.TERMINATED) {
+        return { locked: true, reason: intern.status };
+      }
+      return { locked: false, reason: intern.status };
+    }
+    return person.deleted_at ? { locked: true, reason: "ARCHIVED" } : { locked: false, reason: "ACTIVE" };
+  }
+
+  // The rule that a person who left keeps a locked account, whatever is asked from Central.
+  private static async assertNotLocked(personId: string): Promise<void> {
+    if ((await this.lockState(personId))?.locked) {
+      throw new ResponseError(
+        400,
+        "This person has left, so the Google account stays locked. Change the status or restore the person first",
+      );
+    }
+  }
+
+  // After someone left, was archived or came back: lock the Google account, or open it if Central had locked it. Never
+  // throws, so a Google problem cannot undo the archive or the resignation. Does nothing unless
+  // GOOGLE_SUSPEND_ON_OFFBOARD is true. Returns whether the account changed.
+  static async syncAccess(
+    personId: string,
+    options: { admin?: Pick<AdminUser, "id">; context?: AuditRequestContext } = {},
+  ): Promise<boolean> {
+    if (process.env.GOOGLE_SUSPEND_ON_OFFBOARD !== "true") return false;
+    try {
+      const person = await prismaClient.person.findUnique({
+        where: { id: personId },
+        select: {
+          id: true,
+          email: true,
+          full_name: true,
+          person_type: true,
+          google_user_id: true,
+          google_sync_status: true,
+          google_suspended_by_central: true,
+        },
+      });
+      const state = await this.lockState(personId);
+      if (!person?.google_user_id || !state) return false;
+      const client = getDirectoryClient();
+      if (client.mode === "simulated") return false;
+      assertAllowedTarget(person.email);
+
+      const shouldSuspend = state.locked && person.google_sync_status === GoogleSyncStatus.ACTIVE;
+      const shouldOpen =
+        !state.locked && person.google_sync_status === GoogleSyncStatus.SUSPENDED && person.google_suspended_by_central;
+      if (!shouldSuspend && !shouldOpen) return false;
+
+      const current = await client.findUser(person.google_user_id);
+      if (!current || current.isAdmin) return false;
+      // Central locked it before and it is open again: someone turned it on in Google.
+      const reactivated = shouldSuspend && person.google_suspended_by_central;
+      if (reactivated) logger.warn(`Google account of person ${person.id} was turned on again in Google, locking it`);
+      const user = await client.setSuspended(person.google_user_id, shouldSuspend);
+      await markStatus(person.id, shouldSuspend ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE, {
+        user,
+        error: shouldSuspend ? `Suspended in Google after ${state.reason}` : null,
+      });
+      await prismaClient.person.update({
+        where: { id: person.id },
+        data: { google_suspended_by_central: shouldSuspend },
+      });
+      await record(
+        shouldSuspend ? "GOOGLE_ACCOUNT_SUSPEND" : "GOOGLE_ACCOUNT_UNSUSPEND",
+        person,
+        options.admin,
+        options.context ?? {},
+        { mode: client.mode, reason: state.reason, ...(reactivated ? { reactivated_in_google: true } : {}) },
+      );
+      return true;
+    } catch (error) {
+      logger.error(`Google access sync failed for person ${personId}`, error);
+      await prismaClient.person
+        .update({ where: { id: personId }, data: { google_last_error: messageOf(error) } })
+        .catch(() => undefined);
+      return false;
+    }
+  }
+
+  // The recovery email lives only in Google. This shows it with most of it hidden, read from Google each time.
+  static async recoveryEmailOf(personId: string): Promise<{ recovery_email: string | null }> {
+    const person = await load(personId);
+    if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet");
+    assertAllowedTarget(person.email);
+    try {
+      const user = await getDirectoryClient().findUser(person.google_user_id);
+      if (!user) throw new ResponseError(404, "The account is not in Google Workspace any more");
+      return { recovery_email: maskEmail(user.recoveryEmail) };
+    } catch (error) {
+      if (error instanceof ResponseError) throw error;
+      logger.error(`Google recovery email read failed for person ${person.id}`, error);
+      throw new ResponseError(502, messageOf(error));
+    }
+  }
+
+  // Sent to Google and nowhere else: Central does not keep it, and the audit entry only says it changed.
+  static async changeRecoveryEmail(
+    personId: string,
+    recoveryEmail: string,
+    admin: Pick<AdminUser, "id">,
+    context: AuditRequestContext = {},
+  ): Promise<void> {
+    const person = await load(personId);
+    assertAllowedTarget(person.email);
+    if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet");
+    await this.assertNotLocked(personId);
+    const client = getDirectoryClient();
+    try {
+      const current = await client.findUser(person.google_user_id);
+      if (!current) throw new ResponseError(404, "The account is not in Google Workspace any more");
+      if (current.isAdmin) throw new ResponseError(400, "A Workspace admin is not managed from here");
+      await client.setRecoveryEmail(person.google_user_id, recoveryEmail);
+    } catch (error) {
+      if (error instanceof ResponseError) throw error;
+      logger.error(`Google recovery email change failed for person ${person.id}`, error);
+      throw new ResponseError(502, messageOf(error));
+    }
+    await record("GOOGLE_ACCOUNT_UPDATE", person, admin, context, { mode: client.mode, recovery_email_changed: true });
   }
 
   // Brings back the person's own account that was deleted in Google, inside the 20 days. Only the account linked to
@@ -384,6 +537,8 @@ export class GoogleWorkspaceService {
       const status = user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE;
       await markStatus(person.id, status, { user, error: user.suspended ? "Suspended in Google" : null });
       await record("GOOGLE_ACCOUNT_RESTORE", person, admin, context, { mode: client.mode });
+      // Someone who left gets the account back locked.
+      await this.syncAccess(person.id, { admin, context });
       return { status, google_user_id: user.id, outcome: "updated" };
     } catch (error) {
       if (error instanceof ResponseError) throw error;
@@ -402,6 +557,7 @@ export class GoogleWorkspaceService {
     const person = await load(personId);
     assertAllowedTarget(person.email);
     if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet");
+    if (!suspended) await this.assertNotLocked(personId);
     const client = getDirectoryClient();
     try {
       const current = await client.findUser(person.google_user_id);
@@ -412,6 +568,8 @@ export class GoogleWorkspaceService {
         user,
         error: suspended ? "Suspended in Google" : null,
       });
+      // A person chose this, so Central does not undo it on its own.
+      await prismaClient.person.update({ where: { id: person.id }, data: { google_suspended_by_central: false } });
       await record(suspended ? "GOOGLE_ACCOUNT_SUSPEND" : "GOOGLE_ACCOUNT_UNSUSPEND", person, admin, context, {
         mode: client.mode,
       });
@@ -459,6 +617,7 @@ export class GoogleWorkspaceService {
           user,
           error: suspended ? "Suspended in Google" : null,
         });
+        await this.syncAccess(person.id);
         return;
       }
       const deleted = await client.findDeletedUser(person.email, person.google_user_id);
@@ -522,6 +681,10 @@ export class GoogleWorkspaceService {
         await prismaClient.person.update({ where: { id: person.id }, data: { google_password_pending: null } });
       }
     }
+    // The same rule for everyone who is linked, for the paths that did not call it at the time.
+    for (const person of linked) {
+      if (await this.syncAccess(person.id)) changed += 1;
+    }
     return changed;
   }
 
@@ -550,8 +713,11 @@ export class GoogleWorkspaceService {
       await this.refreshStatus(personId);
       person = (await read()) ?? person;
     }
+    const lock = person.google_user_id ? await this.lockState(personId) : null;
     return {
       linked: Boolean(person.google_user_id),
+      locked: Boolean(lock?.locked),
+      locked_reason: lock?.locked ? lock.reason : null,
       status: person.google_sync_status,
       synced_at: person.google_synced_at ? person.google_synced_at.toISOString() : null,
       checked_at: person.google_checked_at ? person.google_checked_at.toISOString() : null,

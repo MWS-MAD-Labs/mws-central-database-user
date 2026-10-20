@@ -42,3 +42,5 @@ internRouter.post("/:id/google/reset-password", GoogleAccountController.resetPas
 internRouter.post("/:id/google/restore", GoogleAccountController.restore("intern"));
 internRouter.post("/:id/google/suspend", GoogleAccountController.suspend("intern", true));
 internRouter.post("/:id/google/unsuspend", GoogleAccountController.suspend("intern", false));
+internRouter.get("/:id/google/recovery-email", GoogleAccountController.recoveryEmail("intern"));
+internRouter.post("/:id/google/recovery-email", GoogleAccountController.changeRecoveryEmail("intern"));

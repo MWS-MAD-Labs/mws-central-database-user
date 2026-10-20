@@ -144,3 +144,5 @@ employeeRouter.post("/:id/google/reset-password", GoogleAccountController.resetP
 employeeRouter.post("/:id/google/restore", GoogleAccountController.restore("employee"));
 employeeRouter.post("/:id/google/suspend", GoogleAccountController.suspend("employee", true));
 employeeRouter.post("/:id/google/unsuspend", GoogleAccountController.suspend("employee", false));
+employeeRouter.get("/:id/google/recovery-email", GoogleAccountController.recoveryEmail("employee"));
+employeeRouter.post("/:id/google/recovery-email", GoogleAccountController.changeRecoveryEmail("employee"));

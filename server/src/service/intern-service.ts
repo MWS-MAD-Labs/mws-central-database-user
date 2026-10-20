@@ -819,6 +819,8 @@ export class InternService {
       );
     }
 
+    await GoogleWorkspaceService.syncAccess(withRelations.person_id, { admin, context });
+
     return toInternResponse(withRelations, admin);
   }
 
@@ -1004,7 +1006,7 @@ export class InternService {
 
     const targetIntern = await prismaClient.intern.findUnique({
       where: { id: request.id },
-      select: { id: true, deleted_at: true, status: true },
+      select: { id: true, person_id: true, deleted_at: true, status: true },
     });
 
     if (!targetIntern) {
@@ -1052,6 +1054,8 @@ export class InternService {
         tx,
       );
     });
+
+    await GoogleWorkspaceService.syncAccess(targetIntern.person_id, { admin, context });
 
     return true;
   }
@@ -1152,7 +1156,7 @@ export class InternService {
 
     const targetIntern = await prismaClient.intern.findUnique({
       where: { id: request.id },
-      select: { id: true, deleted_at: true, status: true },
+      select: { id: true, person_id: true, deleted_at: true, status: true },
     });
 
     if (!targetIntern) {
@@ -1239,6 +1243,8 @@ export class InternService {
         "Internal Server Error: Failed to retrieve restored intern data",
       );
     }
+
+    await GoogleWorkspaceService.syncAccess(withRelations.person_id, { admin, context });
 
     return toInternResponse(withRelations, admin);
   }

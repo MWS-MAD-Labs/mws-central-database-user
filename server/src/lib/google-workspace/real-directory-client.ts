@@ -44,6 +44,7 @@ const toDirectoryUser = (user: admin_directory_v1.Schema$User): DirectoryUser =>
   changePasswordAtNextLogin: Boolean(user.changePasswordAtNextLogin),
   lastLoginTime: loginTimeOf(user.lastLoginTime),
   deletionTime: user.deletionTime ? new Date(user.deletionTime) : null,
+  recoveryEmail: user.recoveryEmail ?? null,
 });
 
 // Google's errors carry the HTTP status in `code`. Only the status and the reason are kept: the request body holds
@@ -147,6 +148,15 @@ export class RealDirectoryClient implements DirectoryClient {
     try {
       await this.directory.users.undelete({ userKey: userId, requestBody: { orgUnitPath } });
       const { data } = await this.directory.users.get({ userKey: userId });
+      return toDirectoryUser(data);
+    } catch (error) {
+      throw toDirectoryError(error);
+    }
+  }
+
+  async setRecoveryEmail(userKey: string, recoveryEmail: string): Promise<DirectoryUser> {
+    try {
+      const { data } = await this.directory.users.patch({ userKey, requestBody: { recoveryEmail } });
       return toDirectoryUser(data);
     } catch (error) {
       throw toDirectoryError(error);

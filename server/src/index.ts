@@ -12,7 +12,7 @@ const AUTO_RESIGN_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const DISCIPLINARY_ACTION_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const PC_ACTIVITY_ROOM_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
-const GOOGLE_STATUS_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1 day
+const GOOGLE_STATUS_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour, to lock an account someone turned on again in Google
 
 declare global {
   // eslint-disable-next-line no-var

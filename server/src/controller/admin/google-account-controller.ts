@@ -12,6 +12,7 @@ import { Validation } from "../../validation/validation";
 type Kind = "employee" | "intern";
 
 const PROVISION = z.object({ recovery_email: recoveryEmail().optional() });
+const CHANGE_RECOVERY = z.object({ recovery_email: recoveryEmail() });
 
 // Making an account and resetting its password are for Super Admins. The status is readable by anyone who can open
 // the person.
@@ -83,6 +84,26 @@ export class GoogleAccountController {
       const personId = await personIdOf(kind, c.req.param("id"));
       const result = await GoogleWorkspaceService.setSuspended(personId, suspended, c.var.admin, getAuditRequestContext(c));
       return c.json({ data: result });
+    };
+  }
+
+  static recoveryEmail(kind: Kind) {
+    return async (c: Context<{ Variables: AdminVariables }>) => {
+      assertSuperAdmin(c);
+      const personId = await personIdOf(kind, c.req.param("id"));
+      c.header("Cache-Control", "no-store");
+      return c.json({ data: await GoogleWorkspaceService.recoveryEmailOf(personId) });
+    };
+  }
+
+  static changeRecoveryEmail(kind: Kind) {
+    return async (c: Context<{ Variables: AdminVariables }>) => {
+      assertSuperAdmin(c);
+      const personId = await personIdOf(kind, c.req.param("id"));
+      const body = await c.req.json().catch(() => ({}));
+      const { recovery_email } = Validation.validate(CHANGE_RECOVERY, body);
+      await GoogleWorkspaceService.changeRecoveryEmail(personId, recovery_email, c.var.admin, getAuditRequestContext(c));
+      return c.json({ data: true });
     };
   }
 }

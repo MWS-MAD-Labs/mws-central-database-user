@@ -44,6 +44,7 @@ export class SimulatedDirectoryClient implements DirectoryClient {
       isAdmin: false,
       changePasswordAtNextLogin: true,
       lastLoginTime: null,
+      recoveryEmail: input.recoveryEmail ?? null,
     };
     this.users.set(user.id, user);
     logger.info(`[google simulated] would create ${input.primaryEmail}${input.recoveryEmail ? " with a recovery email" : ""}`);
@@ -66,6 +67,15 @@ export class SimulatedDirectoryClient implements DirectoryClient {
 
   async restoreUser(userId: string): Promise<DirectoryUser> {
     throw new DirectoryError("NOT_FOUND", `[google simulated] no deleted user ${userId}`);
+  }
+
+  async setRecoveryEmail(userKey: string, recoveryEmail: string): Promise<DirectoryUser> {
+    const user = this.byKey(userKey);
+    if (!user) throw new DirectoryError("NOT_FOUND", "The user does not exist in Google Workspace");
+    const next = { ...user, recoveryEmail };
+    this.users.set(user.id, next);
+    logger.info(`[google simulated] would change the recovery email of ${user.primaryEmail}`);
+    return next;
   }
 
   async setSuspended(userKey: string, suspended: boolean): Promise<DirectoryUser> {

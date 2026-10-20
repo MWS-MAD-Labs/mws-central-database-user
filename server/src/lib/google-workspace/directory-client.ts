@@ -14,6 +14,8 @@ export type DirectoryUser = {
   lastLoginTime: Date | null;
   // Only on a deleted user: when it was deleted. Google restores it for 20 days after that.
   deletionTime?: Date | null;
+  // Held by Google only. Central reads it to show it hidden, and never stores it.
+  recoveryEmail?: string | null;
 };
 
 export type CreateDirectoryUser = {
@@ -57,6 +59,7 @@ export interface DirectoryClient {
   updateUser(userKey: string, patch: UpdateDirectoryUser): Promise<DirectoryUser>;
   // Brings a deleted user back (inside the 20 days), into the given org unit.
   restoreUser(userId: string, orgUnitPath: string): Promise<DirectoryUser>;
+  setRecoveryEmail(userKey: string, recoveryEmail: string): Promise<DirectoryUser>;
   // A suspended user cannot sign in, and nothing of theirs is lost.
   setSuspended(userKey: string, suspended: boolean): Promise<DirectoryUser>;
   // Always asks for a new password at the next login.

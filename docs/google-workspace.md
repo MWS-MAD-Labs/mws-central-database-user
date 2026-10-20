@@ -53,6 +53,18 @@ Central only reads here, it never blocks anyone because of it.
 - Deleted accounts are found by reading Google's list of deleted users and matching the Google id or the email, because Google's `query` filter does not match deleted users. A Google that cannot answer leaves the last status as it was.
 - Simulated Google (every environment but production, or without the test prefix) is never checked, because it forgets its users on restart.
 
+## When someone leaves
+
+With `GOOGLE_SUSPEND_ON_OFFBOARD=true` (off by default), Central suspends the Google account of anyone who resigns (also when the last working date passes), is archived, or is an intern who completed or was terminated. It opens the account again only when Central was the one that suspended it, for instance after a restore. On Leave and Inactive keep their account. Nothing is ever deleted by Central: move the Drive and Calendar data in the Admin Console, then delete there.
+
+- While a person is locked, Central refuses Unsuspend, Reset password, Change recovery email and Create account for them.
+- An account turned on again directly in Google is locked again by the hourly status check, or when the detail page is opened. There is up to an hour of delay: Google sends no event to Central. Near real time would need the Reports API (another scope).
+- Suspending is recorded in the audit log with the reason, and `reactivated_in_google` when it was undone in Google.
+
+## Recovery email
+
+The recovery email lives only in Google, so "Forgot password" sends its code there. A Super Admin can see it hidden (`b***@gmail.com`) and change it from the Google account row. The new address goes to Google and is not kept in Central or the audit log. If the person cannot use any recovery email, Reset Google password gives a temporary password without it. Self-service recovery must be on in the Admin Console (Security, Account recovery), otherwise Reset in Central is the only way.
+
 ## Not done yet
 
 Students (their parents' emails exist only after the student is created, so the account is a separate step), suspending the Google account when someone leaves, a one-off report that compares every email in Central with Google, and a self-service photo for interns (they have no sign-in to Central).

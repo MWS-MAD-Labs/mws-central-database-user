@@ -1725,6 +1725,8 @@ export class EmployeeService {
       );
     }
 
+    await GoogleWorkspaceService.syncAccess(existingEmployee.person_id, { admin, context });
+
     return toEmployeeResponse(updatedPersonWithRelations, admin);
   }
 
@@ -2251,6 +2253,7 @@ export class EmployeeService {
       },
       select: {
         id: true,
+        person_id: true,
         deleted_at: true,
         status: true,
         unit_id: true,
@@ -2348,6 +2351,8 @@ export class EmployeeService {
         tx,
       );
     });
+
+    await GoogleWorkspaceService.syncAccess(targetEmployee.person_id, { admin, context });
 
     return true;
   }
@@ -2472,6 +2477,8 @@ export class EmployeeService {
         "Internal Server Error: Failed to retrieve restored employee data",
       );
     }
+
+    await GoogleWorkspaceService.syncAccess(targetEmployee.person_id, { admin, context });
 
     return toEmployeeResponse(restoredPerson, admin);
   }
@@ -2771,6 +2778,8 @@ export class EmployeeService {
           tx,
         );
       });
+
+      await GoogleWorkspaceService.syncAccess(employee.person_id);
     }
 
     return dueEmployees.length;

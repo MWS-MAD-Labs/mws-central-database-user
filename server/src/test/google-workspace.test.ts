@@ -71,6 +71,7 @@ class FakeDirectory implements DirectoryClient {
       suspended: false,
       isAdmin: false,
       changePasswordAtNextLogin: true, lastLoginTime: null,
+      recoveryEmail: input.recoveryEmail ?? null,
     };
     this.users.set(user.id, user);
     return user;
@@ -90,6 +91,13 @@ class FakeDirectory implements DirectoryClient {
     this.restored.push({ userId, orgUnitPath });
     this.users.set(userId, user);
     return user;
+  }
+  async setRecoveryEmail(userKey: string, recoveryEmail: string) {
+    const user = await this.findUser(userKey);
+    if (!user) throw new DirectoryError("NOT_FOUND", "gone");
+    const next = { ...user, recoveryEmail };
+    this.users.set(user.id, next);
+    return next;
   }
   async setSuspended(userKey: string, suspended: boolean) {
     const user = await this.findUser(userKey);
@@ -645,6 +653,179 @@ describe("google workspace accounts", () => {
       await linkedPerson(accessToken);
       setDirectoryClientForTests(new SimulatedDirectoryClient());
       expect(await GoogleWorkspaceService.refreshAllStatuses()).toBe(0);
+    });
+  });
+
+  describe("people who left", () => {
+    beforeEach(() => {
+      process.env.GOOGLE_SUSPEND_ON_OFFBOARD = "true";
+    });
+    afterEach(() => {
+      delete process.env.GOOGLE_SUSPEND_ON_OFFBOARD;
+    });
+
+    const linked = async (token: string) => {
+      const { json } = await create(token);
+      const person = await personOf(json.data.id);
+      return { id: json.data.id as string, person, user: () => google.users.get(person.google_user_id!)! };
+    };
+    const resign = (employeeId: string) =>
+      prismaClient.employee.update({ where: { id: employeeId }, data: { status: EmployeeStatus.RESIGNED } });
+    const fresh = (personId: string) => prismaClient.person.findUniqueOrThrow({ where: { id: personId } });
+    const post = (path: string, token: string, body: Record<string, unknown> = {}) =>
+      TestRequest.post(path, body, token);
+
+    it("locks the account when the person resigns, and opens it when they are active again", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person, user } = await linked(accessToken);
+
+      await resign(id);
+      expect(await GoogleWorkspaceService.syncAccess(person.id)).toBe(true);
+      expect(user().suspended).toBe(true);
+      expect(await fresh(person.id)).toMatchObject({ google_sync_status: GoogleSyncStatus.SUSPENDED, google_suspended_by_central: true });
+      expect(await prismaClient.auditLog.count({ where: { action: AuditAction.GOOGLE_ACCOUNT_SUSPEND } })).toBe(1);
+
+      await prismaClient.employee.update({ where: { id }, data: { status: EmployeeStatus.ACTIVE } });
+      expect(await GoogleWorkspaceService.syncAccess(person.id)).toBe(true);
+      expect(user().suspended).toBe(false);
+      expect(await fresh(person.id)).toMatchObject({ google_sync_status: GoogleSyncStatus.ACTIVE, google_suspended_by_central: false });
+    });
+
+    it("does nothing while the switch is off, for people on leave, or for accounts it did not lock", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person, user } = await linked(accessToken);
+
+      await prismaClient.employee.update({ where: { id }, data: { status: EmployeeStatus.ON_LEAVE } });
+      expect(await GoogleWorkspaceService.syncAccess(person.id)).toBe(false);
+      await prismaClient.employee.update({ where: { id }, data: { status: EmployeeStatus.INACTIVE } });
+      expect(await GoogleWorkspaceService.syncAccess(person.id)).toBe(false);
+
+      await resign(id);
+      delete process.env.GOOGLE_SUSPEND_ON_OFFBOARD;
+      expect(await GoogleWorkspaceService.syncAccess(person.id)).toBe(false);
+      expect(user().suspended).toBe(false);
+
+      process.env.GOOGLE_SUSPEND_ON_OFFBOARD = "true";
+      // An account an admin suspended by hand is not opened by Central.
+      google.users.set(user().id, { ...user(), suspended: true });
+      await prismaClient.person.update({ where: { id: person.id }, data: { google_sync_status: GoogleSyncStatus.SUSPENDED } });
+      await prismaClient.employee.update({ where: { id }, data: { status: EmployeeStatus.ACTIVE } });
+      expect(await GoogleWorkspaceService.syncAccess(person.id)).toBe(false);
+      expect(user().suspended).toBe(true);
+    });
+
+    it("locks the account on archive and opens it on restore", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person, user } = await linked(accessToken);
+      const response = await TestRequest.patch(`/api/admin/employees/delete/${id}`, {}, accessToken);
+      expect(response.status).toBe(200);
+      expect(user().suspended).toBe(true);
+
+      await prismaClient.employee.update({ where: { id }, data: { deleted_at: null, status: EmployeeStatus.ACTIVE } });
+      await GoogleWorkspaceService.syncAccess(person.id);
+      expect(user().suspended).toBe(false);
+    });
+
+    it("keeps the archive when Google fails", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person } = await linked(accessToken);
+      google.setSuspended = async () => {
+        throw new DirectoryError("FAILED", "down");
+      };
+      expect((await TestRequest.patch(`/api/admin/employees/delete/${id}`, {}, accessToken)).status).toBe(200);
+      expect((await prismaClient.employee.findUniqueOrThrow({ where: { id } })).deleted_at).not.toBeNull();
+      expect((await fresh(person.id)).google_last_error).toBeTruthy();
+    });
+
+    it("refuses to open, reset or make an account for someone who left", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person } = await linked(accessToken);
+      await resign(id);
+      await GoogleWorkspaceService.syncAccess(person.id);
+
+      for (const path of ["unsuspend", "reset-password", "provision"]) {
+        const response = await post(`/api/admin/employees/${id}/google/${path}`, accessToken);
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(await response.json())).toContain("has left");
+      }
+      expect((await statusOfLeft(accessToken, id))).toMatchObject({ locked: true, locked_reason: "RESIGNED" });
+    });
+
+    it("locks again an account someone turned on in Google, on a check and on the sweep", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person, user } = await linked(accessToken);
+      await resign(id);
+      await GoogleWorkspaceService.syncAccess(person.id);
+
+      google.users.set(user().id, { ...user(), suspended: false });
+      await GoogleWorkspaceService.refreshStatus(person.id);
+      expect(user().suspended).toBe(true);
+      const entries = await prismaClient.auditLog.findMany({ where: { action: AuditAction.GOOGLE_ACCOUNT_SUSPEND } });
+      expect(entries.some((entry) => JSON.stringify(entry.new_values).includes("reactivated_in_google"))).toBe(true);
+
+      google.users.set(user().id, { ...user(), suspended: false });
+      await GoogleWorkspaceService.refreshAllStatuses();
+      expect(user().suspended).toBe(true);
+    });
+
+    it("leaves an admin of the Workspace alone", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person, user } = await linked(accessToken);
+      google.users.set(user().id, { ...user(), isAdmin: true });
+      await resign(id);
+      expect(await GoogleWorkspaceService.syncAccess(person.id)).toBe(false);
+      expect(user().suspended).toBe(false);
+    });
+
+    const statusOfLeft = async (token: string, id: string) =>
+      (await (await TestRequest.get(`/api/admin/employees/${id}/google`, token)).json()).data;
+  });
+
+  describe("recovery email", () => {
+    it("shows it hidden and changes it, without keeping it in Central or the audit log", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken);
+      const id = json.data.id as string;
+      const shown = await TestRequest.get(`/api/admin/employees/${id}/google/recovery-email`, accessToken);
+      expect((await shown.json()).data.recovery_email).toBe("t***@gmail.com");
+
+      const response = await TestRequest.post(`/api/admin/employees/${id}/google/recovery-email`, { recovery_email: "baru.pribadi@gmail.com" }, accessToken);
+      expect(response.status).toBe(200);
+      const person = await personOf(id);
+      expect(google.users.get(person.google_user_id!)!.recoveryEmail).toBe("baru.pribadi@gmail.com");
+      expect(JSON.stringify(person)).not.toContain("baru.pribadi");
+      const entries = await prismaClient.auditLog.findMany({ where: { action: AuditAction.GOOGLE_ACCOUNT_UPDATE } });
+      expect(JSON.stringify(entries)).not.toContain("baru.pribadi");
+      expect(JSON.stringify(entries)).toContain("recovery_email_changed");
+    });
+
+    it("refuses an organization address, a non Super Admin, and someone without an account", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken);
+      const id = json.data.id as string;
+      const bad = await TestRequest.post(`/api/admin/employees/${id}/google/recovery-email`, { recovery_email: "x@millennia21.id" }, accessToken);
+      expect(bad.status).toBe(400);
+
+      const plain = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      expect((await TestRequest.post(`/api/admin/employees/${id}/google/recovery-email`, { recovery_email: "a@gmail.com" }, plain.accessToken)).status).toBe(403);
+      expect((await TestRequest.get(`/api/admin/employees/${id}/google/recovery-email`, plain.accessToken)).status).toBe(403);
+
+      const none = await EmployeeTest.create({
+        email: "test_google_norec@millennia21.id",
+        unitId: master.unit.id,
+        jobPositionId: master.position.id,
+        jobLevelId: master.level.id,
+        buildingId: master.building.id,
+      });
+      expect((await TestRequest.post(`/api/admin/employees/${none.employee!.id}/google/recovery-email`, { recovery_email: "a@gmail.com" }, accessToken)).status).toBe(404);
+    });
+
+    it("refuses for someone who left", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken);
+      await prismaClient.employee.update({ where: { id: json.data.id }, data: { status: EmployeeStatus.RESIGNED } });
+      const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/recovery-email`, { recovery_email: "a@gmail.com" }, accessToken);
+      expect(response.status).toBe(400);
     });
   });
 
