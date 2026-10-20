@@ -43,6 +43,7 @@ const toDirectoryUser = (user: admin_directory_v1.Schema$User): DirectoryUser =>
   isAdmin: Boolean(user.isAdmin || user.isDelegatedAdmin),
   changePasswordAtNextLogin: Boolean(user.changePasswordAtNextLogin),
   lastLoginTime: loginTimeOf(user.lastLoginTime),
+  deletionTime: user.deletionTime ? new Date(user.deletionTime) : null,
 });
 
 // Google's errors carry the HTTP status in `code`. Only the status and the reason are kept: the request body holds

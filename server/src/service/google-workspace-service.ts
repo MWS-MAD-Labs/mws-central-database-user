@@ -26,8 +26,17 @@ export const PASSWORD_PENDING_WARN_DAYS = 7;
 // A status read from Google this recently is shown as it is.
 const STATUS_FRESH_MS = 5 * 60 * 1000;
 
-const DELETED_MESSAGE =
-  "This email belongs to a Google account that was deleted less than 20 days ago, so it cannot be reused yet. Use another address, or restore that account in the Admin Console if it is the same person";
+// Google keeps a deleted account for this long, and its address stays reserved meanwhile.
+export const RESTORE_WINDOW_DAYS = 20;
+
+export const restorableUntil = (deletedAt: Date): Date => new Date(deletedAt.getTime() + RESTORE_WINDOW_DAYS * 86_400_000);
+
+function deletedMessage(deletedAt?: Date | null): string {
+  const left = deletedAt ? Math.max(Math.ceil((restorableUntil(deletedAt).getTime() - Date.now()) / 86_400_000), 0) : null;
+  const when = left === null ? "less than 20 days ago" : `${RESTORE_WINDOW_DAYS - left} days ago`;
+  const wait = left === null ? "" : `, and the address is free again in about ${left} ${left === 1 ? "day" : "days"}`;
+  return `This email belongs to a Google account that was deleted ${when}, so it cannot be reused yet${wait}. Use another address, or restore that account in the Admin Console if it is the same person`;
+}
 
 const PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
 
@@ -129,6 +138,7 @@ async function markStatus(
     error?: string | null;
     user?: DirectoryUser;
     passwordIssued?: boolean;
+    deletedAt?: Date | null;
   } = {},
 ): Promise<void> {
   await prismaClient.person.update({
@@ -140,6 +150,7 @@ async function markStatus(
       ...(extra.google_user_id !== undefined ? { google_user_id: extra.google_user_id } : {}),
       ...(extra.user ? readingOf(extra.user) : {}),
       ...(extra.passwordIssued ? { google_password_issued_at: new Date() } : {}),
+      google_deleted_at: extra.deletedAt ?? null,
     },
   });
 }
@@ -216,7 +227,8 @@ export class GoogleWorkspaceService {
         return answer("IN_GOOGLE", false, "This email already has a Google account");
       }
       // A deleted account keeps its address reserved until Google clears it.
-      if (await client.findDeletedUser(email)) return answer("DELETED_IN_GOOGLE", false, DELETED_MESSAGE);
+      const gone = await client.findDeletedUser(email);
+      if (gone) return answer("DELETED_IN_GOOGLE", false, deletedMessage(gone.deletionTime));
       return answer("FREE", true, "Available");
     } catch (error) {
       logger.error("Google email availability check failed", error);
@@ -263,7 +275,7 @@ export class GoogleWorkspaceService {
         } catch (error) {
           // Google has no such user yet refuses the address: it is held by an account deleted not long ago.
           if (error instanceof DirectoryError && error.code === "EXISTS") {
-            throw new DirectoryError("EXISTS", DELETED_MESSAGE);
+            throw new DirectoryError("EXISTS", deletedMessage());
           }
           throw error;
         }
@@ -391,6 +403,7 @@ export class GoogleWorkspaceService {
       const deleted = await client.findDeletedUser(person.email, person.google_user_id);
       await markStatus(person.id, GoogleSyncStatus.MISSING, {
         error: deleted ? "Deleted in Google, can be restored for about 20 days" : "Not found in Google",
+        deletedAt: deleted?.deletionTime,
       });
       await prismaClient.person.update({
         where: { id: person.id },
@@ -417,7 +430,7 @@ export class GoogleWorkspaceService {
 
     const [active, deleted] = await Promise.all([client.listUsers({ deleted: false }), client.listUsers({ deleted: true })]);
     const activeById = new Map(active.map((user) => [user.id, user]));
-    const deletedIds = new Set(deleted.map((user) => user.id));
+    const deletedById = new Map(deleted.map((user) => [user.id, user]));
 
     let changed = 0;
     for (const person of linked) {
@@ -434,12 +447,16 @@ export class GoogleWorkspaceService {
         if (user.suspended) error = "Suspended in Google";
       } else {
         status = GoogleSyncStatus.MISSING;
-        error = deletedIds.has(person.google_user_id as string)
+        error = deletedById.has(person.google_user_id as string)
           ? "Deleted in Google, can be restored for about 20 days"
           : "Not found in Google";
       }
       if (status !== person.google_sync_status) changed += 1;
-      await markStatus(person.id, status, { error, ...(user ? { user } : {}) });
+      await markStatus(person.id, status, {
+        error,
+        deletedAt: deletedById.get(person.google_user_id as string)?.deletionTime,
+        ...(user ? { user } : {}),
+      });
       if (!user) {
         await prismaClient.person.update({ where: { id: person.id }, data: { google_password_pending: null } });
       }
@@ -462,6 +479,7 @@ export class GoogleWorkspaceService {
           google_password_pending: true,
           google_password_issued_at: true,
           google_last_login_at: true,
+          google_deleted_at: true,
         },
       });
     let person = await read();
@@ -480,6 +498,11 @@ export class GoogleWorkspaceService {
       password_state: passwordStateOf(person),
       password_issued_at: person.google_password_issued_at ? person.google_password_issued_at.toISOString() : null,
       last_login_at: person.google_last_login_at ? person.google_last_login_at.toISOString() : null,
+      deleted_at: person.google_deleted_at ? person.google_deleted_at.toISOString() : null,
+      restorable_until:
+        person.google_sync_status === GoogleSyncStatus.MISSING && person.google_deleted_at
+          ? restorableUntil(person.google_deleted_at).toISOString()
+          : null,
       mode: getDirectoryClient().mode,
     };
   }

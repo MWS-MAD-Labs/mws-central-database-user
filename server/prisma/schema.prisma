@@ -716,6 +716,8 @@ model Person {
   // When the temporary or unknown password was issued (account created or password reset by an admin).
   google_password_issued_at DateTime?
   google_last_login_at      DateTime?
+  // When Google deleted the account, kept while it can still be restored.
+  google_deleted_at         DateTime?
   created_at       DateTime   @default(now())
   updated_at       DateTime   @updatedAt
   deleted_at       DateTime?

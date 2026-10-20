@@ -475,6 +475,26 @@ describe("google workspace accounts", () => {
       expect((await statusOf(accessToken, id)).status).toBe(GoogleSyncStatus.SUSPENDED);
     });
 
+    it("counts down the days Google keeps a deleted account", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person } = await linkedPerson(accessToken);
+      const user = google.users.get(person.google_user_id!)!;
+      google.users.delete(user.id);
+      const deletedAt = new Date(Date.now() - 8 * 86_400_000);
+      google.deleted.set(user.id, { ...user, deletionTime: deletedAt });
+      const data = await statusOf(accessToken, id, true);
+      expect(data.deleted_at).toBe(deletedAt.toISOString());
+      expect(data.restorable_until).toBe(new Date(deletedAt.getTime() + 20 * 86_400_000).toISOString());
+
+      google.deleted.set("other", { ...gone("other", "test_google_other_gone@millennia21.id"), deletionTime: deletedAt });
+      const check = await TestRequest.get("/api/admin/google/email-availability?email=test_google_other_gone@millennia21.id", accessToken);
+      expect((await check.json()).data.message).toContain("deleted 8 days ago, so it cannot be reused yet, and the address is free again in about 12 days");
+
+      google.deleted.delete(user.id);
+      google.users.set(user.id, user);
+      expect((await statusOf(accessToken, id, true)).restorable_until).toBeNull();
+    });
+
     it("still finds a deleted account by its id when its email no longer matches", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const { id, person } = await linkedPerson(accessToken);

@@ -12,6 +12,8 @@ export type DirectoryUser = {
   changePasswordAtNextLogin: boolean;
   // null when they never signed in.
   lastLoginTime: Date | null;
+  // Only on a deleted user: when it was deleted. Google restores it for 20 days after that.
+  deletionTime?: Date | null;
 };
 
 export type CreateDirectoryUser = {
