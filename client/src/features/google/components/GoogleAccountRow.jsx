@@ -82,8 +82,9 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
   }
 
   if (!status) return null;
+  const deleted = status.status === "MISSING" && Boolean(status.last_error?.startsWith("Deleted"));
   const badge =
-    status.status === "MISSING" && status.last_error?.startsWith("Deleted")
+    deleted
       ? { tone: "red", label: "Deleted in Google" }
       : (BADGES[status.status] ?? BADGES.NONE);
   const note = passwordNote(status);
@@ -100,12 +101,12 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
           </span>
         ) : null}
         {overdue ? <StatusBadge tone="amber">Password not set</StatusBadge> : null}
-        {["FAILED", "MISSING", "SUSPENDED"].includes(status.status) && status.last_error ? (
-          <span className={`w-full text-xs ${status.status === "SUSPENDED" ? "text-[#8a6419]" : "text-[#a43c41]"}`}>
-            {status.last_error}
-            {status.status === "MISSING" && status.last_error.startsWith("Deleted")
-              ? ". Restore it in the Admin Console, then check again."
-              : ""}
+        {status.status === "FAILED" && status.last_error ? (
+          <span className="w-full text-xs text-[#a43c41]">{status.last_error}</span>
+        ) : null}
+        {deleted ? (
+          <span className="w-full text-xs text-[#a43c41]">
+            Can be restored for about 20 days. Restore it in the Admin Console, then check again.
           </span>
         ) : null}
         {note ? (

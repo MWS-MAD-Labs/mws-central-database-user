@@ -19,18 +19,20 @@ describe('GoogleAccountRow', () => {
   it('shows a deleted account and how to bring it back', async () => {
     setup(status({ status: 'MISSING', last_error: 'Deleted in Google, can be restored for about 20 days', password_state: null }))
     expect(await screen.findByText('Deleted in Google')).toBeVisible()
-    expect(screen.getByText(/Restore it in the Admin Console, then check again/)).toBeVisible()
+    expect(screen.getByText(/Can be restored for about 20 days. Restore it in the Admin Console, then check again/)).toBeVisible()
+    expect(screen.queryByText(/^Deleted in Google, can be restored/)).not.toBeInTheDocument()
   })
 
   it('shows an account that is not in Google at all, and one that is suspended', async () => {
     setup(status({ status: 'MISSING', last_error: 'Not found in Google' }))
     expect(await screen.findByText('Not in Google')).toBeVisible()
+    expect(screen.queryByText('Not found in Google')).not.toBeInTheDocument()
   })
 
   it('shows a suspended account', async () => {
     setup(status({ status: 'SUSPENDED', last_error: 'Suspended in Google' }))
     expect(await screen.findByText('Suspended')).toBeVisible()
-    expect(screen.getByText('Suspended in Google')).toBeVisible()
+    expect(screen.queryByText('Suspended in Google')).not.toBeInTheDocument()
   })
 
   it('shows whether the person has set their own password', async () => {
