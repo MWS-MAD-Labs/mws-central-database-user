@@ -29,7 +29,8 @@ import {
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertEmployeeInAdminUnit } from "../utils/sensitive-data";
-import { detectImageMimeType, processPhoto } from "../utils/image-processing";
+import { detectImageMimeType, processPhoto, processPhotoForGoogle } from "../utils/image-processing";
+import { GoogleWorkspaceService } from "./google-workspace-service";
 import { EmployeePhotoValidation } from "../validation/employee-photo-validation";
 import { Validation } from "../validation/validation";
 import { resolveWriteUnitScope } from "../utils/admin-permissions";
@@ -234,6 +235,74 @@ export class EmployeePhotoService {
     // employee photoless if something above failed.
     await removeObjectIfExists(previousObjectKey);
 
+    return true;
+  }
+
+  // The signed-in employee changes their own photo, in Central and in their Google account. Nobody else does it through
+  // this route: the person comes from the session, never from the request.
+  static async uploadOwn(
+    personId: string,
+    employeeId: string,
+    file: File,
+    context: AuditRequestContext = {},
+  ): Promise<boolean> {
+    const rawBuffer = Buffer.from(await file.arrayBuffer());
+    if (rawBuffer.length > MAX_UPLOAD_SIZE_BYTES) {
+      throw new ResponseError(
+        400,
+        `File is too large. Maximum size is ${MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB.`,
+      );
+    }
+    if (!detectImageMimeType(rawBuffer)) {
+      throw new ResponseError(
+        400,
+        "Unsupported or unrecognized file type. Allowed types: JPEG, PNG, WebP.",
+      );
+    }
+
+    let processedBuffer: Buffer;
+    let googleBuffer: Buffer;
+    try {
+      processedBuffer = await processPhoto(rawBuffer);
+      googleBuffer = await processPhotoForGoogle(rawBuffer);
+    } catch {
+      throw new ResponseError(400, "File could not be read as an image.");
+    }
+    const objectKey = `employee-photos/${employeeId}/${randomUUID()}.avif`;
+
+    await ensureBucketExists();
+    await minioClient.putObject(MINIO_BUCKET, objectKey, processedBuffer, processedBuffer.length, {
+      "Content-Type": "image/avif",
+    });
+
+    const previous = await prismaClient.person.findUnique({
+      where: { id: personId },
+      select: { photo_object_key: true },
+    });
+    try {
+      await prismaClient.$transaction(async (tx) => {
+        await tx.person.update({ where: { id: personId }, data: { photo_object_key: objectKey } });
+        await AuditService.record(
+          {
+            action: AuditAction.UPLOAD_OWN_PHOTO,
+            source: AuditSource.UI,
+            entity_type: "Employee",
+            entity_id: employeeId,
+            new_values: { photo_object_key: objectKey },
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+      });
+    } catch (error) {
+      await removeObjectIfExists(objectKey);
+      throw error;
+    }
+    await removeObjectIfExists(previous?.photo_object_key ?? null);
+
+    // Google follows when the account is linked. If it fails, the photo in Central stays and the next change retries.
+    await GoogleWorkspaceService.setPhoto(personId, googleBuffer, "image/jpeg");
     return true;
   }
 

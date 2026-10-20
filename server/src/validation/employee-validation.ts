@@ -12,6 +12,7 @@ import { EMPLOYEE_SORT_FIELDS } from "../model/employee-model";
 import { MAX_CHILDREN } from "../utils/employee-children-rules";
 import {
   emailWithAllowedDomain,
+  recoveryEmail,
   indonesianPhone,
   isBirthDateNotFuture,
   isBirthDateNotTooOld,
@@ -107,6 +108,7 @@ export class EmployeeValidation {
         .min(1, "Nick name is required")
         .max(25, "Nick name is too long"),
       email: emailWithAllowedDomain(),
+      recovery_email: recoveryEmail().optional(),
 
       gender: z.enum(GENDER_VALUES, {
         message: "Gender is required and must be a valid format",

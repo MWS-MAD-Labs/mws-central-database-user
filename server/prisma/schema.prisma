@@ -201,8 +201,21 @@ enum ApiCredentialStatus {
   EXPIRED
 }
 
+// Where a person's Google Workspace account stands. NONE: not made yet, PENDING: being made, ACTIVE: linked and in step,
+// FAILED: the last call failed and can be tried again.
+enum GoogleSyncStatus {
+  NONE
+  PENDING
+  ACTIVE
+  FAILED
+}
+
 enum AuditAction {
   LOGIN
+  GOOGLE_ACCOUNT_PROVISION
+  GOOGLE_ACCOUNT_UPDATE
+  GOOGLE_PASSWORD_RESET
+  UPLOAD_OWN_PHOTO
   LOGOUT
   LOGIN_FAILED
   UNAUTHORIZED_ACCESS
@@ -686,6 +699,12 @@ model Person {
   photo_url        String?
   // Private object key. Presigned URLs are generated on read and never stored.
   photo_object_key String?
+  // The Google Workspace account behind this email. Central makes and updates it, see service/google-workspace-service.ts.
+  google_user_id     String?            @unique
+  google_sync_status GoogleSyncStatus   @default(NONE)
+  google_synced_at   DateTime?
+  // Why the last call to Google failed, in plain words. Never holds a password or a key.
+  google_last_error  String?
   created_at       DateTime   @default(now())
   updated_at       DateTime   @updatedAt
   deleted_at       DateTime?

@@ -36,3 +36,12 @@ export async function processPhoto(buffer: Buffer): Promise<Buffer> {
     .avif({ quality: 80, effort: 4 })
     .toBuffer();
 }
+
+// Google profile photos are square JPEGs.
+export async function processPhotoForGoogle(buffer: Buffer): Promise<Buffer> {
+  return sharp(buffer)
+    .rotate()
+    .resize({ width: 512, height: 512, fit: "cover" })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+}

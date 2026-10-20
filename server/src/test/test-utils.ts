@@ -54,7 +54,7 @@ async function generateTestTokens(
   return { accessToken, refreshToken };
 }
 
-async function generateEmployeeAccessToken(employeeId: string, email: string) {
+export async function generateEmployeeAccessToken(employeeId: string, email: string) {
   const payload = {
     id: employeeId,
     email: email,
@@ -535,6 +535,19 @@ export class TestRequest {
       },
       this.createMockEnv(),
     );
+  }
+
+  static async putMultipart(
+    url: string,
+    formData: FormData,
+    accessToken?: string,
+  ): Promise<Response> {
+    const headers = new Headers();
+    if (accessToken) {
+      headers.append("Cookie", `access_token=${accessToken}`);
+      headers.append("Origin", "http://localhost:5173");
+    }
+    return web.request(url, { method: "PUT", headers, body: formData }, this.createMockEnv());
   }
 
   static async delete(url: string, accessToken?: string): Promise<Response> {

@@ -1,3 +1,5 @@
+import { logger } from "../lib/logger";
+import { GoogleWorkspaceService } from "./google-workspace-service";
 import { ResponseError } from "../error/response-error";
 import {
   AdminRole,
@@ -491,6 +493,13 @@ export class InternService {
       createRequest.major,
     );
 
+    // The intern exists in Central either way. A failure here shows as a Google status they can retry.
+    await GoogleWorkspaceService.provision(withRelations.person_id, {
+      recoveryEmail: createRequest.recovery_email,
+      admin,
+      context,
+    }).catch((error) => logger.error("Google account for the new intern was not made", error));
+
     return toInternResponse(withRelations, admin);
   }
 
@@ -779,6 +788,15 @@ export class InternService {
       updateRequest.institution_name,
       updateRequest.major,
     );
+
+    if (
+      (updateRequest.email && updateRequest.email !== existingIntern.email) ||
+      (updateRequest.full_name && updateRequest.full_name !== existingIntern.full_name)
+    ) {
+      await GoogleWorkspaceService.syncProfile(withRelations.person_id, { admin, context }).catch((error) =>
+        logger.error("Google account of the intern was not updated", error),
+      );
+    }
 
     return toInternResponse(withRelations, admin);
   }

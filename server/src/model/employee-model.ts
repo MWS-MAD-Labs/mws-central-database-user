@@ -54,6 +54,8 @@ export type CreateEmployeeRequest = {
   full_name: string;
   nick_name: string;
   email: string;
+  // Sent to Google as the recovery email of the new account, not kept in Central.
+  recovery_email?: string;
   gender: Gender;
   religion: Religion;
   // Only meaningful when religion is OTHER.

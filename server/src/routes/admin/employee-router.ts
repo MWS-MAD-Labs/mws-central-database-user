@@ -11,6 +11,7 @@ import {
   bulkPhotoUploadBodyLimit,
   photoUploadBodyLimit,
 } from "../../middleware/upload-body-limit";
+import { GoogleAccountController } from "../../controller/admin/google-account-controller";
 import type { AdminVariables } from "../../type/hono-context";
 
 export const employeeRouter = new Hono<{ Variables: AdminVariables }>();
@@ -135,3 +136,8 @@ employeeRouter.patch(
   "/:id/disciplinary-actions/:actionId/attachments/restore/:attachmentId",
   (c) => DisciplinaryActionAttachmentController.restore(c),
 );
+
+// Google Workspace account of the person.
+employeeRouter.get("/:id/google", GoogleAccountController.status("employee"));
+employeeRouter.post("/:id/google/provision", GoogleAccountController.provision("employee"));
+employeeRouter.post("/:id/google/reset-password", GoogleAccountController.resetPassword("employee"));

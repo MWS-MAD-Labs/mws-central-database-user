@@ -18,6 +18,18 @@ export const emailWithAllowedDomain = () =>
       "Email must use an allowed organization domain",
     );
 
+// Where Google sends the code when someone forgets the password of a new account. Outside the organization's domain,
+// or it could not help. It goes to Google and is not kept in Central.
+export const recoveryEmail = () =>
+  z
+    .email("Invalid recovery email")
+    .max(100, "Recovery email is too long")
+    .toLowerCase()
+    .refine(
+      (email) => !email.endsWith(`@${process.env.ALLOWED_DOMAIN!}`),
+      "Recovery email must be a personal address, not an organization address",
+    );
+
 // Normalize Indonesian mobile numbers to the stored 62-prefixed form.
 export const normalizeIndonesianPhone = (value: string) => {
   const digits = value.replace(/[^\d+]/g, "");

@@ -67,6 +67,8 @@ import { assertJobPositionCapacity } from "../utils/job-position-capacity";
 import { lockJobPositionCapacityConfig } from "../utils/job-position-capacity";
 import { assertAcademicUnitIds } from "../utils/academic-units";
 import { maskSensitiveValue } from "../utils/sensitive-data";
+import { GoogleWorkspaceService } from "./google-workspace-service";
+import { logger } from "../lib/logger";
 import {
   findChildrenProblems,
   findCountsProblems,
@@ -985,6 +987,13 @@ export class EmployeeService {
       createRequest.major,
     );
 
+    // The person exists in Central either way. A failure here shows as a Google status they can retry.
+    await GoogleWorkspaceService.provision(createdPersonId, {
+      recoveryEmail: createRequest.recovery_email,
+      admin,
+      context,
+    }).catch((error) => logger.error("Google account for the new employee was not made", error));
+
     return toEmployeeResponse(personWithRelations, admin);
   }
   static async update(
@@ -1686,6 +1695,12 @@ export class EmployeeService {
       updateRequest.institution_name,
       updateRequest.major,
     );
+
+    if (emailChanged || (updateRequest.full_name && updateRequest.full_name !== existingEmployee.person.full_name)) {
+      await GoogleWorkspaceService.syncProfile(existingEmployee.person_id, { admin, context }).catch((error) =>
+        logger.error("Google account of the employee was not updated", error),
+      );
+    }
 
     return toEmployeeResponse(updatedPersonWithRelations, admin);
   }

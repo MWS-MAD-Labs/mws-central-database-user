@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { InternController } from "../../controller/admin/intern-controller";
+import { GoogleAccountController } from "../../controller/admin/google-account-controller";
 import type { AdminVariables } from "../../type/hono-context";
 import { InternMutationHistoryController } from "../../controller/admin/intern-mutation-history-controller";
 
@@ -33,3 +34,8 @@ internRouter.patch("/:id", (c) => InternController.update(c));
 internRouter.get("/:id", (c) => InternController.get(c));
 internRouter.patch("/delete/:id", (c) => InternController.remove(c));
 internRouter.patch("/restore/:id", (c) => InternController.restore(c));
+
+// Google Workspace account of the person.
+internRouter.get("/:id/google", GoogleAccountController.status("intern"));
+internRouter.post("/:id/google/provision", GoogleAccountController.provision("intern"));
+internRouter.post("/:id/google/reset-password", GoogleAccountController.resetPassword("intern"));

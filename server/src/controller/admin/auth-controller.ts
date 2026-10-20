@@ -6,6 +6,7 @@ import {
   toEmployeeAuthResponse,
   type GoogleLoginRequest,
 } from "../../model/auth-model";
+import { EmployeePhotoService } from "../../service/employee-photo-service";
 import { AuthService } from "../../service/auth-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
@@ -49,6 +50,23 @@ export class AuthController {
   static async employeeMe(c: Context<{ Variables: EmployeeVariables }>) {
     const employee = c.var.employee;
     return c.json({ data: toEmployeeAuthResponse(employee) });
+  }
+
+  // The signed-in employee's own photo. The person is the one in the session, nothing in the request names one.
+  static async employeePhoto(c: Context<{ Variables: EmployeeVariables }>) {
+    const employee = c.var.employee;
+    const body = await c.req.parseBody();
+    const file = body["file"];
+    if (!(file instanceof File)) {
+      throw new ResponseError(400, "A file is required under the 'file' field");
+    }
+    await EmployeePhotoService.uploadOwn(
+      employee.id,
+      employee.employee!.id,
+      file,
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: true });
   }
 
   static async employeeLogout(c: Context) {
