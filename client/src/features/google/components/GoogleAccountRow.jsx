@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, UserPlus } from "lucide-react";
+import { KeyRound, MessageSquareText, UserPlus } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
@@ -8,6 +8,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { emailProblem, sanitizeEmail, textLength } from "../../../lib/form.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { googleAccountApi } from "../api/googleAccountApi.js";
+import { GoogleInstructionsDialog } from "./GoogleInstructionsDialog.jsx";
 
 const BADGES = {
   ACTIVE: { tone: "green", label: "Linked" },
@@ -17,7 +18,7 @@ const BADGES = {
 };
 
 // The Google account of a person: whether it exists, and for a Super Admin the two things that can be done to it.
-export function GoogleAccountRow({ resource, id, canManage }) {
+export function GoogleAccountRow({ resource, id, email, canManage }) {
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState(null);
   const [recoveryEmail, setRecoveryEmail] = useState("");
@@ -75,6 +76,18 @@ export function GoogleAccountRow({ resource, id, canManage }) {
       </div>
       {canManage ? (
         <div className="flex gap-1">
+          {status.linked && email ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Sign-in instructions"
+              title="Sign-in instructions"
+              onClick={() => setDialog("instructions")}
+            >
+              <MessageSquareText size={15} />
+            </Button>
+          ) : null}
           {status.linked ? (
             <Button
               type="button"
@@ -135,6 +148,10 @@ export function GoogleAccountRow({ resource, id, canManage }) {
             />
           </Field>
         </CrudDialog>
+      ) : null}
+
+      {dialog === "instructions" ? (
+        <GoogleInstructionsDialog title="Sign-in Instructions" email={email} onClose={() => setDialog(null)} />
       ) : null}
 
       {dialog === "confirm" ? (

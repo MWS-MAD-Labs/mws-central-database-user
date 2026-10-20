@@ -69,4 +69,13 @@ describe('GoogleAccountRow', () => {
       expect(JSON.parse(call[1].body)).toEqual({ recovery_email: 'me@gmail.com' })
     })
   })
+
+  it('lets a Super Admin open the sign-in instructions of a linked account', async () => {
+    globalThis.fetch = createFetchRouter([{ path: '/api/admin/employees/e1/google', response: jsonResponse({ data: status() }) }])
+    const { user } = renderWithProviders(<GoogleAccountRow resource="employees" id="e1" email="ari@millennia21.id" canManage />)
+    await user.click(await screen.findByRole('button', { name: 'Sign-in instructions' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Sign-in Instructions' })
+    expect(within(dialog).getByText(/ari@millennia21\.id/)).toBeVisible()
+    expect(within(dialog).getByText(/Forgot password/)).toBeVisible()
+  })
 })

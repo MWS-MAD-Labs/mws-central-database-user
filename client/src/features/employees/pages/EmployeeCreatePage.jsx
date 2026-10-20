@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
-import { showErrorToast } from '../../../lib/toast.js'
+import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
+import { GoogleInstructionsDialog } from '../../google/components/GoogleInstructionsDialog.jsx'
+import { maskEmail } from '../../google/utils/instructions.js'
 import { clearCreateFormDraft } from '../../../lib/useCreateFormDraft.js'
 import { employeesApi } from '../api/employeesApi.js'
 import { loadEmployeeFormOptions } from '../api/employeeFormOptions.js'
@@ -13,6 +16,8 @@ import { EmployeeForm } from '../components/EmployeeForm.jsx'
 export function EmployeeCreatePage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  // Set when a Google account was made, so the person can be told how to get in before the page moves on.
+  const [ready, setReady] = useState(null)
 
   const optionsQuery = useQuery({
     queryKey: ['employee-form-options'],
@@ -31,9 +36,22 @@ export function EmployeeCreatePage() {
       }
       return employee
     },
-    onSuccess: (employee) => {
+    onSuccess: (employee, variables) => {
       clearCreateFormDraft('employee')
       queryClient.invalidateQueries({ queryKey: ['employees'] })
+      const google = employee.google
+      if (google?.outcome === 'failed') {
+        showErrorToast(
+          new Error(google.message),
+          'Employee saved, but the Google account was not made. Try again from the Google account row.',
+        )
+      } else {
+        showSuccessToast('Employee created.')
+      }
+      if (google && google.outcome !== 'failed') {
+        setReady({ id: employee.id, email: employee.identity?.email, recovery: variables.payload.recovery_email })
+        return
+      }
       navigate(`/employees/${employee.id}`)
     },
     onError: (error) => {
@@ -65,6 +83,13 @@ export function EmployeeCreatePage() {
           onSubmit={(payload, photoBlob) => createMutation.mutate({ payload, photoBlob })}
         />
       )}
+      {ready ? (
+        <GoogleInstructionsDialog
+          email={ready.email}
+          maskedRecovery={maskEmail(ready.recovery)}
+          onClose={() => navigate(`/employees/${ready.id}`)}
+        />
+      ) : null}
     </div>
   )
 }

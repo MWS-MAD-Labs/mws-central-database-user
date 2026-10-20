@@ -404,7 +404,7 @@ export function EmployeeDetailPage() {
                 icon={Phone}
                 value={employee.identity.mobile_phone || '-'}
               />
-              <GoogleAccountRow resource="employees" id={employeeId} canManage={user?.role === 'SUPER_ADMIN'} />
+              <GoogleAccountRow resource="employees" id={employeeId} email={employee.identity.email} canManage={user?.role === 'SUPER_ADMIN'} />
             </div>
             {'residential_address' in employee.identity ? (
               <dl className="mt-3 border-t border-(--mws-line) pt-1">

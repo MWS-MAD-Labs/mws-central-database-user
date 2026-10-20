@@ -108,6 +108,98 @@ describe('Employee create and edit pages', () => {
     expect(JSON.parse(post[1].body).full_name).toBe('Ari Employee')
   })
 
+  it('tells the admin how the new person gets in when a Google account was made, then goes to the detail page', async () => {
+    const fetchMock = createFetchRouter([
+      ...formOptionRoutes(),
+      ...formSuggestionRoutes(),
+      { path: '/api/admin/employees', method: 'POST', response: jsonResponse({ data: { id: 'employee-new', identity: { email: 'ari.employee@millennia21.id' }, google: { status: 'ACTIVE', outcome: 'created' } } }) },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderRoute(<EmployeeCreatePage />, '/employees/new', '/employees/new')
+    await screen.findByRole('button', { name: 'Create employee' })
+
+    const field = (name) => document.querySelector(`[data-field="${name}"]`)
+    await user.type(field('full_name').querySelector('input'), 'ari employee')
+    await user.type(field('nick_name').querySelector('input'), 'ari')
+    await user.type(field('email_local').querySelector('input'), 'ari.employee')
+    await user.type(field('recovery_email').querySelector('input'), 'ari.pribadi@gmail.com')
+    await user.click(screen.getByRole('button', { name: 'Select Gender' }))
+    await user.click(screen.getByRole('option', { name: 'Male' }))
+    await user.click(screen.getByRole('button', { name: 'Select Religion' }))
+    await user.click(screen.getByRole('option', { name: 'Islam' }))
+    await user.type(field('birth_place').querySelector('input'), 'jakarta')
+    fireEvent.change(field('birth_date').querySelector('input'), { target: { value: '10/05/1990' } })
+    await user.type(field('employee_id').querySelector('input'), '1234567')
+    await user.click(screen.getByRole('button', { name: 'Select unit' }))
+    await user.click(screen.getByRole('option', { name: 'Elementary' }))
+    await user.click(screen.getByRole('button', { name: 'Select level' }))
+    await user.click(screen.getByRole('option', { name: 'Staff' }))
+    await user.click(screen.getByRole('button', { name: 'Select position' }))
+    await user.click(screen.getByRole('option', { name: 'Administrator' }))
+    await user.click(screen.getByRole('button', { name: 'Select building' }))
+    await user.click(screen.getByRole('option', { name: 'Main Building' }))
+    fireEvent.change(field('join_date').querySelector('input'), { target: { value: '01/07/2020' } })
+    fireEvent.change(field('contract_end_date').querySelector('input'), { target: { value: '01/07/2027' } })
+    fireEvent.submit(document.querySelector('form'))
+
+    const review = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(review).getByRole('button', { name: 'Create employee' }))
+
+    const instructions = await screen.findByRole('dialog', { name: 'Google Account Ready' })
+    expect(within(instructions).getByText(/ari\.employee@millennia21\.id/)).toBeVisible()
+    expect(within(instructions).getByText(/a\*\*\*@gmail\.com/)).toBeVisible()
+    expect(within(instructions).getByText(/Forgot password/)).toBeVisible()
+    expect(screen.queryByText('Employee destination')).not.toBeInTheDocument()
+    await user.click(within(instructions).getByRole('button', { name: 'Done' }))
+    expect(await screen.findByText('Employee destination')).toBeVisible()
+    const post = fetchMock.mock.calls.find(([url, options]) =>
+      url === '/api/admin/employees' && options.method === 'POST')
+    expect(JSON.parse(post[1].body).full_name).toBe('Ari Employee')
+  })
+
+  it('saves the employee and says the Google account failed, without a dialog', async () => {
+    const fetchMock = createFetchRouter([
+      ...formOptionRoutes(),
+      ...formSuggestionRoutes(),
+      { path: '/api/admin/employees', method: 'POST', response: jsonResponse({ data: { id: 'employee-new', identity: { email: 'ari.employee@millennia21.id' }, google: { status: 'FAILED', outcome: 'failed', message: 'Google refused the request' } } }) },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderRoute(<EmployeeCreatePage />, '/employees/new', '/employees/new')
+    await screen.findByRole('button', { name: 'Create employee' })
+
+    const field = (name) => document.querySelector(`[data-field="${name}"]`)
+    await user.type(field('full_name').querySelector('input'), 'ari employee')
+    await user.type(field('nick_name').querySelector('input'), 'ari')
+    await user.type(field('email_local').querySelector('input'), 'ari.employee')
+    await user.type(field('recovery_email').querySelector('input'), 'ari.pribadi@gmail.com')
+    await user.click(screen.getByRole('button', { name: 'Select Gender' }))
+    await user.click(screen.getByRole('option', { name: 'Male' }))
+    await user.click(screen.getByRole('button', { name: 'Select Religion' }))
+    await user.click(screen.getByRole('option', { name: 'Islam' }))
+    await user.type(field('birth_place').querySelector('input'), 'jakarta')
+    fireEvent.change(field('birth_date').querySelector('input'), { target: { value: '10/05/1990' } })
+    await user.type(field('employee_id').querySelector('input'), '1234567')
+    await user.click(screen.getByRole('button', { name: 'Select unit' }))
+    await user.click(screen.getByRole('option', { name: 'Elementary' }))
+    await user.click(screen.getByRole('button', { name: 'Select level' }))
+    await user.click(screen.getByRole('option', { name: 'Staff' }))
+    await user.click(screen.getByRole('button', { name: 'Select position' }))
+    await user.click(screen.getByRole('option', { name: 'Administrator' }))
+    await user.click(screen.getByRole('button', { name: 'Select building' }))
+    await user.click(screen.getByRole('option', { name: 'Main Building' }))
+    fireEvent.change(field('join_date').querySelector('input'), { target: { value: '01/07/2020' } })
+    fireEvent.change(field('contract_end_date').querySelector('input'), { target: { value: '01/07/2027' } })
+    fireEvent.submit(document.querySelector('form'))
+
+    const review = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(review).getByRole('button', { name: 'Create employee' }))
+
+    expect(await screen.findByText('Employee destination')).toBeVisible()
+    const post = fetchMock.mock.calls.find(([url, options]) =>
+      url === '/api/admin/employees' && options.method === 'POST')
+    expect(JSON.parse(post[1].body).full_name).toBe('Ari Employee')
+  })
+
   it('loads, updates, and navigates from an existing employee', async () => {
     const fetchMock = createFetchRouter([
       ...formOptionRoutes(),

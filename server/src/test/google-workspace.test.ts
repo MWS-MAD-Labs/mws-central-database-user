@@ -149,6 +149,8 @@ describe("google workspace accounts", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
     const { response, json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
     expect(response.status).toBe(200);
+    // The form is told what happened to the Google account.
+    expect(json.data.google).toMatchObject({ status: "ACTIVE", outcome: "created" });
 
     expect(google.created).toHaveLength(1);
     expect(google.created[0]).toMatchObject({ givenName: "Rizqi Sabilla", familyName: "Putra", recoveryEmail: "rizqi.pribadi@gmail.com" });
@@ -195,6 +197,8 @@ describe("google workspace accounts", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
     const { response, json } = await create(accessToken);
     expect(response.status).toBe(200);
+    expect(json.data.google).toMatchObject({ status: "FAILED", outcome: "failed" });
+    expect(json.data.google.message).toContain("refused");
     const person = await personOf(json.data.id);
     expect(person.google_sync_status).toBe(GoogleSyncStatus.FAILED);
     expect(person.google_last_error).toContain("refused");

@@ -235,7 +235,7 @@ export function InternDetailPage() {
               {canViewContactPii ? (
                 <ContactRow icon={Phone} value={intern.identity.mobile_phone || '-'} />
               ) : null}
-              <GoogleAccountRow resource="interns" id={internId} canManage={user?.role === 'SUPER_ADMIN'} />
+              <GoogleAccountRow resource="interns" id={internId} email={intern.identity.email} canManage={user?.role === 'SUPER_ADMIN'} />
             </div>
 
             {hasDetail ? (

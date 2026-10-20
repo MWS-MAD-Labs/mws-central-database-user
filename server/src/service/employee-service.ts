@@ -1,3 +1,4 @@
+import { GoogleSyncStatus } from "../generated/prisma/client";
 import { ResponseError } from "../error/response-error";
 import {
   AdminRole,
@@ -67,7 +68,7 @@ import { assertJobPositionCapacity } from "../utils/job-position-capacity";
 import { lockJobPositionCapacityConfig } from "../utils/job-position-capacity";
 import { assertAcademicUnitIds } from "../utils/academic-units";
 import { maskSensitiveValue } from "../utils/sensitive-data";
-import { GoogleWorkspaceService } from "./google-workspace-service";
+import { GoogleWorkspaceService, type GoogleSyncResult } from "./google-workspace-service";
 import { logger } from "../lib/logger";
 import {
   findChildrenProblems,
@@ -631,7 +632,8 @@ export class EmployeeService {
     // The form always asks for it. An import has no such column, so it does not, and its people get a Google
     // account later.
     options: { requireRecoveryEmail?: boolean } = {},
-  ): Promise<EmployeeResponse> {
+    // `google` says whether the account was made, for the form that asked for one.
+  ): Promise<EmployeeResponse & { google?: GoogleSyncResult }> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedEmployeeAction(admin, "create", context);
       throw new ResponseError(403, "Forbidden: Viewer cannot create data");
@@ -998,15 +1000,24 @@ export class EmployeeService {
     );
 
     // The person exists in Central either way. A failure here shows as a Google status they can retry.
+    let google: GoogleSyncResult | undefined;
     if (createRequest.recovery_email) {
-      await GoogleWorkspaceService.provision(createdPersonId, {
+      google = await GoogleWorkspaceService.provision(createdPersonId, {
         recoveryEmail: createRequest.recovery_email,
         admin,
         context,
-      }).catch((error) => logger.error("Google account for the new employee was not made", error));
+      }).catch((error): GoogleSyncResult => {
+        logger.error("Google account for the new employee was not made", error);
+        return {
+          status: GoogleSyncStatus.FAILED,
+          google_user_id: null,
+          outcome: "failed",
+          message: error instanceof ResponseError ? error.message : "The Google account was not made",
+        };
+      });
     }
 
-    return toEmployeeResponse(personWithRelations, admin);
+    return { ...toEmployeeResponse(personWithRelations, admin), ...(google && { google }) };
   }
   static async update(
     admin: AdminUser,

@@ -1,5 +1,6 @@
+import { GoogleSyncStatus } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
-import { GoogleWorkspaceService } from "./google-workspace-service";
+import { GoogleWorkspaceService, type GoogleSyncResult } from "./google-workspace-service";
 import { ResponseError } from "../error/response-error";
 import {
   AdminRole,
@@ -323,7 +324,7 @@ export class InternService {
     now: Date = new Date(),
     // The form always asks for it. An import has no such column, so it does not.
     options: { requireRecoveryEmail?: boolean } = {},
-  ): Promise<InternResponse> {
+  ): Promise<InternResponse & { google?: GoogleSyncResult }> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedInternAction(admin, "create", context);
       throw new ResponseError(403, "Forbidden: Viewer cannot create data");
@@ -503,15 +504,24 @@ export class InternService {
     );
 
     // The intern exists in Central either way. A failure here shows as a Google status they can retry.
+    let google: GoogleSyncResult | undefined;
     if (createRequest.recovery_email) {
-      await GoogleWorkspaceService.provision(withRelations.person_id, {
+      google = await GoogleWorkspaceService.provision(withRelations.person_id, {
         recoveryEmail: createRequest.recovery_email,
         admin,
         context,
-      }).catch((error) => logger.error("Google account for the new intern was not made", error));
+      }).catch((error): GoogleSyncResult => {
+        logger.error("Google account for the new intern was not made", error);
+        return {
+          status: GoogleSyncStatus.FAILED,
+          google_user_id: null,
+          outcome: "failed",
+          message: error instanceof ResponseError ? error.message : "The Google account was not made",
+        };
+      });
     }
 
-    return toInternResponse(withRelations, admin);
+    return { ...toInternResponse(withRelations, admin), ...(google && { google }) };
   }
 
   static async update(
