@@ -362,6 +362,67 @@ export class GoogleWorkspaceService {
     return { password };
   }
 
+  // Brings back the person's own account that was deleted in Google, inside the 20 days. Only the account linked to
+  // this person (same Google id) is restored, so the old mailbox never goes to someone else.
+  static async restore(
+    personId: string,
+    admin: Pick<AdminUser, "id">,
+    context: AuditRequestContext = {},
+  ): Promise<GoogleSyncResult> {
+    const person = await load(personId);
+    assertAllowedTarget(person.email);
+    if (!person.google_user_id || person.google_sync_status !== GoogleSyncStatus.MISSING) {
+      throw new ResponseError(400, "This person has no deleted Google account to restore");
+    }
+    const client = getDirectoryClient();
+    try {
+      const deleted = await client.findDeletedUser(person.email, person.google_user_id);
+      if (!deleted || deleted.id !== person.google_user_id) {
+        throw new ResponseError(404, "That account is not in Google's deleted list any more, so it cannot be restored");
+      }
+      const user = await client.restoreUser(person.google_user_id, organizationalUnitFor(person) ?? "/");
+      const status = user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE;
+      await markStatus(person.id, status, { user, error: user.suspended ? "Suspended in Google" : null });
+      await record("GOOGLE_ACCOUNT_RESTORE", person, admin, context, { mode: client.mode });
+      return { status, google_user_id: user.id, outcome: "updated" };
+    } catch (error) {
+      if (error instanceof ResponseError) throw error;
+      logger.error(`Google restore failed for person ${person.id}`, error);
+      throw new ResponseError(502, messageOf(error));
+    }
+  }
+
+  // Suspend keeps everything and can be undone. It is the way to cut access from Central instead of deleting.
+  static async setSuspended(
+    personId: string,
+    suspended: boolean,
+    admin: Pick<AdminUser, "id">,
+    context: AuditRequestContext = {},
+  ): Promise<GoogleSyncResult> {
+    const person = await load(personId);
+    assertAllowedTarget(person.email);
+    if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet");
+    const client = getDirectoryClient();
+    try {
+      const current = await client.findUser(person.google_user_id);
+      if (!current) throw new ResponseError(404, "The account is not in Google Workspace any more");
+      if (current.isAdmin) throw new ResponseError(400, "A Workspace admin is not managed from here");
+      const user = await client.setSuspended(person.google_user_id, suspended);
+      await markStatus(person.id, suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE, {
+        user,
+        error: suspended ? "Suspended in Google" : null,
+      });
+      await record(suspended ? "GOOGLE_ACCOUNT_SUSPEND" : "GOOGLE_ACCOUNT_UNSUSPEND", person, admin, context, {
+        mode: client.mode,
+      });
+      return { status: suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE, google_user_id: user.id, outcome: "updated" };
+    } catch (error) {
+      if (error instanceof ResponseError) throw error;
+      logger.error(`Google ${suspended ? "suspend" : "unsuspend"} failed for person ${person.id}`, error);
+      throw new ResponseError(502, messageOf(error));
+    }
+  }
+
   // A JPEG or PNG of the person's profile photo, pushed to their Google account. A failure here is reported, the
   // photo in Central stays.
   static async setPhoto(personId: string, photo: Buffer, mimeType: string): Promise<boolean> {

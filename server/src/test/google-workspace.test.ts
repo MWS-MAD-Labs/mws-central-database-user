@@ -45,6 +45,7 @@ class FakeDirectory implements DirectoryClient {
   failCreateWith: DirectoryError | null = null;
   // Users deleted in Google that can still be restored.
   deleted = new Map<string, DirectoryUser>();
+  restored: { userId: string; orgUnitPath: string }[] = [];
 
   async findUser(userKey: string) {
     return [...this.users.values()].find((user) => user.id === userKey || user.primaryEmail === userKey) ?? null;
@@ -79,6 +80,21 @@ class FakeDirectory implements DirectoryClient {
     const user = await this.findUser(userKey);
     if (!user) throw new DirectoryError("NOT_FOUND", "gone");
     const next = { ...user, ...patch };
+    this.users.set(user.id, next);
+    return next;
+  }
+  async restoreUser(userId: string, orgUnitPath: string) {
+    const user = this.deleted.get(userId);
+    if (!user) throw new DirectoryError("NOT_FOUND", "gone");
+    this.deleted.delete(userId);
+    this.restored.push({ userId, orgUnitPath });
+    this.users.set(userId, user);
+    return user;
+  }
+  async setSuspended(userKey: string, suspended: boolean) {
+    const user = await this.findUser(userKey);
+    if (!user) throw new DirectoryError("NOT_FOUND", "gone");
+    const next = { ...user, suspended };
     this.users.set(user.id, next);
     return next;
   }
@@ -493,6 +509,52 @@ describe("google workspace accounts", () => {
       google.deleted.delete(user.id);
       google.users.set(user.id, user);
       expect((await statusOf(accessToken, id, true)).restorable_until).toBeNull();
+    });
+
+    it("restores the person's own deleted account, and only for a Super Admin", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person } = await linkedPerson(accessToken);
+      const user = google.users.get(person.google_user_id!)!;
+      expect((await TestRequest.post(`/api/admin/employees/${id}/google/restore`, {}, accessToken)).status).toBe(400);
+
+      google.users.delete(user.id);
+      google.deleted.set(user.id, { ...user, deletionTime: new Date() });
+      await statusOf(accessToken, id, true);
+
+      const plain = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      expect((await TestRequest.post(`/api/admin/employees/${id}/google/restore`, {}, plain.accessToken)).status).toBe(403);
+      expect(google.restored).toHaveLength(0);
+
+      const response = await TestRequest.post(`/api/admin/employees/${id}/google/restore`, {}, accessToken);
+      expect(response.status).toBe(200);
+      expect(google.restored).toEqual([{ userId: user.id, orgUnitPath: "/" }]);
+      expect(await statusOf(accessToken, id)).toMatchObject({ status: GoogleSyncStatus.ACTIVE, restorable_until: null });
+      expect(await prismaClient.auditLog.count({ where: { action: AuditAction.GOOGLE_ACCOUNT_RESTORE } })).toBe(1);
+    });
+
+    it("says so when the deleted account is gone before it is restored", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person } = await linkedPerson(accessToken);
+      await prismaClient.person.update({ where: { id: person.id }, data: { google_sync_status: GoogleSyncStatus.MISSING } });
+      const response = await TestRequest.post(`/api/admin/employees/${id}/google/restore`, {}, accessToken);
+      expect(response.status).toBe(404);
+    });
+
+    it("suspends and unsuspends, and leaves a Workspace admin alone", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person } = await linkedPerson(accessToken);
+      const user = google.users.get(person.google_user_id!)!;
+
+      expect((await TestRequest.post(`/api/admin/employees/${id}/google/suspend`, {}, accessToken)).status).toBe(200);
+      expect(google.users.get(user.id)!.suspended).toBe(true);
+      expect(await statusOf(accessToken, id)).toMatchObject({ status: GoogleSyncStatus.SUSPENDED });
+
+      expect((await TestRequest.post(`/api/admin/employees/${id}/google/unsuspend`, {}, accessToken)).status).toBe(200);
+      expect(google.users.get(user.id)!.suspended).toBe(false);
+      expect(await statusOf(accessToken, id)).toMatchObject({ status: GoogleSyncStatus.ACTIVE });
+
+      google.users.set(user.id, { ...google.users.get(user.id)!, isAdmin: true });
+      expect((await TestRequest.post(`/api/admin/employees/${id}/google/suspend`, {}, accessToken)).status).toBe(400);
     });
 
     it("still finds a deleted account by its id when its email no longer matches", async () => {

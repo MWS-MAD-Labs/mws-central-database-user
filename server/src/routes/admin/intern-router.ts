@@ -39,3 +39,6 @@ internRouter.patch("/restore/:id", (c) => InternController.restore(c));
 internRouter.get("/:id/google", GoogleAccountController.status("intern"));
 internRouter.post("/:id/google/provision", GoogleAccountController.provision("intern"));
 internRouter.post("/:id/google/reset-password", GoogleAccountController.resetPassword("intern"));
+internRouter.post("/:id/google/restore", GoogleAccountController.restore("intern"));
+internRouter.post("/:id/google/suspend", GoogleAccountController.suspend("intern", true));
+internRouter.post("/:id/google/unsuspend", GoogleAccountController.suspend("intern", false));

@@ -55,6 +55,10 @@ export interface DirectoryClient {
   listUsers(options: { deleted: boolean }): Promise<DirectoryUser[]>;
   createUser(input: CreateDirectoryUser): Promise<DirectoryUser>;
   updateUser(userKey: string, patch: UpdateDirectoryUser): Promise<DirectoryUser>;
+  // Brings a deleted user back (inside the 20 days), into the given org unit.
+  restoreUser(userId: string, orgUnitPath: string): Promise<DirectoryUser>;
+  // A suspended user cannot sign in, and nothing of theirs is lost.
+  setSuspended(userKey: string, suspended: boolean): Promise<DirectoryUser>;
   // Always asks for a new password at the next login.
   resetPassword(userKey: string, password: string): Promise<void>;
   setPhoto(userKey: string, photo: Buffer, mimeType: string): Promise<void>;

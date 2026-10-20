@@ -64,6 +64,19 @@ export class SimulatedDirectoryClient implements DirectoryClient {
     return next;
   }
 
+  async restoreUser(userId: string): Promise<DirectoryUser> {
+    throw new DirectoryError("NOT_FOUND", `[google simulated] no deleted user ${userId}`);
+  }
+
+  async setSuspended(userKey: string, suspended: boolean): Promise<DirectoryUser> {
+    const user = this.byKey(userKey);
+    if (!user) throw new DirectoryError("NOT_FOUND", "The user does not exist in Google Workspace");
+    const next = { ...user, suspended };
+    this.users.set(user.id, next);
+    logger.info(`[google simulated] would ${suspended ? "suspend" : "unsuspend"} ${user.primaryEmail}`);
+    return next;
+  }
+
   async resetPassword(userKey: string): Promise<void> {
     const user = this.byKey(userKey);
     if (!user) throw new DirectoryError("NOT_FOUND", "The user does not exist in Google Workspace");

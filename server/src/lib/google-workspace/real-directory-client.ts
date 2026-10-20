@@ -143,6 +143,25 @@ export class RealDirectoryClient implements DirectoryClient {
     }
   }
 
+  async restoreUser(userId: string, orgUnitPath: string): Promise<DirectoryUser> {
+    try {
+      await this.directory.users.undelete({ userKey: userId, requestBody: { orgUnitPath } });
+      const { data } = await this.directory.users.get({ userKey: userId });
+      return toDirectoryUser(data);
+    } catch (error) {
+      throw toDirectoryError(error);
+    }
+  }
+
+  async setSuspended(userKey: string, suspended: boolean): Promise<DirectoryUser> {
+    try {
+      const { data } = await this.directory.users.patch({ userKey, requestBody: { suspended } });
+      return toDirectoryUser(data);
+    } catch (error) {
+      throw toDirectoryError(error);
+    }
+  }
+
   async resetPassword(userKey: string, password: string): Promise<void> {
     try {
       await this.directory.users.patch({

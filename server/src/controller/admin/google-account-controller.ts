@@ -67,4 +67,22 @@ export class GoogleAccountController {
       return c.json({ data: { password } });
     };
   }
+
+  static restore(kind: Kind) {
+    return async (c: Context<{ Variables: AdminVariables }>) => {
+      assertSuperAdmin(c);
+      const personId = await personIdOf(kind, c.req.param("id"));
+      const result = await GoogleWorkspaceService.restore(personId, c.var.admin, getAuditRequestContext(c));
+      return c.json({ data: result });
+    };
+  }
+
+  static suspend(kind: Kind, suspended: boolean) {
+    return async (c: Context<{ Variables: AdminVariables }>) => {
+      assertSuperAdmin(c);
+      const personId = await personIdOf(kind, c.req.param("id"));
+      const result = await GoogleWorkspaceService.setSuspended(personId, suspended, c.var.admin, getAuditRequestContext(c));
+      return c.json({ data: result });
+    };
+  }
 }
