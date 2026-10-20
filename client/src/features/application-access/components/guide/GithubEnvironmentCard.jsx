@@ -1,4 +1,3 @@
-import { Copy } from "lucide-react";
 import { TextAction } from "../../../../components/ui/TextAction.jsx";
 import { StatusBadge } from "../../../../components/ui/StatusBadge.jsx";
 import { copyText } from "../../utils/copyText.js";
@@ -24,7 +23,7 @@ function Table({ rows, showValue }) {
                 {showValue && row.value ? (
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="font-mono break-all">{row.value}</span>
-                    <TextAction icon={Copy} onClick={() => copyText(row.value)} aria-label={`Copy ${row.key}`}>
+                    <TextAction onClick={() => copyText(row.value)} aria-label={`Copy ${row.key}`}>
                       Copy
                     </TextAction>
                   </span>

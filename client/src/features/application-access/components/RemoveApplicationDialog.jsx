@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { HelpCircle } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
@@ -82,7 +81,7 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
       panelClassName="max-w-lg"
     >
       {plan ? (
-        <TextAction className="-mt-1 mb-3" icon={HelpCircle} onClick={() => setGuide(true)}>
+        <TextAction className="-mt-1 mb-3" onClick={() => setGuide(true)}>
           How removing works
         </TextAction>
       ) : null}

@@ -2,13 +2,9 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router";
 import {
-  CalendarOff,
   Eye,
-  MoveRight,
   Plus,
   Puzzle,
-  RotateCcw,
-  Trash2,
   UserRoundPlus,
   Users,
 } from "lucide-react";
@@ -1143,7 +1139,6 @@ export function RoomStudentsSection({ room, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <MoveRight size={15} />
                     Move Selected
                   </span>
                 </ActionsMenuItem>
@@ -1154,7 +1149,6 @@ export function RoomStudentsSection({ room, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <MoveRight size={15} />
                     Promote to Next Year
                   </span>
                 </ActionsMenuItem>
@@ -1165,7 +1159,6 @@ export function RoomStudentsSection({ room, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <CalendarOff size={15} />
                     End Selected
                   </span>
                 </ActionsMenuItem>
@@ -1182,7 +1175,6 @@ export function RoomStudentsSection({ room, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <RotateCcw size={15} />
                     Reopen Selected
                   </span>
                 </ActionsMenuItem>
@@ -1195,7 +1187,6 @@ export function RoomStudentsSection({ room, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <Trash2 size={15} />
                     Drop Selected
                   </span>
                 </ActionsMenuItem>
@@ -1794,7 +1785,6 @@ export function RoomMentorsSection({ room, units, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <MoveRight size={15} />
                     Move Selected
                   </span>
                 </ActionsMenuItem>
@@ -1811,7 +1801,6 @@ export function RoomMentorsSection({ room, units, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <MoveRight size={15} />
                     Promote to Next Year
                   </span>
                 </ActionsMenuItem>
@@ -1822,7 +1811,6 @@ export function RoomMentorsSection({ room, units, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <CalendarOff size={15} />
                     End Selected
                   </span>
                 </ActionsMenuItem>
@@ -1839,7 +1827,6 @@ export function RoomMentorsSection({ room, units, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <RotateCcw size={15} />
                     Reopen Selected
                   </span>
                 </ActionsMenuItem>
@@ -1852,7 +1839,6 @@ export function RoomMentorsSection({ room, units, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <Trash2 size={15} />
                     Remove Selected
                   </span>
                 </ActionsMenuItem>

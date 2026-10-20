@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -266,7 +266,7 @@ export function InternsPage() {
                     );
                   }}
                 >
-                  <RotateCcw size={15} /> Restore Selected
+ Restore Selected
                 </ActionsMenuItem>
               ) : (
                 <ActionsMenuItem
@@ -276,7 +276,7 @@ export function InternsPage() {
                     runBulkAction("delete");
                   }}
                 >
-                  <Trash2 size={15} /> Archive Selected
+ Archive Selected
                 </ActionsMenuItem>
               )
             }

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Copy } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -247,7 +247,7 @@ function PermissionsPart({ isHub, keys, base, path }) {
             ]}
           />
           <Code>{script}</Code>
-          <TextAction icon={Copy} onClick={() => copyText(script)}>
+          <TextAction onClick={() => copyText(script)}>
             Copy Script
           </TextAction>
           <Paragraph>
@@ -337,7 +337,7 @@ function DeployPart({ setup, isHub, keys, environment, github, mode, application
             them to the owner privately once you have them. Meanwhile you can finish On your machine and Send the permissions.
           </Paragraph>
           <Code>{message}</Code>
-          <TextAction icon={Copy} onClick={() => copyText(message)}>
+          <TextAction onClick={() => copyText(message)}>
             Copy Message
           </TextAction>
         </div>
@@ -377,7 +377,7 @@ function DeployPart({ setup, isHub, keys, environment, github, mode, application
               this job to the needs of the deploy job.
             </Paragraph>
             <Code>{job}</Code>
-            <TextAction className="mt-2" icon={Copy} onClick={() => copyText(job)}>
+            <TextAction className="mt-2" onClick={() => copyText(job)}>
               Copy Job
             </TextAction>
             <Paragraph>It fails the deploy if Central says no.</Paragraph>
@@ -389,7 +389,7 @@ function DeployPart({ setup, isHub, keys, environment, github, mode, application
               address and the token are right.
             </Paragraph>
             <Code>{checkText}</Code>
-            <TextAction className="mt-2" icon={Copy} onClick={() => copyText(checkText)}>
+            <TextAction className="mt-2" onClick={() => copyText(checkText)}>
               Copy Command
             </TextAction>
           </div>

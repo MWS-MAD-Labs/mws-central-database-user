@@ -1180,7 +1180,6 @@ export function StudentDetailPage() {
                   });
                 }}
               >
-                <RefreshCw size={14} />
                 Generate NIS
               </Button>
             </div>

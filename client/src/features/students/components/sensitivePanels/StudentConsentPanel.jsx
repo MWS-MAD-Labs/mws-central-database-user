@@ -331,26 +331,26 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
                 </div>
               </div>
               <div className="flex shrink-0 gap-1">
-                <Button asChild variant="ghost" size="sm">
+                <Button aria-label="Download attachment" title="Download attachment" asChild variant="ghost" size="icon">
                   <a href={attachmentDownloadUrl(studentId, consentId, attachment.id)} target="_blank" rel="noreferrer">
                     <Download size={15} />
                   </a>
                 </Button>
                 {attachment.deleted_at ? (
-                  <Button
+                  <Button aria-label="Restore attachment" title="Restore attachment"
                     type="button"
                     variant="ghost"
-                    size="sm"
+                    size="icon"
                     disabled={!canWrite || isPendingFor(restoreMutation, attachment.id)}
                     onClick={() => restoreMutation.mutate(attachment.id)}
                   >
                     <RotateCcw size={15} />
                   </Button>
                 ) : (
-                  <Button
+                  <Button aria-label="Delete attachment" title="Delete attachment"
                     type="button"
                     variant="ghost"
-                    size="sm"
+                    size="icon"
                     disabled={!canWrite || isPendingFor(deleteMutation, attachment.id)}
                     onClick={() => deleteMutation.mutate(attachment.id)}
                   >

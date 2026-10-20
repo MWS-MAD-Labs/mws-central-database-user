@@ -73,11 +73,12 @@ export function TableStudents({ context, academicYearsById }) {
           <Button
             type="button"
             variant="secondary"
-            size="sm"
+            size="icon"
+            aria-label={showRawResponse ? "Hide raw JSON" : "Raw JSON"}
+            title={showRawResponse ? "Hide raw JSON" : "Raw JSON"}
             onClick={() => setShowRawResponse((current) => !current)}
           >
-            <Braces size={14} />
-            {showRawResponse ? "Hide raw JSON" : "Raw JSON"}
+            <Braces size={15} />
           </Button>
         </div>
       </div>

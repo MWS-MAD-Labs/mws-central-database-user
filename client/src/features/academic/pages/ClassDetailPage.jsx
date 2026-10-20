@@ -1,17 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  CalendarDays,
   Edit,
   GraduationCap,
-  HeartHandshake,
-  LogOut,
   Plus,
-  Repeat,
-  RotateCcw,
-  Undo2,
   Users,
-  Wrench,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -933,7 +926,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <Wrench size={15} />
                               Fix Class
                             </span>
                           </ActionsMenuItem>
@@ -946,7 +938,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <CalendarDays size={15} />
                               Edit date
                             </span>
                           </ActionsMenuItem>
@@ -962,7 +953,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <GraduationCap size={15} />
                               Promote
                             </span>
                           </ActionsMenuItem>
@@ -978,7 +968,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <Repeat size={15} />
                               Move
                             </span>
                           </ActionsMenuItem>
@@ -994,7 +983,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <LogOut size={15} />
                               Close
                             </span>
                           </ActionsMenuItem>
@@ -1016,7 +1004,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <RotateCcw size={15} />
                               Reactivate
                             </span>
                           </ActionsMenuItem>
@@ -1030,7 +1017,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <HeartHandshake size={15} />
                               Add SE teacher
                             </span>
                           </ActionsMenuItem>
@@ -1045,7 +1031,6 @@ export function ClassDetailPage() {
                               }}
                             >
                               <span className="flex items-center gap-2">
-                                <HeartHandshake size={15} />
                                 Change SE teacher
                               </span>
                             </ActionsMenuItem>
@@ -1060,7 +1045,6 @@ export function ClassDetailPage() {
                               }}
                             >
                               <span className="flex items-center gap-2">
-                                <Undo2 size={15} />
                                 Remove SE teacher
                               </span>
                             </ActionsMenuItem>
@@ -1084,7 +1068,6 @@ export function ClassDetailPage() {
                           }}
                         >
                           <span className="flex items-center gap-2">
-                            <Undo2 size={15} />
                             Drop
                           </span>
                         </ActionsMenuItem>

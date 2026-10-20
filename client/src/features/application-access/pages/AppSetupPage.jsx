@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, KeyRound, ShieldCheck, Check, Circle, Eye, EyeOff, Loader2, Lock, Pencil, Plus, RotateCw } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Check, Circle, Loader2, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
@@ -87,15 +87,15 @@ export function AppSetupPage() {
   function actions(step) {
     if (retired || step.status === "locked") return null;
     const current = step.status === "current";
-    const quiet = (to, label, icon) => (
-      <TextAction asChild icon={icon}>
+    const quiet = (to, label) => (
+      <TextAction asChild>
         <Link to={to}>{label}</Link>
       </TextAction>
     );
     switch (step.id) {
       case "about":
         return (
-          <TextAction icon={Pencil} onClick={() => setEditing(true)}>
+          <TextAction onClick={() => setEditing(true)}>
             Edit Details
           </TextAction>
         );
@@ -103,19 +103,19 @@ export function AppSetupPage() {
         return setup.connection.created ? (
           <>
             {endpointsLoaded && setup.data_access.editable ? (
-              <TextAction icon={ShieldCheck} onClick={() => setDataAccess(true)}>
+              <TextAction onClick={() => setDataAccess(true)}>
                 {`Data Access, ${endpointCount} endpoint${endpointCount === 1 ? "" : "s"}`}
               </TextAction>
             ) : null}
-            <TextAction asChild icon={BookOpen}>
+            <TextAction asChild>
               <Link to={`${guideBase}?part=local`}>Setup Guide</Link>
             </TextAction>
             {setup.hub_secret?.applies ? (
-              <TextAction icon={KeyRound} loading={appSecretMutation.isPending} onClick={changeAppSecret}>
+              <TextAction loading={appSecretMutation.isPending} onClick={changeAppSecret}>
                 {setup.hub_secret.mode === "own" ? "Rotate Hub Secret" : "Give Its Own Hub Secret"}
               </TextAction>
             ) : null}
-            <TextAction icon={RotateCw} onClick={() => setRotating(true)}>
+            <TextAction onClick={() => setRotating(true)}>
               Rotate Token
             </TextAction>
           </>
@@ -125,7 +125,7 @@ export function AppSetupPage() {
           </Button>
         );
       case "permissions":
-        return step.done ? quiet(`${base}?tab=permissions`, "View Permissions", Eye) : null;
+        return step.done ? quiet(`${base}?tab=permissions`, "View Permissions") : null;
       case "roles":
         return (
           <>
@@ -134,7 +134,7 @@ export function AppSetupPage() {
                 <Link to={`${base}/roles/bulk?from=setup`}>Add Roles</Link>
               </Button>
             ) : (
-              quiet(`${base}/roles/bulk?from=setup`, "Add Roles", Plus)
+              quiet(`${base}/roles/bulk?from=setup`, "Add Roles")
             )}
           </>
         );
@@ -144,11 +144,11 @@ export function AppSetupPage() {
             <Link to={`${base}/groups/new`}>Add Group</Link>
           </Button>
         ) : (
-          quiet(`${base}/groups/new`, "Add Group", Plus)
+          quiet(`${base}/groups/new`, "Add Group")
         );
       case "hub":
         return step.done ? (
-          <TextAction icon={EyeOff} loading={publishing} onClick={() => publishMutation.mutate(false)}>
+          <TextAction loading={publishing} onClick={() => publishMutation.mutate(false)}>
             Hide From Hub
           </TextAction>
         ) : (

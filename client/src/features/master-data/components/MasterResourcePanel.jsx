@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../auth/hooks/useAuth";
 import { useState } from "react";
 import { defaultPaging } from "../utils/params";
-import { Edit, Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   ActionsMenu,
   ActionsMenuItem,
@@ -285,7 +285,6 @@ export function MasterResourcePanel({ resource }) {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <Edit size={15} />
                               Edit
                             </span>
                           </ActionsMenuItem>
@@ -297,7 +296,6 @@ export function MasterResourcePanel({ resource }) {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <Trash2 size={15} />
                               Delete
                             </span>
                           </ActionsMenuItem>

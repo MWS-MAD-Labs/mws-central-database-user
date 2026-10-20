@@ -1,11 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CalendarClock,
   ImagePlus,
-  PencilLine,
   Plus,
-  RotateCcw,
-  Trash2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -463,7 +459,6 @@ export function EmployeesPage() {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <RotateCcw size={15} />
                     Restore Selected
                   </span>
                 </ActionsMenuItem>
@@ -481,7 +476,6 @@ export function EmployeesPage() {
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      <PencilLine size={15} />
                       Bulk Edit
                     </span>
                   </ActionsMenuItem>
@@ -494,7 +488,6 @@ export function EmployeesPage() {
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      <CalendarClock size={15} />
                       Extend Contracts
                     </span>
                   </ActionsMenuItem>
@@ -512,7 +505,6 @@ export function EmployeesPage() {
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      <Trash2 size={15} />
                       Archive Selected
                     </span>
                   </ActionsMenuItem>

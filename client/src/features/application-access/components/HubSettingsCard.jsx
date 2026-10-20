@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Copy, Settings2 } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { HubSetupWizard } from "./HubSetupWizard.jsx";
@@ -26,7 +25,7 @@ export function HubSettingsCard({ settings, hub, applicationId }) {
           <p className="text-sm text-(--mws-muted)">The Hub's address, the secret it shares with the applications, and how strictly it checks who may sign in.</p>
         </div>
         {complete ? (
-          <TextAction icon={Settings2} onClick={() => setOpen(true)}>
+          <TextAction onClick={() => setOpen(true)}>
             Open Setup Wizard
           </TextAction>
         ) : (
@@ -50,7 +49,7 @@ export function HubSettingsCard({ settings, hub, applicationId }) {
         <dd>{settings.hub_bypass_emails.length === 0 ? "None" : settings.hub_bypass_emails.length}</dd>
       </dl>
       <div className="flex justify-end">
-        <TextAction icon={Copy} onClick={() => setLines(true)}>
+        <TextAction onClick={() => setLines(true)}>
           Copy Sign-in Lines
         </TextAction>
       </div>

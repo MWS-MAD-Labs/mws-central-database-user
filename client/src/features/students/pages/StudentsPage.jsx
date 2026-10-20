@@ -2,10 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ImagePlus,
   Plus,
-  RotateCcw,
-  Trash2,
-  UserCheck,
-  UserX,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -387,7 +383,6 @@ export function StudentsPage() {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <RotateCcw size={15} />
                     Restore Selected
                   </span>
                 </ActionsMenuItem>
@@ -415,7 +410,6 @@ export function StudentsPage() {
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      <UserX size={15} />
                       Deactivate Selected
                     </span>
                   </ActionsMenuItem>
@@ -436,7 +430,6 @@ export function StudentsPage() {
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      <UserCheck size={15} />
                       Reactivate Selected
                     </span>
                   </ActionsMenuItem>
@@ -450,7 +443,6 @@ export function StudentsPage() {
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      <Trash2 size={15} />
                       Archive Selected
                     </span>
                   </ActionsMenuItem>

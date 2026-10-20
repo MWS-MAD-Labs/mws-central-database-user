@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useState } from "react";
-import { Check, ShieldCheck } from "lucide-react";
+import { Check } from "lucide-react";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast } from "../../../lib/toast.js";
@@ -54,7 +54,7 @@ export function HubSecretTest({ secret, address, disabled = false, onReady }) {
 
   return (
     <div className="space-y-1.5">
-      <TextAction icon={ShieldCheck} loading={running} disabled={disabled || !clean} onClick={run}>
+      <TextAction loading={running} disabled={disabled || !clean} onClick={run}>
         Test This Secret
       </TextAction>
       <div aria-live="polite" className="min-h-5 text-xs">

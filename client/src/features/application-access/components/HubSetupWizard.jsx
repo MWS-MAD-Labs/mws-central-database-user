@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Check, Copy, KeyRound, Plus, RotateCw } from "lucide-react";
+import { Check, KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextInput } from "../../../components/ui/FormControls.jsx";
@@ -244,7 +244,7 @@ export function HubSetupWizard({
                 Key Made
                 <span className="truncate font-mono text-xs text-(--mws-muted)">{signing?.kid}</span>
               </span>
-              <TextAction icon={RotateCw} className={KEY_ACTION} disabled={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
+              <TextAction className={KEY_ACTION} disabled={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
                 Make Another Key
               </TextAction>
             </div>
@@ -257,7 +257,7 @@ export function HubSetupWizard({
               {keyChoice === "own" ? (
                 <TextAction onClick={() => setKeyChoice(null)}>Make One Instead</TextAction>
               ) : (
-                <TextAction icon={Plus} className={KEY_ACTION} loading={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
+                <TextAction className={KEY_ACTION} loading={keyMutation.isPending} onClick={() => keyMutation.mutate()}>
                   Make Signing Key
                 </TextAction>
               )}
@@ -328,7 +328,6 @@ export function HubSetupWizard({
                     Secret Generated
                   </span>
                   <TextAction
-                    icon={RotateCw}
                     disabled={!keyReady}
                     onClick={() => setDialog("rotate")}
                   >
@@ -476,7 +475,7 @@ export function HubSetupWizard({
             <>
               <ImpactList applicationId={applicationId} />
               <div>
-                <TextAction icon={Copy} onClick={() => setDialog("lines")}>
+                <TextAction onClick={() => setDialog("lines")}>
                   Copy Sign-in Lines
                 </TextAction>
               </div>
@@ -492,7 +491,6 @@ export function HubSetupWizard({
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-(--mws-line) pt-4">
         <TextAction
-          icon={ArrowLeft}
           className={step === 0 ? "invisible" : undefined}
           disabled={step === 0}
           onClick={() => setStep((current) => Math.max(current - 1, 0))}
@@ -500,18 +498,17 @@ export function HubSetupWizard({
           Back
         </TextAction>
         {managing && step === steps.length - 1 ? (
-          <TextAction icon={Check} className={FORWARD_ACTION} onClick={onClose}>
+          <TextAction className={FORWARD_ACTION} onClick={onClose}>
             Done
           </TextAction>
         ) : null}
         {!managing && step === steps.length - 1 ? (
-          <TextAction type="submit" icon={Check} data-hub-add="true" className={FORWARD_ACTION} loading={submitting}>
+          <TextAction type="submit" data-hub-add="true" className={FORWARD_ACTION} loading={submitting}>
             Add Application
           </TextAction>
         ) : null}
         {step < steps.length - 1 ? (
           <TextAction
-            icon={ArrowRight}
             className={FORWARD_ACTION}
             loading={addressMutation.isPending || signInMutation.isPending}
             disabled={!ready[stepId]}

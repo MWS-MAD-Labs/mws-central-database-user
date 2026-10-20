@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, BookOpen, ShieldCheck } from "lucide-react";
+import { ArrowLeft, BookOpen, Pencil, ShieldCheck } from "lucide-react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
@@ -173,8 +173,8 @@ export function AppSettingsPage() {
               <Link to={`${guide}?part=local`}><BookOpen size={16} /></Link>
             </Button>
             {retired ? null : (
-              <Button type="button" onClick={() => setEditing(true)}>
-                Edit Details
+              <Button type="button" size="icon" aria-label="Edit Details" title="Edit Details" onClick={() => setEditing(true)}>
+                <Pencil size={16} />
               </Button>
             )}
             {setup.is_hub && !retired && !setup.removal.retire_available && !setup.removal.can_remove ? null : (

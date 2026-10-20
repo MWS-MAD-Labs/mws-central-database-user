@@ -1,15 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeftRight,
-  Ban,
   CalendarPlus,
   CheckCircle2,
   ChevronDown,
   Clock3,
-  Eye,
   Plus,
-  RotateCcw,
   Trash2,
+  UserPlus,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
@@ -511,8 +508,8 @@ function AdminUsersPanel() {
               visible={hasActiveFilters}
               onReset={resetFilters}
             />
-            <Button type="button" onClick={() => setPromoteOpen(true)}>
-              Promote
+            <Button type="button" size="icon" aria-label="Promote" title="Promote" onClick={() => setPromoteOpen(true)}>
+              <UserPlus size={16} />
             </Button>
           </div>
         </div>
@@ -844,7 +841,6 @@ function AdminUsersPanel() {
                               }}
                             >
                               <span className="flex items-center gap-2">
-                                <Eye size={15} />
                                 History
                               </span>
                             </ActionsMenuItem>
@@ -867,7 +863,6 @@ function AdminUsersPanel() {
                                   }}
                                 >
                                   <span className="flex items-center gap-2">
-                                    <Clock3 size={15} />
                                     Grant after-hours
                                   </span>
                                 </ActionsMenuItem>
@@ -890,7 +885,6 @@ function AdminUsersPanel() {
                                     }}
                                   >
                                     <span className="flex items-center gap-2">
-                                      <ArrowLeftRight size={15} />
                                       Make DB Admin
                                     </span>
                                   </ActionsMenuItem>
@@ -907,7 +901,6 @@ function AdminUsersPanel() {
                                     }}
                                   >
                                     <span className="flex items-center gap-2">
-                                      <ArrowLeftRight size={15} />
                                       {admin.role === "DATABASE_ADMIN"
                                         ? "Make Viewer"
                                         : "Make DB Admin"}
@@ -929,7 +922,6 @@ function AdminUsersPanel() {
                                   }}
                                 >
                                   <span className="flex items-center gap-2">
-                                    <Ban size={15} />
                                     Demote
                                   </span>
                                 </ActionsMenuItem>
@@ -946,7 +938,6 @@ function AdminUsersPanel() {
                                 }}
                               >
                                 <span className="flex items-center gap-2">
-                                  <RotateCcw size={15} />
                                   Reactivate
                                 </span>
                               </ActionsMenuItem>

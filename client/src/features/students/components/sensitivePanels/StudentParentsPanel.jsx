@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { EyeOff, Plus, RotateCcw, Trash2, UsersRound } from 'lucide-react'
+import { EyeOff, Pencil, Plus, RotateCcw, Trash2, UsersRound } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../../components/ui/CrudDialog.jsx'
@@ -140,16 +140,18 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
+                        size="icon"
+                        aria-label="Edit"
+                        title="Edit"
                         disabled={!canWrite}
                         onClick={() => setDialog({ mode: 'edit', record: parent })}
                       >
-                        Edit
+                        <Pencil size={15} />
                       </Button>
-                      <Button
+                      <Button aria-label="Delete" title="Delete"
                         type="button"
                         variant="ghost"
-                        size="sm"
+                        size="icon"
                         disabled={!canWrite || isPendingFor(deleteMutation, parent.id)}
                         onClick={() => deleteMutation.mutate(parent.id)}
                       >

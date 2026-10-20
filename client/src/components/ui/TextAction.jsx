@@ -8,14 +8,12 @@ const classes =
 // The ! on the size and weight is needed: index.css sets `font: inherit` on buttons outside Tailwind's layers,
 // which would otherwise make a button 16px while a link with the same classes is 12px.
 // A quiet action written as text, for what sits next to the main button. Use Button for the main one.
-// `icon` is a lucide icon component, drawn small in front of the text.
-export function TextAction({ asChild, className, loading = false, disabled, icon: Icon, children, ...props }) {
-  const mark = Icon ? <Icon size={14} aria-hidden="true" /> : null
+// Text only, like every button: an icon or a label, never both.
+export function TextAction({ asChild, className, loading = false, disabled, children, ...props }) {
   if (asChild && isValidElement(children)) {
     return cloneElement(
       children,
       { ...props, className: cn(classes, className, children.props.className) },
-      mark,
       children.props.children,
     )
   }
@@ -27,7 +25,7 @@ export function TextAction({ asChild, className, loading = false, disabled, icon
       aria-busy={loading || undefined}
       {...props}
     >
-      {loading ? <Loader2 size={13} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : mark}
+      {loading ? <Loader2 size={13} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : null}
       {children}
     </button>
   )

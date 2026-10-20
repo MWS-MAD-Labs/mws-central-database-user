@@ -738,10 +738,10 @@ function EnrollmentRowActions({
         >
           <Wrench size={15} />
         </Button>
-        <Button
+        <Button aria-label="Delete" title="Delete"
           type="button"
           variant="ghost"
-          size="sm"
+          size="icon"
           disabled={!canDelete}
           onClick={onDelete}
         >

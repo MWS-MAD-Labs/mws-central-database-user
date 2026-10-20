@@ -614,10 +614,10 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canManage, needsA
               {canManage ? (
                 <div className="flex shrink-0 gap-1">
                   {attachment.deleted_at ? (
-                    <Button
+                    <Button aria-label="Restore" title="Restore"
                       type="button"
                       variant="ghost"
-                      size="sm"
+                      size="icon"
                       disabled={restoreMutation.isPending}
                       onClick={() =>
                         startChange({ kind: 'restore', attachmentId: attachment.id }, () =>
@@ -628,10 +628,10 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canManage, needsA
                       <RotateCcw size={15} />
                     </Button>
                   ) : (
-                    <Button
+                    <Button aria-label="Delete" title="Delete"
                       type="button"
                       variant="ghost"
-                      size="sm"
+                      size="icon"
                       disabled={deleteMutation.isPending}
                       onClick={() =>
                         startChange({ kind: 'remove', attachmentId: attachment.id }, () =>
@@ -857,7 +857,7 @@ function IssueDisciplinaryActionDialog({ isSubmitting, onClose, onSubmit }) {
                   <span className="min-w-0 truncate">{file.name}</span>
                   <button
                     type="button"
-                    onClick={() => removeAttachmentAt(index)}
+                    aria-label="Remove attachment" title="Remove attachment" onClick={() => removeAttachmentAt(index)}
                     className="shrink-0 text-(--mws-muted) hover:text-[#a43c41]"
                   >
                     <X size={13} />

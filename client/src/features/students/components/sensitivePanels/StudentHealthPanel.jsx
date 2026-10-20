@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { EyeOff, HeartPulse, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { EyeOff, HeartPulse, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { ActionsMenu, ActionsMenuItem } from '../../../../components/ui/ActionsMenu.jsx'
 import { Button } from '../../../../components/ui/Button.jsx'
@@ -240,10 +240,10 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
                     </Button>
                   ) : (
                     <>
-                      <Button type="button" variant="ghost" size="sm" disabled={!canWrite} onClick={() => setNoteDialog({ mode: 'edit', record: note })}>
-                        Edit
+                      <Button type="button" variant="ghost" size="icon" aria-label="Edit" title="Edit" disabled={!canWrite} onClick={() => setNoteDialog({ mode: 'edit', record: note })}>
+                        <Pencil size={15} />
                       </Button>
-                       <Button type="button" variant="ghost" size="sm" disabled={!canWrite} loading={isPendingFor(deleteNoteMutation, note.id)} onClick={() => deleteNoteMutation.mutate(note.id)}>
+                       <Button aria-label="Delete" title="Delete" type="button" variant="ghost" size="icon" disabled={!canWrite} loading={isPendingFor(deleteNoteMutation, note.id)} onClick={() => deleteNoteMutation.mutate(note.id)}>
                         <Trash2 size={15} />
                       </Button>
                     </>

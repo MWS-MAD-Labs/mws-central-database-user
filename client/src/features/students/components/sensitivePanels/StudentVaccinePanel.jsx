@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { EyeOff, Plus, RotateCcw, Syringe, Trash2 } from 'lucide-react'
+import { EyeOff, Pencil, Plus, RotateCcw, Syringe, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../../components/ui/Button.jsx'
 import { useConfirm } from '../../../../components/ui/useConfirm.js'
@@ -164,16 +164,18 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
+                        size="icon"
+                        aria-label="Edit"
+                        title="Edit"
                         disabled={!canWrite}
                         onClick={() => setDialog({ mode: 'edit', record })}
                       >
-                        Edit
+                        <Pencil size={15} />
                       </Button>
-                      <Button
+                      <Button aria-label="Delete" title="Delete"
                         type="button"
                         variant="ghost"
-                        size="sm"
+                        size="icon"
                         disabled={!canWrite || isPendingFor(deleteMutation, record.id)}
                         onClick={() => deleteMutation.mutate(record.id)}
                       >

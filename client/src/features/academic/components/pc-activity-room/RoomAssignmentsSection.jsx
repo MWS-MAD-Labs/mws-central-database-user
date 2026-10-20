@@ -2,11 +2,6 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import {
-  CalendarClock,
-  CalendarOff,
-  MoveRight,
-  RotateCcw,
-  Trash2,
   UserRoundPlus,
   Users,
 } from "lucide-react";
@@ -58,29 +53,29 @@ function AssignmentActions({ row, kind, onAction }) {
         <>
           {row.status !== "SCHEDULED" ? (
             <ActionsMenuItem onClick={() => { close(); onAction("date", row); }}>
-              <span className="flex items-center gap-2"><CalendarClock size={15} />Edit Start Date</span>
+              <span className="flex items-center gap-2">Edit Start Date</span>
             </ActionsMenuItem>
           ) : null}
           {!isEnded ? (
             <>
               <ActionsMenuItem onClick={() => { close(); onAction("move", row); }}>
-                <span className="flex items-center gap-2"><MoveRight size={15} />Move</span>
+                <span className="flex items-center gap-2">Move</span>
               </ActionsMenuItem>
               <ActionsMenuItem onClick={() => { close(); onAction("promote", row); }}>
-                <span className="flex items-center gap-2"><MoveRight size={15} />Promote To Next Year</span>
+                <span className="flex items-center gap-2">Promote To Next Year</span>
               </ActionsMenuItem>
               <ActionsMenuItem onClick={() => { close(); onAction("end", row); }}>
-                <span className="flex items-center gap-2"><CalendarOff size={15} />End</span>
+                <span className="flex items-center gap-2">End</span>
               </ActionsMenuItem>
             </>
           ) : (
             <ActionsMenuItem onClick={() => { close(); onAction("reopen", row); }}>
-              <span className="flex items-center gap-2"><RotateCcw size={15} />Reopen</span>
+              <span className="flex items-center gap-2">Reopen</span>
             </ActionsMenuItem>
           )}
           <div className="my-1 border-t border-(--mws-line)" />
           <ActionsMenuItem tone="danger" onClick={() => { close(); onAction("remove", row); }}>
-            <span className="flex items-center gap-2"><Trash2 size={15} />{removeLabel}</span>
+            <span className="flex items-center gap-2">{removeLabel}</span>
           </ActionsMenuItem>
         </>
       )}
@@ -243,23 +238,23 @@ function RoomAssignmentsSection({ room, canManage, kind }) {
             {(close) => (
               <>
                 <ActionsMenuItem onClick={() => { close(); setDialog({ type: "date", rows: selectedRows }); }}>
-                  <span className="flex items-center gap-2"><CalendarClock size={15} />Edit Start Date</span>
+                  <span className="flex items-center gap-2">Edit Start Date</span>
                 </ActionsMenuItem>
                 <ActionsMenuItem onClick={() => { close(); setDialog({ type: "move", rows: selectedRows }); }}>
-                  <span className="flex items-center gap-2"><MoveRight size={15} />Move Selected</span>
+                  <span className="flex items-center gap-2">Move Selected</span>
                 </ActionsMenuItem>
                 <ActionsMenuItem onClick={() => { close(); setDialog({ type: "promote", rows: selectedRows }); }}>
-                  <span className="flex items-center gap-2"><MoveRight size={15} />Promote To Next Year</span>
+                  <span className="flex items-center gap-2">Promote To Next Year</span>
                 </ActionsMenuItem>
                 <ActionsMenuItem onClick={() => { close(); runLifecycle("end", selectedRows); }}>
-                  <span className="flex items-center gap-2"><CalendarOff size={15} />End Selected</span>
+                  <span className="flex items-center gap-2">End Selected</span>
                 </ActionsMenuItem>
                 <ActionsMenuItem disabled={!selectedRows.every((row) => row.status === "ENDED")} onClick={() => { close(); runLifecycle("reopen", selectedRows); }}>
-                  <span className="flex items-center gap-2"><RotateCcw size={15} />Reopen Selected</span>
+                  <span className="flex items-center gap-2">Reopen Selected</span>
                 </ActionsMenuItem>
                 <div className="my-1 border-t border-(--mws-line)" />
                 <ActionsMenuItem tone="danger" onClick={() => { close(); runLifecycle("remove", selectedRows); }}>
-                  <span className="flex items-center gap-2"><Trash2 size={15} />{isStudent ? "Drop" : "Remove"} selected</span>
+                  <span className="flex items-center gap-2">{isStudent ? "Drop" : "Remove"} selected</span>
                 </ActionsMenuItem>
               </>
             )}

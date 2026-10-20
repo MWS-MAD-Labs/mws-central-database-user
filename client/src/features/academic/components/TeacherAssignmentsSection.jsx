@@ -1,11 +1,6 @@
 import {
-  CalendarClock,
-  CalendarOff,
   GraduationCap,
-  MoveRight,
   Plus,
-  RotateCcw,
-  Trash2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -416,7 +411,6 @@ export function TeacherAssignmentsSection({
                       }}
                     >
                       <span className="flex items-center gap-2">
-                        <CalendarClock size={15} />
                         Edit Start Date
                       </span>
                     </ActionsMenuItem>
@@ -427,7 +421,6 @@ export function TeacherAssignmentsSection({
                       }}
                     >
                       <span className="flex items-center gap-2">
-                        <MoveRight size={15} />
                         Move Class
                       </span>
                     </ActionsMenuItem>
@@ -438,7 +431,6 @@ export function TeacherAssignmentsSection({
                       }}
                     >
                       <span className="flex items-center gap-2">
-                        <MoveRight size={15} />
                         Promote to Next Class
                       </span>
                     </ActionsMenuItem>
@@ -449,7 +441,6 @@ export function TeacherAssignmentsSection({
                       }}
                     >
                       <span className="flex items-center gap-2">
-                        <CalendarOff size={15} />
                         End Selected
                       </span>
                     </ActionsMenuItem>
@@ -466,7 +457,6 @@ export function TeacherAssignmentsSection({
                       }}
                     >
                       <span className="flex items-center gap-2">
-                        <RotateCcw size={15} />
                         Reopen Selected
                       </span>
                     </ActionsMenuItem>
@@ -479,7 +469,6 @@ export function TeacherAssignmentsSection({
                       }}
                     >
                       <span className="flex items-center gap-2">
-                        <Trash2 size={15} />
                         Remove Selected
                       </span>
                     </ActionsMenuItem>
