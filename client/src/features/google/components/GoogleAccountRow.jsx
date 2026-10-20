@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArchiveRestore, KeyRound, MessageSquareText, Pause, Play, RefreshCw, UserPlus } from "lucide-react";
+import { ArchiveRestore, KeyRound, Mail, MessageSquareText, Pause, Play, RefreshCw, UserPlus } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
@@ -84,6 +84,26 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
     onError: (error) => showErrorToast(error, "Password was not reset."),
   });
 
+  // Read from Google only while one of the two dialogs that show it is open.
+  const recoveryQuery = useQuery({
+    queryKey: ["google-recovery-email", resource, id],
+    queryFn: () => googleAccountApi.recoveryEmail(resource, id),
+    enabled: dialog === "instructions" || dialog === "recovery",
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const currentRecovery = recoveryQuery.data?.recovery_email ?? "";
+
+  const changeRecovery = useMutation({
+    mutationFn: () => googleAccountApi.changeRecoveryEmail(resource, id, recoveryEmail.trim()),
+    onSuccess: () => {
+      setDialog(null);
+      setRecoveryEmail("");
+      showSuccessToast("Recovery email changed.");
+    },
+    onError: (error) => showErrorToast(error, "Recovery email was not changed."),
+  });
+
   const restore = useMutation({
     mutationFn: () => googleAccountApi.restore(resource, id),
     onSuccess: () => {
@@ -115,6 +135,7 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
     deleted
       ? { tone: "red", label: "Deleted in Google" }
       : (BADGES[status.status] ?? BADGES.NONE);
+  const locked = Boolean(status.locked);
   const note = passwordNote(status);
   const overdue = status.password_state === "OVERDUE" && status.status === "ACTIVE";
 
@@ -132,6 +153,12 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
         {status.status === "FAILED" && status.last_error ? (
           <span className="w-full text-xs text-[#a43c41]">{status.last_error}</span>
         ) : null}
+        {status.status === "SUSPENDED" && status.last_error?.startsWith("Suspended in Google after") ? (
+          <span className="w-full text-xs text-[#8a6419]">Locked because the person left ({status.last_error.replace("Suspended in Google after ", "")}).</span>
+        ) : null}
+        {locked && status.status === "ACTIVE" ? (
+          <span className="w-full text-xs text-[#8a6419]">The person has left, but the Google account is still active. Suspend it.</span>
+        ) : null}
         {deleted ? (
           <span className="w-full text-xs text-[#a43c41]">
             {restoreNote(status)} Restore it in the Admin Console, then check again.
@@ -145,7 +172,7 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
       </div>
       {canManage ? (
         <div className="flex gap-1">
-          {status.linked && email ? (
+          {status.linked && email && !locked ? (
             <Button
               type="button"
               variant="ghost"
@@ -167,7 +194,7 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
               <Pause size={15} />
             </Button>
           ) : null}
-          {status.status === "SUSPENDED" ? (
+          {status.status === "SUSPENDED" && !locked ? (
             <Button type="button" variant="ghost" size="icon" aria-label="Unsuspend Google account" title="Unsuspend Google account" onClick={() => setDialog("unsuspend")}>
               <Play size={15} />
             </Button>
@@ -185,7 +212,22 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
               <RefreshCw size={15} />
             </Button>
           ) : null}
-          {status.linked ? (
+          {status.linked && !locked && status.status !== "MISSING" ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Change recovery email"
+              title="Change recovery email"
+              onClick={() => {
+                setRecoveryEmail("");
+                setDialog("recovery");
+              }}
+            >
+              <Mail size={15} />
+            </Button>
+          ) : null}
+          {status.linked && !locked ? (
             <Button
               type="button"
               variant="ghost"
@@ -196,7 +238,8 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
             >
               <KeyRound size={15} />
             </Button>
-          ) : (
+          ) : null}
+          {!status.linked && !locked ? (
             <Button
               type="button"
               variant="ghost"
@@ -207,7 +250,7 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
             >
               <UserPlus size={15} />
             </Button>
-          )}
+          ) : null}
         </div>
       ) : null}
 
@@ -248,7 +291,53 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
       ) : null}
 
       {dialog === "instructions" ? (
-        <GoogleInstructionsDialog title="Sign-in Instructions" email={email} onClose={() => setDialog(null)} />
+        <GoogleInstructionsDialog
+          title="Sign-in Instructions"
+          email={email}
+          maskedRecovery={currentRecovery}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
+
+      {dialog === "recovery" ? (
+        <CrudDialog
+          title="Change Recovery Email"
+          description="Google sends the reset code here. The address goes to Google only and is not kept in Central."
+          panelClassName="max-w-lg"
+          onClose={() => setDialog(null)}
+          footer={
+            <>
+              <Button type="button" variant="secondary" onClick={() => setDialog(null)}>
+                Cancel
+              </Button>
+              <Button type="button" loading={changeRecovery.isPending} disabled={Boolean(recoveryProblem)} onClick={() => changeRecovery.mutate()}>
+                Change
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-(--mws-muted)">
+              {recoveryQuery.isPending ? "Reading from Google..." : currentRecovery ? `Now: ${currentRecovery}` : "No recovery email is set."}
+            </p>
+            <Field
+              label="New Recovery Email"
+              required
+              counter={{ value: recoveryEmail, max: 100, count: textLength }}
+              error={recoveryEmail.trim() ? recoveryProblem || undefined : undefined}
+              hint="A personal address, not an organization address."
+            >
+              <TextInput
+                type="email"
+                maxLength={100}
+                value={recoveryEmail}
+                invalid={Boolean(recoveryEmail.trim() && recoveryProblem)}
+                placeholder="name@gmail.com"
+                onChange={(event) => setRecoveryEmail(sanitizeEmail(event.target.value))}
+              />
+            </Field>
+          </div>
+        </CrudDialog>
       ) : null}
 
       {dialog === "restore" ? (

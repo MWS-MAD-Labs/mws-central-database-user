@@ -16,6 +16,43 @@ function setup(statusData, extraRoutes = []) {
 }
 
 describe('GoogleAccountRow', () => {
+  it('hides the ways to open the account for someone who left', async () => {
+    setup(status({ status: 'SUSPENDED', locked: true, locked_reason: 'RESIGNED', last_error: 'Suspended in Google after RESIGNED' }))
+    expect(await screen.findByText(/Locked because the person left \(RESIGNED\)/)).toBeVisible()
+    for (const name of ['Unsuspend Google account', 'Reset Google password', 'Change recovery email', 'Sign-in instructions', 'Create Google account']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    }
+    expect(screen.getByRole('button', { name: 'Check Google again' })).toBeVisible()
+  })
+
+  it('tells when the person left but the account is still active', async () => {
+    setup(status({ locked: true, locked_reason: 'ARCHIVED' }))
+    expect(await screen.findByText(/The person has left, but the Google account is still active/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Suspend Google account' })).toBeVisible()
+  })
+
+  it('shows the recovery email hidden and sends the new one', async () => {
+    const { user, fetchMock } = setup(status(), [
+      { path: '/api/admin/employees/e1/google/recovery-email', method: 'GET', response: jsonResponse({ data: { recovery_email: 'b***@gmail.com' } }) },
+      { path: '/api/admin/employees/e1/google/recovery-email', method: 'POST', response: jsonResponse({ data: true }) },
+    ])
+    await user.click(await screen.findByRole('button', { name: 'Change recovery email' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Change Recovery Email' })
+    expect(await within(dialog).findByText('Now: b***@gmail.com')).toBeVisible()
+    const change = within(dialog).getByRole('button', { name: 'Change' })
+    expect(change).toBeDisabled()
+    await user.type(within(dialog).getByPlaceholderText('name@gmail.com'), 'baru@millennia21.id')
+    expect(change).toBeDisabled()
+    await user.clear(within(dialog).getByPlaceholderText('name@gmail.com'))
+    await user.type(within(dialog).getByPlaceholderText('name@gmail.com'), 'baru@gmail.com')
+    await user.click(change)
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([url, options]) => String(url).endsWith('/google/recovery-email') && options.method === 'POST' && JSON.parse(options.body).recovery_email === 'baru@gmail.com'),
+      ).toBe(true),
+    )
+  })
+
   it('restores a deleted account after asking', async () => {
     const { user, fetchMock } = setup(
       status({ status: 'MISSING', last_error: 'Deleted in Google, can be restored for about 20 days', restorable_until: new Date(Date.now() + 5 * 86_400_000).toISOString() }),

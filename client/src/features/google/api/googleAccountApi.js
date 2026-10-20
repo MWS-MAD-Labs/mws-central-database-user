@@ -28,4 +28,16 @@ export const googleAccountApi = {
     const response = await apiRequest(`/api/admin/${resource}/${id}/google/${suspended ? 'suspend' : 'unsuspend'}`, { method: 'POST' })
     return response.data
   },
+  // The recovery email is read from Google each time, hidden ("b***@gmail.com"). Central does not keep it.
+  async recoveryEmail(resource, id) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/recovery-email`)
+    return response.data
+  },
+  async changeRecoveryEmail(resource, id, recoveryEmail) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/recovery-email`, {
+      method: 'POST',
+      body: { recovery_email: recoveryEmail },
+    })
+    return response.data
+  },
 }
