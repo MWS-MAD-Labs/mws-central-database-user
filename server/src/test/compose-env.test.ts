@@ -18,6 +18,7 @@ const OPTIONAL_DEPLOY_VARIABLES = [
   "GOOGLE_WORKSPACE_ENABLED",
   "GOOGLE_WORKSPACE_CREDENTIALS_B64",
   "GOOGLE_WORKSPACE_ADMIN_SUBJECT",
+  "GOOGLE_WORKSPACE_TEST_PREFIX",
 ];
 
 function sourceFiles(dir: string, out: string[] = []): string[] {

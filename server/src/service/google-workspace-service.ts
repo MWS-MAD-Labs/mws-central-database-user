@@ -2,6 +2,7 @@ import { randomInt } from "node:crypto";
 import {
   AuditSource,
   GoogleSyncStatus,
+  IntegrationEnvironment,
   PersonType,
   type AdminUser,
   type Person,
@@ -9,7 +10,8 @@ import {
 import { ResponseError } from "../error/response-error";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
-import { getDirectoryClient } from "../lib/google-workspace";
+import { getDirectoryClient, testPrefix } from "../lib/google-workspace";
+import { getIntegrationEnvironment } from "../utils/integration-environment";
 import { DirectoryError, type DirectoryUser } from "../lib/google-workspace/directory-client";
 import type { AuditRequestContext, EntityAuditAction } from "../model/audit-log-model";
 import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
@@ -50,7 +52,9 @@ function organizationalUnitFor(person: Pick<Person, "person_type">): string | un
   return process.env[key]?.trim() || undefined;
 }
 
-// Only people held in Central, on the organization's domain, and never an admin account.
+// Only people held in Central, on the organization's domain, and never an admin account. Outside production, a client
+// that talks to the real Google only takes addresses that start with GOOGLE_WORKSPACE_TEST_PREFIX, because staging and
+// development share the production Workspace.
 export function assertAllowedTarget(email: string): void {
   const domain = process.env.ALLOWED_DOMAIN?.trim().toLowerCase();
   if (!domain || !email.toLowerCase().endsWith(`@${domain}`)) {
@@ -58,6 +62,16 @@ export function assertAllowedTarget(email: string): void {
   }
   if (isProtectedSuperAdminEmail(email)) {
     throw new ResponseError(400, "A protected admin account is not managed from here");
+  }
+  const client = getDirectoryClient();
+  if (client.mode === "google" && getIntegrationEnvironment() !== IntegrationEnvironment.PRODUCTION) {
+    const prefix = testPrefix();
+    if (!prefix || !email.toLowerCase().startsWith(prefix)) {
+      throw new ResponseError(
+        400,
+        `Outside production only test addresses starting with "${prefix}" are sent to Google`,
+      );
+    }
   }
 }
 

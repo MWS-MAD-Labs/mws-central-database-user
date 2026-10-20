@@ -4,18 +4,23 @@ import type { DirectoryClient } from "./directory-client";
 import { readServiceAccountKey, RealDirectoryClient } from "./real-directory-client";
 import { SimulatedDirectoryClient } from "./simulated-directory-client";
 
+// The start of the address of every account that may be made outside production. Lowercase, or empty.
+export const testPrefix = () => (process.env.GOOGLE_WORKSPACE_TEST_PREFIX ?? "").trim().toLowerCase();
+
 let cached: DirectoryClient | null = null;
 let override: DirectoryClient | null = null;
 
 // Only production, with the switch on and the credentials set, talks to the real Workspace. Staging and development
-// share that Workspace, so they get the simulated client.
+// share that Workspace, so they get the simulated client. To try it for real from somewhere else, set
+// GOOGLE_WORKSPACE_TEST_PREFIX as well: then only addresses that start with that prefix are sent to Google (see
+// assertAllowedTarget), so nothing but test accounts can be touched.
 export function getDirectoryClient(): DirectoryClient {
   if (override) return override;
   if (cached) return cached;
 
   const live =
-    getIntegrationEnvironment() === IntegrationEnvironment.PRODUCTION &&
-    process.env.GOOGLE_WORKSPACE_ENABLED === "true";
+    process.env.GOOGLE_WORKSPACE_ENABLED === "true" &&
+    (getIntegrationEnvironment() === IntegrationEnvironment.PRODUCTION || Boolean(testPrefix()));
   if (!live) {
     cached = new SimulatedDirectoryClient();
     return cached;

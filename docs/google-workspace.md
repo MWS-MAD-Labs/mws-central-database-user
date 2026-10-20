@@ -4,7 +4,17 @@ Central makes and keeps the Google Workspace account of every employee and inter
 
 ## What runs where
 
-Only a production Central with `GOOGLE_WORKSPACE_ENABLED=true` talks to the real Workspace. Staging and development share that Workspace, so they use a simulated client that only writes to the log ("would create ..."). The Employee and Intern detail pages show **Simulated** next to the Google account there.
+Only a production Central with `GOOGLE_WORKSPACE_ENABLED=true` talks to the real Workspace, or any other one that also has `GOOGLE_WORKSPACE_TEST_PREFIX` set (then only addresses with that prefix go to Google). Staging and development share that Workspace, so otherwise they use a simulated client that only writes to the log ("would create ..."). The Employee and Intern detail pages show **Simulated** next to the Google account there.
+
+## Trying it for real from your own machine (or staging)
+
+Only addresses that start with a test prefix are sent to Google, so nothing else in the Workspace can be touched:
+
+1. Put the same four variables as production in the `.env` of the server you run (`GOOGLE_WORKSPACE_ENABLED=true`, `GOOGLE_WORKSPACE_ADMIN_SUBJECT`, `GOOGLE_WORKSPACE_CREDENTIALS_B64`) and add `GOOGLE_WORKSPACE_TEST_PREFIX=test.central.` (any prefix you choose, lowercase). `DEPLOYMENT_ENVIRONMENT` can stay `development`.
+2. Create an employee or intern whose email starts with that prefix, for example `test.central.budi@millennia21.id`, and a recovery email of your own. The Google account row should say **Linked** and no longer **Simulated**.
+3. Any other address stays untouched and the row stays **Not created** (asking for it by hand answers with the prefix rule).
+4. Afterwards delete the test accounts in the Admin Console: Directory > Users > the user > More options > Delete user. A deleted user can be restored for about 20 days, and you can suspend instead. Central never deletes Google accounts. Archive the test employee in Central as well.
+5. Remove `GOOGLE_WORKSPACE_TEST_PREFIX` when done: without it a non-production server goes back to the simulated client.
 
 ## Setting it up (once)
 
@@ -19,6 +29,7 @@ Only a production Central with `GOOGLE_WORKSPACE_ENABLED=true` talks to the real
 | `GOOGLE_WORKSPACE_ENABLED` | `true` |
 | `GOOGLE_WORKSPACE_ADMIN_SUBJECT` | the admin above |
 | `GOOGLE_WORKSPACE_CREDENTIALS_B64` | the service account JSON, base64 on one line (`base64 -w0 key.json`) |
+| `GOOGLE_WORKSPACE_TEST_PREFIX` | leave empty in production. Only for trying it from elsewhere, see above |
 | `GOOGLE_OU_EMPLOYEE`, `GOOGLE_OU_INTERN`, `GOOGLE_OU_STUDENT` | optional, the org unit path for each kind, for example `/Employees` |
 
 The key is a secret. Keep it out of Git and out of chat, and make a new one if it was ever shared.

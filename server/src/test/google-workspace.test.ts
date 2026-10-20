@@ -91,8 +91,11 @@ describe("google workspace accounts", () => {
     master = await MasterDataTest.create();
     google = new FakeDirectory();
     setDirectoryClientForTests(google);
+    // The fake says it is Google, so outside production the test prefix applies, like for a real one.
+    process.env.GOOGLE_WORKSPACE_TEST_PREFIX = "test_google";
   });
   afterEach(async () => {
+    delete process.env.GOOGLE_WORKSPACE_TEST_PREFIX;
     setDirectoryClientForTests(null);
     await AuditLogTest.delete();
     await AdminUserTest.delete();
@@ -192,6 +195,19 @@ describe("google workspace accounts", () => {
     expect((await personOf(json.data.id)).google_sync_status).toBe(GoogleSyncStatus.FAILED);
     expect(google.created).toHaveLength(0);
     expect(google.updated).toHaveLength(0);
+  });
+
+  it("outside production, only sends test addresses to a Google that is real", async () => {
+    process.env.GOOGLE_WORKSPACE_TEST_PREFIX = "test.central.";
+    const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+    const { json } = await create(accessToken);
+    expect(google.created).toHaveLength(0);
+    const person = await personOf(json.data.id);
+    expect(person.google_sync_status).toBe(GoogleSyncStatus.NONE);
+    // Asked for by hand, it says why.
+    const retry = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/provision`, { recovery_email: "me@gmail.com" }, accessToken);
+    expect(retry.status).toBe(400);
+    expect(JSON.stringify(await retry.json())).toContain("test.central.");
   });
 
   it("refuses a recovery email that is an organization address", async () => {
