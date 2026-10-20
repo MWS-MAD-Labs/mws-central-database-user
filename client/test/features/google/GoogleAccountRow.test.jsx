@@ -20,6 +20,12 @@ describe('GoogleAccountRow', () => {
     setup(status({ status: 'MISSING', last_error: 'Deleted in Google, can be restored for about 20 days', password_state: null }))
     expect(await screen.findByText('Deleted in Google')).toBeVisible()
     expect(screen.getByText(/Can be restored for about 20 days. Restore it in the Admin Console, then check again/)).toBeVisible()
+  })
+
+  it('counts down the days left to restore a deleted account', async () => {
+    const until = new Date(Date.now() + 12 * 86_400_000 - 3_600_000).toISOString()
+    setup(status({ status: 'MISSING', last_error: 'Deleted in Google, can be restored for about 20 days', restorable_until: until }))
+    expect(await screen.findByText(/Can be restored for 12 more days, until/)).toBeVisible()
     expect(screen.queryByText(/^Deleted in Google, can be restored/)).not.toBeInTheDocument()
   })
 

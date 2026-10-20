@@ -22,6 +22,14 @@ const BADGES = {
 const formatDay = (value) =>
   new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
+// Google keeps a deleted account for 20 days. Counts down from the day it reports.
+function restoreNote(status) {
+  if (!status.restorable_until) return "Can be restored for about 20 days.";
+  const left = Math.ceil((new Date(status.restorable_until).getTime() - Date.now()) / 86_400_000);
+  if (left <= 0) return "The restore period ends today.";
+  return `Can be restored for ${left} more ${left === 1 ? "day" : "days"}, until ${formatDay(status.restorable_until)}.`;
+}
+
 // The password line of an account that is linked: whether the person has set their own yet.
 function passwordNote(status) {
   if (status.status !== "ACTIVE") return null;
@@ -106,7 +114,7 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
         ) : null}
         {deleted ? (
           <span className="w-full text-xs text-[#a43c41]">
-            Can be restored for about 20 days. Restore it in the Admin Console, then check again.
+            {restoreNote(status)} Restore it in the Admin Console, then check again.
           </span>
         ) : null}
         {note ? (
