@@ -79,6 +79,7 @@ describe('Employee create and edit pages', () => {
     await user.type(field('full_name').querySelector('input'), 'ari employee')
     await user.type(field('nick_name').querySelector('input'), 'ari')
     await user.type(field('email_local').querySelector('input'), 'ari.employee')
+    await user.type(field('recovery_email').querySelector('input'), 'ari.pribadi@gmail.com')
     await user.click(screen.getByRole('button', { name: 'Select Gender' }))
     await user.click(screen.getByRole('option', { name: 'Male' }))
     await user.click(screen.getByRole('button', { name: 'Select Religion' }))

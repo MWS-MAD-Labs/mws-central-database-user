@@ -94,6 +94,10 @@ describe('EmployeeForm', () => {
     await user.type(field('full_name').querySelector('input'), 'ari employee')
     await user.type(field('nick_name').querySelector('input'), 'ari')
     await user.type(field('email_local').querySelector('input'), 'ari.employee!')
+    // The symbol is not accepted in the first place.
+    expect(field('email_local').querySelector('input').value).toBe('ari.employee')
+    await user.type(field('recovery_email').querySelector('input'), 'Ari+Pribadi@Gmail.com')
+    expect(field('recovery_email').querySelector('input').value).toBe('aripribadi@gmail.com')
     await chooseSelect(user, 'Select Gender', 'Male')
     await chooseSelect(user, 'Select Religion', 'Islam')
     await user.type(field('birth_place').querySelector('input'), 'jakarta')
@@ -116,6 +120,7 @@ describe('EmployeeForm', () => {
       full_name: 'Ari Employee',
       nick_name: 'Ari',
       email: 'ari.employee@millennia21.id',
+      recovery_email: 'aripribadi@gmail.com',
       gender: 'MALE',
       religion: 'ISLAM',
       religion_other: null,
@@ -131,6 +136,24 @@ describe('EmployeeForm', () => {
       mobile_phone: '+628123456',
     })
     expect(onSubmit.mock.calls[0][1]).toBeNull()
+  })
+
+  it('does not let the form pass without a recovery email, or with an organization one', async () => {
+    const { user, onSubmit } = renderEmployeeForm({ mode: 'create' })
+    await user.type(field('full_name').querySelector('input'), 'ari employee')
+    await user.type(field('email_local').querySelector('input'), 'ari.employee')
+    fireEvent.submit(document.querySelector('form'))
+    expect(await screen.findByText('Recovery email is required.')).toBeVisible()
+
+    await user.type(field('recovery_email').querySelector('input'), 'ari@millennia21.id')
+    expect(await screen.findByText(/personal address/)).toBeVisible()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('shows what is wrong with an email that ends on a separator', async () => {
+    const { user } = renderEmployeeForm({ mode: 'create' })
+    await user.type(field('email_local').querySelector('input'), 'ari.')
+    expect(await screen.findByText(/Use only letters, numbers, dots/)).toBeVisible()
   })
 
   it('shows conditional religion and contract fields', async () => {

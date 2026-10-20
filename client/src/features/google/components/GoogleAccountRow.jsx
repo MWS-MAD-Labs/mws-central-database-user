@@ -5,6 +5,7 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { emailProblem, sanitizeEmail } from "../../../lib/form.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { googleAccountApi } from "../api/googleAccountApi.js";
 
@@ -22,11 +23,15 @@ export function GoogleAccountRow({ resource, id, canManage }) {
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [password, setPassword] = useState(null);
   const queryKey = ["google-account", resource, id];
+  // Needed for the person to get in: Google sends the reset code there.
+  const recoveryProblem = !recoveryEmail.trim()
+    ? "Recovery email is required."
+    : emailProblem(recoveryEmail) || (recoveryEmail.trim().toLowerCase().endsWith("@millennia21.id") ? "Use a personal address, not an organization address." : null);
   const statusQuery = useQuery({ queryKey, queryFn: () => googleAccountApi.status(resource, id) });
   const status = statusQuery.data;
 
   const provision = useMutation({
-    mutationFn: () => googleAccountApi.provision(resource, id, recoveryEmail.trim() ? { recovery_email: recoveryEmail.trim() } : {}),
+    mutationFn: () => googleAccountApi.provision(resource, id, { recovery_email: recoveryEmail.trim() }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey });
       setDialog(null);
@@ -107,18 +112,24 @@ export function GoogleAccountRow({ resource, id, canManage }) {
               <Button type="button" variant="secondary" onClick={() => setDialog(null)}>
                 Cancel
               </Button>
-              <Button type="button" loading={provision.isPending} onClick={() => provision.mutate()}>
+              <Button type="button" loading={provision.isPending} disabled={Boolean(recoveryProblem)} onClick={() => provision.mutate()}>
                 Create
               </Button>
             </>
           }
         >
-          <Field label="Recovery Email" hint="A personal address. Google sends the reset code there. It is not kept here.">
+          <Field
+            label="Recovery Email"
+            required
+            error={recoveryEmail.trim() ? recoveryProblem || undefined : undefined}
+            hint="A personal address. Google sends the reset code there. It is not kept here."
+          >
             <TextInput
               type="email"
               value={recoveryEmail}
+              invalid={Boolean(recoveryEmail.trim() && recoveryProblem)}
               placeholder="name@gmail.com"
-              onChange={(event) => setRecoveryEmail(event.target.value)}
+              onChange={(event) => setRecoveryEmail(sanitizeEmail(event.target.value))}
             />
           </Field>
         </CrudDialog>

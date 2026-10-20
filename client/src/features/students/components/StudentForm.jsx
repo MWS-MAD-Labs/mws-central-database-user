@@ -31,6 +31,8 @@ import {
   textLength,
   trimmedOrUndefined,
   visibleErrors,
+  emailProblem,
+  sanitizeEmailLocalPart,
 } from "../../../lib/form.js";
 import {
   enumOptions,
@@ -965,10 +967,6 @@ function buildEmail(localPart) {
   return trimmed ? `${trimmed}@${ALLOWED_EMAIL_DOMAIN}` : undefined;
 }
 
-function sanitizeEmailLocalPart(value) {
-  return String(value || "").replace(/[^a-zA-Z0-9._%+-]/g, "");
-}
-
 const REQUIRED_FIELD_LABELS = {
   full_name: "Full name",
   nick_name: "Nick name",
@@ -1047,6 +1045,10 @@ function computeStudentErrors(values, isCreate) {
         errors[field] = `${label} is required.`;
       }
     }
+  }
+  if (values.email_local) {
+    const problem = emailProblem(`${values.email_local}@${ALLOWED_EMAIL_DOMAIN}`);
+    if (problem) errors.email_local = problem;
   }
   if (values.religion === "OTHER" && !values.religion_other) {
     errors.religion_other = "Religion (Please Specify) is required.";

@@ -48,6 +48,9 @@ import {
   trimmedOrUndefined,
   visibleErrors,
   yearsBetweenDateInputs,
+  emailProblem,
+  sanitizeEmail,
+  sanitizeEmailLocalPart,
 } from "../../../lib/form.js";
 import {
   enumOptions,
@@ -670,15 +673,19 @@ export function EmployeeForm({
             {isCreate ? (
               <Field
                 label="Recovery Email"
+                name="recovery_email"
+                error={errors.recovery_email}
+                required={hasAttemptedSubmit}
                 hint="A personal address for the new Google account. Google sends the reset code there. It is not kept here."
               >
                 <TextInput
                   type="email"
+                  invalid={Boolean(errors.recovery_email)}
                   value={values.recovery_email}
                   maxLength={100}
                   placeholder="name@gmail.com"
                   onChange={(event) =>
-                    updateValue("recovery_email", event.target.value)
+                    updateValue("recovery_email", sanitizeEmail(event.target.value))
                   }
                 />
               </Field>
@@ -1698,10 +1705,6 @@ function emailLocalPart(email) {
   return at === -1 ? email : email.slice(0, at);
 }
 
-function sanitizeEmailLocalPart(value) {
-  return String(value || "").replace(/[^a-zA-Z0-9._%+-]/g, "");
-}
-
 function buildEmail(localPart) {
   const trimmed = trimmedOrUndefined(localPart);
   return trimmed ? `${trimmed}@${ALLOWED_EMAIL_DOMAIN}` : undefined;
@@ -1749,6 +1752,7 @@ const REQUIRED_FIELD_LABELS = {
   full_name: "Full name",
   nick_name: "Nick name",
   email_local: "Email",
+  recovery_email: "Recovery email",
   gender: "Gender",
   religion: "Religion",
   birth_place: "Birth place",
@@ -1868,6 +1872,18 @@ function computeEmployeeErrors(
         errors[field] = `${label} is required.`;
       }
     }
+  }
+  if (values.email_local) {
+    const problem = emailProblem(`${values.email_local}@${ALLOWED_EMAIL_DOMAIN}`);
+    if (problem) errors.email_local = problem;
+  }
+  if (isCreate && values.recovery_email) {
+    const problem =
+      emailProblem(values.recovery_email) ||
+      (values.recovery_email.trim().toLowerCase().endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)
+        ? "Use a personal address, not an organization address."
+        : null);
+    if (problem) errors.recovery_email = problem;
   }
   if (
     findProblemsFor(values.children, {

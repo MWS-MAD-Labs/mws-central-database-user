@@ -13,7 +13,7 @@ import {
 } from '../../../../components/ui/FormControls.jsx'
 import { PanelMessage } from '../../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
-import { capitalizeWords, cleanPayload, trimmedOrUndefined } from '../../../../lib/form.js'
+import { capitalizeWords, cleanPayload, emailProblem, sanitizeEmail, trimmedOrUndefined } from '../../../../lib/form.js'
 import { enumOptions, formatStatus } from '../../../../lib/format.js'
 import { parentTypes, studentSensitiveApi } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame, SensitiveDataReveal } from './panelPrimitives.jsx'
@@ -215,11 +215,14 @@ function ParentDialog({ dialog, siblings = [], isSubmitting, onClose, onSubmit }
   }
   const fullNameError =
     hasAttemptedSubmit && !values.full_name.trim() ? 'Full name is required.' : undefined
+  // An email saved before the rule keeps working: it is only checked when it is changed.
+  const emailChanged = values.email.trim().toLowerCase() !== (dialog.record?.email || '').toLowerCase()
+  const emailError = (emailChanged ? emailProblem(values.email) : null) || undefined
 
   function submit(event) {
     event.preventDefault()
     setHasAttemptedSubmit(true)
-    if (!values.full_name.trim()) return
+    if (!values.full_name.trim() || emailError) return
     onSubmit(cleanPayload({
       type: values.type,
       full_name: trimmedOrUndefined(values.full_name),
@@ -273,6 +276,8 @@ function ParentDialog({ dialog, siblings = [], isSubmitting, onClose, onSubmit }
           max={100}
           type="email"
           values={values}
+          errors={{ email: emailError }}
+          transform={sanitizeEmail}
           updateValue={(field, value) =>
             setValues((current) => ({ ...current, [field]: value }))
           }
