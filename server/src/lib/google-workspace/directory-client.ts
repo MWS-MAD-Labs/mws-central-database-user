@@ -8,7 +8,10 @@ export type DirectoryUser = {
   suspended: boolean;
   // A Workspace admin. Central never changes these.
   isAdmin: boolean;
+  // True until the person has set their own password.
   changePasswordAtNextLogin: boolean;
+  // null when they never signed in.
+  lastLoginTime: Date | null;
 };
 
 export type CreateDirectoryUser = {
@@ -43,6 +46,11 @@ export interface DirectoryClient {
   readonly mode: "google" | "simulated";
   // null when Google has no such user.
   findUser(userKey: string): Promise<DirectoryUser | null>;
+  // A user deleted in Google, still inside the restore window (about 20 days), found by email. Its address is still
+  // reserved. null when none, or when Google cannot say.
+  findDeletedUser(email: string): Promise<DirectoryUser | null>;
+  // Every user of the Workspace, or every deleted one that can still be restored. For checking many people in one go.
+  listUsers(options: { deleted: boolean }): Promise<DirectoryUser[]>;
   createUser(input: CreateDirectoryUser): Promise<DirectoryUser>;
   updateUser(userKey: string, patch: UpdateDirectoryUser): Promise<DirectoryUser>;
   // Always asks for a new password at the next login.

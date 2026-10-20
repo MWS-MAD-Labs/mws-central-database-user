@@ -208,6 +208,10 @@ enum GoogleSyncStatus {
   PENDING
   ACTIVE
   FAILED
+  // Google says the account is suspended.
+  SUSPENDED
+  // Not in Google any more: deleted (restorable for about 20 days) or gone.
+  MISSING
 }
 
 enum AuditAction {
@@ -705,6 +709,13 @@ model Person {
   google_synced_at   DateTime?
   // Why the last call to Google failed, in plain words. Never holds a password or a key.
   google_last_error  String?
+  // Last time Central asked Google how the account is doing.
+  google_checked_at  DateTime?
+  // True until the person sets their own password. null when Google has not been asked.
+  google_password_pending   Boolean?
+  // When the temporary or unknown password was issued (account created or password reset by an admin).
+  google_password_issued_at DateTime?
+  google_last_login_at      DateTime?
   created_at       DateTime   @default(now())
   updated_at       DateTime   @updatedAt
   deleted_at       DateTime?

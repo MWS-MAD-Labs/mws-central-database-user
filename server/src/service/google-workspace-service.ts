@@ -21,6 +21,14 @@ import { AuditService } from "./audit-service";
 // Central makes and updates the Google Workspace account behind a person's email. A person who is in Central gets an
 // account in Google, so signing in with Google works for every email Central holds.
 
+// How long a new account may wait for its owner to set a password before it is flagged.
+export const PASSWORD_PENDING_WARN_DAYS = 7;
+// A status read from Google this recently is shown as it is.
+const STATUS_FRESH_MS = 5 * 60 * 1000;
+
+const DELETED_MESSAGE =
+  "This email belongs to a Google account that was deleted less than 20 days ago, so it cannot be reused yet. Use another address, or restore that account in the Admin Console if it is the same person";
+
 const PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
 
 export type GoogleSyncResult = {
@@ -104,10 +112,24 @@ async function assertNotLinkedElsewhere(googleUserId: string, personId: string):
   }
 }
 
+// What Google says about the account, kept so the page can show it without asking again.
+function readingOf(user: DirectoryUser) {
+  return {
+    google_checked_at: new Date(),
+    google_password_pending: user.changePasswordAtNextLogin,
+    google_last_login_at: user.lastLoginTime,
+  };
+}
+
 async function markStatus(
   personId: string,
   status: GoogleSyncStatus,
-  extra: { google_user_id?: string | null; error?: string | null } = {},
+  extra: {
+    google_user_id?: string | null;
+    error?: string | null;
+    user?: DirectoryUser;
+    passwordIssued?: boolean;
+  } = {},
 ): Promise<void> {
   await prismaClient.person.update({
     where: { id: personId },
@@ -116,6 +138,8 @@ async function markStatus(
       google_synced_at: status === GoogleSyncStatus.ACTIVE ? new Date() : undefined,
       google_last_error: extra.error ?? null,
       ...(extra.google_user_id !== undefined ? { google_user_id: extra.google_user_id } : {}),
+      ...(extra.user ? readingOf(extra.user) : {}),
+      ...(extra.passwordIssued ? { google_password_issued_at: new Date() } : {}),
     },
   });
 }
@@ -152,7 +176,7 @@ async function load(personId: string): Promise<GooglePerson> {
 export type EmailAvailability = {
   // False only when the email cannot be used for a new person.
   available: boolean;
-  reason: "FREE" | "IN_CENTRAL" | "IN_GOOGLE" | "NOT_ALLOWED" | "INVALID" | "NOT_CHECKED" | "CHECK_FAILED";
+  reason: "FREE" | "IN_CENTRAL" | "IN_GOOGLE" | "DELETED_IN_GOOGLE" | "NOT_ALLOWED" | "INVALID" | "NOT_CHECKED" | "CHECK_FAILED";
   message: string;
   mode: "google" | "simulated";
 };
@@ -188,10 +212,12 @@ export class GoogleWorkspaceService {
       return answer("NOT_CHECKED", true, "Not checked against Google in this environment");
     }
     try {
-      const existing = await client.findUser(email);
-      return existing
-        ? answer("IN_GOOGLE", false, "This email already has a Google account")
-        : answer("FREE", true, "Available");
+      if (await client.findUser(email)) {
+        return answer("IN_GOOGLE", false, "This email already has a Google account");
+      }
+      // A deleted account keeps its address reserved until Google clears it.
+      if (await client.findDeletedUser(email)) return answer("DELETED_IN_GOOGLE", false, DELETED_MESSAGE);
+      return answer("FREE", true, "Available");
     } catch (error) {
       logger.error("Google email availability check failed", error);
       return answer("CHECK_FAILED", true, "Could not check Google, try again");
@@ -201,7 +227,7 @@ export class GoogleWorkspaceService {
   // For the form that creates a person: it is not written when Google already has the email or would not take it.
   static async assertCanCreate(email: string): Promise<void> {
     const check = await this.checkEmailAvailable(email);
-    if (check.reason === "IN_GOOGLE" || check.reason === "NOT_ALLOWED") {
+    if (check.reason === "IN_GOOGLE" || check.reason === "DELETED_IN_GOOGLE" || check.reason === "NOT_ALLOWED") {
       throw new ResponseError(400, check.message);
     }
   }
@@ -225,19 +251,31 @@ export class GoogleWorkspaceService {
       }
       if (!user) {
         const { givenName, familyName } = splitName(person.full_name);
-        user = await client.createUser({
-          primaryEmail: person.email,
-          givenName,
-          familyName,
-          password: generateTemporaryPassword(24),
-          recoveryEmail: options.recoveryEmail,
-          orgUnitPath: organizationalUnitFor(person),
-        });
+        try {
+          user = await client.createUser({
+            primaryEmail: person.email,
+            givenName,
+            familyName,
+            password: generateTemporaryPassword(24),
+            recoveryEmail: options.recoveryEmail,
+            orgUnitPath: organizationalUnitFor(person),
+          });
+        } catch (error) {
+          // Google has no such user yet refuses the address: it is held by an account deleted not long ago.
+          if (error instanceof DirectoryError && error.code === "EXISTS") {
+            throw new DirectoryError("EXISTS", DELETED_MESSAGE);
+          }
+          throw error;
+        }
         outcome = "created";
       }
 
       await assertNotLinkedElsewhere(user.id, person.id);
-      await markStatus(person.id, GoogleSyncStatus.ACTIVE, { google_user_id: user.id });
+      await markStatus(person.id, GoogleSyncStatus.ACTIVE, {
+        google_user_id: user.id,
+        user,
+        passwordIssued: outcome === "created",
+      });
       await record("GOOGLE_ACCOUNT_PROVISION", person, options.admin, options.context ?? {}, {
         outcome,
         mode: client.mode,
@@ -268,7 +306,7 @@ export class GoogleWorkspaceService {
       const { givenName, familyName } = splitName(person.full_name);
       const user = await client.updateUser(person.google_user_id, { primaryEmail: person.email, givenName, familyName });
       await assertNotLinkedElsewhere(user.id, person.id);
-      await markStatus(person.id, GoogleSyncStatus.ACTIVE, { google_user_id: user.id });
+      await markStatus(person.id, GoogleSyncStatus.ACTIVE, { google_user_id: user.id, user });
       await record("GOOGLE_ACCOUNT_UPDATE", person, options.admin, options.context ?? {}, { mode: client.mode });
       return { status: GoogleSyncStatus.ACTIVE, google_user_id: user.id, outcome: "updated" };
     } catch (error) {
@@ -298,12 +336,16 @@ export class GoogleWorkspaceService {
     } catch (error) {
       logger.error(`Google password reset failed for person ${person.id}`, error);
       if (error instanceof DirectoryError && error.code === "NOT_FOUND") {
-        await markStatus(person.id, GoogleSyncStatus.FAILED, { error: error.message });
+        await markStatus(person.id, GoogleSyncStatus.MISSING, { error: "Not found in Google" });
         throw new ResponseError(404, "The account is not in Google Workspace any more. Create it again");
       }
       throw new ResponseError(502, messageOf(error));
     }
 
+    await prismaClient.person.update({
+      where: { id: person.id },
+      data: { google_password_pending: true, google_password_issued_at: new Date() },
+    });
     await record("GOOGLE_PASSWORD_RESET", person, admin, context, { mode: client.mode });
     return { password };
   }
@@ -322,18 +364,136 @@ export class GoogleWorkspaceService {
     }
   }
 
-  static async statusOf(personId: string) {
-    const person = await prismaClient.person.findFirst({
-      where: { id: personId, deleted_at: null },
-      select: { google_user_id: true, google_sync_status: true, google_synced_at: true, google_last_error: true },
+  // Ask Google how a linked account is doing and keep the answer. It only reads: nothing in Google is changed, and
+  // nothing in Central is blocked by the result. A Google that cannot be reached leaves the last answer as it was.
+  static async refreshStatus(personId: string): Promise<void> {
+    const person = await load(personId);
+    if (!person.google_user_id || person.google_sync_status === GoogleSyncStatus.PENDING) return;
+    const client = getDirectoryClient();
+    // The simulated Google forgets its users when the process restarts, so it cannot say who is missing.
+    if (client.mode === "simulated") return;
+    try {
+      assertAllowedTarget(person.email);
+    } catch {
+      return;
+    }
+
+    try {
+      const user = await client.findUser(person.google_user_id);
+      if (user) {
+        const suspended = user.suspended;
+        await markStatus(person.id, suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE, {
+          user,
+          error: suspended ? "Suspended in Google" : null,
+        });
+        return;
+      }
+      const deleted = await client.findDeletedUser(person.email);
+      await markStatus(person.id, GoogleSyncStatus.MISSING, {
+        error: deleted ? "Deleted in Google, can be restored for about 20 days" : "Not found in Google",
+      });
+      await prismaClient.person.update({
+        where: { id: person.id },
+        data: { google_checked_at: new Date(), google_password_pending: null },
+      });
+    } catch (error) {
+      logger.error(`Google status check failed for person ${person.id}`, error);
+    }
+  }
+
+  // Checks every linked account with two list calls instead of one call per person. Returns how many changed.
+  static async refreshAllStatuses(): Promise<number> {
+    const client = getDirectoryClient();
+    if (client.mode === "simulated") return 0;
+    const linked = await prismaClient.person.findMany({
+      where: {
+        deleted_at: null,
+        google_user_id: { not: null },
+        google_sync_status: { not: GoogleSyncStatus.PENDING },
+      },
+      select: { id: true, email: true, google_user_id: true, google_sync_status: true },
     });
+    if (linked.length === 0) return 0;
+
+    const [active, deleted] = await Promise.all([client.listUsers({ deleted: false }), client.listUsers({ deleted: true })]);
+    const activeById = new Map(active.map((user) => [user.id, user]));
+    const deletedIds = new Set(deleted.map((user) => user.id));
+
+    let changed = 0;
+    for (const person of linked) {
+      try {
+        assertAllowedTarget(person.email);
+      } catch {
+        continue;
+      }
+      const user = activeById.get(person.google_user_id as string);
+      let status: GoogleSyncStatus;
+      let error: string | null = null;
+      if (user) {
+        status = user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE;
+        if (user.suspended) error = "Suspended in Google";
+      } else {
+        status = GoogleSyncStatus.MISSING;
+        error = deletedIds.has(person.google_user_id as string)
+          ? "Deleted in Google, can be restored for about 20 days"
+          : "Not found in Google";
+      }
+      if (status !== person.google_sync_status) changed += 1;
+      await markStatus(person.id, status, { error, ...(user ? { user } : {}) });
+      if (!user) {
+        await prismaClient.person.update({ where: { id: person.id }, data: { google_password_pending: null } });
+      }
+    }
+    return changed;
+  }
+
+  // `refresh` forces a new look at Google. Without it Google is asked only when the last look is more than a few
+  // minutes old, so opening a page keeps the status honest.
+  static async statusOf(personId: string, options: { refresh?: boolean } = {}) {
+    const read = () =>
+      prismaClient.person.findFirst({
+        where: { id: personId, deleted_at: null },
+        select: {
+          google_user_id: true,
+          google_sync_status: true,
+          google_synced_at: true,
+          google_last_error: true,
+          google_checked_at: true,
+          google_password_pending: true,
+          google_password_issued_at: true,
+          google_last_login_at: true,
+        },
+      });
+    let person = await read();
     if (!person) throw new ResponseError(404, "Person not found");
+    const stale = !person.google_checked_at || Date.now() - person.google_checked_at.getTime() > STATUS_FRESH_MS;
+    if (person.google_user_id && (options.refresh || stale)) {
+      await this.refreshStatus(personId);
+      person = (await read()) ?? person;
+    }
     return {
       linked: Boolean(person.google_user_id),
       status: person.google_sync_status,
       synced_at: person.google_synced_at ? person.google_synced_at.toISOString() : null,
+      checked_at: person.google_checked_at ? person.google_checked_at.toISOString() : null,
       last_error: person.google_last_error,
+      password_state: passwordStateOf(person),
+      password_issued_at: person.google_password_issued_at ? person.google_password_issued_at.toISOString() : null,
+      last_login_at: person.google_last_login_at ? person.google_last_login_at.toISOString() : null,
       mode: getDirectoryClient().mode,
     };
   }
+}
+
+// null: Google has not said. PENDING: they have not set their own password yet. OVERDUE: still not, after a week.
+// SET: they have.
+export function passwordStateOf(
+  person: Pick<Person, "google_password_pending" | "google_password_issued_at">,
+  now = new Date(),
+): "PENDING" | "OVERDUE" | "SET" | null {
+  if (person.google_password_pending === null || person.google_password_pending === undefined) return null;
+  if (!person.google_password_pending) return "SET";
+  const issued = person.google_password_issued_at;
+  const waitedDays = issued ? (now.getTime() - issued.getTime()) / 86_400_000 : 0;
+  return waitedDays > PASSWORD_PENDING_WARN_DAYS ? "OVERDUE" : "PENDING";
 }

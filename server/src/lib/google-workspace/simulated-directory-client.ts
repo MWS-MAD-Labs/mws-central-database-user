@@ -22,6 +22,14 @@ export class SimulatedDirectoryClient implements DirectoryClient {
     return this.byKey(userKey) ?? null;
   }
 
+  async findDeletedUser(): Promise<DirectoryUser | null> {
+    return null;
+  }
+
+  async listUsers({ deleted }: { deleted: boolean }): Promise<DirectoryUser[]> {
+    return deleted ? [] : [...this.users.values()];
+  }
+
   async createUser(input: CreateDirectoryUser): Promise<DirectoryUser> {
     if (this.byKey(input.primaryEmail)) {
       throw new DirectoryError("EXISTS", "That email already exists in Google Workspace");
@@ -35,6 +43,7 @@ export class SimulatedDirectoryClient implements DirectoryClient {
       suspended: false,
       isAdmin: false,
       changePasswordAtNextLogin: true,
+      lastLoginTime: null,
     };
     this.users.set(user.id, user);
     logger.info(`[google simulated] would create ${input.primaryEmail}${input.recoveryEmail ? " with a recovery email" : ""}`);

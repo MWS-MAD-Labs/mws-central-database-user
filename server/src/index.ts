@@ -3,6 +3,7 @@ import { web } from "./application/web";
 import { logger } from "./lib/logger";
 import { EmployeeService } from "./service/employee-service";
 import { DisciplinaryActionService } from "./service/disciplinary-action-service";
+import { GoogleWorkspaceService } from "./service/google-workspace-service";
 import { PCActivityRoomService } from "./service/pc-activity-room-service";
 import { syncApiScopes } from "./lib/sync-api-scopes";
 import { validateChangeRequestApproverConfig } from "./utils/change-request-approver";
@@ -10,6 +11,8 @@ import { validateChangeRequestApproverConfig } from "./utils/change-request-appr
 const AUTO_RESIGN_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const DISCIPLINARY_ACTION_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const PC_ACTIVITY_ROOM_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
+const GOOGLE_STATUS_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1 day
 
 declare global {
   // eslint-disable-next-line no-var
@@ -20,6 +23,8 @@ declare global {
     | undefined;
   // eslint-disable-next-line no-var
   var __pcActivityRoomSweepInterval: ReturnType<typeof setInterval> | undefined;
+  // eslint-disable-next-line no-var
+  var __googleStatusSweepInterval: ReturnType<typeof setInterval> | undefined;
 }
 
 async function runAutoResignSweep(): Promise<void> {
@@ -62,6 +67,17 @@ async function runPcActivityRoomSweep(): Promise<void> {
   }
 }
 
+async function runGoogleStatusSweep(): Promise<void> {
+  try {
+    const count = await GoogleWorkspaceService.refreshAllStatuses();
+    if (count > 0) {
+      logger.info(`Google status sweep: ${count} account(s) changed status.`);
+    }
+  } catch (error) {
+    logger.error("Google status sweep failed", error);
+  }
+}
+
 // Clear intervals left by hot reloads.
 if (globalThis.__autoResignSweepInterval) {
   clearInterval(globalThis.__autoResignSweepInterval);
@@ -87,6 +103,14 @@ globalThis.__pcActivityRoomSweepInterval = setInterval(
   PC_ACTIVITY_ROOM_SWEEP_INTERVAL_MS,
 );
 
+if (globalThis.__googleStatusSweepInterval) {
+  clearInterval(globalThis.__googleStatusSweepInterval);
+}
+globalThis.__googleStatusSweepInterval = setInterval(
+  runGoogleStatusSweep,
+  GOOGLE_STATUS_SWEEP_INTERVAL_MS,
+);
+
 startApplicationHealthChecks();
 
 // The server must not accept traffic with a stale profile/scope catalog.
@@ -100,6 +124,7 @@ void (async () => {
   await runAutoResignSweep();
   await runDisciplinaryActionSweep();
   await runPcActivityRoomSweep();
+  await runGoogleStatusSweep();
   // Catch a misconfigured approver setup early instead of letting it fail
   // silently (no one able to approve identifier change requests).
   await validateChangeRequestApproverConfig().catch((error) =>

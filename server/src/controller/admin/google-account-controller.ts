@@ -35,7 +35,9 @@ export class GoogleAccountController {
   static status(kind: Kind) {
     return async (c: Context<{ Variables: AdminVariables }>) => {
       const personId = await personIdOf(kind, c.req.param("id"));
-      return c.json({ data: await GoogleWorkspaceService.statusOf(personId) });
+      // Looking again at Google on demand is for Super Admins.
+      const refresh = c.req.query("refresh") === "true" && c.var.admin.role === AdminRole.SUPER_ADMIN;
+      return c.json({ data: await GoogleWorkspaceService.statusOf(personId, { refresh }) });
     };
   }
 

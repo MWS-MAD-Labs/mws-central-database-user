@@ -30,7 +30,7 @@ import {
   type DirectoryUser,
   type UpdateDirectoryUser,
 } from "../lib/google-workspace/directory-client";
-import { generateTemporaryPassword, splitName } from "../service/google-workspace-service";
+import { GoogleWorkspaceService, generateTemporaryPassword, splitName } from "../service/google-workspace-service";
 import { detectImageMimeType } from "../utils/image-processing";
 import sharp from "sharp";
 
@@ -43,11 +43,23 @@ class FakeDirectory implements DirectoryClient {
   passwords: { userKey: string; password: string }[] = [];
   photos: { userKey: string; mimeType: string; size: number }[] = [];
   failCreateWith: DirectoryError | null = null;
+  // Users deleted in Google that can still be restored.
+  deleted = new Map<string, DirectoryUser>();
 
   async findUser(userKey: string) {
     return [...this.users.values()].find((user) => user.id === userKey || user.primaryEmail === userKey) ?? null;
   }
+  async findDeletedUser(email: string) {
+    return [...this.deleted.values()].find((user) => user.primaryEmail === email) ?? null;
+  }
+  async listUsers({ deleted }: { deleted: boolean }) {
+    return [...(deleted ? this.deleted : this.users).values()];
+  }
   async createUser(input: CreateDirectoryUser) {
+    // The address of a deleted account is still taken.
+    if ([...this.deleted.values()].some((user) => user.primaryEmail === input.primaryEmail)) {
+      throw new DirectoryError("EXISTS", "exists");
+    }
     if (this.failCreateWith) throw this.failCreateWith;
     this.created.push(input);
     const user: DirectoryUser = {
@@ -57,7 +69,7 @@ class FakeDirectory implements DirectoryClient {
       familyName: input.familyName,
       suspended: false,
       isAdmin: false,
-      changePasswordAtNextLogin: true,
+      changePasswordAtNextLogin: true, lastLoginTime: null,
     };
     this.users.set(user.id, user);
     return user;
@@ -164,7 +176,7 @@ describe("google workspace accounts", () => {
   it("links the account Google already has to a person who is already in Central", async () => {
     google.users.set("existing", {
       id: "existing", primaryEmail: "test_google_existing@millennia21.id", givenName: "A", familyName: "B",
-      suspended: false, isAdmin: false, changePasswordAtNextLogin: false,
+      suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
     });
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
     const person = await EmployeeTest.create({
@@ -199,7 +211,7 @@ describe("google workspace accounts", () => {
     });
     google.users.set("shared", {
       id: "shared", primaryEmail: "test_google_second@millennia21.id", givenName: "A", familyName: "B",
-      suspended: false, isAdmin: false, changePasswordAtNextLogin: false,
+      suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
     });
     const response = await TestRequest.post(`/api/admin/employees/${second.employee!.id}/google/provision`, {}, accessToken);
     const result = (await response.json()).data;
@@ -231,7 +243,7 @@ describe("google workspace accounts", () => {
   it("does not create a person whose email already has a Google account", async () => {
     google.users.set("existing", {
       id: "existing", primaryEmail: "test_google_taken@millennia21.id", givenName: "A", familyName: "B",
-      suspended: false, isAdmin: false, changePasswordAtNextLogin: false,
+      suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
     });
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
     const { response, json } = await create(accessToken, { email: "test_google_taken@millennia21.id" });
@@ -261,7 +273,7 @@ describe("google workspace accounts", () => {
   it("does not create a person on the email of a Workspace admin", async () => {
     google.users.set("boss", {
       id: "boss", primaryEmail: "test_google_boss@millennia21.id", givenName: "A", familyName: "B",
-      suspended: false, isAdmin: true, changePasswordAtNextLogin: false,
+      suspended: false, isAdmin: true, changePasswordAtNextLogin: false, lastLoginTime: null,
     });
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
     const { response } = await create(accessToken, { email: "test_google_boss@millennia21.id" });
@@ -289,7 +301,7 @@ describe("google workspace accounts", () => {
     it("says an email is free, taken in Google, taken in Central, or outside the domain", async () => {
       google.users.set("g1", {
         id: "g1", primaryEmail: "test_google_ingoogle@millennia21.id", givenName: "A", familyName: "B",
-        suspended: false, isAdmin: false, changePasswordAtNextLogin: false,
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
       });
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const { json: created } = await create(accessToken, { email: "test_google_incentral@millennia21.id" });
@@ -385,6 +397,149 @@ describe("google workspace accounts", () => {
       });
       const response = await TestRequest.post(`/api/admin/employees/${person.employee!.id}/google/reset-password`, {}, accessToken);
       expect(response.status).toBe(404);
+    });
+  });
+
+  describe("deleted and inactive accounts", () => {
+    const gone = (id: string, email: string): DirectoryUser => ({
+      id, primaryEmail: email, givenName: "A", familyName: "B", suspended: false, isAdmin: false,
+      changePasswordAtNextLogin: false, lastLoginTime: null,
+    });
+    const linkedPerson = async (token: string) => {
+      const { json } = await create(token);
+      return { id: json.data.id as string, person: await personOf(json.data.id) };
+    };
+    const statusOf = async (token: string, id: string, refresh = false) =>
+      (await (await TestRequest.get(`/api/admin/employees/${id}/google${refresh ? "?refresh=true" : ""}`, token)).json()).data;
+
+    it("holds an email back whose Google account was deleted less than 20 days ago", async () => {
+      google.deleted.set("old", gone("old", "test_google_deleted@millennia21.id"));
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const response = await TestRequest.get("/api/admin/google/email-availability?email=test_google_deleted@millennia21.id", accessToken);
+      expect((await response.json()).data).toMatchObject({ available: false, reason: "DELETED_IN_GOOGLE" });
+
+      const created = await create(accessToken, { email: "test_google_deleted@millennia21.id" });
+      expect(created.response.status).toBe(400);
+      expect(created.json.errors).toContain("deleted less than 20 days ago");
+      expect(await prismaClient.person.count({ where: { email: "test_google_deleted@millennia21.id" } })).toBe(0);
+    });
+
+    it("explains a refused address when Google shows no such user but will not take it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const person = await EmployeeTest.create({
+        email: "test_google_held@millennia21.id",
+        unitId: master.unit.id,
+        jobPositionId: master.position.id,
+        jobLevelId: master.level.id,
+        buildingId: master.building.id,
+      });
+      google.deleted.set("old", gone("old", "test_google_held@millennia21.id"));
+      const response = await TestRequest.post(`/api/admin/employees/${person.employee!.id}/google/provision`, {}, accessToken);
+      const { data } = await response.json();
+      expect(data.outcome).toBe("failed");
+      expect(data.message).toContain("deleted less than 20 days ago");
+    });
+
+    it("shows a suspended account, a deleted one, and the account coming back", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person } = await linkedPerson(accessToken);
+      const user = google.users.get(person.google_user_id!)!;
+
+      google.users.set(user.id, { ...user, suspended: true });
+      expect(await statusOf(accessToken, id, true)).toMatchObject({ status: GoogleSyncStatus.SUSPENDED, last_error: "Suspended in Google" });
+
+      google.users.delete(user.id);
+      google.deleted.set(user.id, user);
+      expect(await statusOf(accessToken, id, true)).toMatchObject({
+        status: GoogleSyncStatus.MISSING,
+        last_error: "Deleted in Google, can be restored for about 20 days",
+        password_state: null,
+      });
+
+      google.deleted.delete(user.id);
+      expect(await statusOf(accessToken, id, true)).toMatchObject({ status: GoogleSyncStatus.MISSING, last_error: "Not found in Google" });
+
+      google.users.set(user.id, user);
+      expect(await statusOf(accessToken, id, true)).toMatchObject({ status: GoogleSyncStatus.ACTIVE, last_error: null });
+    });
+
+    it("looks at Google again only after a few minutes, unless a Super Admin asks", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person } = await linkedPerson(accessToken);
+      const user = google.users.get(person.google_user_id!)!;
+      await statusOf(accessToken, id, true);
+      google.users.set(user.id, { ...user, suspended: true });
+
+      expect((await statusOf(accessToken, id)).status).toBe(GoogleSyncStatus.ACTIVE);
+      await prismaClient.person.update({ where: { id: person.id }, data: { google_checked_at: new Date(Date.now() - 10 * 60 * 1000) } });
+      expect((await statusOf(accessToken, id)).status).toBe(GoogleSyncStatus.SUSPENDED);
+    });
+
+    it("keeps the last answer when Google cannot be reached", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id } = await linkedPerson(accessToken);
+      google.findUser = async () => {
+        throw new DirectoryError("FAILED", "down");
+      };
+      expect((await statusOf(accessToken, id, true)).status).toBe(GoogleSyncStatus.ACTIVE);
+    });
+
+    it("says whether the person has set their own password", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person } = await linkedPerson(accessToken);
+      expect((await statusOf(accessToken, id)).password_state).toBe("PENDING");
+
+      await prismaClient.person.update({
+        where: { id: person.id },
+        data: { google_password_issued_at: new Date(Date.now() - 8 * 86_400_000), google_checked_at: null },
+      });
+      expect((await statusOf(accessToken, id)).password_state).toBe("OVERDUE");
+
+      const user = google.users.get(person.google_user_id!)!;
+      google.users.set(user.id, { ...user, changePasswordAtNextLogin: false, lastLoginTime: new Date("2026-10-30T08:00:00Z") });
+      const done = await statusOf(accessToken, id, true);
+      expect(done.password_state).toBe("SET");
+      expect(done.last_login_at).toBe("2026-10-30T08:00:00.000Z");
+
+      await TestRequest.post(`/api/admin/employees/${id}/google/reset-password`, {}, accessToken);
+      expect((await statusOf(accessToken, id)).password_state).toBe("PENDING");
+    });
+
+    it("checks everyone with two list calls and leaves unlinked people alone", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const first = await linkedPerson(accessToken);
+      const second = await linkedPerson(accessToken);
+      const unlinked = await EmployeeTest.create({
+        email: "test_google_sweep_none@millennia21.id",
+        unitId: master.unit.id,
+        jobPositionId: master.position.id,
+        jobLevelId: master.level.id,
+        buildingId: master.building.id,
+      });
+      const a = google.users.get(first.person.google_user_id!)!;
+      google.users.set(a.id, { ...a, suspended: true });
+      const b = google.users.get(second.person.google_user_id!)!;
+      google.users.delete(b.id);
+      google.deleted.set(b.id, b);
+
+      let lists = 0;
+      const list = google.listUsers.bind(google);
+      google.listUsers = async (options) => {
+        lists += 1;
+        return list(options);
+      };
+      expect(await GoogleWorkspaceService.refreshAllStatuses()).toBe(2);
+      expect(lists).toBe(2);
+      expect((await personOf(first.id)).google_sync_status).toBe(GoogleSyncStatus.SUSPENDED);
+      expect((await personOf(second.id)).google_sync_status).toBe(GoogleSyncStatus.MISSING);
+      expect((await personOf(unlinked.employee!.id)).google_sync_status).toBe(GoogleSyncStatus.NONE);
+    });
+
+    it("does nothing against the simulated Google, which forgets its users", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      await linkedPerson(accessToken);
+      setDirectoryClientForTests(new SimulatedDirectoryClient());
+      expect(await GoogleWorkspaceService.refreshAllStatuses()).toBe(0);
     });
   });
 

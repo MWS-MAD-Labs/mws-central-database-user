@@ -1,4 +1,5 @@
 import { admin_directory_v1, auth } from "@googleapis/admin";
+import { logger } from "../logger";
 import {
   DirectoryError,
   type CreateDirectoryUser,
@@ -25,6 +26,15 @@ export function readServiceAccountKey(encoded: string | undefined): ServiceAccou
   return { client_email: key.client_email, private_key: key.private_key };
 }
 
+// Google says 1970 for a user who never signed in.
+function loginTimeOf(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const time = new Date(value);
+  return Number.isNaN(time.getTime()) || time.getUTCFullYear() <= 1970 ? null : time;
+}
+
+const MAX_LIST_PAGES = 40;
+
 const toDirectoryUser = (user: admin_directory_v1.Schema$User): DirectoryUser => ({
   id: user.id ?? "",
   primaryEmail: user.primaryEmail ?? "",
@@ -33,6 +43,7 @@ const toDirectoryUser = (user: admin_directory_v1.Schema$User): DirectoryUser =>
   suspended: Boolean(user.suspended),
   isAdmin: Boolean(user.isAdmin || user.isDelegatedAdmin),
   changePasswordAtNextLogin: Boolean(user.changePasswordAtNextLogin),
+  lastLoginTime: loginTimeOf(user.lastLoginTime),
 });
 
 // Google's errors carry the HTTP status in `code`. Only the status and the reason are kept: the request body holds
@@ -66,6 +77,45 @@ export class RealDirectoryClient implements DirectoryClient {
       if (mapped.code === "NOT_FOUND") return null;
       throw mapped;
     }
+  }
+
+  async findDeletedUser(email: string): Promise<DirectoryUser | null> {
+    try {
+      const { data } = await this.directory.users.list({
+        customer: "my_customer",
+        showDeleted: "true",
+        query: `email:${email}`,
+        maxResults: 10,
+      });
+      const wanted = email.toLowerCase();
+      const found = (data.users ?? []).find((user) => user.primaryEmail?.toLowerCase() === wanted);
+      return found ? toDirectoryUser(found) : null;
+    } catch (error) {
+      logger.error("Google deleted-user lookup failed", toDirectoryError(error));
+      return null;
+    }
+  }
+
+  async listUsers({ deleted }: { deleted: boolean }): Promise<DirectoryUser[]> {
+    const users: DirectoryUser[] = [];
+    let pageToken: string | undefined;
+    try {
+      for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
+        const { data } = await this.directory.users.list({
+          customer: "my_customer",
+          maxResults: 500,
+          ...(deleted ? { showDeleted: "true" } : {}),
+          ...(pageToken ? { pageToken } : {}),
+        });
+        users.push(...(data.users ?? []).map(toDirectoryUser));
+        pageToken = data.nextPageToken ?? undefined;
+        if (!pageToken) return users;
+      }
+    } catch (error) {
+      throw toDirectoryError(error);
+    }
+    // Stopping at the cap would make users look missing that are only on a later page.
+    throw new DirectoryError("FAILED", "The Workspace has more users than the list limit");
   }
 
   async createUser(input: CreateDirectoryUser): Promise<DirectoryUser> {
