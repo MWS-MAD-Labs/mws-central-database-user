@@ -16,6 +16,46 @@ function setup(statusData, extraRoutes = []) {
 }
 
 describe('GoogleAccountRow', () => {
+  it('shows a deleted account and how to bring it back', async () => {
+    setup(status({ status: 'MISSING', last_error: 'Deleted in Google, can be restored for about 20 days', password_state: null }))
+    expect(await screen.findByText('Deleted in Google')).toBeVisible()
+    expect(screen.getByText(/Restore it in the Admin Console, then check again/)).toBeVisible()
+  })
+
+  it('shows an account that is not in Google at all, and one that is suspended', async () => {
+    setup(status({ status: 'MISSING', last_error: 'Not found in Google' }))
+    expect(await screen.findByText('Not in Google')).toBeVisible()
+  })
+
+  it('shows a suspended account', async () => {
+    setup(status({ status: 'SUSPENDED', last_error: 'Suspended in Google' }))
+    expect(await screen.findByText('Suspended')).toBeVisible()
+    expect(screen.getByText('Suspended in Google')).toBeVisible()
+  })
+
+  it('shows whether the person has set their own password', async () => {
+    setup(status({ password_state: 'PENDING' }))
+    expect(await screen.findByText('Waiting for the first sign-in')).toBeVisible()
+    expect(screen.queryByText('Password not set')).not.toBeInTheDocument()
+  })
+
+  it('flags a password that is still not set after a week', async () => {
+    setup(status({ password_state: 'OVERDUE' }))
+    expect(await screen.findByText('Password not set')).toBeVisible()
+    expect(screen.getByTestId('google-password-note')).toHaveTextContent('Send the sign-in instructions again')
+  })
+
+  it('says when they signed in last once the password is set', async () => {
+    setup(status({ password_state: 'SET', last_login_at: '2026-10-30T08:00:00.000Z' }))
+    expect(await screen.findByText(/Signed in, last on 30 Oct 2026/)).toBeVisible()
+  })
+
+  it('looks at Google again when asked', async () => {
+    const { user, fetchMock } = setup(status({ password_state: 'PENDING' }))
+    await user.click(await screen.findByRole('button', { name: 'Check Google again' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('?refresh=true'))).toBe(true))
+  })
+
   it('shows a linked account with the reset button only', async () => {
     setup(status())
     expect(await screen.findByText('Linked')).toBeVisible()

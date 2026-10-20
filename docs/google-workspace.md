@@ -42,6 +42,16 @@ The key is a secret. Keep it out of Git and out of chat, and make a new one if i
 - A failure from Google never undoes the person in Central. The Google account row shows **Failed** with the reason, and a Super Admin can try again.
 - Employee photos: the signed-in employee only, through `PUT /api/auth/employee/me/photo`. Admins still have their existing upload; closing that path is a separate decision.
 
+## What Central reads back from Google
+
+Central only reads here, it never blocks anyone because of it.
+
+- **Status**: the detail page asks Google when the last look is more than 5 minutes old, and a Super Admin can force it with the refresh icon. A daily sweep checks every linked person with two list calls. States: Linked, Suspended, Deleted in Google, Not in Google.
+- **Password**: Google keeps `changePasswordAtNextLogin` true until the person sets their own password. The row shows "Waiting for the first sign-in", then **Password not set** after 7 days, then "Signed in" with the last login. Reset Google password starts the wait again.
+- **Deleted accounts**: a deleted user keeps its address reserved for about 20 days. The email check refuses such an address (`DELETED_IN_GOOGLE`), and a create that Google still refuses says the same. Central never restores an account by itself, because that hands the old mailbox to whoever has the address now. Restore it in the Admin Console if it is the same person, then refresh.
+- The deleted-user lookup uses `users.list` with `showDeleted` and `query=email:...`. If Google ever stops matching that, the 409 on create still gives the same message.
+- Simulated Google (every environment but production, or without the test prefix) is never checked, because it forgets its users on restart.
+
 ## Not done yet
 
 Students (their parents' emails exist only after the student is created, so the account is a separate step), suspending the Google account when someone leaves, a one-off report that compares every email in Central with Google, and a self-service photo for interns (they have no sign-in to Central).

@@ -45,6 +45,7 @@ describe('email availability while creating', () => {
     for (const [reason, message] of [
       ['IN_GOOGLE', 'This email already has a Google account'],
       ['IN_CENTRAL', 'This email is already used in Central'],
+      ['DELETED_IN_GOOGLE', 'This email belongs to a Google account that was deleted less than 20 days ago, so it cannot be reused yet'],
       ['NOT_ALLOWED', 'Outside production only test addresses starting with "test.central." are sent to Google'],
     ]) {
       globalThis.fetch = createFetchRouter([answer({ available: false, reason, message })])

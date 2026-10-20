@@ -7,8 +7,9 @@ export const googleAccountApi = {
     const response = await apiRequest(`/api/admin/google/email-availability?email=${encodeURIComponent(email)}`)
     return response.data
   },
-  async status(resource, id) {
-    const response = await apiRequest(`/api/admin/${resource}/${id}/google`)
+  // `refresh` makes the server look at Google again now (Super Admin), instead of when the last look is old.
+  async status(resource, id, { refresh = false } = {}) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google${refresh ? '?refresh=true' : ''}`)
     return response.data
   },
   async provision(resource, id, payload = {}) {

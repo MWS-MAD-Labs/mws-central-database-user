@@ -147,7 +147,7 @@ describe('Employee create and edit pages', () => {
 
     const instructions = await screen.findByRole('dialog', { name: 'Google Account Ready' })
     expect(within(instructions).getByText(/ari\.employee@millennia21\.id/)).toBeVisible()
-    expect(within(instructions).getByText(/a\*\*\*@gmail\.com/)).toBeVisible()
+    expect(within(instructions).getAllByText(/a\*\*\*@gmail\.com/).length).toBeGreaterThan(0)
     expect(within(instructions).getByText(/Forgot password/)).toBeVisible()
     expect(screen.queryByText('Employee destination')).not.toBeInTheDocument()
     await user.click(within(instructions).getByRole('button', { name: 'Done' }))

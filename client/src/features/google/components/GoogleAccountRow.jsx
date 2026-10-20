@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, MessageSquareText, UserPlus } from "lucide-react";
+import { KeyRound, MessageSquareText, RefreshCw, UserPlus } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
@@ -15,7 +15,25 @@ const BADGES = {
   PENDING: { tone: "amber", label: "Being made" },
   FAILED: { tone: "red", label: "Failed" },
   NONE: { tone: "neutral", label: "Not created" },
+  SUSPENDED: { tone: "amber", label: "Suspended" },
+  MISSING: { tone: "red", label: "Not in Google" },
 };
+
+const formatDay = (value) =>
+  new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
+// The password line of an account that is linked: whether the person has set their own yet.
+function passwordNote(status) {
+  if (status.status !== "ACTIVE") return null;
+  if (status.password_state === "SET") {
+    return { text: status.last_login_at ? `Signed in, last on ${formatDay(status.last_login_at)}` : "Password set", tone: "muted" };
+  }
+  if (status.password_state === "OVERDUE") {
+    return { text: "Password not set yet. Send the sign-in instructions again, or reset the password.", tone: "warn" };
+  }
+  if (status.password_state === "PENDING") return { text: "Waiting for the first sign-in", tone: "muted" };
+  return null;
+}
 
 // The Google account of a person: whether it exists, and for a Super Admin the two things that can be done to it.
 export function GoogleAccountRow({ resource, id, email, canManage }) {
@@ -30,6 +48,12 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
     : emailProblem(recoveryEmail, { external: true }) || (recoveryEmail.trim().toLowerCase().endsWith("@millennia21.id") ? "Use a personal address, not an organization address." : null);
   const statusQuery = useQuery({ queryKey, queryFn: () => googleAccountApi.status(resource, id) });
   const status = statusQuery.data;
+
+  const refresh = useMutation({
+    mutationFn: () => googleAccountApi.status(resource, id, { refresh: true }),
+    onSuccess: (result) => queryClient.setQueryData(queryKey, result),
+    onError: (error) => showErrorToast(error, "Could not check Google."),
+  });
 
   const provision = useMutation({
     mutationFn: () => googleAccountApi.provision(resource, id, { recovery_email: recoveryEmail.trim() }),
@@ -58,7 +82,12 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
   }
 
   if (!status) return null;
-  const badge = BADGES[status.status] ?? BADGES.NONE;
+  const badge =
+    status.status === "MISSING" && status.last_error?.startsWith("Deleted")
+      ? { tone: "red", label: "Deleted in Google" }
+      : (BADGES[status.status] ?? BADGES.NONE);
+  const note = passwordNote(status);
+  const overdue = status.password_state === "OVERDUE" && status.status === "ACTIVE";
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2" data-testid="google-account-row">
@@ -70,8 +99,19 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
             Simulated
           </span>
         ) : null}
-        {status.status === "FAILED" && status.last_error ? (
-          <span className="w-full text-xs text-[#a43c41]">{status.last_error}</span>
+        {overdue ? <StatusBadge tone="amber">Password not set</StatusBadge> : null}
+        {["FAILED", "MISSING", "SUSPENDED"].includes(status.status) && status.last_error ? (
+          <span className={`w-full text-xs ${status.status === "SUSPENDED" ? "text-[#8a6419]" : "text-[#a43c41]"}`}>
+            {status.last_error}
+            {status.status === "MISSING" && status.last_error.startsWith("Deleted")
+              ? ". Restore it in the Admin Console, then check again."
+              : ""}
+          </span>
+        ) : null}
+        {note ? (
+          <span className={`w-full text-xs ${note.tone === "warn" ? "text-[#8a6419]" : ""}`} data-testid="google-password-note">
+            {note.text}
+          </span>
         ) : null}
       </div>
       {canManage ? (
@@ -86,6 +126,19 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
               onClick={() => setDialog("instructions")}
             >
               <MessageSquareText size={15} />
+            </Button>
+          ) : null}
+          {status.linked ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Check Google again"
+              title="Check Google again"
+              disabled={refresh.isPending}
+              onClick={() => refresh.mutate()}
+            >
+              <RefreshCw size={15} />
             </Button>
           ) : null}
           {status.linked ? (
