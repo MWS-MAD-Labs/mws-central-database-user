@@ -19,6 +19,7 @@ import { PanelFrame } from "./PanelFrame.jsx";
 import { SearchBox } from "./SearchBox.jsx";
 import { invalidateMasterData } from "../utils/invalidateMasterData.js";
 import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
+import { FilterToolbar } from "../../../components/ui/FilterToolbar.jsx";
 import { FilterSelect } from "../../../components/ui/FormControls.jsx";
 import { unitsApi } from "../api/masterDataApi.js";
 import { isOperationalUnit } from "../utils/pcActivityUnits.js";
@@ -141,49 +142,53 @@ export function MasterResourcePanel({ resource }) {
         </Button>
       }
       toolbar={
-        <div className="w-full space-y-4">
-          <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-            <SearchBox
-              value={params.search}
-              placeholder={`Search ${resource.label.toLowerCase()}`}
-              onChange={(value) => resetPageAndUpdate({ search: value })}
-            />
-            <FilterResetButton
-              visible={hasActiveFilters}
-              onReset={() => resetPageAndUpdate({ search: "", unit_id: "", capacity_scope: "" })}
-            />
-          </div>
-          {resource.unitScope || resource.positionCapacity ? (
-            <div className="flex min-w-0 flex-wrap gap-3">
-              {resource.unitScope ? (
-                <FilterSelect
-                  label="Unit"
-                  value={params.unit_id}
-                  onChange={(unit_id) => resetPageAndUpdate({ unit_id })}
-                  options={[
-                    { value: "", label: "All Units" },
-                    ...(unitsQuery.data?.data || []).filter(isOperationalUnit).map((unit) => ({
-                      value: unit.id,
-                      label: unit.name,
-                    })),
-                  ]}
-                />
-              ) : null}
-              {resource.positionCapacity ? (
-                <FilterSelect
-                  label="Active Holder Limit"
-                  value={params.capacity_scope}
-                  onChange={(capacity_scope) => resetPageAndUpdate({ capacity_scope })}
-                  options={[
-                    { value: "", label: "All Active Holder Limits" },
-                    { value: "UNLIMITED", label: "Unlimited" },
-                    { value: "PER_UNIT", label: "Per Unit" },
-                    { value: "GLOBAL", label: "Global" },
-                  ]}
-                />
-              ) : null}
-            </div>
-          ) : null}
+        <div className="w-full">
+          <FilterToolbar
+            search={
+              <SearchBox
+                value={params.search}
+                placeholder={`Search ${resource.label.toLowerCase()}`}
+                onChange={(value) => resetPageAndUpdate({ search: value })}
+              />
+            }
+            reset={
+              <FilterResetButton
+                visible={hasActiveFilters}
+                onReset={() =>
+                  resetPageAndUpdate({ search: "", unit_id: "", capacity_scope: "" })
+                }
+              />
+            }
+          >
+            {resource.unitScope ? (
+              <FilterSelect
+                label="Unit"
+                value={params.unit_id}
+                onChange={(unit_id) => resetPageAndUpdate({ unit_id })}
+                options={[
+                  { value: "", label: "All Units" },
+                  ...(unitsQuery.data?.data || [])
+                    .filter(isOperationalUnit)
+                    .map((unit) => ({ value: unit.id, label: unit.name })),
+                ]}
+              />
+            ) : null}
+            {resource.positionCapacity ? (
+              <FilterSelect
+                label="Active Holder Limit"
+                value={params.capacity_scope}
+                onChange={(capacity_scope) =>
+                  resetPageAndUpdate({ capacity_scope })
+                }
+                options={[
+                  { value: "", label: "All Active Holder Limits" },
+                  { value: "UNLIMITED", label: "Unlimited" },
+                  { value: "PER_UNIT", label: "Per Unit" },
+                  { value: "GLOBAL", label: "Global" },
+                ]}
+              />
+            ) : null}
+          </FilterToolbar>
         </div>
       }
       notice={

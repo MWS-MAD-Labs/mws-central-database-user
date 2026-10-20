@@ -482,6 +482,38 @@ describe('Access role change summary', () => {
     expect(screen.getByRole('button', { name: /Demote/ })).toBeVisible()
   })
 
+  it('pages through the access history ten at a time instead of cutting it off', async () => {
+    const log = (n) => ({
+      id: `log-${n}`,
+      action: 'UPDATE_ADMIN_USER',
+      created_at: '2026-10-01T00:00:00.000Z',
+      old_values: { role: 'DATABASE_ADMIN' },
+      new_values: { role: 'SUPER_ADMIN' },
+    })
+    const fetchMock = createFetchRouter([
+      ...accessRoutes([{ ...baseAdmin }]),
+      {
+        path: /^\/api\/admin\/audit-logs\?.*page=1/,
+        response: jsonResponse({ data: [log(1)], paging: { current_page: 1, total_page: 2, total_item: 11, size: 10 } }),
+      },
+      {
+        path: /^\/api\/admin\/audit-logs\?.*page=2/,
+        response: jsonResponse({ data: [log(2)], paging: { current_page: 2, total_page: 2, total_item: 11, size: 10 } }),
+      },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderAccess({ role: 'SUPER_ADMIN' })
+    await screen.findByText('dummystaff@millennia21.id')
+    await user.click(screen.getByRole('button', { name: 'Actions for dummystaff@millennia21.id' }))
+    await user.click(screen.getByRole('button', { name: /History/ }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Access History' })
+    expect(await within(dialog).findByText(/Page 1 of 2 \/ 11 changes/)).toBeVisible()
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
+    expect(await within(dialog).findByText(/Page 2 of 2 \/ 11 changes/)).toBeVisible()
+    expect(fetchMock.mock.calls.some(([url]) => /audit-logs\?.*page=2/.test(url))).toBe(true)
+  })
+
   it('shows the approver checklist only for a Head of CARE admin, and only to a protected Super Admin', async () => {
     globalThis.fetch = createFetchRouter(accessRoutes([
       { ...baseAdmin, id: 'admin-care', email: 'care@millennia21.id', is_head_of_care: true },

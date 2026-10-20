@@ -1,4 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FilterToolbar } from "../../../components/ui/FilterToolbar.jsx";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   CalendarPlus,
   CheckCircle2,
@@ -495,26 +501,30 @@ function AdminUsersPanel() {
         </div>
       ) : null}
       <div className="border-b border-(--mws-line) p-4">
-        <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-          <DebouncedSearchInput
-            value={params.search}
-            placeholder="Search Admin Name Or Email"
-            className="xl:max-w-lg"
-            onChange={(search) => resetPageAndUpdate({ search })}
-          />
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <LiveIndicator isSyncing={adminsQuery.isFetching} />
-            <FilterResetButton
-              visible={hasActiveFilters}
-              onReset={resetFilters}
+        <FilterToolbar
+          search={
+            <DebouncedSearchInput
+              value={params.search}
+              placeholder="Search Admin Name Or Email"
+              onChange={(search) => resetPageAndUpdate({ search })}
             />
-            <Button type="button" size="icon" aria-label="Promote" title="Promote" onClick={() => setPromoteOpen(true)}>
+          }
+          status={<LiveIndicator isSyncing={adminsQuery.isFetching} />}
+          reset={
+            <FilterResetButton visible={hasActiveFilters} onReset={resetFilters} />
+          }
+          actions={
+            <Button
+              type="button"
+              size="icon"
+              aria-label="Promote"
+              title="Promote"
+              onClick={() => setPromoteOpen(true)}
+            >
               <UserPlus size={16} />
             </Button>
-          </div>
-        </div>
-
-        <div className="mt-4 flex min-w-0 flex-wrap gap-3">
+          }
+        >
           <FilterSelect
             label="Role"
             value={params.role}
@@ -537,7 +547,7 @@ function AdminUsersPanel() {
               { value: "false", label: "Inactive" },
             ]}
           />
-        </div>
+        </FilterToolbar>
       </div>
 
       <div className="w-full min-w-0 overflow-x-auto">
@@ -1347,16 +1357,20 @@ function GrantDialog({ admin, isSubmitting, onClose, onSubmit }) {
 }
 
 function AdminHistoryDialog({ admin, onClose }) {
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(10);
   const historyQuery = useQuery({
-    queryKey: ["admin-users", admin.id, "history"],
+    queryKey: ["admin-users", admin.id, "history", page, size],
     queryFn: () =>
       auditLogsApi.list({
         entity_type: "AdminUser",
         search: admin.id,
-        size: 50,
+        page,
+        size,
         sort_by: "created_at",
         sort_order: "desc",
       }),
+    placeholderData: keepPreviousData,
   });
   const logs = historyQuery.data?.data || [];
 
@@ -1375,7 +1389,7 @@ function AdminHistoryDialog({ admin, onClose }) {
           No recorded role or permission changes for this admin.
         </p>
       ) : (
-        <ul className="max-h-[28rem] space-y-4 overflow-y-auto pr-1">
+        <ul className="max-h-[24rem] space-y-4 overflow-y-auto pr-1">
           {logs.map((log) => (
             <li
               key={log.id}
@@ -1398,6 +1412,22 @@ function AdminHistoryDialog({ admin, onClose }) {
           ))}
         </ul>
       )}
+      {logs.length > 0 || page > 1 ? (
+        <div className="-mx-1 mt-4 overflow-hidden rounded-xl border border-(--mws-line)">
+          <PaginationBar
+            paging={historyQuery.data?.paging}
+            itemLabel="changes"
+            isLoading={historyQuery.isFetching}
+            onPrevious={() => setPage((current) => Math.max(current - 1, 1))}
+            onNext={() => setPage((current) => current + 1)}
+            onPageSizeChange={(next) => {
+              setSize(next);
+              setPage(1);
+            }}
+            showPageJump={false}
+          />
+        </div>
+      ) : null}
     </CrudDialog>
   );
 }

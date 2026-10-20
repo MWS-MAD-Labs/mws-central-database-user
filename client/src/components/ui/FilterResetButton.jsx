@@ -1,3 +1,4 @@
+import { RotateCcw } from 'lucide-react'
 import { Button } from './Button.jsx'
 
 export function FilterResetButton({ visible, onReset, className }) {
@@ -7,11 +8,13 @@ export function FilterResetButton({ visible, onReset, className }) {
     <Button
       type="button"
       variant="ghost"
-      size="sm"
+      size="icon"
+      aria-label="Clear filters"
+      title="Clear filters"
       className={className}
       onClick={onReset}
     >
-      Clear filters
+      <RotateCcw size={15} />
     </Button>
   )
 }

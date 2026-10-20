@@ -1,3 +1,4 @@
+import { FilterToolbar } from "../../../components/ui/FilterToolbar.jsx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ImagePlus,
@@ -284,36 +285,28 @@ export function StudentsPage() {
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="border-b border-(--mws-line) p-4">
-          <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-            <DebouncedSearchInput
-              value={params.search}
-              placeholder="Search Name, Email, NIS, Or NISN"
-              className="xl:max-w-lg"
-              onChange={(search) => resetPageAndClearSelection({ search })}
-            />
-
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <LiveIndicator isSyncing={studentsQuery.isFetching} />
-              <FilterResetButton
-                visible={hasActiveFilters}
-                onReset={resetFilters}
+          <FilterToolbar
+            search={
+              <DebouncedSearchInput
+                value={params.search}
+                placeholder="Search Name, Email, NIS, Or NISN"
+                onChange={(search) => resetPageAndClearSelection({ search })}
               />
-            </div>
-          </div>
-
-          <div className="mt-4 flex min-w-0 flex-wrap gap-3">
+            }
+            status={<LiveIndicator isSyncing={studentsQuery.isFetching} />}
+            reset={
+              <FilterResetButton visible={hasActiveFilters} onReset={resetFilters} />
+            }
+          >
             <FilterSelect
               label="Status"
               value={params.status}
-              onChange={(value) =>
-                resetPageAndClearSelection({ status: value })
-              }
+              onChange={(value) => resetPageAndClearSelection({ status: value })}
               options={[
                 { value: "ALL", label: "All Statuses" },
                 ...statusOptions(studentStatuses),
               ]}
             />
-
             <FilterSelect
               label="Grade"
               value={params.current_grade_id}
@@ -325,7 +318,6 @@ export function StudentsPage() {
                 ...gradeOptions(optionsQuery.data?.grades || []),
               ]}
             />
-
             <FilterSelect
               label="Class"
               value={params.current_class_id}
@@ -337,7 +329,6 @@ export function StudentsPage() {
                 ...classOptions(optionsQuery.data?.classes || []),
               ]}
             />
-
             <FilterSelect
               label="Join Year"
               value={params.join_academic_year_id}
@@ -349,7 +340,6 @@ export function StudentsPage() {
                 ...academicYearOptions(optionsQuery.data?.academicYears || []),
               ]}
             />
-
             <FilterSelect
               label="Records"
               value={params.is_deleted}
@@ -361,7 +351,7 @@ export function StudentsPage() {
                 { value: "true", label: "Trash Bin" },
               ]}
             />
-          </div>
+          </FilterToolbar>
         </div>
 
         <BulkActionBar selectedCount={selectedCount} onClear={clearSelection}>

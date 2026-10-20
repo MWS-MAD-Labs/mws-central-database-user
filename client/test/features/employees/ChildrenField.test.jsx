@@ -103,9 +103,9 @@ describe('ChildrenField', () => {
 
   it('takes the three numbers and adds them up', () => {
     const onChange = renderField({ value: counted({ under_23: '2', age_23_plus: '1', adopted: '1' }) })
-    expect(screen.getByLabelText('Under 23')).toHaveValue('2')
+    expect(screen.getByLabelText('U-23')).toHaveValue('2')
     expect(screen.getByText('3 children: 2 under 23, 1 aged 23 or over')).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('23 or older'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('23 or Older'), { target: { value: '3' } })
     expect(onChange.mock.calls[0][0].counts.age_23_plus).toBe('3')
   })
 

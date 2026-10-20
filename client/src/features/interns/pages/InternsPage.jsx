@@ -1,3 +1,4 @@
+import { FilterToolbar } from "../../../components/ui/FilterToolbar.jsx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -205,23 +206,19 @@ export function InternsPage() {
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="border-b border-(--mws-line) p-4">
-          <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-            <DebouncedSearchInput
-              value={params.search}
-              placeholder="Search Interns"
-              className="xl:max-w-lg"
-              onChange={(search) => resetPageAndUpdate({ search })}
-            />
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <LiveIndicator isSyncing={internsQuery.isFetching} />
-              <FilterResetButton
-                visible={hasActiveFilters}
-                onReset={resetFilters}
+          <FilterToolbar
+            search={
+              <DebouncedSearchInput
+                value={params.search}
+                placeholder="Search Interns"
+                onChange={(search) => resetPageAndUpdate({ search })}
               />
-            </div>
-          </div>
-
-          <div className="mt-4 flex min-w-0 flex-wrap gap-3">
+            }
+            status={<LiveIndicator isSyncing={internsQuery.isFetching} />}
+            reset={
+              <FilterResetButton visible={hasActiveFilters} onReset={resetFilters} />
+            }
+          >
             <FilterSelect
               label="Status"
               value={params.status}
@@ -251,7 +248,7 @@ export function InternsPage() {
                 ...buildingOptions(optionsQuery.data?.buildings || []),
               ]}
             />
-          </div>
+          </FilterToolbar>
         </div>
 
         <BulkActionBar selectedCount={selectedCount} onClear={clearSelection}>

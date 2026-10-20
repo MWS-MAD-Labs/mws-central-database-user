@@ -14,13 +14,6 @@ import {
   summarizeChildrenValue,
 } from "../utils/childrenRules.js";
 
-const MODE_HINTS = {
-  NONE: "No children are recorded for this employee.",
-  BIRTH_DATES: "Birth dates are kept so the numbers stay right as the children grow up.",
-  COUNTS:
-    "For a parent who prefers not to share birth dates. These numbers do not change by themselves, so they are reviewed after a year.",
-};
-
 const formatDay = (value) =>
   new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
@@ -59,7 +52,6 @@ export function ChildrenField({ value, onChange, maritalStatus, parentBirthDate 
         active={value.mode}
         onChange={(mode) => patch({ mode })}
       />
-      <p className="text-xs text-(--mws-muted)">{MODE_HINTS[value.mode]}</p>
 
       {value.mode === "BIRTH_DATES" ? (
         <div className="space-y-3">
@@ -116,9 +108,9 @@ export function ChildrenField({ value, onChange, maritalStatus, parentBirthDate 
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-3">
             {[
-              ["under_23", "Under 23"],
-              ["age_23_plus", "23 or older"],
-              ["adopted", "Of these, adopted"],
+              ["under_23", "U-23"],
+              ["age_23_plus", "23 or Older"],
+              ["adopted", "Adopted"],
             ].map(([field, label]) => (
               <div key={field} className="space-y-1">
                 <label htmlFor={`${idPrefix}-${field}`} className="text-xs font-semibold text-(--mws-muted)">

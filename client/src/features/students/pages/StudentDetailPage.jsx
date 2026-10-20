@@ -685,13 +685,12 @@ export function StudentDetailPage() {
                     </h2>
                     {canViewSensitive ? (
                       pii.revealed ? (
-                        <Button type="button" variant="ghost" onClick={pii.hide} size="icon" aria-label="Hide birth details" title="Hide birth details">
+                        <Button type="button" variant="secondary" onClick={pii.hide} size="icon" aria-label="Hide birth details" title="Hide birth details">
                           <EyeOff size={15} />
                         </Button>
                       ) : (
                         <Button
                           type="button"
-                          variant="ghost"
                           loading={pii.isRevealing}
                           onClick={pii.reveal}
                           size="icon" aria-label="Show birth details" title="Show birth details"

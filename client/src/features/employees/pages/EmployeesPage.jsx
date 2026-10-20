@@ -1,3 +1,4 @@
+import { FilterToolbar } from "../../../components/ui/FilterToolbar.jsx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ImagePlus,
@@ -365,23 +366,19 @@ export function EmployeesPage() {
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="border-b border-(--mws-line) p-4">
-          <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-            <DebouncedSearchInput
-              value={params.search}
-              placeholder="Search Employees"
-              className="xl:max-w-lg"
-              onChange={(search) => resetPageAndClearSelection({ search })}
-            />
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <LiveIndicator isSyncing={employeesQuery.isFetching} />
-              <FilterResetButton
-                visible={hasActiveFilters}
-                onReset={resetFilters}
+          <FilterToolbar
+            search={
+              <DebouncedSearchInput
+                value={params.search}
+                placeholder="Search Employees"
+                onChange={(search) => resetPageAndClearSelection({ search })}
               />
-            </div>
-          </div>
-
-          <div className="mt-4 flex min-w-0 flex-wrap gap-3">
+            }
+            status={<LiveIndicator isSyncing={employeesQuery.isFetching} />}
+            reset={
+              <FilterResetButton visible={hasActiveFilters} onReset={resetFilters} />
+            }
+          >
             <FilterSelect
               label="Employment Type"
               value={params.employment_type}
@@ -396,9 +393,7 @@ export function EmployeesPage() {
             <FilterSelect
               label="Status"
               value={params.status}
-              onChange={(value) =>
-                resetPageAndClearSelection({ status: value })
-              }
+              onChange={(value) => resetPageAndClearSelection({ status: value })}
               options={[
                 { value: "ALL", label: "All Statuses" },
                 ...statusOptions(employeeStatuses),
@@ -418,9 +413,7 @@ export function EmployeesPage() {
             <FilterSelect
               label="Unit"
               value={params.unit_id}
-              onChange={(value) =>
-                resetPageAndClearSelection({ unit_id: value })
-              }
+              onChange={(value) => resetPageAndClearSelection({ unit_id: value })}
               options={[
                 { value: "", label: "All Units" },
                 ...unitOptions(optionsQuery.data?.units || []),
@@ -429,15 +422,13 @@ export function EmployeesPage() {
             <FilterSelect
               label="Building"
               value={params.building_id}
-              onChange={(value) =>
-                resetPageAndClearSelection({ building_id: value })
-              }
+              onChange={(value) => resetPageAndClearSelection({ building_id: value })}
               options={[
                 { value: "", label: "All Buildings" },
                 ...buildingOptions(optionsQuery.data?.buildings || []),
               ]}
             />
-          </div>
+          </FilterToolbar>
         </div>
 
         <BulkActionBar selectedCount={selectedCount} onClear={clearSelection}>

@@ -251,7 +251,7 @@ describe('EmployeeForm', () => {
     await showSensitiveFields(user)
 
     await user.click(screen.getByRole('tab', { name: 'Numbers Only' }))
-    await user.type(screen.getByLabelText('Under 23'), '2')
+    await user.type(screen.getByLabelText('U-23'), '2')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
     const review = await screen.findByRole('dialog', { name: /Review changes/ })
     expect(within(review).getByText(/2 children: 2 under 23, 0 aged 23 or over \(numbers only\)/)).toBeVisible()
