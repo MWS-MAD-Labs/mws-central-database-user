@@ -28,28 +28,36 @@ function renderField(props = {}) {
 describe('ChildrenField', () => {
   it('offers the three ways to record, with none picked by default', () => {
     renderField({ value: emptyChildrenValue() })
-    expect(screen.getByRole('radio', { name: 'No children recorded' })).toHaveAttribute('aria-checked', 'true')
-    expect(screen.getByRole('radio', { name: 'With birth dates' })).toHaveAttribute('aria-checked', 'false')
-    expect(screen.getByRole('radio', { name: 'Numbers only' })).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByRole('tab', { name: 'No Children Recorded' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'With Birth Dates' })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.getByRole('tab', { name: 'Numbers Only' })).toHaveAttribute('aria-selected', 'false')
   })
 
   it('switches the way without losing what was typed in the other', () => {
     const value = { ...dated([{ birth_date: yearsAgo(5), relation: 'BIOLOGICAL' }]) }
     const onChange = renderField({ value })
-    fireEvent.click(screen.getByRole('radio', { name: 'Numbers only' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Numbers Only' }))
     expect(onChange).toHaveBeenCalledWith({ ...value, mode: 'COUNTS' })
   })
 
-  it('adds an empty biological row', () => {
-    const onChange = renderField()
-    fireEvent.click(screen.getByRole('button', { name: /add child/i }))
-    expect(onChange.mock.calls[0][0].rows).toEqual([{ birth_date: '', relation: 'BIOLOGICAL' }])
+  it('shows a blank row to fill in right away, with no add button until the date is filled', () => {
+    renderField()
+    expect(screen.queryByRole('button', { name: /^add child$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add another child after child 1' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Remove child 1' })).toBeDisabled()
+  })
+
+  it('adds a blank row right under the one whose date is filled', () => {
+    const rows = [{ birth_date: yearsAgo(5), relation: 'BIOLOGICAL' }, { birth_date: yearsAgo(8), relation: 'BIOLOGICAL' }]
+    const onChange = renderField({ value: dated(rows) })
+    fireEvent.click(screen.getByRole('button', { name: 'Add another child after child 1' }))
+    expect(onChange.mock.calls[0][0].rows).toEqual([rows[0], { birth_date: '', relation: 'BIOLOGICAL' }, rows[1]])
   })
 
   it('adds an adopted row when the employee is single, since it is the only choice', () => {
-    const onChange = renderField({ maritalStatus: 'SINGLE' })
-    fireEvent.click(screen.getByRole('button', { name: /add child/i }))
-    expect(onChange.mock.calls[0][0].rows).toEqual([{ birth_date: '', relation: 'ADOPTED' }])
+    const onChange = renderField({ maritalStatus: 'SINGLE', value: dated([{ birth_date: yearsAgo(5), relation: 'ADOPTED' }]) })
+    fireEvent.click(screen.getByRole('button', { name: 'Add another child after child 1' }))
+    expect(onChange.mock.calls[0][0].rows[1]).toEqual({ birth_date: '', relation: 'ADOPTED' })
   })
 
   it('disables biological and step while single, and keeps every choice for a married employee', () => {

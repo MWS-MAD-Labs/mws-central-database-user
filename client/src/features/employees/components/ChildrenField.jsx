@@ -2,7 +2,7 @@ import { useId } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { DateField, NumberInput, SearchableSelect } from "../../../components/ui/FormControls.jsx";
-import { cn } from "../../../lib/cn.js";
+import { Tabs } from "../../../components/ui/Tabs.jsx";
 import {
   CHILDREN_MODES,
   CHILD_RELATIONS,
@@ -38,45 +38,38 @@ export function ChildrenField({ value, onChange, maritalStatus, parentBirthDate 
   }));
 
   const patch = (next) => onChange({ ...value, ...next });
+  const newRow = () => emptyChild(single ? "ADOPTED" : "BIOLOGICAL");
+  // The tab always has a row to fill in; a blank one is never sent.
+  const rows = value.rows.length > 0 ? value.rows : [newRow()];
   const updateRow = (index, next) =>
-    patch({ rows: value.rows.map((child, position) => (position === index ? { ...child, ...next } : child)) });
+    patch({ rows: rows.map((child, position) => (position === index ? { ...child, ...next } : child)) });
+  const removeRow = (index) => {
+    const left = rows.filter((_, position) => position !== index);
+    patch({ rows: left.length > 0 ? left : [newRow()] });
+  };
+  const addRowAfter = (index) => patch({ rows: [...rows.slice(0, index + 1), newRow(), ...rows.slice(index + 1)] });
   const updateCount = (field, text) => patch({ counts: { ...value.counts, [field]: text }, confirmed: false });
   const stale = value.needs_review || countsAreStale(value.declared_at);
 
   return (
     <div className="space-y-4 rounded-xl border border-(--mws-line) bg-white p-4" data-testid="children-field">
-      <div role="radiogroup" aria-label="How the children are recorded" className="flex flex-wrap gap-2">
-        {CHILDREN_MODES.map((mode) => (
-          <button
-            key={mode.value}
-            type="button"
-            role="radio"
-            aria-checked={value.mode === mode.value}
-            onClick={() => patch({ mode: mode.value })}
-            className={cn(
-              "h-8 cursor-pointer rounded-full border px-3 text-xs font-semibold transition",
-              value.mode === mode.value
-                ? "border-(--mws-burgundy) bg-(--mws-burgundy) text-white"
-                : "border-(--mws-line) bg-white text-(--mws-muted) hover:border-(--mws-burgundy) hover:text-(--mws-charcoal)",
-            )}
-          >
-            {mode.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        label="How the children are recorded"
+        tabs={CHILDREN_MODES}
+        active={value.mode}
+        onChange={(mode) => patch({ mode })}
+      />
       <p className="text-xs text-(--mws-muted)">{MODE_HINTS[value.mode]}</p>
 
       {value.mode === "BIRTH_DATES" ? (
         <div className="space-y-3">
-          {value.rows.length > 0 ? (
-            <div className="hidden gap-3 text-xs font-semibold text-(--mws-muted) md:grid md:grid-cols-[1fr_1fr_2.5rem]">
-              <span>Birth date (DD/MM/YYYY)</span>
-              <span>Relation</span>
-              <span />
-            </div>
-          ) : null}
-          {value.rows.map((child, index) => (
-            <div key={index} className="grid items-start gap-3 md:grid-cols-[1fr_1fr_2.5rem]">
+          <div className="hidden gap-3 text-xs font-semibold text-(--mws-muted) md:grid md:grid-cols-[1fr_1fr_5.5rem]">
+            <span>Birth date (DD/MM/YYYY)</span>
+            <span>Relation</span>
+            <span />
+          </div>
+          {rows.map((child, index) => (
+            <div key={index} className="grid items-start gap-3 md:grid-cols-[1fr_1fr_5.5rem]">
               <div className="space-y-1">
                 <DateField
                   invalid={Boolean(problems.byRow[index])}
@@ -92,27 +85,30 @@ export function ChildrenField({ value, onChange, maritalStatus, parentBirthDate 
                 options={relationOptions}
                 placeholder="Select how they are related"
               />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`Remove child ${index + 1}`}
-                onClick={() => patch({ rows: value.rows.filter((_, position) => position !== index) })}
-              >
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
-              </Button>
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Remove child ${index + 1}`}
+                  disabled={rows.length === 1 && !child.birth_date}
+                  onClick={() => removeRow(index)}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Add another child after child ${index + 1}`}
+                  disabled={!child.birth_date || rows.length >= MAX_CHILDREN}
+                  onClick={() => addRowAfter(index)}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </div>
             </div>
           ))}
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={value.rows.length >= MAX_CHILDREN}
-            onClick={() => patch({ rows: [...value.rows, emptyChild(single ? "ADOPTED" : "BIOLOGICAL")] })}
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Add child
-          </Button>
         </div>
       ) : null}
 
@@ -160,7 +156,7 @@ export function ChildrenField({ value, onChange, maritalStatus, parentBirthDate 
 
       {problems.list ? <p className="text-xs text-[#a43c41]">{problems.list}</p> : null}
 
-      {value.mode !== "NONE" ? (
+      {value.mode !== "NONE" && summary.total > 0 ? (
         <p className="text-sm text-(--mws-muted)" aria-live="polite">
           {describeChildren(summary)}
         </p>

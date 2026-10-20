@@ -51,11 +51,13 @@ export function DataTransferActions({
       <Button
         type="button"
         variant="secondary"
+        size="icon"
+        aria-label="Import"
+        title="Import"
         disabled={!canImport}
         onClick={() => setIsImportOpen(true)}
       >
         <Upload size={16} />
-        Import
       </Button>
       <ExportMenu
         entity={entity}
@@ -109,12 +111,14 @@ function ExportMenu({ entity, exportParams, canExport, canExportSensitive }) {
         <Button
           type="button"
           variant="secondary"
+          size="icon"
+          aria-label="Export"
+          title="Export"
           disabled={!canExport}
           loading={exportMutation.isPending}
           onClick={onClick}
         >
           <Download size={16} />
-          Export
         </Button>
       )}
     >

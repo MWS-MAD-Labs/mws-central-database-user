@@ -1,3 +1,4 @@
+import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -325,9 +326,14 @@ export function StudentForm({
         noValidate
       >
         <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
-            Identity
-          </h2>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-(--mws-charcoal)">
+              Identity
+            </h2>
+            {!birthRevealed && canRevealBirth ? (
+              <SensitiveToggle revealed={false} loading={revealBirthMutation.isPending} onShow={handleRevealBirth} />
+            ) : null}
+          </div>
           {isCreate ? (
             <div className="mb-4 flex items-center gap-4">
               <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
@@ -433,22 +439,7 @@ export function StudentForm({
                 </Field>
               </>
             ) : (
-              <div className="flex flex-col items-start gap-2 rounded-xl border border-dashed border-(--mws-line) bg-(--mws-soft) p-3 md:col-span-2">
-                <p className="text-sm text-(--mws-muted)">
-                  Birth place and birth date are hidden by default.
-                </p>
-                {canRevealBirth ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    loading={revealBirthMutation.isPending}
-                    onClick={handleRevealBirth}
-                  >
-                    Show Sensitive Fields
-                  </Button>
-                ) : null}
-              </div>
+              <SensitiveHiddenNote className="text-sm text-(--mws-muted) md:col-span-2" />
             )}
           </div>
         </section>

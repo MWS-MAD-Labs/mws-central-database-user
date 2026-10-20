@@ -1,3 +1,4 @@
+import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -596,9 +597,18 @@ export function EmployeeForm({
         noValidate
       >
         <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
-            Identity
-          </h2>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-(--mws-charcoal)">
+              Identity
+            </h2>
+            {!sensitiveFieldsRevealed ? (
+              <SensitiveToggle
+                revealed={false}
+                loading={revealSensitiveFieldsMutation.isPending}
+                onShow={handleRevealSensitiveFields}
+              />
+            ) : null}
+          </div>
           {isCreate ? (
             <div className="mb-4 flex items-center gap-4">
               <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
@@ -675,21 +685,7 @@ export function EmployeeForm({
               </Field>
             ) : null}
             {!sensitiveFieldsRevealed ? (
-              <div className="flex flex-col items-start gap-2 rounded-xl border border-dashed border-(--mws-line) bg-(--mws-soft) p-3 md:col-span-2">
-                <p className="text-sm text-(--mws-muted)">
-                  Gender, religion, birth details, and PII (NIK/NPWP/bank
-                  account/BPJS) are hidden by default.
-                </p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  loading={revealSensitiveFieldsMutation.isPending}
-                  onClick={handleRevealSensitiveFields}
-                >
-                  Show Sensitive Fields
-                </Button>
-              </div>
+              <SensitiveHiddenNote className="text-sm text-(--mws-muted) md:col-span-2" />
             ) : null}
             <Field label="Gender" name="gender" error={errors.gender} required>
               {sensitiveFieldsRevealed ? (

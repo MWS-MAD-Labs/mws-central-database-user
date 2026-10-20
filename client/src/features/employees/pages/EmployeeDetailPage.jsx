@@ -1,5 +1,6 @@
+import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx"
 import { describeChildren } from '../utils/childrenRules.js'
-import { ArrowLeft, Camera, CalendarClock, Edit, Eye, EyeOff, Mail, Phone, Trash2, UserRound, X } from 'lucide-react'
+import { ArrowLeft, Camera, CalendarClock, Edit, Mail, Phone, Trash2, UserRound, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
@@ -441,22 +442,21 @@ export function EmployeeDetailPage() {
               <h2 className="text-base font-semibold text-(--mws-charcoal)">
                 Sensitive Fields
               </h2>
-              {sensitiveFieldsRevealed && !isSelfView ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    forgetReveal(employeePiiScope(employeeId))
-                    setSensitiveFieldsRevealed(false)
-                    setPii(null)
-                    hasRequestedPiiRef.current = false
-                  }}
-                >
-                  <EyeOff size={15} />
-                  Hide
-                </Button>
-              ) : null}
+              <SensitiveToggle
+                revealed={sensitiveFieldsRevealed}
+                loading={revealSensitiveFieldsMutation.isPending}
+                onShow={handleRevealSensitiveFields}
+                onHide={
+                  isSelfView
+                    ? undefined
+                    : () => {
+                        forgetReveal(employeePiiScope(employeeId))
+                        setSensitiveFieldsRevealed(false)
+                        setPii(null)
+                        hasRequestedPiiRef.current = false
+                      }
+                }
+              />
             </div>
 
             {isSensitiveFieldsRevealed ? (
@@ -499,21 +499,7 @@ export function EmployeeDetailPage() {
                 <DetailRow compact label="KPJ Number" value={pii.kpj_number} />
               </dl>
             ) : (
-              <div className="flex flex-col items-center gap-3 py-6 text-center">
-                <p className="text-sm text-(--mws-muted)">
-                  Gender, religion, birth details, and PII (NIK/NPWP/bank account/BPJS) are hidden by default.
-                </p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  loading={revealSensitiveFieldsMutation.isPending}
-                  onClick={handleRevealSensitiveFields}
-                >
-                  <Eye size={15} />
-                  Show Sensitive Fields
-                </Button>
-              </div>
+              <SensitiveHiddenNote />
             )}
           </section>
         ) : null}

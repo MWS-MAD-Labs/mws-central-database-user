@@ -250,7 +250,7 @@ describe('EmployeeForm', () => {
     const { user } = renderEmployeeForm({ employee: employeeWithOneChild(), onSubmit })
     await showSensitiveFields(user)
 
-    await user.click(screen.getByRole('radio', { name: 'Numbers only' }))
+    await user.click(screen.getByRole('tab', { name: 'Numbers Only' }))
     await user.type(screen.getByLabelText('Under 23'), '2')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
     const review = await screen.findByRole('dialog', { name: /Review changes/ })
@@ -266,7 +266,7 @@ describe('EmployeeForm', () => {
     const { user } = renderEmployeeForm({ employee: employeeWithOneChild(), onSubmit })
     await showSensitiveFields(user)
 
-    await user.click(screen.getByRole('radio', { name: 'No children recorded' }))
+    await user.click(screen.getByRole('tab', { name: 'No Children Recorded' }))
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
     const review = await screen.findByRole('dialog', { name: /Review changes/ })
     await user.click(within(review).getByRole('button', { name: /Save changes/ }))

@@ -98,7 +98,7 @@ describe('EmployeeDetailPage sensitive reveal', () => {
     const { user } = renderDetail()
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Taylor Employee' })).toBeVisible()
-    expect(screen.getByText(/PII .* are hidden by default/)).toBeVisible()
+    expect(screen.getByText('Sensitive details are hidden.')).toBeVisible()
     expect(screen.queryByText('3171000000000001')).not.toBeInTheDocument()
     expect(screen.queryByText('2 children: 1 under 23, 1 aged 23 or over')).not.toBeInTheDocument()
     expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/sensitive-fields/access'))).toBe(false)

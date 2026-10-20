@@ -87,9 +87,9 @@ export function findChildrenProblems({ maritalStatus, parentBirthDate, children,
 export const COUNTS_REVIEW_AFTER_MONTHS = 12;
 
 export const CHILDREN_MODES = [
-  { value: "NONE", label: "No children recorded" },
-  { value: "BIRTH_DATES", label: "With birth dates" },
-  { value: "COUNTS", label: "Numbers only" },
+  { id: "NONE", label: "No Children Recorded" },
+  { id: "BIRTH_DATES", label: "With Birth Dates" },
+  { id: "COUNTS", label: "Numbers Only" },
 ];
 
 // The form keeps both ways side by side, so switching between them does not lose what was typed.

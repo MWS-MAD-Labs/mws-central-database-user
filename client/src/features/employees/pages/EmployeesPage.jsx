@@ -346,10 +346,12 @@ export function EmployeesPage() {
               <Button
                 type="button"
                 variant="secondary"
+                size="icon"
+                aria-label="Bulk Photo Upload"
+                title="Bulk Photo Upload"
                 onClick={() => setBulkPhotoDialogOpen(true)}
               >
                 <ImagePlus size={16} />
-                Bulk Photo Upload
               </Button>
             ) : null}
             {canWrite ? (
