@@ -170,9 +170,8 @@ function ConsentCard({
         </div>
         <div className="flex gap-1">
           {consent.deleted_at ? (
-            <Button type="button" variant="ghost" size="sm" disabled={!canWrite || isRestoring} onClick={onRestore}>
+            <Button type="button" variant="ghost" disabled={!canWrite || isRestoring} onClick={onRestore} size="icon" aria-label="Restore" title="Restore">
               <RotateCcw size={15} />
-              Restore
             </Button>
           ) : (
             <>

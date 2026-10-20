@@ -719,12 +719,11 @@ function EnrollmentRowActions({
       <Button
         type="button"
         variant="ghost"
-        size="sm"
         disabled={!canDelete || restoringId === enrollment.id}
         onClick={onRestore}
+        size="icon" aria-label="Restore" title="Restore"
       >
         <RotateCcw size={15} />
-        Restore
       </Button>
     );
   }
@@ -740,12 +739,11 @@ function EnrollmentRowActions({
         <Button
           type="button"
           variant="ghost"
-          size="sm"
           disabled={!canWrite}
           onClick={onFixClass}
+          size="icon" aria-label="Fix Class" title="Fix Class"
         >
           <Wrench size={15} />
-          Fix Class
         </Button>
         <Button
           type="button"

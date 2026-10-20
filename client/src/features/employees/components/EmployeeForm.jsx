@@ -5,8 +5,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   GraduationCap,
-  RotateCcw,
-  Save,
   UserRound,
 } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -1391,7 +1389,6 @@ export function EmployeeForm({
               disabled={isSubmitting}
               onClick={handleReset}
             >
-              <RotateCcw size={16} />
               Reset
             </Button>
           ) : null}
@@ -1408,7 +1405,6 @@ export function EmployeeForm({
               (!isCreate && !isDirty ? "No changes to save yet." : undefined)
             }
           >
-            <Save size={16} />
             {isCreate ? "Create employee" : "Save changes"}
           </Button>
         </FormActionBar>

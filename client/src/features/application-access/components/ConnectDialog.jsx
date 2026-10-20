@@ -1,4 +1,3 @@
-import { Check, Copy } from "lucide-react";
 import { Link } from "react-router";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -89,7 +88,6 @@ export function ConnectDialog({
           ))}
         </div>
         <Button type="button" className="h-12 w-full text-base" onClick={copyEnv}>
-          {copied ? <Check size={18} /> : <Copy size={18} />}
           {copied ? "Copy Again" : "Copy .env Values"}
         </Button>
         {!blocked ? <p className="text-xs text-(--mws-muted)">Copy them now. They are not shown again.</p> : null}

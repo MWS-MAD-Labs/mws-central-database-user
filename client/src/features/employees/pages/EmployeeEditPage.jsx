@@ -46,11 +46,8 @@ export function EmployeeEditPage() {
             : 'Update employee identity and employment data.'
         }
         actions={
-          <Button asChild variant="secondary">
-            <Link to={`/employees/${employeeId}`}>
-              <ArrowLeft size={16} />
-              Back
-            </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+            <Link to={`/employees/${employeeId}`}><ArrowLeft size={16} /></Link>
           </Button>
         }
       />

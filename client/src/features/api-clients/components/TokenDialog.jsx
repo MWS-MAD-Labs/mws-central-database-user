@@ -1,4 +1,4 @@
-import { Check, Copy, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -85,7 +85,6 @@ export function TokenDialog({ title, client, rotation, onClose }) {
                 {maskToken(newToken)}
               </p>
               <Button type="button" className="h-12 w-full text-base" onClick={copyToken}>
-                {copied ? <Check size={18} /> : <Copy size={18} />}
                 {copied ? "Copied" : "Copy Token"}
               </Button>
             </div>

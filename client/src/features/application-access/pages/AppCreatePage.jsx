@@ -69,11 +69,8 @@ export function AppCreatePage() {
         title="Add Application"
         description="Tell the Hub how to show this application and pick what it may read from Central. Its .env values come right after."
         actions={
-          <Button asChild variant="secondary">
-              <Link to={BACK}>
-                <ArrowLeft size={16} />
-                Back
-              </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+              <Link to={BACK}><ArrowLeft size={16} /></Link>
             </Button>
         }
       />

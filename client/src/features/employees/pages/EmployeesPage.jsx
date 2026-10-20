@@ -355,16 +355,12 @@ export function EmployeesPage() {
               </Button>
             ) : null}
             {canWrite ? (
-              <Button asChild>
-                <Link to="/employees/new">
-                  <Plus size={16} />
-                  New Employee
-                </Link>
+              <Button asChild size="icon" aria-label="New Employee" title="New Employee">
+                <Link to="/employees/new"><Plus size={16} /></Link>
               </Button>
             ) : (
-              <Button type="button" disabled>
+              <Button type="button" disabled size="icon" aria-label="New Employee" title="New Employee">
                 <Plus size={16} />
-                New Employee
               </Button>
             )}
           </>

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Link, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -67,11 +67,8 @@ export function AppStartGuidePage() {
         title="Start Here"
         description={`How to connect the Hub and the applications to this Central, from nothing${environment ? `. You are in the ${ENVIRONMENT_NAMES[environment] ?? environment} Central` : ""}.`}
         actions={
-          <Button asChild variant="secondary">
-            <Link to="/application-access">
-              <ArrowLeft size={16} />
-              Back To Applications
-            </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back To Applications" title="Back To Applications">
+            <Link to="/application-access"><ArrowLeft size={16} /></Link>
           </Button>
         }
       />
@@ -87,11 +84,8 @@ export function AppStartGuidePage() {
           {body}
           <div className="flex items-center justify-between gap-3 border-t border-(--mws-line) pt-4">
             {previous ? (
-              <Button asChild variant="secondary" size="sm">
-                <Link to={hrefFor(previous.id)}>
-                  <ArrowLeft size={14} />
-                  Back
-                </Link>
+              <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+                <Link to={hrefFor(previous.id)}><ArrowLeft size={14} /></Link>
               </Button>
             ) : (
               <span />
@@ -100,12 +94,11 @@ export function AppStartGuidePage() {
               <Button asChild size="sm">
                 <Link to={hrefFor(next.id)}>
                   Next: {next.label}
-                  <ArrowRight size={14} />
                 </Link>
               </Button>
             ) : (
-              <Button asChild size="sm">
-                <Link to="/application-access">Back To Applications</Link>
+              <Button asChild size="icon" aria-label="Back To Applications" title="Back To Applications">
+                <Link to="/application-access"></Link>
               </Button>
             )}
           </div>

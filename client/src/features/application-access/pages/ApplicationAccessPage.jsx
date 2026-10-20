@@ -120,11 +120,8 @@ export function ApplicationAccessPage() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {noHub ? null : (
-              <Button asChild variant="secondary">
-                <Link to={startGuideHref()}>
-                  <BookOpen size={16} />
-                  Guide
-                </Link>
+              <Button asChild variant="secondary" size="icon" aria-label="Guide" title="Guide">
+                <Link to={startGuideHref()}><BookOpen size={16} /></Link>
               </Button>
             )}
             <Button

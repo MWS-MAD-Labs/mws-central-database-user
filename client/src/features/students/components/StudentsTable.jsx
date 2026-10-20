@@ -209,11 +209,8 @@ export function StudentsTable({
                       Restore
                     </Button>
                   ) : (
-                    <Button asChild variant="ghost" size="sm">
-                      <Link to={`/students/${student.id}`}>
-                        <Eye size={15} />
-                        View
-                      </Link>
+                    <Button asChild variant="ghost" size="icon" aria-label="View" title="View">
+                      <Link to={`/students/${student.id}`}><Eye size={15} /></Link>
                     </Button>
                   )}
                 </td>

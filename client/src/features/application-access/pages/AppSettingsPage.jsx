@@ -166,17 +166,11 @@ export function AppSettingsPage() {
         description={app.application_id}
         actions={
           <>
-            <Button asChild variant="secondary">
-              <Link to={base}>
-                <ArrowLeft size={16} />
-                Back
-              </Link>
+            <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+              <Link to={base}><ArrowLeft size={16} /></Link>
             </Button>
-            <Button asChild variant="secondary">
-              <Link to={`${guide}?part=local`}>
-                <BookOpen size={16} />
-                Setup Guide
-              </Link>
+            <Button asChild variant="secondary" size="icon" aria-label="Setup Guide" title="Setup Guide">
+              <Link to={`${guide}?part=local`}><BookOpen size={16} /></Link>
             </Button>
             {retired ? null : (
               <Button type="button" onClick={() => setEditing(true)}>

@@ -16,11 +16,13 @@ const buttonVariants = cva(
           'px-3 text-(--mws-muted) hover:bg-(--mws-soft) hover:text-(--mws-charcoal) focus-visible:outline-(--mws-burgundy)',
         danger:
           'bg-(--mws-rose) px-4 text-white hover:bg-[#9f3d41] focus-visible:outline-(--mws-rose)',
+        // Plain text with a thin underline, for a quiet secondary action.
+        link: 'rounded-none border-b border-transparent px-0.5 text-(--mws-muted) hover:border-(--mws-burgundy) hover:text-(--mws-burgundy) focus-visible:outline-(--mws-burgundy)',
       },
       size: {
-        sm: 'h-8 px-3 text-xs',
-        md: 'h-9',
-        icon: 'h-9 w-9 min-w-9 shrink-0 aspect-square px-0',
+        sm: 'h-7 px-4 text-xs',
+        md: 'h-8 px-5',
+        icon: 'h-8 w-8 min-w-8 shrink-0 aspect-square px-0',
       },
     },
     defaultVariants: {

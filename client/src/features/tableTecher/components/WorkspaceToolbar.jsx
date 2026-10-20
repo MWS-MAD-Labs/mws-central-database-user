@@ -34,11 +34,12 @@ export function WorkspaceToolbar({
           <Button
             type="button"
             variant="secondary"
-            size="sm"
+            size="icon"
+            aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
             onClick={onToggleFullscreen}
           >
             {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-            {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
           </Button>
         </div>
       </div>
@@ -76,11 +77,10 @@ export function WorkspaceToolbar({
             <Button
               type="button"
               variant="secondary"
-              size="sm"
               onClick={onReset}
+              size="icon" aria-label="Reset" title="Reset"
             >
               <RotateCcw size={15} />
-              Reset
             </Button>
           ) : null}
         </div>

@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Send } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
@@ -75,7 +74,6 @@ export function RequestIdentifierChangeDialog({
             disabled={mutation.isPending || Boolean(noApprover)}
             loading={mutation.isPending}
           >
-            <Send size={16} />
             Send request
           </Button>
         </>

@@ -1,6 +1,5 @@
 import {
   AlertTriangle,
-  Eye,
   Paperclip,
   Pencil,
   Plus,
@@ -217,7 +216,6 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage, canEdi
             loading={revealMutation.isPending}
             onClick={handleReveal}
           >
-            <Eye size={15} />
             Show Disciplinary Actions
           </Button>
         </div>

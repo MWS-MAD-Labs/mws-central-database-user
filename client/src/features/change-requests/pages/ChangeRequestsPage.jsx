@@ -328,7 +328,6 @@ function DecisionDialog({ mode, request, isSubmitting, onClose, onSubmit }) {
             disabled={isSubmitting}
             loading={isSubmitting}
           >
-            {isReject ? <X size={16} /> : <Check size={16} />}
             {isReject ? "Reject" : "Approve"}
           </Button>
         </>

@@ -1,11 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Download,
   RefreshCw,
-  RotateCcw,
   Upload,
   X,
 } from "lucide-react";
@@ -569,8 +567,8 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
       }
       description={
         initialJobId
-          ? "Rows from this import job. Edit invalid cells, revalidate, then commit if it's still pending, or roll back if it's already done."
-          : "Upload CSV or Excel, edit invalid cells in preview, revalidate, then commit. Uncheck a row to drop it entirely instead of fixing it. Rows still in error are skipped on commit."
+          ? "Rows from this import job. Fix any errors, then commit, or roll back if it is already done."
+          : "Upload a CSV or Excel file, fix any errors in the preview, then commit."
       }
       onClose={onClose}
       panelClassName={
@@ -593,7 +591,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               onClick={refreshReferenceData}
               title="Reload units, grades, and other reference data, then revalidate"
             >
-              <RefreshCw size={16} />
               Refresh data
             </Button>
           ) : null}
@@ -605,7 +602,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               loading={previewMutation.isPending}
               onClick={revalidateDraft}
             >
-              <RefreshCw size={16} />
               Revalidate
             </Button>
           ) : null}
@@ -616,7 +612,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               loading={rollbackMutation.isPending}
               onClick={() => rollbackMutation.mutate()}
             >
-              <RotateCcw size={16} />
               Rollback
             </Button>
           ) : null}
@@ -625,11 +620,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
             disabled={!canCommit || commitState?.isRunning}
             onClick={runCommit}
           >
-            {commitState?.isRunning ? (
-              <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-            ) : (
-              <CheckCircle2 size={16} />
-            )}
             {commitState?.isRunning
               ? commitState.totalBatches > 1
                 ? `Committing (${commitState.completed}/${commitState.total})...`
@@ -1125,12 +1115,13 @@ function ImportPreviewPager({
         <Button
           type="button"
           variant="secondary"
-          size="sm"
+          size="icon"
+          aria-label="Prev"
+          title="Previous page"
           disabled={currentPage <= 1 || isLoading}
           onClick={() => goTo(currentPage - 1)}
         >
           <ChevronLeft size={15} />
-          Prev
         </Button>
         {pageWindow.map((page, index) => {
           const previousPage = pageWindow[index - 1];
@@ -1170,11 +1161,12 @@ function ImportPreviewPager({
         <Button
           type="button"
           variant="secondary"
-          size="sm"
+          size="icon"
+          aria-label="Next"
+          title="Next page"
           disabled={currentPage >= totalPages || isLoading}
           onClick={() => goTo(currentPage + 1)}
         >
-          Next
           <ChevronRight size={15} />
         </Button>
       </div>

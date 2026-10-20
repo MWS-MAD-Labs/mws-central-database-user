@@ -47,11 +47,8 @@ export function StudentEditPage() {
             : 'Update student identity and academic data.'
         }
         actions={
-          <Button asChild variant="secondary">
-            <Link to={`/students/${studentId}`}>
-              <ArrowLeft size={16} />
-              Back
-            </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+            <Link to={`/students/${studentId}`}><ArrowLeft size={16} /></Link>
           </Button>
         }
       />

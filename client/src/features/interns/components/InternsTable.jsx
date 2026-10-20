@@ -260,11 +260,8 @@ function buildColumns({
         }
 
         return (
-          <Button asChild variant="ghost" size="sm">
-            <Link to={`/interns/${row.original.id}`}>
-              <Eye size={15} />
-              View
-            </Link>
+          <Button asChild variant="ghost" size="icon" aria-label="View" title="View">
+            <Link to={`/interns/${row.original.id}`}><Eye size={15} /></Link>
           </Button>
         )
       },

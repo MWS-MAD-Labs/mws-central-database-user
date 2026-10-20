@@ -157,11 +157,8 @@ function Editor({ applicationId, roles, options }) {
         title={`Add Roles to ${applicationId}`}
         description="Add the roles, then pick what each may do. They are saved together."
         actions={
-          <Button asChild variant="secondary">
-            <Link to={back}>
-              <ArrowLeft size={16} />
-              Back
-            </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+            <Link to={back}><ArrowLeft size={16} /></Link>
           </Button>
         }
       />

@@ -192,16 +192,12 @@ export function InternsPage() {
         description="Manage intern records: unit, position, and internship period."
         actions={
           canWrite ? (
-            <Button asChild>
-              <Link to="/interns/new">
-                <Plus size={16} />
-                New Intern
-              </Link>
+            <Button asChild size="icon" aria-label="New Intern" title="New Intern">
+              <Link to="/interns/new"><Plus size={16} /></Link>
             </Button>
           ) : (
-            <Button type="button" disabled>
+            <Button type="button" disabled size="icon" aria-label="New Intern" title="New Intern">
               <Plus size={16} />
-              New Intern
             </Button>
           )
         }

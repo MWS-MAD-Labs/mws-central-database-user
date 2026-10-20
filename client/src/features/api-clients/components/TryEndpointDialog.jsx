@@ -1,5 +1,4 @@
 import { useMutation } from "@tanstack/react-query";
-import { Send } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -93,7 +92,6 @@ export function TryEndpointDialog({ endpoint, onClose }) {
             disabled={Boolean(blockedReason)}
             title={blockedReason}
           >
-            <Send size={16} />
             Send request
           </Button>
         </>

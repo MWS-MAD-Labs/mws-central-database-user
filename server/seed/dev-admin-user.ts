@@ -29,7 +29,7 @@ async function main() {
     },
     create: {
       email: TARGET_EMAIL,
-      full_name: TARGET_EMAIL.split("@")[0],
+      full_name: TARGET_EMAIL.split("@")[0].replace(/(^|[\s._-])(\p{L})/gu, (_, sep, letter) => sep + letter.toUpperCase()),
       role: AdminRole.SUPER_ADMIN,
       unit_id: madLabUnit.id,
       is_active: true,

@@ -109,11 +109,8 @@ function GroupAccessForm({ rule }) {
         title={`Edit ${audienceLabelOf(rule.audiences)}`}
         description={`Group access for ${rule.application_id}. The application and audience stay as created.`}
         actions={
-          <Button asChild variant="secondary">
-            <Link to={back}>
-              <ArrowLeft size={16} />
-              Back
-            </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+            <Link to={back}><ArrowLeft size={16} /></Link>
           </Button>
         }
       />

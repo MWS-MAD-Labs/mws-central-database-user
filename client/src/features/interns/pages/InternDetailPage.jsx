@@ -152,23 +152,16 @@ export function InternDetailPage() {
         }
         actions={
           <>
-            <Button asChild variant="secondary">
-              <Link to="/interns">
-                <ArrowLeft size={16} />
-                Back
-              </Link>
+            <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+              <Link to="/interns"><ArrowLeft size={16} /></Link>
             </Button>
             {canWrite && !editBlockedText ? (
-              <Button asChild variant="secondary">
-                <Link to={`/interns/${internId}/edit`}>
-                  <Edit size={16} />
-                  Edit
-                </Link>
+              <Button asChild variant="secondary" size="icon" aria-label="Edit" title="Edit">
+                <Link to={`/interns/${internId}/edit`}><Edit size={16} /></Link>
               </Button>
             ) : intern && editBlockedText ? (
-              <Button type="button" variant="secondary" disabled title={editBlockedText}>
+              <Button type="button" variant="secondary" disabled title={editBlockedText} size="icon" aria-label="Edit">
                 <Edit size={16} />
-                Edit
               </Button>
             ) : null}
             {canDelete ? (
@@ -177,9 +170,9 @@ export function InternDetailPage() {
                 variant="danger"
                 loading={deleteMutation.isPending}
                 onClick={handleDelete}
+                size="icon" aria-label="Delete" title="Delete"
               >
                 <Trash2 size={16} />
-                Delete
               </Button>
             ) : null}
           </>

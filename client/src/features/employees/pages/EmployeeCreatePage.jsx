@@ -47,11 +47,8 @@ export function EmployeeCreatePage() {
         title="New Employee"
         description="Create an employee profile and assign unit, position, and job level."
         actions={
-          <Button asChild variant="secondary">
-            <Link to="/employees">
-              <ArrowLeft size={16} />
-              Back
-            </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+            <Link to="/employees"><ArrowLeft size={16} /></Link>
           </Button>
         }
       />

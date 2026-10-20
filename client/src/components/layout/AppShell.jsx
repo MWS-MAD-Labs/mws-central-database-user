@@ -442,7 +442,7 @@ export function AppShell() {
             onClick={handleLogout}
             title={!sidebarOpen ? "Logout" : undefined}
           >
-            <LogOut size={16} />
+            {!sidebarOpen ? <LogOut size={16} className="hidden md:block" /> : null}
             <span className={cn(!sidebarOpen && "md:hidden")}>Logout</span>
           </Button>
         </div>

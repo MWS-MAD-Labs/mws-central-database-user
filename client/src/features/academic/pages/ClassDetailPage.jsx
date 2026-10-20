@@ -761,11 +761,8 @@ export function ClassDetailPage() {
                 Edit class
               </Button>
             ) : null}
-            <Button asChild variant="secondary">
-              <Link to="/academic?tab=classes">
-                <ArrowLeft size={16} />
-                Back
-              </Link>
+            <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+              <Link to="/academic?tab=classes"><ArrowLeft size={16} /></Link>
             </Button>
           </>
         }

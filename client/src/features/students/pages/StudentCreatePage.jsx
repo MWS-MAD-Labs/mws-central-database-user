@@ -47,11 +47,8 @@ export function StudentCreatePage() {
         title="New Student"
         description="Create the student identity and baseline academic record."
         actions={
-          <Button asChild variant="secondary">
-            <Link to="/students">
-              <ArrowLeft size={16} />
-              Back
-            </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+            <Link to="/students"><ArrowLeft size={16} /></Link>
           </Button>
         }
       />

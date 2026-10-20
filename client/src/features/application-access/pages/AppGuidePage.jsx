@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Copy } from "lucide-react";
+import { ArrowLeft, Copy } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -98,11 +98,8 @@ export function AppGuidePage() {
   const pager = (
     <div className="flex items-center justify-between gap-3 border-t border-(--mws-line) pt-4">
       {previous ? (
-        <Button asChild variant="secondary" size="sm">
-          <Link to={hrefFor(previous.id)}>
-            <ArrowLeft size={14} />
-            Back
-          </Link>
+        <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+          <Link to={hrefFor(previous.id)}><ArrowLeft size={14} /></Link>
         </Button>
       ) : (
         <span />
@@ -111,12 +108,11 @@ export function AppGuidePage() {
         <Button asChild size="sm">
           <Link to={hrefFor(next.id)}>
             Next: {next.label}
-            <ArrowRight size={14} />
           </Link>
         </Button>
       ) : (
-        <Button asChild size="sm">
-          <Link to={`/application-access/apps/${applicationId}/setup`}>Back To Setup</Link>
+        <Button asChild size="icon" aria-label="Back To Setup" title="Back To Setup">
+          <Link to={`/application-access/apps/${applicationId}/setup`}></Link>
         </Button>
       )}
     </div>
@@ -128,11 +124,8 @@ export function AppGuidePage() {
         title="Setup Guide"
         description={`What ${setup.application.name} needs, from its first line of .env to a deploy that works. Use it again after a rotation.`}
         actions={
-          <Button asChild variant="secondary">
-            <Link to={`/application-access/apps/${applicationId}/setup`}>
-              <ArrowLeft size={16} />
-              Back To Setup
-            </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back To Setup" title="Back To Setup">
+            <Link to={`/application-access/apps/${applicationId}/setup`}><ArrowLeft size={16} /></Link>
           </Button>
         }
       />

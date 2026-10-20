@@ -81,9 +81,8 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
       action={
         <>
           {onHide ? (
-            <Button type="button" variant="ghost" size="sm" onClick={onHide}>
+            <Button type="button" variant="ghost" onClick={onHide} size="icon" aria-label="Hide" title="Hide">
               <EyeOff size={15} />
-              Hide
             </Button>
           ) : null}
           <ToggleChip checked={showDeleted} onChange={setShowDeleted}>

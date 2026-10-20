@@ -110,17 +110,11 @@ export function AppAccessPage() {
         description="Roles are defined here. Group access says who can use this application and with which role, and exceptions give someone inside a group a different role."
         actions={
           <>
-            <Button asChild variant="secondary">
-              <Link to={BACK}>
-                <ArrowLeft size={16} />
-                Back
-              </Link>
+            <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+              <Link to={BACK}><ArrowLeft size={16} /></Link>
             </Button>
-            <Button asChild variant="secondary">
-              <Link to={`/application-access/apps/${applicationId}/settings`}>
-                <Settings size={16} />
-                Settings
-              </Link>
+            <Button asChild variant="secondary" size="icon" aria-label="Settings" title="Settings">
+              <Link to={`/application-access/apps/${applicationId}/settings`}><Settings size={16} /></Link>
             </Button>
             {activeTab === "access" ? (
               <Button

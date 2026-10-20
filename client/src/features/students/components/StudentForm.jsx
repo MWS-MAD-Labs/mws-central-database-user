@@ -2,7 +2,7 @@ import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/Sen
 import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Camera, RotateCcw, Save, UserRound } from "lucide-react";
+import { Camera, UserRound } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
 import { ChangeReviewTable } from "../../../components/ui/ChangeReviewTable.jsx";
@@ -783,13 +783,11 @@ export function StudentForm({
               disabled={isSubmitting}
               onClick={handleReset}
             >
-              <RotateCcw size={16} />
               Reset
             </Button>
           ) : null}
           {isCreate && isDirty ? (
             <Button type="button" variant="secondary" onClick={handleReset}>
-              <RotateCcw size={16} />
               Reset form
             </Button>
           ) : null}
@@ -806,7 +804,6 @@ export function StudentForm({
               (!isCreate && !isDirty ? "No changes to save yet." : undefined)
             }
           >
-            <Save size={16} />
             {isCreate ? "Create student" : "Save changes"}
           </Button>
         </FormActionBar>

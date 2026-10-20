@@ -46,11 +46,8 @@ export function InternEditPage() {
             : 'Update intern identity and internship data.'
         }
         actions={
-          <Button asChild variant="secondary">
-            <Link to={`/interns/${internId}`}>
-              <ArrowLeft size={16} />
-              Back
-            </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+            <Link to={`/interns/${internId}`}><ArrowLeft size={16} /></Link>
           </Button>
         }
       />

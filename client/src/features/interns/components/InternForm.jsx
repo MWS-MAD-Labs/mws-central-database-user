@@ -2,7 +2,6 @@ import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/Sen
 import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Save } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
 import { ChangeReviewTable } from "../../../components/ui/ChangeReviewTable.jsx";
@@ -620,7 +619,6 @@ export function InternForm({
               (!isCreate && !isDirty ? "No changes to save yet." : undefined)
             }
           >
-            <Save size={16} />
             {isCreate ? "Create intern" : "Save changes"}
           </Button>
         </FormActionBar>

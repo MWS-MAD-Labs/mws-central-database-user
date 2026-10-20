@@ -149,11 +149,8 @@ function RoleForm({ applicationId, role, roles }) {
             : "Role keys are exact and uppercase, for example ADMIN or SUPPORT_STAFF."
         }
         actions={
-          <Button asChild variant="secondary">
-            <Link to={back}>
-              <ArrowLeft size={16} />
-              Back
-            </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+            <Link to={back}><ArrowLeft size={16} /></Link>
           </Button>
         }
       />

@@ -1,4 +1,3 @@
-import { Check, Copy } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 import { CrudDialog } from "./CrudDialog.jsx";
@@ -44,7 +43,6 @@ export function BulkResultDialog({
       footer={
         <>
           <Button type="button" variant="ghost" className="cursor-pointer" onClick={handleCopy}>
-            {copied ? <Check size={15} /> : <Copy size={15} />}
             {copied ? "Copied" : "Copy"}
           </Button>
           <Button type="button" onClick={onClose}>

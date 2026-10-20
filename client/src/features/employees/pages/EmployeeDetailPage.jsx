@@ -227,23 +227,16 @@ export function EmployeeDetailPage() {
         }
         actions={
           <>
-            <Button asChild variant="secondary">
-              <Link to="/employees">
-                <ArrowLeft size={16} />
-                Back
-              </Link>
+            <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+              <Link to="/employees"><ArrowLeft size={16} /></Link>
             </Button>
             {canWrite && !editBlockedText ? (
-              <Button asChild variant="secondary">
-                <Link to={`/employees/${employeeId}/edit`}>
-                  <Edit size={16} />
-                  Edit
-                </Link>
+              <Button asChild variant="secondary" size="icon" aria-label="Edit" title="Edit">
+                <Link to={`/employees/${employeeId}/edit`}><Edit size={16} /></Link>
               </Button>
             ) : employee && editBlockedText ? (
-              <Button type="button" variant="secondary" disabled title={editBlockedText}>
+              <Button type="button" variant="secondary" disabled title={editBlockedText} size="icon" aria-label="Edit">
                 <Edit size={16} />
-                Edit
               </Button>
             ) : null}
             {canExtendContract ? (
@@ -262,9 +255,9 @@ export function EmployeeDetailPage() {
                 variant="danger"
                 loading={deleteMutation.isPending}
                 onClick={handleDelete}
+                size="icon" aria-label="Archive" title="Archive"
               >
                 <Trash2 size={16} />
-                Archive
               </Button>
             ) : null}
           </>

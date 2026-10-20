@@ -174,11 +174,8 @@ export function AppSetupPage() {
         description={`${finished} of ${steps.length} steps done. You can leave and come back, this page reads the progress from the data.`}
         actions={
           <>
-            <Button asChild variant="secondary">
-              <Link to={`/application-access/apps/${applicationId}`}>
-                <ArrowLeft size={16} />
-                Back
-              </Link>
+            <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+              <Link to={`/application-access/apps/${applicationId}`}><ArrowLeft size={16} /></Link>
             </Button>
             <ActionsMenu label="More actions">
               {(closeMenu) => (

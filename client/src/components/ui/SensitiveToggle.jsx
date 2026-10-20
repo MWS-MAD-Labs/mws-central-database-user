@@ -6,16 +6,14 @@ export function SensitiveToggle({ revealed, onShow, onHide, loading = false }) {
   if (revealed) {
     if (!onHide) return null;
     return (
-      <Button type="button" variant="ghost" size="sm" onClick={onHide}>
+      <Button type="button" variant="ghost" onClick={onHide} size="icon" aria-label="Hide" title="Hide">
         <EyeOff size={15} />
-        Hide
       </Button>
     );
   }
   return (
-    <Button type="button" variant="ghost" size="sm" loading={loading} onClick={onShow}>
+    <Button type="button" variant="ghost" loading={loading} onClick={onShow} size="icon" aria-label="Show Sensitive Fields" title="Show Sensitive Fields">
       <Eye size={15} />
-      Show Sensitive Fields
     </Button>
   );
 }

@@ -107,11 +107,8 @@ export function GroupFormPage() {
         title={`Add Group to ${applicationId}`}
         description="Everyone this group covers gets the role. If the group sits inside a broader one, the role has to differ from it."
         actions={
-          <Button asChild variant="secondary">
-            <Link to={back}>
-              <ArrowLeft size={16} />
-              Back
-            </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+            <Link to={back}><ArrowLeft size={16} /></Link>
           </Button>
         }
       />
