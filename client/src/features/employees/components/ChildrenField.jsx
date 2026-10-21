@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { DateField, NumberInput, SearchableSelect } from "../../../components/ui/FormControls.jsx";
@@ -7,8 +7,9 @@ import {
   CHILDREN_MODES,
   CHILD_RELATIONS,
   MAX_CHILDREN,
+  DEFAULT_ALLOWANCE_RULE,
   countsAreStale,
-  describeChildren,
+  describeChildrenWithAllowance,
   emptyChild,
   findProblemsFor,
   summarizeChildrenValue,
@@ -19,11 +20,13 @@ const formatDay = (value) =>
 
 // The children of an employee, recorded one of two ways: a birth date per child, or just three numbers for a parent
 // who does not share birth dates. `value` holds both, `mode` says which one counts.
-export function ChildrenField({ value, onChange, maritalStatus, parentBirthDate }) {
+export function ChildrenField({ value, onChange, maritalStatus, parentBirthDate, rule = DEFAULT_ALLOWANCE_RULE }) {
   const idPrefix = useId();
+  const listRef = useRef(null);
+  const focusRow = useRef(null);
   const single = maritalStatus === "SINGLE";
   const problems = findProblemsFor(value, { maritalStatus, parentBirthDate });
-  const summary = summarizeChildrenValue(value);
+  const summary = summarizeChildrenValue(value, rule);
   const relationOptions = CHILD_RELATIONS.map((relation) => ({
     ...relation,
     disabled: single && relation.value !== "ADOPTED",
@@ -40,7 +43,19 @@ export function ChildrenField({ value, onChange, maritalStatus, parentBirthDate 
     const left = rows.filter((_, position) => position !== index);
     patch({ rows: left.length > 0 ? left : [newRow()] });
   };
-  const addRowAfter = (index) => patch({ rows: [...rows.slice(0, index + 1), newRow(), ...rows.slice(index + 1)] });
+  const addRowAfter = (index) => {
+    patch({ rows: [...rows.slice(0, index + 1), newRow(), ...rows.slice(index + 1)] });
+    focusRow.current = index + 1;
+  };
+
+  // A row added in a long list scrolls into view and takes the cursor.
+  useEffect(() => {
+    if (focusRow.current === null) return;
+    const row = listRef.current?.querySelector(`[data-row="${focusRow.current}"]`);
+    row?.scrollIntoView?.({ block: "nearest" });
+    row?.querySelector("input")?.focus();
+    focusRow.current = null;
+  }, [value.rows.length]);
   const updateCount = (field, text) => patch({ counts: { ...value.counts, [field]: text }, confirmed: false });
   const stale = value.needs_review || countsAreStale(value.declared_at);
 
@@ -55,13 +70,16 @@ export function ChildrenField({ value, onChange, maritalStatus, parentBirthDate 
 
       {value.mode === "BIRTH_DATES" ? (
         <div className="space-y-3">
-          <div className="hidden gap-3 text-xs font-semibold text-(--mws-muted) md:grid md:grid-cols-[1fr_1fr_5.5rem]">
+          <div className="hidden gap-3 text-xs font-semibold text-(--mws-muted) md:grid md:grid-cols-[1.5rem_1fr_1fr_5.5rem]">
+            <span>#</span>
             <span>Birth date (DD/MM/YYYY)</span>
             <span>Relation</span>
             <span />
           </div>
+          <div ref={listRef} className="max-h-[19rem] space-y-3 overflow-y-auto pr-1" data-testid="children-rows">
           {rows.map((child, index) => (
-            <div key={index} className="grid items-start gap-3 md:grid-cols-[1fr_1fr_5.5rem]">
+            <div key={index} data-row={index} className="grid items-start gap-3 md:grid-cols-[1.5rem_1fr_1fr_5.5rem]">
+              <span className="hidden pt-2.5 text-sm text-(--mws-muted) md:block">{index + 1}</span>
               <div className="space-y-1">
                 <DateField
                   invalid={Boolean(problems.byRow[index])}
@@ -101,11 +119,28 @@ export function ChildrenField({ value, onChange, maritalStatus, parentBirthDate 
               </div>
             </div>
           ))}
+          </div>
         </div>
       ) : null}
 
       {value.mode === "COUNTS" ? (
         <div className="space-y-3">
+          {value.declared_at ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+              <span className={stale ? "font-semibold text-[#a43c41]" : "text-(--mws-muted)"}>
+                {stale ? "Needs review. " : ""}Last confirmed {formatDay(value.declared_at)}
+              </span>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!stale || value.confirmed}
+                onClick={() => patch({ confirmed: true })}
+              >
+                {value.confirmed ? "Confirmed" : "Confirm"}
+              </Button>
+            </div>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-3">
             {[
               ["under_23", "U-23"],
@@ -127,22 +162,6 @@ export function ChildrenField({ value, onChange, maritalStatus, parentBirthDate 
               </div>
             ))}
           </div>
-          {value.declared_at ? (
-            <div className="flex flex-wrap items-center gap-3 text-xs">
-              <span className={stale ? "font-semibold text-[#a43c41]" : "text-(--mws-muted)"}>
-                {stale ? "Needs review. " : ""}Last confirmed {formatDay(value.declared_at)}
-              </span>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={value.confirmed}
-                onClick={() => patch({ confirmed: true })}
-              >
-                {value.confirmed ? "Will be confirmed when saved" : "Confirm still correct"}
-              </Button>
-            </div>
-          ) : null}
         </div>
       ) : null}
 
@@ -150,7 +169,7 @@ export function ChildrenField({ value, onChange, maritalStatus, parentBirthDate 
 
       {value.mode !== "NONE" && summary.total > 0 ? (
         <p className="text-sm text-(--mws-muted)" aria-live="polite">
-          {describeChildren(summary)}
+          {describeChildrenWithAllowance(summary)}
         </p>
       ) : null}
     </div>

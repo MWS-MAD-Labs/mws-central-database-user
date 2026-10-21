@@ -4,11 +4,14 @@ import {
   childrenPayload,
   childrenValueFromResponse,
   countsAreStale,
+  DEFAULT_ALLOWANCE_RULE,
   describeChildren,
+  describeChildrenWithAllowance,
   emptyChildrenValue,
   findChildrenProblems,
   findCountsProblems,
   summarizeChildren,
+  summarizeCounts,
 } from '../../../src/features/employees/utils/childrenRules.js'
 
 const today = '2026-10-28'
@@ -22,13 +25,15 @@ describe('children rules in the form', () => {
 
   it('splits at 23 and ignores rows without a date yet', () => {
     const summary = summarizeChildren([child('2003-10-28'), child('2003-10-29'), child('2015-01-01'), child('')], today)
-    expect(summary).toEqual({ total: 3, under_23: 2, age_23_plus: 1 })
+    expect(summary).toEqual({ total: 3, under_23: 2, age_23_plus: 1, allowance_eligible: 2 })
   })
 
   it('says it in words', () => {
     expect(describeChildren({ total: 0, under_23: 0, age_23_plus: 0 })).toBe('No children')
-    expect(describeChildren({ total: 1, under_23: 1, age_23_plus: 0 })).toBe('1 child: 1 under 23, 0 aged 23 or over')
-    expect(describeChildren({ total: 3, under_23: 2, age_23_plus: 1 })).toBe('3 children: 2 under 23, 1 aged 23 or over')
+    expect(describeChildren({ total: 1, under_23: 1, age_23_plus: 0 })).toBe('1 child')
+    expect(describeChildren({ total: 3, under_23: 2, age_23_plus: 1 })).toBe('3 children')
+    expect(describeChildrenWithAllowance({ total: 3, allowance_eligible: 2 })).toBe('3 children, 2 for allowance')
+    expect(describeChildrenWithAllowance({ total: 0, allowance_eligible: 0 })).toBe('')
   })
 
   it('rejects a 20 year old child of a 30 year old, and accepts exactly 18 years apart', () => {
@@ -106,5 +111,30 @@ describe('typed numbers in the form', () => {
     expect(countsAreStale('2025-10-28T00:00:00.000Z', new Date('2026-10-28T00:00:00.000Z'))).toBe(false)
     expect(countsAreStale('2025-10-27T00:00:00.000Z', new Date('2026-10-28T00:00:00.000Z'))).toBe(true)
     expect(countsAreStale(null)).toBe(false)
+  })
+})
+
+describe('the allowance rule in the form', () => {
+  const day = '2026-06-15'
+  const rows = (years, relation = 'BIOLOGICAL') => ({ birth_date: `${2026 - years}-01-01`, relation })
+
+  it('stops at the most children that count', () => {
+    const five = [rows(1), rows(2), rows(3), rows(4), rows(5)]
+    expect(summarizeChildren(five, day).allowance_eligible).toBe(3)
+    expect(summarizeChildren(five, day, { ...DEFAULT_ALLOWANCE_RULE, max_children: null }).allowance_eligible).toBe(5)
+  })
+
+  it('leaves out the kinds that do not count and the children over the age limit', () => {
+    const open = { ...DEFAULT_ALLOWANCE_RULE, max_children: null }
+    const mixed = [rows(5), rows(6, 'ADOPTED'), rows(7, 'STEP'), rows(25)]
+    expect(summarizeChildren(mixed, day, open).allowance_eligible).toBe(3)
+    expect(summarizeChildren(mixed, day, { ...open, count_step: false }).allowance_eligible).toBe(2)
+    expect(summarizeChildren(mixed, day, { ...open, age_limit: 6 }).allowance_eligible).toBe(1)
+  })
+
+  it('applies the same rule to typed numbers', () => {
+    const counts = { under_23: '5', age_23_plus: '1', adopted: '2' }
+    expect(summarizeCounts(counts).allowance_eligible).toBe(3)
+    expect(summarizeCounts(counts, { ...DEFAULT_ALLOWANCE_RULE, max_children: null, count_adopted: false }).allowance_eligible).toBe(3)
   })
 })

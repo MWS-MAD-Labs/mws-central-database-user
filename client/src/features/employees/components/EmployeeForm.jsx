@@ -80,6 +80,7 @@ import { RequestStatusHint } from "../../change-requests/components/RequestStatu
 import { useMyRequestsForRecord } from "../../change-requests/hooks/useMyRequestsForRecord.js";
 import { rememberReveal } from "../../../lib/piiRevealMemory.js";
 import { ChildrenField } from "./ChildrenField.jsx";
+import { useChildrenAllowance } from "../hooks/useChildrenAllowance.js";
 import {
   childrenPayload,
   childrenValueFromResponse,
@@ -148,6 +149,7 @@ export function EmployeeForm({
   const [revealedIdentity, setRevealedIdentity] = useState(null);
   const [values, setValues] = useState(initialValues);
   const [nowSnapshot] = useState(() => Date.now());
+  const { rule: allowanceRule } = useChildrenAllowance();
   const [requestChangeField, setRequestChangeField] = useState(null);
   const myRequestFor = useMyRequestsForRecord(
     user,
@@ -1069,6 +1071,7 @@ export function EmployeeForm({
                   onChange={(next) => updateValue("children", next)}
                   maritalStatus={values.marital_status}
                   parentBirthDate={values.birth_date}
+                  rule={allowanceRule}
                 />
               )}
             </Field>
@@ -1782,7 +1785,7 @@ const EMPLOYEE_FIELD_FORMATTERS = {
   bpjs_employment_number: maskSensitiveValue,
   kpj_number: maskSensitiveValue,
   // Only how many, never the birth dates of the children.
-  children: (value) => describeChildren(summarizeChildrenValue(value)) + (value?.mode === "COUNTS" ? " (numbers only)" : ""),
+  children: (value) => describeChildren(summarizeChildrenValue(value)),
 };
 
 // contract_duration_months is a scratch input that only computes

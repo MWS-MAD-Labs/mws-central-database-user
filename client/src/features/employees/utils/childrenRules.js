@@ -10,6 +10,21 @@ export const CHILD_RELATIONS = [
   { value: "STEP", label: "Step" },
 ];
 
+// Which children count for the allowance. A Super Admin sets it (Master Data, Employment); these are the values before
+// anyone does, and the ones used while the real rule is still loading.
+export const DEFAULT_ALLOWANCE_RULE = {
+  max_children: 3,
+  age_limit: 23,
+  count_biological: true,
+  count_adopted: true,
+  count_step: true,
+};
+
+const relationCounts = (relation, rule) =>
+  relation === "ADOPTED" ? rule.count_adopted : relation === "STEP" ? rule.count_step : rule.count_biological;
+
+const capped = (eligible, rule) => (rule.max_children == null ? eligible : Math.min(eligible, rule.max_children));
+
 export const emptyChild = (relation = "BIOLOGICAL") => ({ birth_date: "", relation });
 
 const utcDay = (value) => {
@@ -36,17 +51,28 @@ const addYears = (value, years) => {
   return Date.UTC(date.getUTCFullYear() + years, date.getUTCMonth(), date.getUTCDate());
 };
 
-export function summarizeChildren(children, today = todayText()) {
-  const dated = children.filter((child) => child.birth_date);
-  const under = dated.filter((child) => ageOn(child.birth_date, today) < ALLOWANCE_AGE_LIMIT).length;
-  return { total: dated.length, under_23: under, age_23_plus: dated.length - under };
+// Whether this child counts for the allowance today, before the limit on how many.
+export function countsForAllowance(child, rule = DEFAULT_ALLOWANCE_RULE, today = todayText()) {
+  return Boolean(child.birth_date) && ageOn(child.birth_date, today) < rule.age_limit && relationCounts(child.relation, rule);
 }
 
-// "3 children: 2 under 23, 1 aged 23 or over"
+export function summarizeChildren(children, today = todayText(), rule = DEFAULT_ALLOWANCE_RULE) {
+  const dated = children.filter((child) => child.birth_date);
+  const under = dated.filter((child) => ageOn(child.birth_date, today) < ALLOWANCE_AGE_LIMIT).length;
+  const counted = dated.filter((child) => countsForAllowance(child, rule, today)).length;
+  return { total: dated.length, under_23: under, age_23_plus: dated.length - under, allowance_eligible: capped(counted, rule) };
+}
+
+// "No children", "1 child", "3 children"
 export function describeChildren(summary) {
   if (!summary || summary.total === 0) return "No children";
-  const noun = summary.total === 1 ? "child" : "children";
-  return `${summary.total} ${noun}: ${summary.under_23} under 23, ${summary.age_23_plus} aged 23 or over`;
+  return `${summary.total} ${summary.total === 1 ? "child" : "children"}`;
+}
+
+// "3 children, 2 for allowance"
+export function describeChildrenWithAllowance(summary) {
+  if (!summary || summary.total === 0) return "";
+  return `${describeChildren(summary)}, ${summary.allowance_eligible ?? 0} for allowance`;
 }
 
 // What is wrong with the rows, by row index, plus a problem about the list as a whole. Rows without a date yet are
@@ -128,20 +154,25 @@ export function countsFromText(counts) {
   };
 }
 
-export function summarizeCounts(counts) {
+// The typed numbers do not say how old the adopted children are, so they are taken from the ones under 23 first.
+export function summarizeCounts(counts, rule = DEFAULT_ALLOWANCE_RULE) {
   const numbers = countsFromText(counts);
+  const adoptedUnder = Math.min(numbers.adopted, numbers.under_23);
+  const otherUnder = numbers.under_23 - adoptedUnder;
+  const counted = (rule.count_adopted ? adoptedUnder : 0) + (rule.count_biological ? otherUnder : 0);
   return {
     total: numbers.under_23 + numbers.age_23_plus,
     under_23: numbers.under_23,
     age_23_plus: numbers.age_23_plus,
+    allowance_eligible: capped(counted, rule),
   };
 }
 
 // The numbers to show for whichever way is picked.
-export function summarizeChildrenValue(value) {
-  if (value.mode === "COUNTS") return summarizeCounts(value.counts);
-  if (value.mode === "BIRTH_DATES") return summarizeChildren(value.rows);
-  return { total: 0, under_23: 0, age_23_plus: 0 };
+export function summarizeChildrenValue(value, rule = DEFAULT_ALLOWANCE_RULE) {
+  if (value.mode === "COUNTS") return summarizeCounts(value.counts, rule);
+  if (value.mode === "BIRTH_DATES") return summarizeChildren(value.rows, todayText(), rule);
+  return { total: 0, under_23: 0, age_23_plus: 0, allowance_eligible: 0 };
 }
 
 // What is wrong with the typed numbers. A child who is not adopted counts as biological, like on the server.
