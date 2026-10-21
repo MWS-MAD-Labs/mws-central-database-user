@@ -47,6 +47,7 @@ import {
 import type { ResourceVersionResponse } from "../model/resource-version-model";
 import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
+import { ChildrenAllowanceRuleService } from "./children-allowance-rule-service";
 import { resolveEmployeePhotoUrl } from "./employee-photo-service";
 import { CheckExist } from "../utils/check-exist";
 import { withLookupCache } from "../lib/lookup-cache";
@@ -73,6 +74,7 @@ import { logger } from "../lib/logger";
 import {
   findChildrenProblems,
   findCountsProblems,
+  describeChildCount,
   summarizeChildren,
   summarizeCounts,
   type ChildrenCounts,
@@ -1915,7 +1917,7 @@ export class EmployeeService {
     }
 
     if (isSelf || admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii) {
-      const detail = toEmployeeDetailResponse(person, admin);
+      const detail = toEmployeeDetailResponse(person, admin, await ChildrenAllowanceRuleService.get());
       detail.identity.photo_url = await resolveEmployeePhotoUrl(
         person.photo_object_key,
         person.photo_url,
@@ -2002,7 +2004,9 @@ export class EmployeeService {
       });
     }
 
-    return splitEmployeeDetailIdentity(toEmployeeDetailResponse(person, admin)).revealed;
+    return splitEmployeeDetailIdentity(
+      toEmployeeDetailResponse(person, admin, await ChildrenAllowanceRuleService.get()),
+    ).revealed;
   }
 
   static async search(
@@ -2332,8 +2336,8 @@ export class EmployeeService {
             ),
             kpj_number: maskSensitiveValue(targetEmployee.kpj_number),
             ...(countsAtArchive
-              ? { children: { ...summarizeCounts(countsAtArchive) } }
-              : childrenAtArchive.length > 0 && { children: { ...summarizeChildren(childrenAtArchive, deletedAt) } }),
+              ? { children: describeChildCount(summarizeCounts(countsAtArchive).total) }
+              : childrenAtArchive.length > 0 && { children: describeChildCount(childrenAtArchive.length) }),
           },
           new_values: {
             status: EmployeeStatus.ARCHIVED,

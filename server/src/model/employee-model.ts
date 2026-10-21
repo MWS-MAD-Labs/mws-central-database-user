@@ -22,8 +22,11 @@ import type { AuditValue } from "./audit-log-model";
 import { maskSensitiveValue } from "../utils/sensitive-data";
 import {
   countsNeedReview,
+  DEFAULT_ALLOWANCE_RULE,
+  describeChildCount,
   summarizeChildren,
   summarizeCounts,
+  type AllowanceRule,
   type ChildrenCounts,
   type ChildrenSummary,
 } from "../utils/employee-children-rules";
@@ -326,13 +329,14 @@ export function toEmployeeChildrenResponse(
   rows: Pick<EmployeeChild, "id" | "birth_date" | "relation">[],
   employee: Partial<ChildrenDeclared> = {},
   today: Date = new Date(),
+  rule: AllowanceRule = DEFAULT_ALLOWANCE_RULE,
 ): EmployeeChildrenResponse {
   const counts = toDeclaredCounts(employee);
   if (counts) {
     const declaredAt = employee.children_declared_at ?? null;
     return {
       mode: "COUNTS",
-      summary: summarizeCounts(counts),
+      summary: summarizeCounts(counts, rule),
       items: [],
       counts,
       declared_at: declaredAt ? declaredAt.toISOString() : null,
@@ -348,7 +352,7 @@ export function toEmployeeChildrenResponse(
     }));
   return {
     mode: rows.length > 0 ? "BIRTH_DATES" : "NONE",
-    summary: summarizeChildren(rows, today),
+    summary: summarizeChildren(rows, today, rule),
     items,
     counts: null,
     declared_at: null,
@@ -522,6 +526,7 @@ export function toEmployeeResponse(
 export const toEmployeeDetailResponse = (
   person: PersonWithEmployee,
   admin: Pick<AdminUser, "role">,
+  allowanceRule: AllowanceRule = DEFAULT_ALLOWANCE_RULE,
 ): EmployeeDetailResponse => {
   const baseResponse = toEmployeeResponse(person, admin);
   const employee = person.employee!;
@@ -537,7 +542,7 @@ export const toEmployeeDetailResponse = (
       birth_date: person.birth_date.toISOString(),
       photo_url: person.photo_url,
       marital_status: employee.marital_status,
-      children: toEmployeeChildrenResponse(employee.children ?? [], employee),
+      children: toEmployeeChildrenResponse(employee.children ?? [], employee, new Date(), allowanceRule),
       nik: employee.nik,
       npwp: employee.npwp,
       bank_account_number: employee.bank_account_number,
@@ -686,8 +691,8 @@ export function toEmployeeAuditSnapshot(
     is_pc_mentor_eligible: employee.is_pc_mentor_eligible,
     pc_mentor_unit_ids: pcMentorUnitIds,
     marital_status: employee.marital_status,
-    // Counts only: a child's birth date is never written to the audit log.
-    ...(childrenSummary && { children: { ...childrenSummary } }),
+    // How many only, as a short phrase: a child's birth date is never written to the audit log.
+    ...(childrenSummary && { children: describeChildCount(childrenSummary.total) }),
     mobile_phone: employee.mobile_phone,
     residential_address: employee.residential_address,
     // Audit snapshots expose only masked identifiers.

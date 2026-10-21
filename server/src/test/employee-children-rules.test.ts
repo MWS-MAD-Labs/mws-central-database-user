@@ -3,11 +3,14 @@ import { ChildRelation, MaritalStatus } from "../generated/prisma/client";
 import {
   ageOn,
   countsNeedReview,
+  DEFAULT_ALLOWANCE_RULE,
+  describeChildCount,
   findChildrenProblems,
   findCountsProblems,
   MAX_CHILDREN,
   summarizeChildren,
   summarizeCounts,
+  type AllowanceRule,
 } from "../utils/employee-children-rules";
 
 const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
@@ -135,5 +138,49 @@ describe("typed counts", () => {
   it("asks for a review after a year", () => {
     expect(countsNeedReview(day("2025-10-28"), today)).toBe(false);
     expect(countsNeedReview(day("2025-10-27"), today)).toBe(true);
+  });
+});
+
+describe("the allowance rule", () => {
+  const day = new Date("2026-06-15T00:00:00Z");
+  const born = (years: number, relation: ChildRelation = ChildRelation.BIOLOGICAL) => ({
+    birth_date: new Date(Date.UTC(2026 - years, 0, 1)),
+    relation,
+  });
+  const rule = (over: Partial<AllowanceRule> = {}): AllowanceRule => ({ ...DEFAULT_ALLOWANCE_RULE, ...over });
+
+  it("stops at the most children that count, however many are young", () => {
+    const children = [born(1), born(2), born(3), born(4), born(5)];
+    expect(summarizeChildren(children, day).allowance_eligible).toBe(3);
+    expect(summarizeChildren(children, day, rule({ max_children: 2 })).allowance_eligible).toBe(2);
+    expect(summarizeChildren(children, day, rule({ max_children: null })).allowance_eligible).toBe(5);
+    expect(summarizeChildren(children, day).total).toBe(5);
+  });
+
+  it("uses its own age limit", () => {
+    const children = [born(10), born(20), born(25)];
+    expect(summarizeChildren(children, day, rule({ max_children: null, age_limit: 21 })).allowance_eligible).toBe(2);
+    expect(summarizeChildren(children, day, rule({ max_children: null, age_limit: 18 })).allowance_eligible).toBe(1);
+  });
+
+  it("leaves out the kinds of child that do not count", () => {
+    const children = [born(5), born(6, ChildRelation.ADOPTED), born(7, ChildRelation.STEP)];
+    const open = rule({ max_children: null });
+    expect(summarizeChildren(children, day, open).allowance_eligible).toBe(3);
+    expect(summarizeChildren(children, day, { ...open, count_step: false }).allowance_eligible).toBe(2);
+    expect(summarizeChildren(children, day, { ...open, count_adopted: false, count_step: false }).allowance_eligible).toBe(1);
+  });
+
+  it("applies the same rule to typed numbers", () => {
+    const counts = { under_23: 5, age_23_plus: 1, adopted: 2 };
+    expect(summarizeCounts(counts).allowance_eligible).toBe(3);
+    expect(summarizeCounts(counts, rule({ max_children: null })).allowance_eligible).toBe(5);
+    expect(summarizeCounts(counts, rule({ max_children: null, count_adopted: false })).allowance_eligible).toBe(3);
+  });
+
+  it("says how many children in a short phrase", () => {
+    expect(describeChildCount(0)).toBe("No children");
+    expect(describeChildCount(1)).toBe("1 child");
+    expect(describeChildCount(4)).toBe("4 children");
   });
 });
