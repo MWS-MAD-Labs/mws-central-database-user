@@ -7,6 +7,7 @@ import { Button } from '../../../components/ui/Button.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { GoogleInstructionsDialog } from '../../google/components/GoogleInstructionsDialog.jsx'
+import { GoogleShareDialog } from '../../google/components/GoogleShareDialog.jsx'
 import { maskEmail } from '../../google/utils/instructions.js'
 import { clearCreateFormDraft } from '../../../lib/useCreateFormDraft.js'
 import { internsApi } from '../api/internsApi.js'
@@ -39,7 +40,7 @@ export function InternCreatePage() {
         showSuccessToast('Intern created.')
       }
       if (google && google.outcome !== 'failed') {
-        setReady({ id: intern.id, email: intern.identity?.email, recovery: payload.recovery_email })
+        setReady({ id: intern.id, name: intern.identity?.full_name, email: intern.identity?.email, recovery: payload.recovery_email, password: google.temporary_password })
         return
       }
       navigate(`/interns/${intern.id}`)
@@ -74,11 +75,23 @@ export function InternCreatePage() {
         />
       )}
       {ready ? (
-        <GoogleInstructionsDialog
-          email={ready.email}
-          maskedRecovery={maskEmail(ready.recovery)}
-          onClose={() => navigate(`/interns/${ready.id}`)}
-        />
+        ready.password ? (
+          <GoogleShareDialog
+            resource="interns"
+            id={ready.id}
+            name={ready.name}
+            email={ready.email}
+            password={ready.password}
+            defaultTo={ready.recovery}
+            onClose={() => navigate(`/interns/${ready.id}`)}
+          />
+        ) : (
+          <GoogleInstructionsDialog
+            email={ready.email}
+            maskedRecovery={maskEmail(ready.recovery)}
+            onClose={() => navigate(`/interns/${ready.id}`)}
+          />
+        )
       ) : null}
     </div>
   )

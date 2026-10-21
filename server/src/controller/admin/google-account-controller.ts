@@ -16,6 +16,11 @@ type Kind = "employee" | "intern";
 
 const PROVISION = z.object({ recovery_email: recoveryEmail().optional() });
 const CHANGE_RECOVERY = z.object({ recovery_email: recoveryEmail() });
+const SEND_SIGN_IN = z.object({
+  to: recoveryEmail(),
+  language: z.enum(["id", "en"]),
+  password: z.string().min(8).max(64),
+});
 
 // Three levels. Making or linking an account is for a Super Admin or a Database Admin who may write employees in the
 // person's unit. Suspending, restoring and looking at Google again are for Super Admins. Resetting the password and
@@ -91,6 +96,19 @@ export class GoogleAccountController {
         context: getAuditRequestContext(c),
       });
       // 409 when Google already had it and it was linked is not an error: the result says "linked".
+      return c.json({ data: result });
+    };
+  }
+
+  // Mails the first sign-in details to an address the admin gives. The server writes the mail itself.
+  static sendSignIn(kind: Kind) {
+    return async (c: Context<{ Variables: AdminVariables }>) => {
+      const target = await targetOf(kind, c.req.param("id"));
+      await assertCanCreate(c, target);
+      const body = await c.req.json().catch(() => ({}));
+      const input = Validation.validate(SEND_SIGN_IN, body);
+      c.header("Cache-Control", "no-store");
+      const result = await GoogleWorkspaceService.sendSignInEmail(target.personId, input, c.var.admin, getAuditRequestContext(c));
       return c.json({ data: result });
     };
   }

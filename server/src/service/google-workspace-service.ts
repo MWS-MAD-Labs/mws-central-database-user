@@ -13,6 +13,8 @@ import { ResponseError } from "../error/response-error";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 import { getDirectoryClient, testPrefix } from "../lib/google-workspace";
+import { getMailer } from "../lib/mailer";
+import { signInEmail, type SignInLanguage } from "../utils/signin-email";
 import { getIntegrationEnvironment } from "../utils/integration-environment";
 import { DirectoryError, type DirectoryUser } from "../lib/google-workspace/directory-client";
 import type { AuditRequestContext, EntityAuditAction } from "../model/audit-log-model";
@@ -28,6 +30,22 @@ import { AuditService } from "./audit-service";
 const STATUS_FRESH_MS = 5 * 60 * 1000;
 
 export { passwordStateOf, PASSWORD_PENDING_WARN_DAYS };
+
+// How long after it was issued a first password may still be mailed, and how many mails one admin may send an hour.
+const SIGNIN_EMAIL_WINDOW_MS = 48 * 60 * 60 * 1000;
+const SIGNIN_EMAILS_PER_HOUR = 20;
+const sentByAdmin = new Map<string, number[]>();
+
+function takeSignInEmailSlot(adminId: string): void {
+  const now = Date.now();
+  const recent = (sentByAdmin.get(adminId) ?? []).filter((at) => now - at < 60 * 60 * 1000);
+  if (recent.length >= SIGNIN_EMAILS_PER_HOUR) {
+    throw new ResponseError(429, "Too many sign-in emails in the last hour. Try again later");
+  }
+  sentByAdmin.set(adminId, [...recent, now]);
+}
+
+export const resetSignInEmailLimitForTests = () => sentByAdmin.clear();
 
 export const restorableUntil = (deletedAt: Date): Date => new Date(deletedAt.getTime() + RESTORE_WINDOW_DAYS * 86_400_000);
 
@@ -54,6 +72,9 @@ export type GoogleSyncResult = {
   // "created" a new account, "linked" one that was already there, or nothing done.
   outcome: "created" | "linked" | "updated" | "unchanged" | "failed";
   message?: string;
+  // Only when the account was just made: the password the person signs in with the first time. Returned once, to the
+  // admin who made it, and never stored, logged or put in the audit entry.
+  temporary_password?: string;
 };
 
 type GooglePerson = Pick<Person, "id" | "email" | "full_name" | "person_type" | "google_user_id" | "google_sync_status">;
@@ -288,18 +309,20 @@ export class GoogleWorkspaceService {
     try {
       let user: DirectoryUser | null = await client.findUser(person.email);
       let outcome: GoogleSyncResult["outcome"] = "linked";
+      let temporaryPassword: string | undefined;
 
       if (user?.isAdmin) {
         throw new DirectoryError("DENIED", "That email belongs to a Workspace admin, which is not managed from here");
       }
       if (!user) {
         const { givenName, familyName } = splitName(person.full_name);
+        temporaryPassword = generateTemporaryPassword();
         try {
           user = await client.createUser({
             primaryEmail: person.email,
             givenName,
             familyName,
-            password: generateTemporaryPassword(24),
+            password: temporaryPassword,
             recoveryEmail: options.recoveryEmail,
             orgUnitPath: organizationalUnitFor(person),
           });
@@ -324,7 +347,12 @@ export class GoogleWorkspaceService {
         mode: client.mode,
         recovery_email_set: Boolean(options.recoveryEmail),
       });
-      return { status: GoogleSyncStatus.ACTIVE, google_user_id: user.id, outcome };
+      return {
+        status: GoogleSyncStatus.ACTIVE,
+        google_user_id: user.id,
+        outcome,
+        ...(temporaryPassword ? { temporary_password: temporaryPassword } : {}),
+      };
     } catch (error) {
       logger.error(`Google provision failed for person ${person.id}`, error);
       const message = messageOf(error);
@@ -402,6 +430,52 @@ export class GoogleWorkspaceService {
     });
     await record("GOOGLE_PASSWORD_RESET", person, admin, context, { mode: client.mode });
     return { password };
+  }
+
+  // Emails the first sign-in details. The password is the one the admin was just shown: Central does not keep it, so it
+  // comes back with the request. It is only taken while the account still waits for its first password and was issued
+  // lately, so this cannot be used to mail out text for an account that is already in use.
+  static async sendSignInEmail(
+    personId: string,
+    input: { to: string; language: SignInLanguage; password: string },
+    admin: Pick<AdminUser, "id">,
+    context: AuditRequestContext = {},
+  ): Promise<{ sent: true }> {
+    const mailer = getMailer();
+    if (!mailer.enabled) throw new ResponseError(503, "Email is not set up on this server");
+    const person = await prismaClient.person.findFirst({
+      where: { id: personId, deleted_at: null },
+      select: {
+        id: true,
+        email: true,
+        full_name: true,
+        person_type: true,
+        google_user_id: true,
+        google_sync_status: true,
+        google_password_pending: true,
+        google_password_issued_at: true,
+      },
+    });
+    if (!person) throw new ResponseError(404, "Person not found");
+    assertAllowedTarget(person.email);
+    this.assertRecoveryIsNotOwn(input.to, person.email);
+    if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet. Create it first");
+    await this.assertNotLocked(personId);
+    const issued = person.google_password_issued_at;
+    if (!person.google_password_pending || !issued || Date.now() - issued.getTime() > SIGNIN_EMAIL_WINDOW_MS) {
+      throw new ResponseError(409, "The first sign-in details can only be sent for a new account that has not signed in yet");
+    }
+    takeSignInEmailSlot(admin.id);
+
+    const { subject, text } = signInEmail(input.language, { name: person.full_name, email: person.email, password: input.password });
+    try {
+      await mailer.send({ to: input.to, subject, text });
+    } catch (error) {
+      logger.error(`Sign-in email failed for person ${person.id}`, error);
+      throw new ResponseError(502, "The email could not be sent. Check the address and try again");
+    }
+    await record("GOOGLE_SIGNIN_EMAILED", person, admin, context, { to: maskEmail(input.to), language: input.language });
+    return { sent: true };
   }
 
   // Whether the account of this person should be locked: the person left, or was archived. People on leave or inactive
@@ -929,6 +1003,7 @@ export class GoogleWorkspaceService {
           ? restorableUntil(person.google_deleted_at).toISOString()
           : null,
       mode: getDirectoryClient().mode,
+      email_enabled: getMailer().enabled,
     };
   }
 }

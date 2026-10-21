@@ -1,6 +1,7 @@
 import { describe, expect, it, setSystemTime } from 'bun:test'
 import { screen, waitFor, within } from '@testing-library/react'
 import { GoogleAccountRow } from '../../../src/features/google/components/GoogleAccountRow.jsx'
+import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
 import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 
@@ -13,7 +14,7 @@ function setup(statusData, extraRoutes = []) {
     ...extraRoutes,
   ])
   globalThis.fetch = fetchMock
-  return { fetchMock, ...renderWithProviders(<GoogleAccountRow resource="employees" id="e1" email="ari@millennia21.id" />) }
+  return { fetchMock, ...renderWithProviders(<ConfirmProvider><GoogleAccountRow resource="employees" id="e1" email="ari@millennia21.id" name="Ari Putra" /></ConfirmProvider>) }
 }
 
 describe('GoogleAccountRow', () => {
@@ -291,9 +292,16 @@ describe('GoogleAccountRow', () => {
     const confirmDialog = await screen.findByRole('dialog', { name: 'Make Temporary Password' })
     await user.click(within(confirmDialog).getByRole('button', { name: 'Make' }))
 
-    const result = await screen.findByRole('dialog', { name: 'Temporary Password' })
+    const result = await screen.findByRole('dialog', { name: 'Share Sign-in Details' })
+    // Hidden until asked for.
+    expect(within(result).queryByText('Abcd1234Efgh5678')).not.toBeInTheDocument()
+    await user.click(within(result).getByRole('button', { name: 'Show' }))
     expect(within(result).getByText('Abcd1234Efgh5678')).toBeVisible()
-    await user.click(within(result).getByRole('button', { name: 'Close' }))
+    expect(within(result).getByLabelText('Message').value).toContain('Halo Ari Putra')
+
+    // Closing without sharing asks first; copying the message counts as sharing.
+    await user.click(within(result).getByRole('button', { name: 'Copy Message' }))
+    await user.click(within(result).getByRole('button', { name: 'Done' }))
     await waitFor(() => expect(screen.queryByText('Abcd1234Efgh5678')).not.toBeInTheDocument())
   })
 
@@ -313,7 +321,7 @@ describe('GoogleAccountRow', () => {
 
   it('lets a Super Admin open the sign-in instructions of a linked account', async () => {
     globalThis.fetch = createFetchRouter([{ path: '/api/admin/employees/e1/google', response: jsonResponse({ data: status() }) }])
-    const { user } = renderWithProviders(<GoogleAccountRow resource="employees" id="e1" email="ari@millennia21.id" />)
+    const { user } = renderWithProviders(<ConfirmProvider><GoogleAccountRow resource="employees" id="e1" email="ari@millennia21.id" /></ConfirmProvider>)
     await user.click(await screen.findByRole('button', { name: 'Sign-in instructions' }))
     const dialog = await screen.findByRole('dialog', { name: 'Sign-in Instructions' })
     expect(within(dialog).getByText(/ari@millennia21\.id/)).toBeVisible()

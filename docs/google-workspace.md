@@ -20,7 +20,7 @@ Only addresses that start with a test prefix are sent to Google, so nothing else
 
 1. In Google Cloud, a service account with domain-wide delegation. In the Admin Console (Security > API controls > Domain-wide delegation) allow its client ID with the scope `https://www.googleapis.com/auth/admin.directory.user`.
 2. A Workspace admin that Central acts as, with the **User Management** role only (not the main super admin), for example `central-sync@millennia21.id`.
-3. Admin Console > Security > Account recovery: allow users to recover their own account. New accounts get a random password nobody knows and a recovery email, so the person sets their own password with "Forgot password". Try it on one test account first.
+3. Admin Console > Security > Account recovery: allow users to recover their own account. New accounts get a temporary password that the person must change at the first sign in, and a recovery email for "Forgot password" later. Try it on one test account first.
 4. Set these in the Komodo stack of the production Central (they reach the container through `docker-compose.yml`):
 
 | Variable | Value |
@@ -31,6 +31,8 @@ Only addresses that start with a test prefix are sent to Google, so nothing else
 | `GOOGLE_WORKSPACE_CREDENTIALS_B64` | the service account JSON, base64 on one line (`base64 -w0 key.json`) |
 | `GOOGLE_WORKSPACE_TEST_PREFIX` | leave empty in production. Only for trying it from elsewhere, see above |
 | `GOOGLE_OU_EMPLOYEE`, `GOOGLE_OU_INTERN`, `GOOGLE_OU_STUDENT` | optional, the org unit path for each kind, for example `/Employees` |
+
+The sign-in email needs an SMTP server too, see Sending the first sign-in details.
 
 The key is a secret. Keep it out of Git and out of chat, and make a new one if it was ever shared.
 
@@ -78,7 +80,7 @@ In Employees, Interns and Students a name that has hints is coloured by the most
 ## Rules the code keeps
 
 - Only people held in Central, on `ALLOWED_DOMAIN`. Workspace admins and `PROTECTED_SUPER_ADMIN_EMAILS` are never changed from here.
-- A temporary password is shown once to the Super Admin who asked and is never stored, logged or put in the audit log.
+- A temporary password is shown once, to the admin who made the account or the protected Super Admin who reset it, and is never stored, logged or put in the audit log. The mail that carries it is written by the server; the audit entry only says to which hidden address and in which language.
 - The recovery email goes to Google and is not kept in Central. It can be any clean address, another mailbox of the organization included (`@millennia21.id`), but not the account's own address. If that mailbox belongs to someone who left or is suspended, the code never arrives. Google does not ask the owner of that address to confirm, so the forms remind you to read it again, and the review before creating shows it in full. It is hidden (`b***@gmail.com`) only where the full address is not on the screen: the current one in Change Recovery Email, and the sign-in instructions that get passed on. Central cannot tell whether the same address is the recovery email of other accounts.
 - A failure from Google never undoes the person in Central. The Google account row shows **Failed** with the reason, and a Super Admin can try again.
 - Employee photos: the signed-in employee only, through `PUT /api/auth/employee/me/photo`. Admins still have their existing upload; closing that path is a separate decision.
@@ -101,6 +103,23 @@ With `GOOGLE_SUSPEND_ON_OFFBOARD=true` (off by default), Central suspends the Go
 - While a person is locked, Central refuses Unsuspend, Make temporary password, Change recovery email and Create account for them.
 - An account turned on again directly in Google is locked again by the hourly status check, or when the detail page is opened. There is up to an hour of delay: Google sends no event to Central. Near real time would need the Reports API (another scope).
 - Suspending is recorded in the audit log with the reason, and `reactivated_in_google` when it was undone in Google.
+
+## Sending the first sign-in details
+
+A new account is made with a temporary password (16 characters). The dialog that opens right after, **Share Sign-in Details**, shows it once (hidden until Show) with a message ready to paste into WhatsApp: "Halo {name}, ..." in Bahasa Indonesia or English, editable before Copy Message. **Send Email** mails the same details to an address the admin types (usually the recovery email, which Central does not keep, so it is prefilled only right after creating the account). Make Temporary Password opens the same dialog. Closing it without copying or sending asks first, because the password cannot be shown again.
+
+The server only mails for an account that still waits for its first password and was issued in the last 48 hours, to an address that is not the account's own, and at most 20 mails an hour per admin.
+
+Email needs an SMTP server. Without these variables Send Email is off and says so:
+
+| Variable | Value |
+|---|---|
+| `SMTP_HOST` | for example `smtp.gmail.com`, or `smtp-relay.gmail.com` |
+| `SMTP_PORT` | `587` (default), or `465` with `SMTP_SECURE=true` |
+| `SMTP_USER`, `SMTP_PASSWORD` | the sender mailbox and an app password. Leave empty for a relay that allows the server's IP |
+| `MAIL_FROM` | for example `Millennia Central <no-reply@millennia21.id>` |
+
+Use a mailbox made for this (not an admin's own), with 2-step verification on so it can have an app password. In development run Mailpit (`docker run -p 1025:1025 -p 8025:8025 axllent/mailpit`) with `SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025`, `MAIL_FROM=central@localhost`, and read the mail at `http://localhost:8025`. Tests never send mail.
 
 ## Recovery email
 

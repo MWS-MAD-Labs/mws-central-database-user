@@ -87,6 +87,45 @@ export function signInInstructions(email, maskedRecovery, language = 'id') {
   ].join('\n')
 }
 
+const MESSAGE_COPY = {
+  id: (name, email, password) => [
+    `Halo ${name},`,
+    '',
+    'Akun Google Millennia kamu sudah dibuat.',
+    '',
+    `Email: ${email}`,
+    `Password sementara: ${password}`,
+    '',
+    'Cara masuk:',
+    '1. Buka accounts.google.com, lalu masuk dengan email dan password sementara di atas.',
+    '2. Google meminta kamu membuat password baru. Pakai minimal 8 karakter dan jangan dipakai di akun lain.',
+    '3. Setelah itu pakai email ini untuk masuk ke Central, Hub, dan aplikasi sekolah.',
+    '',
+    'Jangan bagikan password ini kepada siapa pun.',
+  ],
+  en: (name, email, password) => [
+    `Hello ${name},`,
+    '',
+    'Your Millennia Google account has been made.',
+    '',
+    `Email: ${email}`,
+    `Temporary password: ${password}`,
+    '',
+    'How to sign in:',
+    '1. Open accounts.google.com and sign in with the email and the temporary password above.',
+    '2. Google asks you to make a new password. Use at least 8 characters, not used on another account.',
+    '3. After that, use this email to sign in to Central, the Hub and the school apps.',
+    '',
+    'Do not share this password with anyone.',
+  ],
+}
+
+// The message for WhatsApp (or anything you paste into): greeting, email, temporary password and the first steps. The
+// mail the server sends says the same; the admin can edit this one before copying it.
+export function signInMessage({ name, email, password, language = 'id' }) {
+  return (MESSAGE_COPY[language] || MESSAGE_COPY.id)(name || '', email, password).join('\n')
+}
+
 // What is wrong with a recovery email, or null. Any clean address works, another mailbox of the organization included;
 // the account's own address does not, because the code for a forgotten password cannot be read from that account.
 export function recoveryEmailProblem(recoveryEmail, accountEmail, emailProblem) {

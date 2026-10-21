@@ -116,7 +116,8 @@ describe('Employee create and edit pages', () => {
       ...formOptionRoutes(),
       ...formSuggestionRoutes(),
       { path: /email-availability/, response: jsonResponse({ data: { available: true, reason: 'FREE', message: 'Available' } }) },
-      { path: '/api/admin/employees', method: 'POST', response: jsonResponse({ data: { id: 'employee-new', identity: { email: 'ari.employee@millennia21.id' }, google: { status: 'ACTIVE', outcome: 'created' } } }) },
+      { path: '/api/admin/employees', method: 'POST', response: jsonResponse({ data: { id: 'employee-new', identity: { full_name: 'Ari Employee', email: 'ari.employee@millennia21.id' }, google: { status: 'ACTIVE', outcome: 'created', temporary_password: 'Abcd1234Efgh5678' } } }) },
+      { path: '/api/admin/employees/employee-new/google', response: jsonResponse({ data: { email_enabled: true } }) },
     ])
     globalThis.fetch = fetchMock
     const { user } = renderRoute(<EmployeeCreatePage />, '/employees/new', '/employees/new')
@@ -151,12 +152,15 @@ describe('Employee create and edit pages', () => {
     const review = await screen.findByRole('dialog', { name: 'Review before creating' })
     await user.click(within(review).getByRole('button', { name: 'Create employee' }))
 
-    const instructions = await screen.findByRole('dialog', { name: 'Google Account Ready' })
-    expect(within(instructions).getByText(/ari\.employee@millennia21\.id/)).toBeVisible()
-    expect(within(instructions).getAllByText(/a\*\*\*@gmail\.com/).length).toBeGreaterThan(0)
-    expect(within(instructions).getByText(/Forgot password/)).toBeVisible()
+    // The new account comes with a temporary password, shown once with a message to pass on.
+    const share = await screen.findByRole('dialog', { name: 'Share Sign-in Details' })
+    const message = within(share).getByLabelText('Message').value
+    expect(message).toContain('Halo Ari Employee,')
+    expect(message).toContain('ari.employee@millennia21.id')
+    expect(message).toContain('Abcd1234Efgh5678')
     expect(screen.queryByText('Employee destination')).not.toBeInTheDocument()
-    await user.click(within(instructions).getByRole('button', { name: 'Done' }))
+    await user.click(within(share).getByRole('button', { name: 'Copy Message' }))
+    await user.click(within(share).getByRole('button', { name: 'Done' }))
     expect(await screen.findByText('Employee destination')).toBeVisible()
     const post = fetchMock.mock.calls.find(([url, options]) =>
       url === '/api/admin/employees' && options.method === 'POST')

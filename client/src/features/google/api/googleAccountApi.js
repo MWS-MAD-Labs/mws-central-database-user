@@ -20,6 +20,11 @@ export const googleAccountApi = {
     const response = await apiRequest(`/api/admin/${resource}/${id}/google/reset-password`, { method: 'POST' })
     return response.data
   },
+  // Mails the first sign-in details. The server writes the mail; only the address, language and password go up.
+  async sendSignIn(resource, id, payload) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/send-sign-in`, { method: 'POST', body: payload })
+    return response.data
+  },
   async restore(resource, id) {
     const response = await apiRequest(`/api/admin/${resource}/${id}/google/restore`, { method: 'POST' })
     return response.data

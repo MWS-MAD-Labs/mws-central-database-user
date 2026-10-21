@@ -7,6 +7,7 @@ import { Button } from '../../../components/ui/Button.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { GoogleInstructionsDialog } from '../../google/components/GoogleInstructionsDialog.jsx'
+import { GoogleShareDialog } from '../../google/components/GoogleShareDialog.jsx'
 import { maskEmail } from '../../google/utils/instructions.js'
 import { clearCreateFormDraft } from '../../../lib/useCreateFormDraft.js'
 import { employeesApi } from '../api/employeesApi.js'
@@ -49,7 +50,7 @@ export function EmployeeCreatePage() {
         showSuccessToast('Employee created.')
       }
       if (google && google.outcome !== 'failed') {
-        setReady({ id: employee.id, email: employee.identity?.email, recovery: variables.payload.recovery_email })
+        setReady({ id: employee.id, name: employee.identity?.full_name, email: employee.identity?.email, recovery: variables.payload.recovery_email, password: google.temporary_password })
         return
       }
       navigate(`/employees/${employee.id}`)
@@ -84,11 +85,23 @@ export function EmployeeCreatePage() {
         />
       )}
       {ready ? (
-        <GoogleInstructionsDialog
-          email={ready.email}
-          maskedRecovery={maskEmail(ready.recovery)}
-          onClose={() => navigate(`/employees/${ready.id}`)}
-        />
+        ready.password ? (
+          <GoogleShareDialog
+            resource="employees"
+            id={ready.id}
+            name={ready.name}
+            email={ready.email}
+            password={ready.password}
+            defaultTo={ready.recovery}
+            onClose={() => navigate(`/employees/${ready.id}`)}
+          />
+        ) : (
+          <GoogleInstructionsDialog
+            email={ready.email}
+            maskedRecovery={maskEmail(ready.recovery)}
+            onClose={() => navigate(`/employees/${ready.id}`)}
+          />
+        )
       ) : null}
     </div>
   )

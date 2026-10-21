@@ -10,6 +10,7 @@ import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { googleAccountApi } from "../api/googleAccountApi.js";
 import { recoveryEmailProblem, recoveryHint } from "../utils/instructions.js";
 import { GoogleInstructionsDialog } from "./GoogleInstructionsDialog.jsx";
+import { GoogleShareDialog } from "./GoogleShareDialog.jsx";
 
 const BADGES = {
   ACTIVE: { tone: "green", label: "Linked" },
@@ -67,11 +68,12 @@ function passwordNote(status) {
 }
 
 // The Google account of a person: whether it exists, and for a Super Admin the two things that can be done to it.
-export function GoogleAccountRow({ resource, id, email }) {
+export function GoogleAccountRow({ resource, id, email, name = "" }) {
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState(null);
   const [recoveryEmail, setRecoveryEmail] = useState("");
-  const [password, setPassword] = useState(null);
+  // The password of an account just made or reset, held only while its dialog is open.
+  const [issued, setIssued] = useState(null);
   const queryKey = ["google-account", resource, id];
   // Needed for the person to get in: Google sends the reset code there.
   const recoveryProblem = !recoveryEmail.trim()
@@ -92,6 +94,10 @@ export function GoogleAccountRow({ resource, id, email }) {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey });
       setDialog(null);
+      if (result.temporary_password) {
+        setIssued({ password: result.temporary_password, to: recoveryEmail.trim() });
+        setDialog("share");
+      }
       setRecoveryEmail("");
       if (result.status === "ACTIVE") showSuccessToast(result.outcome === "linked" ? "Linked to the existing Google account." : "Google account created.");
       else showErrorToast(new Error(result.message), "Google account was not created.");
@@ -102,8 +108,8 @@ export function GoogleAccountRow({ resource, id, email }) {
   const reset = useMutation({
     mutationFn: () => googleAccountApi.resetPassword(resource, id),
     onSuccess: (result) => {
-      setDialog("result");
-      setPassword(result.password);
+      setIssued({ password: result.password, to: "" });
+      setDialog("share");
     },
     onError: (error) => showErrorToast(error, "Password was not reset."),
   });
@@ -161,8 +167,8 @@ export function GoogleAccountRow({ resource, id, email }) {
     onError: (error) => showErrorToast(error, "Could not change the Google account."),
   });
 
-  function closeResult() {
-    setPassword(null);
+  function closeShare() {
+    setIssued(null);
     setDialog(null);
   }
 
@@ -326,7 +332,7 @@ export function GoogleAccountRow({ resource, id, email }) {
       {dialog === "create" ? (
         <CrudDialog
           title="Create Google Account"
-          description="The account uses the email of this person. Nobody knows its password: they set it with Forgot password. The recovery email is only needed to make a new account, not to look for one."
+          description="The account uses the email of this person. A temporary password is made and shown once, to pass on. The recovery email is only needed to make a new account, not to look for one."
           panelClassName="max-w-lg"
           onClose={() => setDialog(null)}
           footer={
@@ -502,31 +508,17 @@ export function GoogleAccountRow({ resource, id, email }) {
         </CrudDialog>
       ) : null}
 
-      {dialog === "result" && password ? (
-        <CrudDialog
-          title="Temporary Password"
-          description="Shown once. Copy it now and hand it over safely."
-          panelClassName="max-w-md"
-          onClose={closeResult}
-          footer={
-            <>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => navigator.clipboard?.writeText(password).then(() => showSuccessToast("Copied."))}
-              >
-                Copy
-              </Button>
-              <Button type="button" onClick={closeResult}>
-                Close
-              </Button>
-            </>
-          }
-        >
-          <code className="block select-all break-all rounded-xl bg-(--mws-soft) px-4 py-3 text-center text-lg font-semibold tracking-wider">
-            {password}
-          </code>
-        </CrudDialog>
+      {dialog === "share" && issued ? (
+        <GoogleShareDialog
+          resource={resource}
+          id={id}
+          name={name}
+          email={email}
+          password={issued.password}
+          defaultTo={issued.to}
+          title="Share Sign-in Details"
+          onClose={closeShare}
+        />
       ) : null}
     </div>
   );

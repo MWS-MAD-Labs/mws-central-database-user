@@ -22,6 +22,7 @@ import {
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { setDirectoryClientForTests } from "../lib/google-workspace";
+import { MemoryMailer, setMailerForTests } from "../lib/mailer";
 import { SimulatedDirectoryClient } from "../lib/google-workspace/simulated-directory-client";
 import {
   DirectoryError,
@@ -30,7 +31,7 @@ import {
   type DirectoryUser,
   type UpdateDirectoryUser,
 } from "../lib/google-workspace/directory-client";
-import { GoogleWorkspaceService, generateTemporaryPassword, splitName } from "../service/google-workspace-service";
+import { GoogleWorkspaceService, generateTemporaryPassword, resetSignInEmailLimitForTests, splitName } from "../service/google-workspace-service";
 import { detectImageMimeType } from "../utils/image-processing";
 import sharp from "sharp";
 
@@ -181,7 +182,7 @@ describe("google workspace accounts", () => {
     });
   });
 
-  it("makes the Google account of a new employee, with the recovery email and no known password", async () => {
+  it("makes the Google account of a new employee, with the recovery email and a temporary password shown once", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
     const { response, json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
     expect(response.status).toBe(200);
@@ -195,6 +196,123 @@ describe("google workspace accounts", () => {
     expect(person.google_user_id).toBe("g-1");
     // The recovery email went to Google and is nowhere in Central.
     expect(JSON.stringify(person)).not.toContain("rizqi.pribadi@gmail.com");
+
+    // The first password is the one Google got, comes back once, and is not kept anywhere.
+    const password = json.data.google.temporary_password as string;
+    expect(password).toHaveLength(16);
+    expect(google.created[0].password).toBe(password);
+    expect(JSON.stringify(person)).not.toContain(password);
+    expect(JSON.stringify(await prismaClient.auditLog.findMany())).not.toContain(password);
+    const status = await (await TestRequest.get(`/api/admin/employees/${json.data.id}/google`, accessToken)).json();
+    expect(JSON.stringify(status)).not.toContain(password);
+  });
+
+  it("gives no password for an account that was already in Google", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+    const existing = await create(accessToken);
+    expect(existing.json.data.google.temporary_password).toBeDefined();
+    await prismaClient.person.update({
+      where: { id: (await personOf(existing.json.data.id)).id },
+      data: { google_user_id: null, google_sync_status: GoogleSyncStatus.NONE },
+    });
+    const response = await TestRequest.post(`/api/admin/employees/${existing.json.data.id}/google/provision`, {}, accessToken);
+    const data = (await response.json()).data;
+    expect(data.outcome).toBe("linked");
+    expect(data.temporary_password).toBeUndefined();
+  });
+
+  describe("mailing the first sign-in details", () => {
+    let mailer: MemoryMailer;
+    beforeEach(() => {
+      mailer = new MemoryMailer();
+      setMailerForTests(mailer);
+      resetSignInEmailLimitForTests();
+    });
+    afterEach(() => setMailerForTests(null));
+
+    const made = async (token: string) => {
+      const { json } = await create(token, { recovery_email: "pribadi.owner@gmail.com" });
+      return { id: json.data.id as string, email: json.data.identity.email as string, password: json.data.google.temporary_password as string };
+    };
+    const send = (id: string, token: string, over: Record<string, unknown> = {}) =>
+      TestRequest.post(`/api/admin/employees/${id}/google/send-sign-in`, { to: "pribadi.owner@gmail.com", language: "id", ...over }, token);
+
+    it("sends a mail the server wrote, with the name, email and password, and keeps the password out of the audit", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      const response = await send(account.id, accessToken, { password: account.password });
+      expect(response.status).toBe(200);
+      expect((await response.json()).data).toEqual({ sent: true });
+
+      expect(mailer.outbox).toHaveLength(1);
+      const mail = mailer.outbox[0];
+      expect(mail.to).toBe("pribadi.owner@gmail.com");
+      expect(mail.text).toContain("Halo Rizqi Sabilla Putra");
+      expect(mail.text).toContain(account.email);
+      expect(mail.text).toContain(account.password);
+
+      const entries = await prismaClient.auditLog.findMany({ where: { action: AuditAction.GOOGLE_SIGNIN_EMAILED } });
+      expect(entries).toHaveLength(1);
+      expect(JSON.stringify(entries)).not.toContain(account.password);
+      expect(JSON.stringify(entries)).not.toContain("pribadi.owner@gmail.com");
+      expect(JSON.stringify(entries)).toContain("p***@gmail.com");
+    });
+
+    it("writes the mail in English when asked", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      await send(account.id, accessToken, { password: account.password, language: "en" });
+      expect(mailer.outbox[0].subject).toBe("Your Millennia Google account is ready");
+      expect(mailer.outbox[0].text).toContain("Temporary password:");
+    });
+
+    it("says so when the server has no email set up", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      setMailerForTests({ enabled: false, send: async () => {} });
+      const response = await send(account.id, accessToken, { password: account.password });
+      expect(response.status).toBe(503);
+      const status = await (await TestRequest.get(`/api/admin/employees/${account.id}/google`, accessToken)).json();
+      expect(status.data.email_enabled).toBe(false);
+    });
+
+    it("refuses the account's own address, a bad address or a short password, and an account already in use", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      expect((await send(account.id, accessToken, { password: account.password, to: account.email })).status).toBe(400);
+      expect((await send(account.id, accessToken, { password: account.password, to: "not-an-email" })).status).toBe(400);
+      expect((await send(account.id, accessToken, { password: "short" })).status).toBe(400);
+      expect(mailer.outbox).toHaveLength(0);
+
+      // They have signed in and set their own password: nothing to send any more.
+      await prismaClient.person.update({ where: { id: (await personOf(account.id)).id }, data: { google_password_pending: false } });
+      expect((await send(account.id, accessToken, { password: account.password })).status).toBe(409);
+      // Issued long ago.
+      await prismaClient.person.update({
+        where: { id: (await personOf(account.id)).id },
+        data: { google_password_pending: true, google_password_issued_at: new Date(Date.now() - 3 * 86_400_000) },
+      });
+      expect((await send(account.id, accessToken, { password: account.password })).status).toBe(409);
+      expect(mailer.outbox).toHaveLength(0);
+    });
+
+    it("is for the admins who may create the account", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      await AdminUserTest.delete();
+      const noWrite = await AdminUserTest.createDatabaseAdmin(master.unit.id, { canWriteEmployeeData: false });
+      expect((await send(account.id, noWrite.accessToken, { password: account.password })).status).toBe(403);
+      expect(mailer.outbox).toHaveLength(0);
+    });
+
+    it("stops one admin after twenty mails an hour", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      for (let i = 0; i < 20; i += 1) {
+        expect((await send(account.id, accessToken, { password: account.password })).status).toBe(200);
+      }
+      expect((await send(account.id, accessToken, { password: account.password })).status).toBe(429);
+    });
   });
 
   it("links the account Google already has to a person who is already in Central", async () => {
