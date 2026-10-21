@@ -123,6 +123,10 @@ Email needs an SMTP server, which is a mailbox's login for sending, not somethin
 
 Use a mailbox made for this, not an admin's own. In development run Mailpit (`docker run -p 1025:1025 -p 8025:8025 axllent/mailpit`) with `SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025`, `SMTP_FROM=central@localhost`, and read the mail at `http://localhost:8025`. Tests never send mail.
 
+## Profile
+
+`/profile` shows the signed-in person's own employee record, read only, in tabs: Overview (the account), Personal (contact, address, education, and the sensitive details), Employment, Family and, for admins, Access. An admin is made from an employee, so the record is theirs when `AdminUser.person_id` points to one (`GET /api/auth/me` returns `employee_id`); an admin with no link sees only Overview and Access. An employee who signs in reads it from `GET /api/auth/employee/me/detail`. Identifiers (NIK, NPWP, bank, BPJS, birth details, children) stay hidden until Show; the reveal is recorded as `ACCESS_EMPLOYEE_PII` with `self: true`. Nothing is edited there: a change goes through Request a Change (`/change-requests/mine`), and the photo can still be changed by the person.
+
 ## Recovery email
 
 The recovery email lives only in Google, so "Forgot password" sends its code there. A Super Admin can see it hidden (`b***@gmail.com`) and the admin who may make the account sees the same hint. Whoever may make the account can **add** one when the account has none (older accounts); replacing one that is there stays with the protected Super Admins. The new address goes to Google and is not kept in Central or the audit log. If the person cannot use any recovery email, Reset Google password gives a temporary password without it. Self-service recovery must be on in the Admin Console (Security, Account recovery), otherwise Reset in Central is the only way.

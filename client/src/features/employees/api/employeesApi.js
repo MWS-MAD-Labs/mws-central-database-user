@@ -195,6 +195,17 @@ export const employeesApi = {
     return response.data
   },
 
+  // The signed-in employee's own record and identifiers, for the Profile page.
+  async getOwn() {
+    const response = await apiRequest('/api/auth/employee/me/detail')
+    return response.data
+  },
+
+  async revealOwnSensitiveFields() {
+    const response = await apiRequest('/api/auth/employee/me/sensitive-fields/access', { method: 'POST' })
+    return response.data
+  },
+
   async recordSensitiveFieldsAccess(id) {
     const response = await apiRequest(
       `/api/admin/employees/${id}/sensitive-fields/access`,

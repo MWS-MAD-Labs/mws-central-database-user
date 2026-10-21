@@ -9,6 +9,12 @@ export const employeeAuthRouter = new Hono<{ Variables: EmployeeVariables }>();
 employeeAuthRouter.get("/me", employeeAuthMiddleware, (c) =>
   AuthController.employeeMe(c),
 );
+employeeAuthRouter.get("/me/detail", employeeAuthMiddleware, (c) =>
+  AuthController.employeeDetail(c),
+);
+employeeAuthRouter.post("/me/sensitive-fields/access", employeeAuthMiddleware, (c) =>
+  AuthController.employeeRevealPii(c),
+);
 employeeAuthRouter.post("/logout", employeeAuthMiddleware, (c) =>
   AuthController.employeeLogout(c),
 );

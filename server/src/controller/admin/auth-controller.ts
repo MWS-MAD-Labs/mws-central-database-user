@@ -8,6 +8,8 @@ import {
 } from "../../model/auth-model";
 import { EmployeePhotoService } from "../../service/employee-photo-service";
 import { AuthService } from "../../service/auth-service";
+import { EmployeeService } from "../../service/employee-service";
+import { prismaClient } from "../../lib/prisma";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 
@@ -44,7 +46,22 @@ export class AuthController {
 
   static async me(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
-    return c.json({ data: await toAdminResponse(admin) });
+    // An admin is made from an employee. When that employee is still held, the Profile shows their record.
+    const employee = admin.person_id
+      ? await prismaClient.employee.findFirst({ where: { person_id: admin.person_id, deleted_at: null }, select: { id: true } })
+      : null;
+    return c.json({ data: { ...(await toAdminResponse(admin)), employee_id: employee?.id ?? null } });
+  }
+
+  // The signed-in employee's own record for the Profile page, and the identifiers it leaves out once they ask for them.
+  static async employeeDetail(c: Context<{ Variables: EmployeeVariables }>) {
+    c.header("Cache-Control", "no-store");
+    return c.json({ data: await EmployeeService.getOwn(c.var.employee.id) });
+  }
+
+  static async employeeRevealPii(c: Context<{ Variables: EmployeeVariables }>) {
+    c.header("Cache-Control", "no-store");
+    return c.json({ data: await EmployeeService.revealOwnPii(c.var.employee.id, getAuditRequestContext(c)) });
   }
 
   static async employeeMe(c: Context<{ Variables: EmployeeVariables }>) {

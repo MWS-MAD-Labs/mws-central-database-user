@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Camera } from "lucide-react";
 import { useRef, useState } from "react";
+import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import { employeesApi } from "../../employees/api/employeesApi.js";
@@ -16,6 +17,9 @@ import {
 } from "../../../lib/session.js";
 import { unitsApi } from "../../master-data/api/masterDataApi.js";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { Tabs } from "../../../components/ui/Tabs.jsx";
+import { TextAction } from "../../../components/ui/TextAction.jsx";
+import { EmploymentPanel, FamilyPanel, PersonalPanel } from "../components/OwnEmployeePanels.jsx";
 
 function ProfileRow({ label, value }) {
   return (
@@ -95,9 +99,50 @@ export function ProfilePage() {
     (scopeUnitsQuery.data?.data || []).map((unit) => [unit.id, unit.name]),
   );
 
+  // The person's own employee record. An admin is made from an employee, so it is theirs when the link exists.
+  const isEmployee = user?.type === "employee";
+  const employeeId = isAdmin ? user?.employee_id : null;
+  const hasRecord = isEmployee || Boolean(employeeId);
+  const recordQuery = useQuery({
+    queryKey: ["profile", "employee", isAdmin ? employeeId : "me"],
+    queryFn: () => (isAdmin ? employeesApi.get(employeeId) : employeesApi.getOwn()),
+    enabled: hasRecord,
+  });
+  const employee = recordQuery.data ?? null;
+  const [pii, setPii] = useState(null);
+  const revealPii = useMutation({
+    mutationFn: () => (isAdmin ? employeesApi.recordSensitiveFieldsAccess(employeeId) : employeesApi.revealOwnSensitiveFields()),
+    onSuccess: setPii,
+    onError: (error) => showErrorToast(error, "Could not show the sensitive details."),
+  });
+  const tabs = [
+    { id: "overview", label: "Overview" },
+    ...(employee
+      ? [
+          { id: "personal", label: "Personal" },
+          { id: "employment", label: "Employment" },
+          { id: "family", label: "Family" },
+        ]
+      : []),
+    ...(isAdmin ? [{ id: "access", label: "Access" }] : []),
+  ];
+  const [tab, setTab] = useState("overview");
+  const activeTab = tabs.some((item) => item.id === tab) ? tab : "overview";
+  const piiPanel = { employee, pii, revealed: Boolean(pii), revealing: revealPii.isPending, onShow: () => revealPii.mutate(), onHide: () => setPii(null) };
+
   return (
     <div className="min-w-0">
-      <PageHeader title="Profile" description="Current signed-in account." />
+      <PageHeader
+        title="Profile"
+        description="Current signed-in account."
+        actions={
+          hasRecord ? (
+            <TextAction asChild>
+              <Link to="/change-requests/mine">Request a Change</Link>
+            </TextAction>
+          ) : null
+        }
+      />
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="flex items-center gap-4 border-b border-(--mws-line) p-5">
@@ -159,6 +204,7 @@ export function ProfilePage() {
           />
         ) : null}
 
+        {activeTab === "overview" ? (
         <dl className="p-5">
           {isAdmin ? (
             <>
@@ -203,9 +249,23 @@ export function ProfilePage() {
             </>
           )}
         </dl>
+        ) : null}
       </div>
 
-      {isAdmin ? (
+      {tabs.length > 1 ? (
+        <div className="mt-5">
+          <Tabs label="Profile sections" tabs={tabs} active={activeTab} onChange={setTab} />
+        </div>
+      ) : null}
+
+      {hasRecord && recordQuery.isError && activeTab !== "overview" && activeTab !== "access" ? (
+        <p className="mt-5 text-sm text-(--mws-muted)">Your employee record is unavailable.</p>
+      ) : null}
+      {employee && activeTab === "personal" ? <div className="mt-5"><PersonalPanel {...piiPanel} /></div> : null}
+      {employee && activeTab === "employment" ? <div className="mt-5"><EmploymentPanel employee={employee} /></div> : null}
+      {employee && activeTab === "family" ? <div className="mt-5"><FamilyPanel {...piiPanel} /></div> : null}
+
+      {isAdmin && activeTab === "access" ? (
         <section className="mt-5 min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
           <div className="mb-2">
             <h2 className="font-display text-lg font-bold text-(--mws-charcoal)">

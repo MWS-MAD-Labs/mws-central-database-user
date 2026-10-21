@@ -1933,6 +1933,63 @@ export class EmployeeService {
     return toEmployeeResponse(person, admin);
   }
 
+  // The signed-in employee's own record, for their Profile. Like `get` for yourself: the identifiers are left out until
+  // revealed. The person is the one in the session, nothing in the request names one.
+  static async getOwn(personId: string): Promise<EmployeeResponse | RedactedEmployeeDetailResponse> {
+    const person = await prismaClient.person.findFirst({
+      where: { id: personId, employee: { deleted_at: null } },
+      include: {
+        employee: {
+          include: {
+            unit: true,
+            job_position: true,
+            job_level: true,
+            building: true,
+            pc_mentor_units: { include: { unit: true } },
+            children: true,
+          },
+        },
+      },
+    });
+    if (!person || !person.employee) throw new ResponseError(404, "Employee not found");
+
+    const detail = toEmployeeDetailResponse(person, { role: AdminRole.SUPER_ADMIN }, await ChildrenAllowanceRuleService.get());
+    detail.identity.photo_url = await resolveEmployeePhotoUrl(person.photo_object_key, person.photo_url);
+    detail.identity.is_self = true;
+    return splitEmployeeDetailIdentity(detail).redacted;
+  }
+
+  // The employee's own identifiers, with the reveal recorded in the same call, like `revealPii`. There is no admin to
+  // name in the entry: the employee it is about is the one who looked.
+  static async revealOwnPii(personId: string, context: AuditRequestContext = {}): Promise<EmployeeRevealedIdentity> {
+    const person = await prismaClient.person.findFirst({
+      where: { id: personId, employee: { deleted_at: null } },
+      include: {
+        employee: {
+          include: { unit: true, job_position: true, job_level: true, building: true, children: true },
+        },
+      },
+    });
+    if (!person || !person.employee) throw new ResponseError(404, "Employee not found");
+
+    const { cached } = await withLookupCache("employee-pii-access", ["self", person.employee.id], async () => true);
+    if (!cached) {
+      await AuditService.record({
+        action: AuditAction.ACCESS_EMPLOYEE_PII,
+        source: AuditSource.UI,
+        entity_type: "Employee",
+        entity_id: person.employee.id,
+        new_values: { resource: "EmployeeSensitiveFields", full_name: person.full_name, self: true },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
+    }
+
+    return splitEmployeeDetailIdentity(
+      toEmployeeDetailResponse(person, { role: AdminRole.SUPER_ADMIN }, await ChildrenAllowanceRuleService.get()),
+    ).revealed;
+  }
+
   // Releases the identifiers GET /employees/:id leaves out, and records the
   // reveal in the same call so they cannot be read without an audit entry.
   static async revealPii(
