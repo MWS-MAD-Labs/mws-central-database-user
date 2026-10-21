@@ -14,12 +14,12 @@ const TONES = {
 export function EmailCheckNote({ check }) {
   if (!check?.message) return null
   return (
-    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <span className={TONES[check.state]} aria-live="polite" data-testid="email-check">
+    <span className="flex w-full items-center justify-between gap-3">
+      <span className={`min-w-0 ${TONES[check.state]}`} aria-live="polite" data-testid="email-check">
         {check.message}
       </span>
       {check.canCheck ? (
-        <Button type="button" variant="secondary" size="sm" onClick={check.check}>
+        <Button type="button" variant="secondary" size="sm" className="shrink-0" onClick={check.check}>
           Check
         </Button>
       ) : null}
