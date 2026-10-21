@@ -21,7 +21,9 @@ import {
   pcActivitiesApi,
   unitsApi,
 } from '../api/masterDataApi.js'
+import { ChildrenAllowanceCard } from '../components/ChildrenAllowanceCard.jsx'
 import { MasterResourcePanel } from '../components/MasterResourcePanel.jsx'
+import { Tabs } from '../../../components/ui/Tabs.jsx'
 
 const resources = [
   {
@@ -146,14 +148,42 @@ const categoryResource = {
   itemLabel: 'categories',
 }
 
+// Master data about the work people do lives in one tab with its own sub tabs, so a new list goes there and the
+// sidebar stays short. The old links (?tab=job-positions and so on) open the right sub tab.
+const EMPLOYMENT_SECTIONS = [
+  { id: 'job-positions', label: 'Job Positions' },
+  { id: 'job-levels', label: 'Job Levels' },
+  { id: 'education', label: 'Education' },
+  { id: 'children-allowance', label: 'Children Allowance' },
+]
+const LEGACY_EMPLOYMENT_TABS = ['job-positions', 'job-levels', 'education']
+
+function EmploymentTab({ section, onSection }) {
+  const active = EMPLOYMENT_SECTIONS.some((item) => item.id === section) ? section : 'job-positions'
+  return (
+    <div className="space-y-6">
+      <Tabs label="Employment master data" tabs={EMPLOYMENT_SECTIONS} active={active} onChange={onSection} />
+      {active === 'education' ? (
+        <div className="space-y-6">
+          <MasterResourcePanel resource={institutionResource} />
+          <MasterResourcePanel resource={majorResource} />
+        </div>
+      ) : active === 'children-allowance' ? (
+        <ChildrenAllowanceCard />
+      ) : (
+        <MasterResourcePanel resource={resources.find((resource) => resource.id === active)} />
+      )}
+    </div>
+  )
+}
+
 export default function MasterData() {
-  const [searchParams] = useSearchParams()
-  const tab = searchParams.get('tab')
-  const isEducationTab = tab === 'education'
-  const isScopesTab = tab === 'scopes'
-  const activeResource = isEducationTab || isScopesTab
-    ? null
-    : resources.find((resource) => resource.id === tab) || resources[0]
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawTab = searchParams.get('tab')
+  const isEmployment = rawTab === 'employment' || LEGACY_EMPLOYMENT_TABS.includes(rawTab)
+  const section = rawTab === 'employment' ? searchParams.get('section') : rawTab
+  const isScopesTab = rawTab === 'scopes'
+  const activeResource = resources.find((resource) => resource.id === rawTab) || resources[0]
 
   return (
     <div className="min-w-0">
@@ -162,11 +192,11 @@ export default function MasterData() {
         description="Manage reusable data lists that are stored in the database and referenced across employee and admin workflows."
       />
 
-      {isEducationTab ? (
-        <div className="space-y-6">
-          <MasterResourcePanel resource={institutionResource} />
-          <MasterResourcePanel resource={majorResource} />
-        </div>
+      {isEmployment ? (
+        <EmploymentTab
+          section={section}
+          onSection={(next) => setSearchParams({ tab: 'employment', section: next })}
+        />
       ) : isScopesTab ? (
         <div className="space-y-6">
           <MasterResourcePanel resource={scopeResource} />

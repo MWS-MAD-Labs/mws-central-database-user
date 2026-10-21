@@ -75,7 +75,7 @@ describe('MasterData', () => {
   it('selects resources from the route and prevents non-super-admin writes', async () => {
     const routes = [
       { path: /^\/api\/admin\/institutions\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'institution-1', name: 'University of Indonesia' }])) },
-      { path: /^\/api\/admin\/majors\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'major-1', name: 'Education' }])) },
+      { path: /^\/api\/admin\/majors\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'major-1', name: 'Educational Technology' }])) },
     ]
     renderPage({
       user: { id: 'admin-2', type: 'admin', role: 'DATABASE_ADMIN' },
@@ -84,7 +84,7 @@ describe('MasterData', () => {
     })
 
     expect(await screen.findByText('University of Indonesia')).toBeVisible()
-    expect(await screen.findByText('Education')).toBeVisible()
+    expect(await screen.findByText('Educational Technology')).toBeVisible()
     expect(screen.getAllByText('Only Super Admin can create, edit, or delete master data.')).toHaveLength(2)
     expect(screen.getByRole('button', { name: 'New Institution' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'New Major' })).toBeDisabled()
@@ -203,5 +203,76 @@ describe('MasterData', () => {
     const teacherRow = (await screen.findByText('Art Teacher')).closest('tr')
     expect(within(driverRow).getByText('All Units')).toBeVisible()
     expect(within(teacherRow).getByText('All Academic Units')).toBeVisible()
+  })
+
+  describe('Employment tab', () => {
+    const rule = { max_children: 3, age_limit: 23, count_biological: true, count_adopted: true, count_step: true }
+    const ruleRoutes = (extra = []) => [
+      { path: '/api/admin/employee-settings/children-allowance', method: 'GET', response: jsonResponse({ data: rule }) },
+      ...extra,
+    ]
+
+    it('opens Job Positions first and moves between the sub tabs', async () => {
+      const routes = [
+        { path: /^\/api\/admin\/job-positions\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'jp-1', name: 'Teacher Aide' }])) },
+        { path: /^\/api\/admin\/job-levels\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'jl-1', name: 'Supervisor' }])) },
+        { path: /^\/api\/admin\/units\?.*$/, response: jsonResponse(listPayload([unit])) },
+        ...ruleRoutes(),
+      ]
+      const { user } = renderPage({ route: '/master-data?tab=employment', routes })
+      expect(await screen.findByText('Teacher Aide')).toBeVisible()
+      await user.click(screen.getByRole('tab', { name: 'Job Levels' }))
+      expect(await screen.findByText('Supervisor')).toBeVisible()
+      await user.click(screen.getByRole('tab', { name: 'Children Allowance' }))
+      expect(await screen.findByRole('button', { name: 'Save' })).toBeDisabled()
+    })
+
+    it('keeps the old links working', async () => {
+      const routes = [
+        { path: /^\/api\/admin\/job-levels\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'jl-1', name: 'Supervisor' }])) },
+        { path: /^\/api\/admin\/units\?.*$/, response: jsonResponse(listPayload([unit])) },
+      ]
+      renderPage({ route: '/master-data?tab=job-levels', routes })
+      expect(await screen.findByText('Supervisor')).toBeVisible()
+      expect(screen.getByRole('tab', { name: 'Job Levels' })).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('saves a changed allowance rule, and Save stays off until something changes', async () => {
+      const saved = { ...rule, max_children: 2 }
+      const { user, fetchMock } = renderPage({
+        route: '/master-data?tab=employment&section=children-allowance',
+        routes: ruleRoutes([{ path: '/api/admin/employee-settings/children-allowance', method: 'PUT', response: jsonResponse({ data: saved }) }]),
+      })
+      const save = await screen.findByRole('button', { name: 'Save' })
+      expect(save).toBeDisabled()
+      const max = screen.getAllByRole('textbox')[0]
+      await user.clear(max)
+      await user.type(max, '2')
+      expect(save).toBeEnabled()
+      await user.click(save)
+      await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
+        String(url).endsWith('/children-allowance') && options.method === 'PUT' && JSON.parse(options.body).max_children === 2)).toBe(true))
+    })
+
+    it('refuses a rule with no kind of child, and shows it read only to anyone but a Super Admin', async () => {
+      const { user } = renderPage({
+        route: '/master-data?tab=employment&section=children-allowance',
+        routes: ruleRoutes(),
+      })
+      await screen.findByRole('button', { name: 'Save' })
+      for (const name of ['Biological', 'Adopted', 'Step']) await user.click(screen.getByRole('checkbox', { name }))
+      expect(screen.getByText('Pick at least one kind of child.')).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    })
+
+    it('has no Save for an admin who is not a Super Admin', async () => {
+      renderPage({
+        user: { id: 'admin-2', type: 'admin', role: 'DATABASE_ADMIN' },
+        route: '/master-data?tab=employment&section=children-allowance',
+        routes: ruleRoutes(),
+      })
+      expect(await screen.findByText('Only a Super Admin can change this.')).toBeVisible()
+      expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
+    })
   })
 })
