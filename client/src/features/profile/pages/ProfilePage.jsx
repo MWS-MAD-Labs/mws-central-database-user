@@ -250,6 +250,11 @@ export function ProfilePage() {
           )}
         </dl>
         ) : null}
+        {activeTab === "overview" && isAdmin && !employeeId ? (
+          <p role="note" className="border-t border-(--mws-line) px-5 py-4 text-sm text-(--mws-muted)" data-testid="no-employee-note">
+            No employee record is linked to this admin. Add the employee with the same email, then reload this page.
+          </p>
+        ) : null}
       </div>
 
       {tabs.length > 1 ? (

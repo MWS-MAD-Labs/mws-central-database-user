@@ -8,6 +8,7 @@ const TONES = {
   failed: 'text-[#a43c41]',
   'failed-google': 'text-[#8a6419]',
   unchecked: 'text-(--mws-muted)',
+  protected: 'text-[#8a6419]',
 }
 
 // Under the Email field: what the check said, and the Check button while the address has not been checked.

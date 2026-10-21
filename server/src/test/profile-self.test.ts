@@ -48,6 +48,39 @@ describe("the signed-in person's own record, for the Profile page", () => {
     });
   });
 
+  describe("linking an admin to the employee with the same email", () => {
+    it("links when the profile is opened, whatever the capitals of the email, and not again", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      expect((await (await TestRequest.get("/api/auth/me", accessToken)).json()).data.employee_id).toBeNull();
+
+      // The employee is added after the admin last signed in, with other capitals.
+      const { person } = await employee("Test_SuperAdmin@millennia21.id");
+      const opened = await (await TestRequest.get("/api/auth/me", accessToken)).json();
+      expect(opened.data.employee_id).toBe(person.employee!.id);
+      const admin = await prismaClient.adminUser.findFirstOrThrow({ where: { id: "test-super-admin-id" } });
+      expect(admin.person_id).toBe(person.id);
+    });
+
+    it("leaves a linked admin alone, and does not take an employee who belongs to another admin", async () => {
+      const { person } = await employee("test_superadmin@millennia21.id");
+      await prismaClient.adminUser.create({
+        data: { id: "other-admin", email: "other_admin@millennia21.id", full_name: "Other", role: "VIEWER", unit_id: master.unit.id, person_id: person.id },
+      });
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const response = await (await TestRequest.get("/api/auth/me", accessToken)).json();
+      expect(response.data.employee_id).toBeNull();
+      expect((await prismaClient.adminUser.findFirstOrThrow({ where: { id: "test-super-admin-id" } })).person_id).toBeNull();
+      expect((await prismaClient.adminUser.findFirstOrThrow({ where: { id: "other-admin" } })).person_id).toBe(person.id);
+    });
+
+    it("does not link to an employee that was deleted", async () => {
+      const { person } = await employee("test_superadmin@millennia21.id");
+      await prismaClient.employee.update({ where: { id: person.employee!.id }, data: { deleted_at: new Date() } });
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      expect((await (await TestRequest.get("/api/auth/me", accessToken)).json()).data.employee_id).toBeNull();
+    });
+  });
+
   describe("an employee signed in", () => {
     it("reads their own record, without the identifiers, and nobody else's", async () => {
       const mine = await employee("test_profile_me@millennia21.id", { employeeId: "99.99.7001" });

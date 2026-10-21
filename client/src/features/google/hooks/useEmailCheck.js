@@ -31,5 +31,7 @@ export function useEmailCheck(email, { initialEmail = '' } = {}) {
   }
   if (!answer.data.available) return { ...none, state: 'taken', blocked: true, message: answer.data.message }
   if (answer.data.reason === 'FREE') return { ...none, state: 'free', message: answer.data.message }
+  // A protected admin address: saved as an employee, never given a Google account.
+  if (answer.data.reason === 'PROTECTED') return { ...none, state: 'protected', message: answer.data.message }
   return { ...none, state: answer.data.reason === 'CHECK_FAILED' ? 'failed-google' : 'unchecked', message: answer.data.message }
 }

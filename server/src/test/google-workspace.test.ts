@@ -221,6 +221,42 @@ describe("google workspace accounts", () => {
     expect(data.temporary_password).toBeUndefined();
   });
 
+  describe("a protected admin as an employee", () => {
+    const PROTECTED_EMAIL = "test_superadmin@millennia21.id";
+
+    it("says a protected address is fine to save, without Google", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const response = await TestRequest.get(`/api/admin/google/email-availability?email=${encodeURIComponent(PROTECTED_EMAIL)}`, accessToken);
+      expect((await response.json()).data).toMatchObject({ available: true, reason: "PROTECTED" });
+    });
+
+    it("creates the employee with no recovery email and no Google account, and links the admin to it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { response, json } = await create(accessToken, { email: PROTECTED_EMAIL });
+      expect(response.status).toBe(200);
+      expect(json.data.google).toBeUndefined();
+      expect(google.created).toHaveLength(0);
+      expect((await personOf(json.data.id)).google_user_id).toBeNull();
+
+      const admin = await prismaClient.adminUser.findFirstOrThrow({ where: { email: PROTECTED_EMAIL } });
+      expect(admin.person_id).toBe((await personOf(json.data.id)).id);
+    });
+
+    it("does not make a Google account even when a recovery email is sent for it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { response, json } = await create(accessToken, { email: PROTECTED_EMAIL, recovery_email: "rizqi.pribadi@gmail.com" });
+      expect(response.status).toBe(200);
+      expect(json.data.google).toBeUndefined();
+      expect(google.created).toHaveLength(0);
+    });
+
+    it("still asks for a recovery email for everyone else", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const response = await TestRequest.post("/api/admin/employees", body({ recovery_email: undefined }), accessToken);
+      expect(response.status).toBe(400);
+    });
+  });
+
   describe("mailing the first sign-in details", () => {
     let mailer: MemoryMailer;
     beforeEach(() => {

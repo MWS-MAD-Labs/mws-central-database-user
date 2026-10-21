@@ -26,13 +26,14 @@ function renderEmployeeForm({
   onSubmit = mock(() => {}),
   isSubmitting = false,
   myRequests = [],
+  availability = { available: true, reason: 'FREE', message: 'Available' },
 } = {}) {
   globalThis.fetch = mock(async (url) => {
     if (url.includes('/identifier-change-requests/mine')) {
       return new Response(JSON.stringify({ data: myRequests, paging: { current_page: 1, total_page: 1, total_item: myRequests.length, size: 20 }, unseen_decided_count: 0 }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     if (url.includes('/email-availability')) {
-      return jsonResponse({ available: true, reason: 'FREE', message: 'Available' })
+      return jsonResponse(availability)
     }
     if (url.includes('/education-suggestions')) {
       return jsonResponse({ institution_names: [], majors: [] })
@@ -165,6 +166,19 @@ describe('EmployeeForm', () => {
     await user.type(recovery, 'ARI.EMPLOYEE@millennia21.id')
     expect(await screen.findByText("That is the account's own address. Use another mailbox.")).toBeVisible()
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('asks for no recovery email for a protected admin address, which becomes an employee without a Google account', async () => {
+    const message = 'This is a protected admin address. The employee is saved without a Google account'
+    const { user } = renderEmployeeForm({ mode: 'create', availability: { available: true, reason: 'PROTECTED', message } })
+    await user.type(field('full_name').querySelector('input'), 'rizqi')
+    await user.type(field('email_local').querySelector('input'), 'rizqi')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+    expect(await screen.findByText(message)).toBeVisible()
+    fireEvent.submit(document.querySelector('form'))
+    expect(screen.queryByText('Recovery email is required.')).not.toBeInTheDocument()
+    expect(field('recovery_email').querySelector('input')).toBeDisabled()
+    expect(screen.getByText('Not needed: no Google account is made for this address.')).toBeVisible()
   })
 
   it('keeps the form from saving a new email until it is checked', async () => {

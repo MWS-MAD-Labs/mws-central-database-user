@@ -1,5 +1,6 @@
 import { AdminRole } from "../src/generated/prisma/client";
 import { prismaClient } from "../src/lib/prisma";
+import { linkAdminToEmployee } from "../src/utils/admin-person-link";
 
 const TARGET_EMAIL = process.env.DEV_ADMIN_EMAIL;
 const DUMMY_DB_ADMIN_EMAIL = "dummystaff@millennia21.id";

@@ -135,6 +135,7 @@ describe('ProfilePage access summary', () => {
       expect(screen.getByRole('tab', { name: 'Access' })).toBeVisible()
       expect(screen.queryByRole('tab', { name: 'Personal' })).not.toBeInTheDocument()
       expect(screen.queryByRole('link', { name: 'Request a Change' })).not.toBeInTheDocument()
+      expect(screen.getByTestId('no-employee-note')).toHaveTextContent('No employee record is linked to this admin')
     })
   })
 })

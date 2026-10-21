@@ -10,6 +10,7 @@ import { EmployeePhotoService } from "../../service/employee-photo-service";
 import { AuthService } from "../../service/auth-service";
 import { EmployeeService } from "../../service/employee-service";
 import { prismaClient } from "../../lib/prisma";
+import { linkAdminToEmployee } from "../../utils/admin-person-link";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 
@@ -47,10 +48,12 @@ export class AuthController {
   static async me(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     // An admin is made from an employee. When that employee is still held, the Profile shows their record.
-    const employee = admin.person_id
-      ? await prismaClient.employee.findFirst({ where: { person_id: admin.person_id, deleted_at: null }, select: { id: true } })
+    // The link is also made here, so an employee added after the last sign-in is found by opening the page again.
+    const personId = admin.person_id ?? (await linkAdminToEmployee(admin.email));
+    const employee = personId
+      ? await prismaClient.employee.findFirst({ where: { person_id: personId, deleted_at: null }, select: { id: true } })
       : null;
-    return c.json({ data: { ...(await toAdminResponse(admin)), employee_id: employee?.id ?? null } });
+    return c.json({ data: { ...(await toAdminResponse({ ...admin, person_id: personId })), employee_id: employee?.id ?? null } });
   }
 
   // The signed-in employee's own record for the Profile page, and the identifiers it leaves out once they ask for them.

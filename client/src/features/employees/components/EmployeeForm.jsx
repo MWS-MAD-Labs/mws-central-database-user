@@ -225,10 +225,12 @@ export function EmployeeForm({
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [lastWorkingDateIncomplete, setLastWorkingDateIncomplete] =
     useState(false);
+  // A protected admin address becomes an employee without a Google account, so there is no recovery email to ask for.
+  const noGoogle = emailCheck.state === "protected";
   const allErrors = useMemo(
     () =>
-      computeEmployeeErrors(values, isCreate, { lastWorkingDateIncomplete }),
-    [values, isCreate, lastWorkingDateIncomplete],
+      computeEmployeeErrors(values, isCreate, { lastWorkingDateIncomplete, noGoogle }),
+    [values, isCreate, lastWorkingDateIncomplete, noGoogle],
   );
   // Drives the floating Save button's disabled/tooltip state - a field
   // with a value that fails a rule shows its error live (see
@@ -456,6 +458,7 @@ export function EmployeeForm({
         includeSensitive: sensitiveFieldsRevealed,
         isCreate,
         initialChildren: initialValues.children,
+        noGoogle,
       }),
       pendingPhotoBlob,
     );
@@ -695,12 +698,13 @@ export function EmployeeForm({
                 label="Recovery Email"
                 name="recovery_email"
                 error={errors.recovery_email}
-                required
+                required={!noGoogle}
                 counter={{ value: values.recovery_email, max: 100, count: textLength }}
-                hint={recoveryHint(values.recovery_email, errors.recovery_email, ALLOWED_EMAIL_DOMAIN)}
+                hint={noGoogle ? "Not needed: no Google account is made for this address." : recoveryHint(values.recovery_email, errors.recovery_email, ALLOWED_EMAIL_DOMAIN)}
               >
                 <TextInput
                   type="email"
+                  disabled={noGoogle}
                   invalid={Boolean(errors.recovery_email)}
                   value={values.recovery_email}
                   maxLength={100}
@@ -1549,9 +1553,10 @@ const SENSITIVE_VALUE_KEYS = [
 
 function buildPayload(
   values,
-  { includeSensitive = true, isCreate = false, initialChildren } = {},
+  { includeSensitive = true, isCreate = false, initialChildren, noGoogle = false } = {},
 ) {
   const payload = buildFullPayload(values);
+  if (noGoogle) delete payload.recovery_email;
   if (!includeSensitive) {
     // Never revealed means never loaded: leave those fields out so nothing is overwritten.
     for (const key of SENSITIVE_VALUE_KEYS) delete payload[key];
@@ -1863,11 +1868,12 @@ const EMPLOYEE_FIELD_SECTIONS = {
 function computeEmployeeErrors(
   values,
   isCreate,
-  { lastWorkingDateIncomplete } = {},
+  { lastWorkingDateIncomplete, noGoogle = false } = {},
 ) {
   const errors = {};
   if (isCreate) {
     for (const [field, label] of Object.entries(REQUIRED_FIELD_LABELS)) {
+      if (field === "recovery_email" && noGoogle) continue;
       if (!values[field]) {
         errors[field] = `${label} is required.`;
       }
@@ -1877,7 +1883,7 @@ function computeEmployeeErrors(
     const problem = emailProblem(`${values.email_local}@${ALLOWED_EMAIL_DOMAIN}`);
     if (problem) errors.email_local = problem;
   }
-  if (isCreate && values.recovery_email) {
+  if (isCreate && values.recovery_email && !noGoogle) {
     const problem = recoveryEmailProblem(
       values.recovery_email,
       values.email_local ? `${values.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",

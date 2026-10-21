@@ -218,7 +218,7 @@ export type GoogleLookupState = "found" | "absent" | "simulated" | "blocked" | "
 export type EmailAvailability = {
   // False only when the email cannot be used for a new person.
   available: boolean;
-  reason: "FREE" | "IN_CENTRAL" | "IN_GOOGLE" | "DELETED_IN_GOOGLE" | "NOT_ALLOWED" | "INVALID" | "NOT_CHECKED" | "CHECK_FAILED";
+  reason: "FREE" | "IN_CENTRAL" | "IN_GOOGLE" | "DELETED_IN_GOOGLE" | "NOT_ALLOWED" | "PROTECTED" | "INVALID" | "NOT_CHECKED" | "CHECK_FAILED";
   message: string;
   mode: "google" | "simulated";
 };
@@ -244,6 +244,10 @@ export class GoogleWorkspaceService {
     }
     if (await prismaClient.person.findFirst({ where: { email }, select: { id: true } })) {
       return answer("IN_CENTRAL", false, "This email is already used in Central");
+    }
+    // A protected admin is made an employee like anyone, but Central never makes or touches their Google account.
+    if (isProtectedSuperAdminEmail(email)) {
+      return answer("PROTECTED", true, "This is a protected admin address. The employee is saved without a Google account");
     }
     try {
       assertAllowedTarget(email);
@@ -276,6 +280,7 @@ export class GoogleWorkspaceService {
 
   // For the form that creates a person: it is not written when Google already has the email or would not take it.
   static async assertCanCreate(email: string, recoveryEmail?: string): Promise<void> {
+    if (isProtectedSuperAdminEmail(email)) return;
     this.assertRecoveryIsNotOwn(recoveryEmail, email);
     const check = await this.checkEmailAvailable(email);
     if (check.reason === "IN_GOOGLE" || check.reason === "DELETED_IN_GOOGLE" || check.reason === "NOT_ALLOWED") {

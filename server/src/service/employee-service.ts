@@ -71,6 +71,8 @@ import { assertAcademicUnitIds } from "../utils/academic-units";
 import { maskSensitiveValue } from "../utils/sensitive-data";
 import { GoogleWorkspaceService, type GoogleSyncResult } from "./google-workspace-service";
 import { logger } from "../lib/logger";
+import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
+import { linkAdminToEmployee } from "../utils/admin-person-link";
 import {
   findChildrenProblems,
   findCountsProblems,
@@ -675,11 +677,13 @@ export class EmployeeService {
       EmployeeValidation.CREATE,
       request,
     );
-    if (options.requireRecoveryEmail && !createRequest.recovery_email) {
+    // A protected admin gets an employee record but never a Google account, so no recovery email is asked for.
+    const withoutGoogle = isProtectedSuperAdminEmail(createRequest.email);
+    if (options.requireRecoveryEmail && !withoutGoogle && !createRequest.recovery_email) {
       throw new ResponseError(400, "Recovery email is required: it is how the person sets the password of their new Google account");
     }
     // Before anything is written: a Google that already has the email, or would not take it, stops the create here.
-    if (options.requireRecoveryEmail) {
+    if (options.requireRecoveryEmail && !withoutGoogle) {
       await GoogleWorkspaceService.assertCanCreate(createRequest.email, createRequest.recovery_email);
     }
     await assertCanWriteEmployeePii(admin, createRequest, context);
@@ -1002,8 +1006,11 @@ export class EmployeeService {
     );
 
     // The person exists in Central either way. A failure here shows as a Google status they can retry.
+    // An admin with this email was waiting for their employee record: link them now, not at their next sign-in.
+    await linkAdminToEmployee(createRequest.email).catch((error) => logger.error("Linking the admin to the new employee failed", error));
+
     let google: GoogleSyncResult | undefined;
-    if (createRequest.recovery_email) {
+    if (createRequest.recovery_email && !withoutGoogle) {
       google = await GoogleWorkspaceService.provision(createdPersonId, {
         recoveryEmail: createRequest.recovery_email,
         admin,
