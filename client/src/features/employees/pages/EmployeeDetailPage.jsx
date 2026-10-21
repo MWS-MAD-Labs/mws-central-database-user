@@ -1,5 +1,6 @@
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx"
 import { describeChildren } from '../utils/childrenRules.js'
+import { ListPopover } from '../../../components/ui/ListPopover.jsx'
 import { ArrowLeft, Camera, CalendarClock, Edit, Mail, Phone, Trash2, UserRound, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
@@ -459,29 +460,43 @@ export function EmployeeDetailPage() {
                 <DetailRow compact label="Birth Place" value={pii.birth_place} />
                 <DetailRow compact label="Birth Date" value={formatDate(pii.birth_date)} warning={birthDateWarning} />
                 <DetailRow compact label="Marital Status" value={formatStatus(pii.marital_status)} />
-                <DetailRow compact label="Children" value={describeChildren(pii.children?.summary)} />
+                <DetailRow
+                  compact
+                  label="Children"
+                  value={describeChildren(pii.children?.summary)}
+                  action={
+                    pii.children?.items?.length ? (
+                      <ListPopover
+                        label="List"
+                        count={pii.children.items.length}
+                        dialogLabel="Children"
+                        mono={false}
+                        groups={[
+                          {
+                            hideCount: true,
+                            items: pii.children.items.map((child, index) => ({
+                              label: `${index + 1}. ${formatDate(child.birth_date)}`,
+                              hint: formatStatus(child.relation),
+                            })),
+                          },
+                        ]}
+                      />
+                    ) : null
+                  }
+                />
+                {pii.children?.summary?.total ? (
+                  <DetailRow
+                    compact
+                    label="Allowance"
+                    value={`${pii.children.summary.allowance_eligible} of ${pii.children.summary.total}`}
+                  />
+                ) : null}
                 {pii.children?.mode === 'COUNTS' ? (
                   <DetailRow
                     compact
                     label="Children Recorded"
                     value={`As numbers on ${formatDate(pii.children.declared_at)}`}
                     warning={pii.children.needs_review ? 'Needs review, last confirmed more than a year ago' : undefined}
-                  />
-                ) : null}
-                {pii.children?.items?.length ? (
-                  <DetailRow
-                    compact
-                    label="Children Born"
-                    value={pii.children.items
-                      .map((child) => `${formatDate(child.birth_date)} (${formatStatus(child.relation)})`)
-                      .join(', ')}
-                  />
-                ) : null}
-                {pii.children?.summary?.total ? (
-                  <DetailRow
-                    compact
-                    label="Allowance Eligible"
-                    value={`${pii.children.summary.allowance_eligible} of ${pii.children.summary.total} (under 23)`}
                   />
                 ) : null}
                 <DetailRow compact label="NIK" value={pii.nik} />

@@ -1,3 +1,4 @@
+import { describeChildren } from "../../employees/utils/childrenRules.js";
 import { useQuery } from "@tanstack/react-query";
 import { Eye } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -681,6 +682,10 @@ function exportFilterValue(key, value) {
 
 function formatAuditValue(key, value, resolvedLabels) {
   if (key === "phase" && typeof value === "string") return formatStatus(value);
+  // Older entries kept the children as counts; they read the same as the newer phrase.
+  if (key === "children" && value && typeof value === "object" && typeof value.total === "number") {
+    return describeChildren(value);
+  }
   return formatDiffValue(value, resolvedLabels);
 }
 

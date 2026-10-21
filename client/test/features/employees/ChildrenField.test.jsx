@@ -81,7 +81,7 @@ describe('ChildrenField', () => {
 
   it('shows the numbers worked out from the dates, as the list changes', () => {
     renderField({ value: dated([{ birth_date: yearsAgo(5), relation: 'BIOLOGICAL' }, { birth_date: yearsAgo(25), relation: 'ADOPTED' }]) })
-    expect(screen.getByText('2 children: 1 under 23, 1 aged 23 or over')).toBeTruthy()
+    expect(screen.getByText('2 children, 1 for allowance')).toBeTruthy()
   })
 
   it('removes the row that is asked for', () => {
@@ -104,7 +104,7 @@ describe('ChildrenField', () => {
   it('takes the three numbers and adds them up', () => {
     const onChange = renderField({ value: counted({ under_23: '2', age_23_plus: '1', adopted: '1' }) })
     expect(screen.getByLabelText('U-23')).toHaveValue('2')
-    expect(screen.getByText('3 children: 2 under 23, 1 aged 23 or over')).toBeTruthy()
+    expect(screen.getByText('3 children, 2 for allowance')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('23 or Older'), { target: { value: '3' } })
     expect(onChange.mock.calls[0][0].counts.age_23_plus).toBe('3')
   })
@@ -120,7 +120,29 @@ describe('ChildrenField', () => {
     const value = counted({ under_23: '1', adopted: '0' }, { declared_at: old.toISOString(), needs_review: true })
     const onChange = renderField({ value })
     expect(screen.getByText(/Needs review/)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm still correct' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
     expect(onChange.mock.calls[0][0].confirmed).toBe(true)
+  })
+
+  it('keeps Confirm off while the numbers are fresh, and shows it on the right', () => {
+    const fresh = counted({ under_23: '1', adopted: '0' }, { declared_at: new Date().toISOString(), needs_review: false })
+    renderField({ value: fresh })
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
+  })
+
+  it('turns Confirm into Confirmed once it is pressed', () => {
+    const old = new Date()
+    old.setUTCFullYear(old.getUTCFullYear() - 2)
+    renderField({ value: counted({ under_23: '1', adopted: '0' }, { declared_at: old.toISOString(), needs_review: true, confirmed: true }) })
+    expect(screen.getByRole('button', { name: 'Confirmed' })).toBeDisabled()
+  })
+
+  it('numbers the rows and keeps a long list in a scroll area', () => {
+    const rows = Array.from({ length: 8 }, (_, index) => ({ birth_date: yearsAgo(1 + index), relation: 'BIOLOGICAL' }))
+    renderField({ value: dated(rows) })
+    const area = screen.getByTestId('children-rows')
+    expect(area.className).toContain('overflow-y-auto')
+    expect(area.querySelectorAll('[data-row]')).toHaveLength(8)
+    expect(screen.getByText('8 children, 3 for allowance')).toBeTruthy()
   })
 })

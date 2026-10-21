@@ -214,7 +214,7 @@ describe('EmployeeForm', () => {
     await user.click(screen.getByRole('button', { name: 'Show Sensitive Fields' }))
     const revealDialog = await screen.findByRole('dialog', { name: 'View sensitive fields' })
     await user.click(within(revealDialog).getByRole('button', { name: 'View' }))
-    await screen.findByText(/^1 child: 1 under 23/)
+    await screen.findByText(/^1 child, 1 for allowance/)
   }
 
   it('leaves the children out when only something else changed', async () => {
@@ -254,7 +254,7 @@ describe('EmployeeForm', () => {
     await user.type(screen.getByLabelText('U-23'), '2')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
     const review = await screen.findByRole('dialog', { name: /Review changes/ })
-    expect(within(review).getByText(/2 children: 2 under 23, 0 aged 23 or over \(numbers only\)/)).toBeVisible()
+    expect(within(review).getByText('2 children')).toBeVisible()
     await user.click(within(review).getByRole('button', { name: /Save changes/ }))
     const payload = onSubmit.mock.calls[0][0]
     expect(payload.children_counts).toEqual({ under_23: 2, age_23_plus: 0, adopted: 0 })
