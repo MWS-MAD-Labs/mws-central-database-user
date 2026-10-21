@@ -31,7 +31,7 @@ describe('format helpers', () => {
 
   it('formats tenure for past and future dates', () => {
     setSystemTime(new Date('2026-09-17T12:00:00.000Z'))
-    expect(formatTenure('2025-09-17')).toContain('365 days')
+    expect(formatTenure('2025-09-17')).toContain('365 Days')
     expect(formatTenure('2026-09-18')).toBe('Starts in 1 day')
     expect(formatTenure('')).toBe('-')
     expect(formatTenure('invalid')).toBe('-')

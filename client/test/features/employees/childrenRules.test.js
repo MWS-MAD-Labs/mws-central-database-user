@@ -29,10 +29,10 @@ describe('children rules in the form', () => {
   })
 
   it('says it in words', () => {
-    expect(describeChildren({ total: 0, under_23: 0, age_23_plus: 0 })).toBe('No children')
-    expect(describeChildren({ total: 1, under_23: 1, age_23_plus: 0 })).toBe('1 child')
-    expect(describeChildren({ total: 3, under_23: 2, age_23_plus: 1 })).toBe('3 children')
-    expect(describeChildrenWithAllowance({ total: 3, allowance_eligible: 2 })).toBe('3 children, 2 for allowance')
+    expect(describeChildren({ total: 0, under_23: 0, age_23_plus: 0 })).toBe('No Children')
+    expect(describeChildren({ total: 1, under_23: 1, age_23_plus: 0 })).toBe('1 Child')
+    expect(describeChildren({ total: 3, under_23: 2, age_23_plus: 1 })).toBe('3 Children')
+    expect(describeChildrenWithAllowance({ total: 3, allowance_eligible: 2 })).toBe('3 Children, 2 For Allowance')
     expect(describeChildrenWithAllowance({ total: 0, allowance_eligible: 0 })).toBe('')
   })
 

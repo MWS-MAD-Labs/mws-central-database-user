@@ -8,12 +8,12 @@ describe('children in the audit log', () => {
     renderWithProviders(
       <AuditDiffTable
         oldValues={{ children: { total: 1, under_23: 1, age_23_plus: 0, allowance_eligible: 1 } }}
-        newValues={{ children: '2 children' }}
+        newValues={{ children: '2 Children' }}
         resolvedLabels={{}}
       />,
     )
-    expect(screen.getByText('1 child')).toBeVisible()
-    expect(screen.getByText('2 children')).toBeVisible()
+    expect(screen.getByText('1 Child')).toBeVisible()
+    expect(screen.getByText('2 Children')).toBeVisible()
     expect(screen.queryByText(/under_23/)).not.toBeInTheDocument()
   })
 })

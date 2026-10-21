@@ -35,7 +35,7 @@ describe('employeesApi', () => {
     expect(educationLevels).toEqual(['SD', 'SMP', 'SMA_SMK', 'D1', 'D2', 'D3', 'D4', 'S1', 'S2', 'S3'])
     expect(disciplinaryActionTypes).toEqual(['SURAT_TEGURAN', 'SURAT_PERINGATAN'])
     expect(disciplinaryActionTypeLabels.SURAT_PERINGATAN).toBe('Reprimand Letter')
-    expect(disciplinaryActionValidityOptions.at(-1)).toEqual({ value: 365, label: '12 months' })
+    expect(disciplinaryActionValidityOptions.at(-1)).toEqual({ value: 365, label: '12 Months' })
   })
 
   it('maps representative CRUD and bulk endpoints and payloads', async () => {

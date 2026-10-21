@@ -100,7 +100,7 @@ describe('EmployeeDetailPage sensitive reveal', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Taylor Employee' })).toBeVisible()
     expect(screen.getByText('Sensitive details are hidden.')).toBeVisible()
     expect(screen.queryByText('3171000000000001')).not.toBeInTheDocument()
-    expect(screen.queryByText('2 children')).not.toBeInTheDocument()
+    expect(screen.queryByText('2 Children')).not.toBeInTheDocument()
     expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/sensitive-fields/access'))).toBe(false)
 
     await user.click(screen.getByRole('button', { name: 'Show Sensitive Fields' }))
@@ -112,7 +112,7 @@ describe('EmployeeDetailPage sensitive reveal', () => {
       url.endsWith('/sensitive-fields/access') && options.method === 'POST',
     )).toBe(true))
     expect(await screen.findByText('3171000000000001')).toBeVisible()
-    expect(screen.getByText('2 children')).toBeVisible()
+    expect(screen.getByText('2 Children')).toBeVisible()
     expect(screen.getByText('1 of 2')).toBeVisible()
     expect(sessionStorage.getItem('pii-reveal:employee:employee-1')).not.toBeNull()
 
@@ -120,7 +120,7 @@ describe('EmployeeDetailPage sensitive reveal', () => {
     await user.click(screen.getByRole('button', { name: 'Hide' }))
     expect(sessionStorage.getItem('pii-reveal:employee:employee-1')).toBeNull()
     expect(screen.queryByText('3171000000000001')).not.toBeInTheDocument()
-    expect(screen.queryByText('2 children')).not.toBeInTheDocument()
+    expect(screen.queryByText('2 Children')).not.toBeInTheDocument()
   })
 
   it('says when the children were recorded as numbers and that they need a review', async () => {
@@ -149,7 +149,7 @@ describe('EmployeeDetailPage sensitive reveal', () => {
     await user.click(screen.getByRole('button', { name: 'Show Sensitive Fields' }))
     await user.click(within(screen.getByRole('dialog', { name: 'View sensitive fields' })).getByRole('button', { name: 'View' }))
 
-    expect(await screen.findByText('3 children')).toBeVisible()
+    expect(await screen.findByText('3 Children')).toBeVisible()
     expect(screen.getByText(/^As numbers on/)).toBeVisible()
     expect(screen.getByText(/Needs review/)).toBeVisible()
     expect(screen.queryByText('Children Born')).not.toBeInTheDocument()

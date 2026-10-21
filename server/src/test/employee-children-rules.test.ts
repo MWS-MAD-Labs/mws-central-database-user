@@ -179,8 +179,8 @@ describe("the allowance rule", () => {
   });
 
   it("says how many children in a short phrase", () => {
-    expect(describeChildCount(0)).toBe("No children");
-    expect(describeChildCount(1)).toBe("1 child");
-    expect(describeChildCount(4)).toBe("4 children");
+    expect(describeChildCount(0)).toBe("No Children");
+    expect(describeChildCount(1)).toBe("1 Child");
+    expect(describeChildCount(4)).toBe("4 Children");
   });
 });
