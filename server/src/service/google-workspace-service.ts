@@ -18,18 +18,16 @@ import { DirectoryError, type DirectoryUser } from "../lib/google-workspace/dire
 import type { AuditRequestContext, EntityAuditAction } from "../model/audit-log-model";
 import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
 import { emailProblem } from "../validation/validation";
+import { passwordStateOf, PASSWORD_PENDING_WARN_DAYS, RESTORE_WINDOW_DAYS } from "../utils/google-hints";
 import { AuditService } from "./audit-service";
 
 // Central makes and updates the Google Workspace account behind a person's email. A person who is in Central gets an
 // account in Google, so signing in with Google works for every email Central holds.
 
-// How long a new account may wait for its owner to set a password before it is flagged.
-export const PASSWORD_PENDING_WARN_DAYS = 7;
 // A status read from Google this recently is shown as it is.
 const STATUS_FRESH_MS = 5 * 60 * 1000;
 
-// Google keeps a deleted account for this long, and its address stays reserved meanwhile.
-export const RESTORE_WINDOW_DAYS = 20;
+export { passwordStateOf, PASSWORD_PENDING_WARN_DAYS };
 
 export const restorableUntil = (deletedAt: Date): Date => new Date(deletedAt.getTime() + RESTORE_WINDOW_DAYS * 86_400_000);
 
@@ -922,17 +920,4 @@ export class GoogleWorkspaceService {
       mode: getDirectoryClient().mode,
     };
   }
-}
-
-// null: Google has not said. PENDING: they have not set their own password yet. OVERDUE: still not, after a week.
-// SET: they have.
-export function passwordStateOf(
-  person: Pick<Person, "google_password_pending" | "google_password_issued_at">,
-  now = new Date(),
-): "PENDING" | "OVERDUE" | "SET" | null {
-  if (person.google_password_pending === null || person.google_password_pending === undefined) return null;
-  if (!person.google_password_pending) return "SET";
-  const issued = person.google_password_issued_at;
-  const waitedDays = issued ? (now.getTime() - issued.getTime()) / 86_400_000 : 0;
-  return waitedDays > PASSWORD_PENDING_WARN_DAYS ? "OVERDUE" : "PENDING";
 }

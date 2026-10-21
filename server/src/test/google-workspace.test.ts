@@ -609,6 +609,27 @@ describe("google workspace accounts", () => {
     });
   });
 
+  describe("hints in the lists", () => {
+    it("carry the Google problems of an employee and of an intern", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken, { full_name: "Hint Person" });
+      const person = await personOf(json.data.id);
+
+      const list = async () => {
+        const body = await (await TestRequest.get("/api/admin/employees?search=Hint Person", accessToken)).json();
+        return body.data[0].google_account;
+      };
+      expect(await list()).toEqual({ status: GoogleSyncStatus.ACTIVE, hints: [] });
+
+      await prismaClient.person.update({ where: { id: person.id }, data: { google_sync_status: GoogleSyncStatus.FAILED, google_last_error: "Google refused" } });
+      expect(await list()).toEqual({ status: GoogleSyncStatus.FAILED, hints: [{ code: "FAILED", detail: "Google refused" }] });
+
+      await prismaClient.person.update({ where: { id: person.id }, data: { google_sync_status: GoogleSyncStatus.ACTIVE, google_last_error: null } });
+      await prismaClient.employee.update({ where: { id: json.data.id }, data: { status: EmployeeStatus.RESIGNED } });
+      expect((await list()).hints.map((hint: { code: string }) => hint.code)).toEqual(["LEFT_STILL_ACTIVE"]);
+    });
+  });
+
   describe("who may do what", () => {
     const unlinked = (email: string, unitId: string) =>
       EmployeeTest.create({

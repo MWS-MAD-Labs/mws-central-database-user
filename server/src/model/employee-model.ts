@@ -1,5 +1,7 @@
 import {
   AdminRole,
+  EmployeeStatus,
+  type GoogleSyncStatus,
   type Person,
   type Employee,
   type EmployeePcMentorUnit,
@@ -12,13 +14,13 @@ import {
   type Gender,
   type Religion,
   type EmploymentType,
-  type EmployeeStatus,
   type MaritalStatus,
   type EducationLevel,
   type AdminUser,
   type DisciplinaryActionType,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
+import { googleHintsOf, type GoogleHint } from "../utils/google-hints";
 import { maskSensitiveValue } from "../utils/sensitive-data";
 import {
   countsNeedReview,
@@ -241,6 +243,8 @@ export type EmployeeResponse = {
   id: string;
   person_id: string;
   unit_id: string;
+  // What needs a look in the Google account of this person. Empty when all is well or there is no account.
+  google_account: { status: GoogleSyncStatus; hints: GoogleHint[] };
 
   identity: {
     full_name: string;
@@ -474,6 +478,15 @@ export function toEmployeeResponse(
     id: employee.id,
     person_id: person.id,
     unit_id: employee.unit_id,
+    google_account: {
+      status: person.google_sync_status,
+      hints: googleHintsOf(person, {
+        left:
+          employee.deleted_at !== null ||
+          employee.status === EmployeeStatus.RESIGNED ||
+          employee.status === EmployeeStatus.ARCHIVED,
+      }),
+    },
 
     identity: {
       full_name: person.full_name,

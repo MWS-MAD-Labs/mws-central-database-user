@@ -488,6 +488,7 @@ export class InternService {
         job_position: true,
         building: true,
         pc_mentor_units: { include: { unit: true } },
+        person: true,
       },
     });
 
@@ -799,6 +800,7 @@ export class InternService {
         job_position: true,
         building: true,
         pc_mentor_units: { include: { unit: true } },
+        person: true,
       },
     });
 
@@ -840,6 +842,7 @@ export class InternService {
         job_position: true,
         building: true,
         pc_mentor_units: { include: { unit: true } },
+        person: true,
       },
     });
 
@@ -877,6 +880,7 @@ export class InternService {
         job_position: true,
         building: true,
         pc_mentor_units: { include: { unit: true } },
+        person: true,
       },
     });
     if (!intern) {
@@ -948,6 +952,7 @@ export class InternService {
               job_position: true,
               building: true,
               pc_mentor_units: { include: { unit: true } },
+              person: true,
             },
           })
           .then((interns) =>
@@ -1238,6 +1243,7 @@ export class InternService {
         job_position: true,
         building: true,
         pc_mentor_units: { include: { unit: true } },
+        person: true,
       },
     });
 

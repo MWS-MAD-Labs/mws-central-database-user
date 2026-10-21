@@ -1,5 +1,8 @@
 import {
   AdminRole,
+  GoogleSyncStatus,
+  InternStatus,
+  type Person,
   type Intern,
   type InternPcMentorUnit,
   type MasterUnit,
@@ -7,11 +10,11 @@ import {
   type MasterBuilding,
   type Gender,
   type Religion,
-  type InternStatus,
   type EducationLevel,
   type AdminUser,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
+import { googleHintsOf, type GoogleHint } from "../utils/google-hints";
 import type { BulkActionResponse, BulkIdsRequest } from "./bulk-action-model";
 import {
   isBirthDateNotFuture,
@@ -144,6 +147,8 @@ export type GetInternVersionRequest = Omit<
 export type InternResponse = {
   id: string;
   unit_id: string;
+  // What needs a look in the Google account of this person. Empty when all is well or there is no account.
+  google_account: { status: GoogleSyncStatus; hints: GoogleHint[] };
 
   identity: {
     full_name: string;
@@ -238,6 +243,8 @@ export type InternWithRelations = Intern & {
   building: MasterBuilding;
   // Optional - only populated by queries that opt into this include.
   pc_mentor_units?: (InternPcMentorUnit & { unit: MasterUnit })[];
+  // Where the Google account of the person is kept. Without it the response has no Google hints.
+  person?: Person | null;
 };
 
 export function toInternResponse(
@@ -250,6 +257,17 @@ export function toInternResponse(
   return {
     id: intern.id,
     unit_id: intern.unit_id,
+    google_account: {
+      status: intern.person?.google_sync_status ?? GoogleSyncStatus.NONE,
+      hints: intern.person
+        ? googleHintsOf(intern.person, {
+            left:
+              intern.deleted_at !== null ||
+              intern.status === InternStatus.COMPLETED ||
+              intern.status === InternStatus.TERMINATED,
+          })
+        : [],
+    },
 
     identity: {
       full_name: intern.full_name,
