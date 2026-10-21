@@ -1,3 +1,4 @@
+import { maskEmail } from "../../google/utils/instructions.js";
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
@@ -350,7 +351,11 @@ export function InternForm({
                 error={errors.recovery_email}
                 required
                 counter={{ value: values.recovery_email, max: 100, count: textLength }}
-                hint="A personal address. Google sends the reset code there."
+                hint={
+                  values.recovery_email && !errors.recovery_email
+                    ? `Reset codes go to ${maskEmail(values.recovery_email)}.`
+                    : "A personal address. Google sends the reset code there."
+                }
               >
                 <TextInput
                   type="email"
@@ -833,6 +838,7 @@ const INTERN_ID_FIELD_OPTION_KEYS = {
 // Fields whose own display formatter beats the review dialog's generic
 // enum-label guesser (e.g. education_level's "SMA/SMK", not "Sma Smk").
 const INTERN_FIELD_FORMATTERS = {
+  recovery_email: (value) => maskEmail(value) || value,
   email_local: buildEmail,
   education_level: formatEducationLevel,
 };

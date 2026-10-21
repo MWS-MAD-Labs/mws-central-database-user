@@ -8,6 +8,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { emailProblem, sanitizeEmail, textLength } from "../../../lib/form.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { googleAccountApi } from "../api/googleAccountApi.js";
+import { maskEmail } from "../utils/instructions.js";
 import { GoogleInstructionsDialog } from "./GoogleInstructionsDialog.jsx";
 
 const BADGES = {
@@ -292,7 +293,11 @@ export function GoogleAccountRow({ resource, id, email }) {
             required
             counter={{ value: recoveryEmail, max: 100, count: textLength }}
             error={recoveryEmail.trim() ? recoveryProblem || undefined : undefined}
-            hint="A personal address. Google sends the reset code there."
+            hint={
+              recoveryEmail.trim() && !recoveryProblem
+                ? `Reset codes go to ${maskEmail(recoveryEmail)}.`
+                : "A personal address. Google sends the reset code there."
+            }
           >
             <TextInput
               type="email"

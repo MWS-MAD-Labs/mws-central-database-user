@@ -34,11 +34,29 @@ Only addresses that start with a test prefix are sent to Google, so nothing else
 
 The key is a secret. Keep it out of Git and out of chat, and make a new one if it was ever shared.
 
+## Who can do what
+
+| Level | Who | Actions |
+|---|---|---|
+| Create | Super Admin, or a Database Admin who may write employees in the person's unit | Create or Link the account, see the sign-in instructions |
+| Manage | Super Admin | Suspend, Unsuspend, Restore, Check Google again, see the recovery email hidden, link existing accounts |
+| Takeover | Protected Super Admin (`PROTECTED_SUPER_ADMIN_EMAILS`) | Reset Google password, Change recovery email |
+
+The page asks the server what the admin may do and shows only those buttons.
+
+## Checking an email
+
+A new or changed email has to pass the **Check** button before Create or Save is enabled. Typing never asks Google. The answer belongs to the address that was checked, so changing the text asks for a new check. The server checks again by itself on create, and on an edit of someone who has a Google account, because that account is renamed with the email.
+
+## Accounts that were in Google before Central
+
+A person made before the Google accounts has no link, even when their email is already a Google account. The row then says **In Google** with a **Link** button that needs no recovery email. Master Data > Employment > Google Accounts shows how everyone stands and links all the matches at once, after a preview. Workspace admins and addresses outside the allowed prefix are left out.
+
 ## Rules the code keeps
 
 - Only people held in Central, on `ALLOWED_DOMAIN`. Workspace admins and `PROTECTED_SUPER_ADMIN_EMAILS` are never changed from here.
 - A temporary password is shown once to the Super Admin who asked and is never stored, logged or put in the audit log.
-- The recovery email goes to Google and is not kept in Central. It must not be an organization address.
+- The recovery email goes to Google and is not kept in Central. It must not be an organization address. Google does not ask the owner of that address to confirm, so the forms show it hidden (`b***@gmail.com`) before it is saved. Central cannot tell whether the same address is the recovery email of other accounts.
 - A failure from Google never undoes the person in Central. The Google account row shows **Failed** with the reason, and a Super Admin can try again.
 - Employee photos: the signed-in employee only, through `PUT /api/auth/employee/me/photo`. Admins still have their existing upload; closing that path is a separate decision.
 

@@ -103,6 +103,7 @@ describe('EmployeeForm', () => {
     await screen.findByText('Available')
     await user.type(field('recovery_email').querySelector('input'), 'Ari+Pribadi@Gmail.com')
     expect(field('recovery_email').querySelector('input').value).toBe('ari+pribadi@gmail.com')
+    expect(screen.getByText('Reset codes go to a***@gmail.com.')).toBeVisible()
     await chooseSelect(user, 'Select Gender', 'Male')
     await chooseSelect(user, 'Select Religion', 'Islam')
     await user.type(field('birth_place').querySelector('input'), 'jakarta')
