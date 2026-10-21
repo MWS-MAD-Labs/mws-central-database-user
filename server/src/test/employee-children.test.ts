@@ -207,7 +207,7 @@ describe("employee children", () => {
       where: { action: AuditAction.CREATE_EMPLOYEE, entity_id: body.data.id },
     });
     const text = JSON.stringify(entry.new_values);
-    expect(text).toContain('"children":"1 child"');
+    expect(text).toContain('"children":"1 Child"');
     expect(text).not.toContain(birth);
   });
 
@@ -222,7 +222,7 @@ describe("employee children", () => {
     expect(await prismaClient.employeeChild.count({ where: { employee_id: id } })).toBe(0);
 
     const entry = await prismaClient.auditLog.findFirstOrThrow({ where: { action: AuditAction.DELETE_EMPLOYEE, entity_id: id } });
-    expect(JSON.stringify(entry.old_values)).toContain('"children":"2 children"');
+    expect(JSON.stringify(entry.old_values)).toContain('"children":"2 Children"');
     expect(JSON.stringify(entry.old_values)).not.toContain(birth);
   });
 
@@ -331,7 +331,7 @@ describe("employee children", () => {
       const entry = await prismaClient.auditLog.findFirstOrThrow({
         where: { action: AuditAction.CREATE_EMPLOYEE, entity_id: body.data.id },
       });
-      expect(JSON.stringify(entry.new_values)).toContain('"children":"2 children"');
+      expect(JSON.stringify(entry.new_values)).toContain('"children":"2 Children"');
     });
 
     it("releases the numbers when the employee is archived and shows them in the export", async () => {

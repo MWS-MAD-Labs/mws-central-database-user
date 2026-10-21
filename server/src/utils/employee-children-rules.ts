@@ -41,9 +41,9 @@ const relationCounts = (relation: ChildRelation | undefined, rule: AllowanceRule
 const capped = (eligible: number, rule: AllowanceRule) =>
   rule.max_children == null ? eligible : Math.min(eligible, rule.max_children);
 
-// "1 child", "3 children". What the audit log and the review screens say, with no ages and no birth dates.
+// "1 Child", "3 Children". What the audit log and the review screens say, with no ages and no birth dates.
 export const describeChildCount = (total: number) =>
-  total === 0 ? "No children" : `${total} ${total === 1 ? "child" : "children"}`;
+  total === 0 ? "No Children" : `${total} ${total === 1 ? "Child" : "Children"}`;
 
 export type ChildrenCounts = { under_23: number; age_23_plus: number; adopted: number };
 

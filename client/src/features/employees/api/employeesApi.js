@@ -322,10 +322,10 @@ export const disciplinaryActionTypeLabels = {
 }
 
 export const disciplinaryActionValidityOptions = [
-  { value: 7, label: '7 days' },
-  { value: 14, label: '14 days' },
-  { value: 30, label: '1 month' },
-  { value: 90, label: '3 months' },
-  { value: 180, label: '6 months' },
-  { value: 365, label: '12 months' },
+  { value: 7, label: '7 Days' },
+  { value: 14, label: '14 Days' },
+  { value: 30, label: '1 Month' },
+  { value: 90, label: '3 Months' },
+  { value: 180, label: '6 Months' },
+  { value: 365, label: '12 Months' },
 ]

@@ -368,5 +368,5 @@ function employeeOption(member) {
 }
 
 function caseloadLabel(count) {
-  return `${count || 0} student${count === 1 ? '' : 's'}`
+  return `${count || 0} Student${count === 1 ? '' : 's'}`
 }

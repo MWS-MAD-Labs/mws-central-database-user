@@ -1673,15 +1673,15 @@ function getClassCapacityLabel(klass) {
   const remaining = Math.max(klass.capacity - activeCount, 0);
   if (remaining === 0) {
     return {
-      description: `${activeCount}/${klass.capacity} students`,
+      description: `${activeCount}/${klass.capacity} Students`,
       badge: "Full",
       tone: "red",
     };
   }
 
   return {
-    description: `${activeCount}/${klass.capacity} students, ${remaining} seats left`,
-    badge: `${remaining} seats`,
+    description: `${activeCount}/${klass.capacity} Students, ${remaining} Seats Left`,
+    badge: `${remaining} Seats`,
     tone: remaining <= 3 ? "amber" : "green",
   };
 }

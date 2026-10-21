@@ -63,16 +63,16 @@ export function summarizeChildren(children, today = todayText(), rule = DEFAULT_
   return { total: dated.length, under_23: under, age_23_plus: dated.length - under, allowance_eligible: capped(counted, rule) };
 }
 
-// "No children", "1 child", "3 children"
+// "No Children", "1 Child", "3 Children"
 export function describeChildren(summary) {
-  if (!summary || summary.total === 0) return "No children";
-  return `${summary.total} ${summary.total === 1 ? "child" : "children"}`;
+  if (!summary || summary.total === 0) return "No Children";
+  return `${summary.total} ${summary.total === 1 ? "Child" : "Children"}`;
 }
 
-// "3 children, 2 for allowance"
+// "3 Children, 2 For Allowance"
 export function describeChildrenWithAllowance(summary) {
   if (!summary || summary.total === 0) return "";
-  return `${describeChildren(summary)}, ${summary.allowance_eligible ?? 0} for allowance`;
+  return `${describeChildren(summary)}, ${summary.allowance_eligible ?? 0} For Allowance`;
 }
 
 // What is wrong with the rows, by row index, plus a problem about the list as a whole. Rows without a date yet are

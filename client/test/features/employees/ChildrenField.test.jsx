@@ -81,7 +81,7 @@ describe('ChildrenField', () => {
 
   it('shows the numbers worked out from the dates, as the list changes', () => {
     renderField({ value: dated([{ birth_date: yearsAgo(5), relation: 'BIOLOGICAL' }, { birth_date: yearsAgo(25), relation: 'ADOPTED' }]) })
-    expect(screen.getByText('2 children, 1 for allowance')).toBeTruthy()
+    expect(screen.getByText('2 Children, 1 For Allowance')).toBeTruthy()
   })
 
   it('removes the row that is asked for', () => {
@@ -104,7 +104,7 @@ describe('ChildrenField', () => {
   it('takes the three numbers and adds them up', () => {
     const onChange = renderField({ value: counted({ under_23: '2', age_23_plus: '1', adopted: '1' }) })
     expect(screen.getByLabelText('U-23')).toHaveValue('2')
-    expect(screen.getByText('3 children, 2 for allowance')).toBeTruthy()
+    expect(screen.getByText('3 Children, 2 For Allowance')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('23 or Older'), { target: { value: '3' } })
     expect(onChange.mock.calls[0][0].counts.age_23_plus).toBe('3')
   })
@@ -143,6 +143,6 @@ describe('ChildrenField', () => {
     const area = screen.getByTestId('children-rows')
     expect(area.className).toContain('overflow-y-auto')
     expect(area.querySelectorAll('[data-row]')).toHaveLength(8)
-    expect(screen.getByText('8 children, 3 for allowance')).toBeTruthy()
+    expect(screen.getByText('8 Children, 3 For Allowance')).toBeTruthy()
   })
 })

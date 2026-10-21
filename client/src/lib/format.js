@@ -114,7 +114,7 @@ export function formatTenure(joinDateIso, endDateIso) {
   if (years) parts.push(`${years}y`)
   if (months) parts.push(`${months}m`)
 
-  const dayLabel = `${diffDays.toLocaleString('en-US')} day${diffDays === 1 ? '' : 's'}`
+  const dayLabel = `${diffDays.toLocaleString('en-US')} Day${diffDays === 1 ? '' : 's'}`
   return parts.length ? `${dayLabel} (${parts.join(' ')})` : dayLabel
 }
 
