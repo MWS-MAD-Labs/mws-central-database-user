@@ -4,7 +4,8 @@ import { GoogleAccountRow } from '../../../src/features/google/components/Google
 import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 
-const status = (over = {}) => ({ linked: true, status: 'ACTIVE', synced_at: null, last_error: null, mode: 'google', ...over })
+const everything = { create: true, manage: true, takeover: true }
+const status = (over = {}) => ({ linked: true, status: 'ACTIVE', synced_at: null, last_error: null, mode: 'google', can: everything, ...over })
 
 function setup(statusData, extraRoutes = []) {
   const fetchMock = createFetchRouter([
@@ -12,10 +13,48 @@ function setup(statusData, extraRoutes = []) {
     ...extraRoutes,
   ])
   globalThis.fetch = fetchMock
-  return { fetchMock, ...renderWithProviders(<GoogleAccountRow resource="employees" id="e1" canManage />) }
+  return { fetchMock, ...renderWithProviders(<GoogleAccountRow resource="employees" id="e1" email="ari@millennia21.id" />) }
 }
 
 describe('GoogleAccountRow', () => {
+  const only = (can) => status({ can: { create: false, manage: false, takeover: false, ...can } })
+  const buttonNames = () => screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))
+
+  it('shows an admin who may only create the instructions and nothing that touches the account', async () => {
+    setup(only({ create: true }))
+    await screen.findByText('Linked')
+    expect(buttonNames()).toEqual(['Sign-in instructions'])
+  })
+
+  it('shows a Super Admin the account work but not the two takeover actions', async () => {
+    setup(only({ create: true, manage: true }))
+    await screen.findByText('Linked')
+    expect(buttonNames()).toEqual(['Sign-in instructions', 'Suspend Google account', 'Check Google again'])
+  })
+
+  it('shows the protected Super Admin the password and recovery email actions too', async () => {
+    setup(status())
+    await screen.findByText('Linked')
+    expect(buttonNames()).toEqual([
+      'Sign-in instructions', 'Suspend Google account', 'Check Google again', 'Change recovery email', 'Reset Google password',
+    ])
+  })
+
+  it('shows an account that is in Google but not linked, and links it without asking for a recovery email', async () => {
+    const { user, fetchMock } = setup(status({ linked: false, status: 'NONE', in_google: true }), [
+      { path: '/api/admin/employees/e1/google/provision', method: 'POST', response: jsonResponse({ data: { status: 'ACTIVE', outcome: 'linked' } }) },
+    ])
+    expect(await screen.findByText('In Google')).toBeVisible()
+    expect(screen.getByText('Not linked to this person yet.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Create Google account' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Link Google account' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Link Google Account' })
+    expect(within(dialog).queryByLabelText(/Recovery/)).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Link' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
+      String(url).endsWith('/google/provision') && options.method === 'POST' && options.body === '{}')).toBe(true))
+  })
+
   it('hides the ways to open the account for someone who left', async () => {
     setup(status({ status: 'SUSPENDED', locked: true, locked_reason: 'RESIGNED', last_error: 'Suspended in Google after RESIGNED' }))
     expect(await screen.findByText(/Locked because the person left \(RESIGNED\)/)).toBeVisible()
@@ -149,8 +188,8 @@ describe('GoogleAccountRow', () => {
   })
 
   it('gives nobody but a Super Admin the buttons', async () => {
-    globalThis.fetch = createFetchRouter([{ path: '/api/admin/employees/e1/google', response: jsonResponse({ data: status() }) }])
-    renderWithProviders(<GoogleAccountRow resource="employees" id="e1" canManage={false} />)
+    globalThis.fetch = createFetchRouter([{ path: '/api/admin/employees/e1/google', response: jsonResponse({ data: status({ can: { create: false, manage: false, takeover: false } }) }) }])
+    renderWithProviders(<GoogleAccountRow resource="employees" id="e1" email="ari@millennia21.id" />)
     expect(await screen.findByText('Linked')).toBeVisible()
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
@@ -185,7 +224,7 @@ describe('GoogleAccountRow', () => {
 
   it('lets a Super Admin open the sign-in instructions of a linked account', async () => {
     globalThis.fetch = createFetchRouter([{ path: '/api/admin/employees/e1/google', response: jsonResponse({ data: status() }) }])
-    const { user } = renderWithProviders(<GoogleAccountRow resource="employees" id="e1" email="ari@millennia21.id" canManage />)
+    const { user } = renderWithProviders(<GoogleAccountRow resource="employees" id="e1" email="ari@millennia21.id" />)
     await user.click(await screen.findByRole('button', { name: 'Sign-in instructions' }))
     const dialog = await screen.findByRole('dialog', { name: 'Sign-in Instructions' })
     expect(within(dialog).getByText(/ari@millennia21\.id/)).toBeVisible()

@@ -420,6 +420,102 @@ describe("google workspace accounts", () => {
     });
   });
 
+  describe("who may do what", () => {
+    const unlinked = (email: string, unitId: string) =>
+      EmployeeTest.create({
+        email,
+        unitId,
+        jobPositionId: master.position.id,
+        jobLevelId: master.level.id,
+        buildingId: master.building.id,
+      });
+
+    it("lets a Database Admin who may write employees make the account of someone in their unit", async () => {
+      const person = await unlinked("test_google_dbmake@millennia21.id", master.unit.id);
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      const response = await TestRequest.post(
+        `/api/admin/employees/${person.employee!.id}/google/provision`,
+        { recovery_email: "dbmake.pribadi@gmail.com" },
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).data.outcome).toBe("created");
+      expect(google.created).toHaveLength(1);
+    });
+
+    it("turns a Database Admin away without the write permission, or from another unit", async () => {
+      const person = await unlinked("test_google_dbno@millennia21.id", master.unit.id);
+      const other = await prismaClient.masterUnit.create({ data: { name: `TEST_GOOGLE_OTHER_${Date.now()}` } });
+      try {
+        const noWrite = await AdminUserTest.createDatabaseAdmin(master.unit.id, { canWriteEmployeeData: false });
+        expect(
+          (await TestRequest.post(`/api/admin/employees/${person.employee!.id}/google/provision`, { recovery_email: "a@gmail.com" }, noWrite.accessToken)).status,
+        ).toBe(403);
+
+        await AdminUserTest.delete();
+        const away = await AdminUserTest.createDatabaseAdmin(other.id);
+        expect(
+          (await TestRequest.post(`/api/admin/employees/${person.employee!.id}/google/provision`, { recovery_email: "a@gmail.com" }, away.accessToken)).status,
+        ).toBe(403);
+        expect(google.created).toHaveLength(0);
+      } finally {
+        await AdminUserTest.delete();
+        await prismaClient.masterUnit.delete({ where: { id: other.id } }).catch(() => undefined);
+      }
+    });
+
+    it("keeps suspend, restore and password work from a Database Admin", async () => {
+      const { accessToken: superToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(superToken);
+      await AdminUserTest.delete();
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      const base = `/api/admin/employees/${json.data.id}/google`;
+      for (const path of ["suspend", "unsuspend", "restore", "reset-password"]) {
+        expect((await TestRequest.post(`${base}/${path}`, {}, accessToken)).status).toBe(403);
+      }
+      expect((await TestRequest.post(`${base}/recovery-email`, { recovery_email: "a@gmail.com" }, accessToken)).status).toBe(403);
+      expect((await TestRequest.get(`${base}?refresh=true`, accessToken)).status).toBe(200);
+    });
+
+    it("leaves password reset and recovery email to the protected Super Admins", async () => {
+      const { accessToken: protectedToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(protectedToken);
+      await AdminUserTest.delete();
+      const plain = await AdminUserTest.createSuperAdmin(master.unit.id, {
+        id: "plain-super-id",
+        email: "test_plain_super@millennia21.id",
+        plain: true,
+      });
+      const base = `/api/admin/employees/${json.data.id}/google`;
+      expect((await TestRequest.post(`${base}/reset-password`, {}, plain.accessToken)).status).toBe(403);
+      expect((await TestRequest.post(`${base}/recovery-email`, { recovery_email: "a@gmail.com" }, plain.accessToken)).status).toBe(403);
+      // The rest of the account work stays with any Super Admin.
+      expect((await TestRequest.post(`${base}/suspend`, {}, plain.accessToken)).status).toBe(200);
+      expect((await TestRequest.post(`${base}/unsuspend`, {}, plain.accessToken)).status).toBe(200);
+
+      await AdminUserTest.delete();
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      expect((await TestRequest.post(`${base}/reset-password`, {}, accessToken)).status).toBe(200);
+      expect((await TestRequest.post(`${base}/recovery-email`, { recovery_email: "a@gmail.com" }, accessToken)).status).toBe(200);
+    });
+
+    it("tells the page what the admin may do", async () => {
+      const { accessToken: superToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(superToken);
+      const read = async (token: string) =>
+        (await (await TestRequest.get(`/api/admin/employees/${json.data.id}/google`, token)).json()).data.can;
+      expect(await read(superToken)).toEqual({ create: true, manage: true, takeover: true });
+
+      await AdminUserTest.delete();
+      const db = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      expect(await read(db.accessToken)).toEqual({ create: true, manage: false, takeover: false });
+
+      await AdminUserTest.delete();
+      const plain = await AdminUserTest.createSuperAdmin(master.unit.id, { id: "plain-super-id", email: "test_plain_super@millennia21.id", plain: true });
+      expect(await read(plain.accessToken)).toEqual({ create: true, manage: true, takeover: false });
+    });
+  });
+
   describe("reset password", () => {
     it("gives a Super Admin a new password once, and keeps it out of the audit log", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);

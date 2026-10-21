@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArchiveRestore, KeyRound, Mail, MessageSquareText, Pause, Play, RefreshCw, UserPlus } from "lucide-react";
+import { ArchiveRestore, KeyRound, Link2, Mail, MessageSquareText, Pause, Play, RefreshCw, UserPlus } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
@@ -17,6 +17,7 @@ const BADGES = {
   NONE: { tone: "neutral", label: "Not created" },
   SUSPENDED: { tone: "amber", label: "Suspended" },
   MISSING: { tone: "red", label: "Not in Google" },
+  IN_GOOGLE: { tone: "amber", label: "In Google" },
 };
 
 const formatDay = (value) =>
@@ -44,7 +45,7 @@ function passwordNote(status) {
 }
 
 // The Google account of a person: whether it exists, and for a Super Admin the two things that can be done to it.
-export function GoogleAccountRow({ resource, id, email, canManage }) {
+export function GoogleAccountRow({ resource, id, email }) {
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState(null);
   const [recoveryEmail, setRecoveryEmail] = useState("");
@@ -64,7 +65,7 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
   });
 
   const provision = useMutation({
-    mutationFn: () => googleAccountApi.provision(resource, id, { recovery_email: recoveryEmail.trim() }),
+    mutationFn: (payload) => googleAccountApi.provision(resource, id, payload),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey });
       setDialog(null);
@@ -88,7 +89,7 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
   const recoveryQuery = useQuery({
     queryKey: ["google-recovery-email", resource, id],
     queryFn: () => googleAccountApi.recoveryEmail(resource, id),
-    enabled: dialog === "instructions" || dialog === "recovery",
+    enabled: Boolean(status?.can?.manage) && (dialog === "instructions" || dialog === "recovery"),
     staleTime: 0,
     gcTime: 0,
   });
@@ -131,9 +132,12 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
 
   if (!status) return null;
   const deleted = status.status === "MISSING" && Boolean(status.last_error?.startsWith("Deleted"));
-  const badge =
-    deleted
-      ? { tone: "red", label: "Deleted in Google" }
+  const can = status.can ?? {};
+  const unlinkedInGoogle = !status.linked && status.in_google;
+  const badge = deleted
+    ? { tone: "red", label: "Deleted in Google" }
+    : unlinkedInGoogle
+      ? BADGES.IN_GOOGLE
       : (BADGES[status.status] ?? BADGES.NONE);
   const locked = Boolean(status.locked);
   const note = passwordNote(status);
@@ -150,6 +154,7 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
           </span>
         ) : null}
         {overdue ? <StatusBadge tone="amber">Password not set</StatusBadge> : null}
+        {unlinkedInGoogle ? <span className="w-full text-xs">Not linked to this person yet.</span> : null}
         {status.status === "FAILED" && status.last_error ? (
           <span className="w-full text-xs text-[#a43c41]">{status.last_error}</span>
         ) : null}
@@ -170,9 +175,9 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
           </span>
         ) : null}
       </div>
-      {canManage ? (
+      {can.create || can.manage || can.takeover ? (
         <div className="flex gap-1">
-          {status.linked && email && !locked ? (
+          {can.create && status.linked && email && !locked ? (
             <Button
               type="button"
               variant="ghost"
@@ -184,22 +189,22 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
               <MessageSquareText size={15} />
             </Button>
           ) : null}
-          {deleted ? (
+          {can.manage && deleted ? (
             <Button type="button" variant="ghost" size="icon" aria-label="Restore Google account" title="Restore Google account" onClick={() => setDialog("restore")}>
               <ArchiveRestore size={15} />
             </Button>
           ) : null}
-          {status.status === "ACTIVE" ? (
+          {can.manage && status.status === "ACTIVE" ? (
             <Button type="button" variant="ghost" size="icon" aria-label="Suspend Google account" title="Suspend Google account" onClick={() => setDialog("suspend")}>
               <Pause size={15} />
             </Button>
           ) : null}
-          {status.status === "SUSPENDED" && !locked ? (
+          {can.manage && status.status === "SUSPENDED" && !locked ? (
             <Button type="button" variant="ghost" size="icon" aria-label="Unsuspend Google account" title="Unsuspend Google account" onClick={() => setDialog("unsuspend")}>
               <Play size={15} />
             </Button>
           ) : null}
-          {status.linked ? (
+          {can.manage && status.linked ? (
             <Button
               type="button"
               variant="ghost"
@@ -212,7 +217,7 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
               <RefreshCw size={15} />
             </Button>
           ) : null}
-          {status.linked && !locked && status.status !== "MISSING" ? (
+          {can.takeover && status.linked && !locked && status.status !== "MISSING" ? (
             <Button
               type="button"
               variant="ghost"
@@ -227,7 +232,7 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
               <Mail size={15} />
             </Button>
           ) : null}
-          {status.linked && !locked ? (
+          {can.takeover && status.linked && !locked ? (
             <Button
               type="button"
               variant="ghost"
@@ -239,17 +244,23 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
               <KeyRound size={15} />
             </Button>
           ) : null}
-          {!status.linked && !locked ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Create Google account"
-              title="Create Google account"
-              onClick={() => setDialog("create")}
-            >
-              <UserPlus size={15} />
-            </Button>
+          {can.create && !status.linked && !locked ? (
+            unlinkedInGoogle ? (
+              <Button type="button" variant="ghost" size="icon" aria-label="Link Google account" title="Link Google account" onClick={() => setDialog("link")}>
+                <Link2 size={15} />
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Create Google account"
+                title="Create Google account"
+                onClick={() => setDialog("create")}
+              >
+                <UserPlus size={15} />
+              </Button>
+            )
           ) : null}
         </div>
       ) : null}
@@ -265,7 +276,12 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
               <Button type="button" variant="secondary" onClick={() => setDialog(null)}>
                 Cancel
               </Button>
-              <Button type="button" loading={provision.isPending} disabled={Boolean(recoveryProblem)} onClick={() => provision.mutate()}>
+              <Button
+                type="button"
+                loading={provision.isPending}
+                disabled={Boolean(recoveryProblem)}
+                onClick={() => provision.mutate({ recovery_email: recoveryEmail.trim() })}
+              >
                 Create
               </Button>
             </>
@@ -287,6 +303,27 @@ export function GoogleAccountRow({ resource, id, email, canManage }) {
               onChange={(event) => setRecoveryEmail(sanitizeEmail(event.target.value))}
             />
           </Field>
+        </CrudDialog>
+      ) : null}
+
+      {dialog === "link" ? (
+        <CrudDialog
+          title="Link Google Account"
+          description="This email already has an account in Google. Linking connects it to this person and changes nothing in Google."
+          panelClassName="max-w-lg"
+          onClose={() => setDialog(null)}
+          footer={
+            <>
+              <Button type="button" variant="secondary" onClick={() => setDialog(null)}>
+                Cancel
+              </Button>
+              <Button type="button" loading={provision.isPending} onClick={() => provision.mutate({})}>
+                Link
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-(--mws-muted)">{email}</p>
         </CrudDialog>
       ) : null}
 
