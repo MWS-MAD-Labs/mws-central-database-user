@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { AdminRole } from "../../generated/prisma/client";
 import { ResponseError } from "../../error/response-error";
 import { GoogleWorkspaceService } from "../../service/google-workspace-service";
+import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type { AdminVariables } from "../../type/hono-context";
 
 export class GoogleController {
@@ -14,5 +15,25 @@ export class GoogleController {
     const email = c.req.query("email");
     if (!email) throw new ResponseError(400, "Email is required");
     return c.json({ data: await GoogleWorkspaceService.checkEmailAvailable(email) });
+  }
+
+  // What a link would do, without doing it. Super Admins only.
+  static async linkPreview(c: Context<{ Variables: AdminVariables }>) {
+    if (c.var.admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(403, "Forbidden: only a Super Admin can link Google accounts");
+    }
+    return c.json({ data: await GoogleWorkspaceService.linkExisting({ link: false }) });
+  }
+
+  static async linkExisting(c: Context<{ Variables: AdminVariables }>) {
+    if (c.var.admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(403, "Forbidden: only a Super Admin can link Google accounts");
+    }
+    const data = await GoogleWorkspaceService.linkExisting({
+      link: true,
+      admin: c.var.admin,
+      context: getAuditRequestContext(c),
+    });
+    return c.json({ data });
   }
 }

@@ -40,4 +40,13 @@ export const googleAccountApi = {
     })
     return response.data
   },
+  // The people with no Google link whose email is already a Google account. The preview changes nothing.
+  async linkPreview() {
+    const response = await apiRequest('/api/admin/google/link-existing')
+    return response.data
+  },
+  async linkExisting() {
+    const response = await apiRequest('/api/admin/google/link-existing', { method: 'POST' })
+    return response.data
+  },
 }

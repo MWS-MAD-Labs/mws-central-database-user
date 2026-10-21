@@ -22,6 +22,7 @@ import {
   unitsApi,
 } from '../api/masterDataApi.js'
 import { ChildrenAllowanceCard } from '../components/ChildrenAllowanceCard.jsx'
+import { GoogleAccountsCard } from '../components/GoogleAccountsCard.jsx'
 import { MasterResourcePanel } from '../components/MasterResourcePanel.jsx'
 import { Tabs } from '../../../components/ui/Tabs.jsx'
 
@@ -157,6 +158,7 @@ const EMPLOYMENT_SECTIONS = [
   { id: 'job-levels', label: 'Job Levels' },
   { id: 'education', label: 'Education' },
   { id: 'children-allowance', label: 'Children Allowance' },
+  { id: 'google-accounts', label: 'Google Accounts' },
 ]
 
 function EmploymentTab({ section, onSection }) {
@@ -171,6 +173,8 @@ function EmploymentTab({ section, onSection }) {
         </div>
       ) : active === 'children-allowance' ? (
         <ChildrenAllowanceCard />
+      ) : active === 'google-accounts' ? (
+        <GoogleAccountsCard />
       ) : (
         <MasterResourcePanel resource={resources.find((resource) => resource.id === active)} />
       )}

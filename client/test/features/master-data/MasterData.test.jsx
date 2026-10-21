@@ -278,4 +278,57 @@ describe('MasterData', () => {
       expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
     })
   })
+
+  describe('Google Accounts tab', () => {
+    const preview = {
+      applied: false,
+      linked: 0,
+      matches: [
+        { person_id: 'p1', full_name: 'Dummy Staff', email: 'dummystaff@millennia21.id', person_type: 'EMPLOYEE' },
+        { person_id: 'p2', full_name: 'Intern One', email: 'intern.one@millennia21.id', person_type: 'INTERN' },
+      ],
+      skipped: { admin: 1, linked_elsewhere: 0, not_allowed: 0 },
+      unlinked_total: 5,
+      not_in_google: 2,
+      linked_total: 9,
+      failed: 1,
+      suspended: 3,
+      missing: 0,
+    }
+    const routes = (extra = []) => [
+      { path: '/api/admin/google/link-existing', method: 'GET', response: jsonResponse({ data: preview }) },
+      ...extra,
+    ]
+
+    it('shows how people stand against Google and who can be linked', async () => {
+      renderPage({ route: '/master-data?tab=employment&section=google-accounts', routes: routes() })
+      expect(await screen.findByText('In Google, Not Linked')).toBeVisible()
+      expect(screen.getByText('Linked')).toBeVisible()
+      expect(screen.getByText(/1 Workspace admin/)).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Link' })).toBeEnabled()
+    })
+
+    it('asks first and then links', async () => {
+      const { user, fetchMock } = renderPage({
+        route: '/master-data?tab=employment&section=google-accounts',
+        routes: routes([
+          { path: '/api/admin/google/link-existing', method: 'POST', response: jsonResponse({ data: { ...preview, applied: true, linked: 2, matches: [] } }) },
+        ]),
+      })
+      await user.click(await screen.findByRole('button', { name: 'Link' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Link Existing Accounts' })
+      await user.click(within(dialog).getByRole('button', { name: 'Link' }))
+      await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
+        String(url).endsWith('/google/link-existing') && options.method === 'POST')).toBe(true))
+    })
+
+    it('has nothing to link when everyone is already linked', async () => {
+      renderPage({
+        route: '/master-data?tab=employment&section=google-accounts',
+        routes: [{ path: '/api/admin/google/link-existing', method: 'GET', response: jsonResponse({ data: { ...preview, matches: [] } }) }],
+      })
+      expect(await screen.findByText('In Google, Not Linked')).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Link' })).toBeDisabled()
+    })
+  })
 })

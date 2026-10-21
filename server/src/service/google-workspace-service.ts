@@ -699,6 +699,108 @@ export class GoogleWorkspaceService {
     return changed;
   }
 
+  // Whether Google already has an account for this email that is not an admin's. Asks the real Google only, and only
+  // about addresses Central may manage.
+  static async existsInGoogle(email: string): Promise<boolean> {
+    const client = getDirectoryClient();
+    if (client.mode === "simulated") return false;
+    try {
+      assertAllowedTarget(email);
+      const user = await client.findUser(email);
+      return Boolean(user) && !user!.isAdmin;
+    } catch (error) {
+      logger.error("Google lookup of an unlinked person failed", error);
+      return false;
+    }
+  }
+
+  // The people in Central with no Google link, matched against the Google accounts by email. With `link` the matches
+  // are linked; without it nothing changes, so the page can show what would happen first.
+  static async linkExisting(
+    options: { link: boolean; admin?: Pick<AdminUser, "id">; context?: AuditRequestContext } = { link: false },
+  ) {
+    const client = getDirectoryClient();
+    if (client.mode === "simulated") {
+      throw new ResponseError(400, "Linking needs the real Google. This environment only simulates it");
+    }
+    const [people, users] = await Promise.all([
+      prismaClient.person.findMany({
+        where: { deleted_at: null, google_user_id: null, person_type: { in: [PersonType.EMPLOYEE, PersonType.INTERN] } },
+        select: { id: true, email: true, full_name: true, person_type: true, google_sync_status: true },
+        orderBy: { full_name: "asc" },
+      }),
+      client.listUsers({ deleted: false }),
+    ]);
+    const byEmail = new Map(users.map((user) => [user.primaryEmail.toLowerCase(), user]));
+    const linkedElsewhere = new Set(
+      (await prismaClient.person.findMany({ where: { google_user_id: { not: null } }, select: { google_user_id: true } })).map(
+        (row) => row.google_user_id as string,
+      ),
+    );
+
+    const matches: { person_id: string; full_name: string; email: string; person_type: PersonType }[] = [];
+    const skipped = { admin: 0, linked_elsewhere: 0, not_allowed: 0 };
+    const found = new Map<string, DirectoryUser>();
+    for (const person of people) {
+      const user = byEmail.get(person.email.toLowerCase());
+      if (!user) continue;
+      if (user.isAdmin) {
+        skipped.admin += 1;
+        continue;
+      }
+      if (linkedElsewhere.has(user.id)) {
+        skipped.linked_elsewhere += 1;
+        continue;
+      }
+      try {
+        assertAllowedTarget(person.email);
+      } catch {
+        skipped.not_allowed += 1;
+        continue;
+      }
+      matches.push({ person_id: person.id, full_name: person.full_name, email: person.email, person_type: person.person_type });
+      found.set(person.id, user);
+    }
+
+    let linked = 0;
+    if (options.link) {
+      for (const match of matches) {
+        const user = found.get(match.person_id)!;
+        const person = await load(match.person_id);
+        try {
+          await markStatus(person.id, GoogleSyncStatus.ACTIVE, { google_user_id: user.id, user });
+          await record("GOOGLE_ACCOUNT_PROVISION", person, options.admin, options.context ?? {}, {
+            outcome: "linked",
+            mode: client.mode,
+            recovery_email_set: false,
+          });
+          linked += 1;
+        } catch (error) {
+          logger.error(`Linking the Google account of person ${person.id} failed`, error);
+        }
+      }
+    }
+
+    const states = await prismaClient.person.groupBy({
+      by: ["google_sync_status"],
+      where: { deleted_at: null, google_user_id: { not: null }, person_type: { in: [PersonType.EMPLOYEE, PersonType.INTERN] } },
+      _count: true,
+    });
+    const count = (status: GoogleSyncStatus) => states.find((row) => row.google_sync_status === status)?._count ?? 0;
+    return {
+      applied: options.link,
+      linked,
+      matches,
+      skipped,
+      unlinked_total: people.length,
+      not_in_google: people.length - matches.length - skipped.admin - skipped.linked_elsewhere - skipped.not_allowed,
+      linked_total: states.reduce((sum, row) => sum + row._count, 0),
+      failed: count(GoogleSyncStatus.FAILED),
+      suspended: count(GoogleSyncStatus.SUSPENDED),
+      missing: count(GoogleSyncStatus.MISSING),
+    };
+  }
+
   // `refresh` forces a new look at Google. Without it Google is asked only when the last look is more than a few
   // minutes old, so opening a page keeps the status honest.
   static async statusOf(personId: string, options: { refresh?: boolean } = {}) {
@@ -715,6 +817,7 @@ export class GoogleWorkspaceService {
           google_password_issued_at: true,
           google_last_login_at: true,
           google_deleted_at: true,
+          email: true,
         },
       });
     let person = await read();
@@ -725,8 +828,11 @@ export class GoogleWorkspaceService {
       person = (await read()) ?? person;
     }
     const lock = person.google_user_id ? await this.lockState(personId) : null;
+    // Someone made before the Google accounts, whose email is already there: not linked, but not missing either.
+    const inGoogle = person.google_user_id ? false : await this.existsInGoogle(person.email);
     return {
       linked: Boolean(person.google_user_id),
+      in_google: inGoogle,
       locked: Boolean(lock?.locked),
       locked_reason: lock?.locked ? lock.reason : null,
       status: person.google_sync_status,

@@ -420,6 +420,85 @@ describe("google workspace accounts", () => {
     });
   });
 
+  describe("accounts that were in Google before Central", () => {
+    const gUser = (id: string, email: string, over: Partial<DirectoryUser> = {}): DirectoryUser => ({
+      id, primaryEmail: email, givenName: "A", familyName: "B", suspended: false, isAdmin: false,
+      changePasswordAtNextLogin: false, lastLoginTime: null, ...over,
+    });
+    const unlinked = (email: string) =>
+      EmployeeTest.create({
+        email,
+        unitId: master.unit.id,
+        jobPositionId: master.position.id,
+        jobLevelId: master.level.id,
+        buildingId: master.building.id,
+      });
+    const readStatus = async (token: string, id: string) =>
+      (await (await TestRequest.get(`/api/admin/employees/${id}/google`, token)).json()).data;
+
+    it("tells that an unlinked person is already in Google, and links them without a recovery email", async () => {
+      google.users.set("old", gUser("old", "test_google_dummy@millennia21.id"));
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const person = await unlinked("test_google_dummy@millennia21.id");
+      const status = await readStatus(accessToken, person.employee!.id);
+      expect(status).toMatchObject({ linked: false, in_google: true, status: GoogleSyncStatus.NONE });
+
+      const response = await TestRequest.post(`/api/admin/employees/${person.employee!.id}/google/provision`, {}, accessToken);
+      expect((await response.json()).data.outcome).toBe("linked");
+      expect(google.created).toHaveLength(0);
+      expect(await readStatus(accessToken, person.employee!.id)).toMatchObject({ linked: true, in_google: false });
+    });
+
+    it("does not call a Workspace admin or an email Google lacks 'in Google'", async () => {
+      google.users.set("boss", gUser("boss", "test_google_boss@millennia21.id", { isAdmin: true }));
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const admin = await unlinked("test_google_boss@millennia21.id");
+      const absent = await unlinked("test_google_absent@millennia21.id");
+      expect((await readStatus(accessToken, admin.employee!.id)).in_google).toBe(false);
+      expect((await readStatus(accessToken, absent.employee!.id)).in_google).toBe(false);
+    });
+
+    it("shows what linking would do without doing it, then links the matches", async () => {
+      google.users.set("g-a", gUser("g-a", "test_google_la@millennia21.id"));
+      google.users.set("g-b", gUser("g-b", "test_google_lb@millennia21.id"));
+      google.users.set("g-boss", gUser("g-boss", "test_google_lboss@millennia21.id", { isAdmin: true }));
+      google.users.set("g-taken", gUser("g-taken", "test_google_ltaken@millennia21.id"));
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const a = await unlinked("test_google_la@millennia21.id");
+      await unlinked("test_google_lb@millennia21.id");
+      await unlinked("test_google_lboss@millennia21.id");
+      await unlinked("test_google_lnone@millennia21.id");
+      const taken = await unlinked("test_google_ltaken@millennia21.id");
+      const other = await unlinked("test_google_lother@millennia21.id");
+      await prismaClient.person.update({ where: { id: other.id }, data: { google_user_id: "g-taken", google_sync_status: GoogleSyncStatus.ACTIVE } });
+
+      const preview = (await (await TestRequest.get("/api/admin/google/link-existing", accessToken)).json()).data;
+      expect(preview.applied).toBe(false);
+      expect(preview.matches.map((match: { email: string }) => match.email).sort()).toEqual([
+        "test_google_la@millennia21.id", "test_google_lb@millennia21.id",
+      ]);
+      expect(preview.skipped).toMatchObject({ admin: 1, linked_elsewhere: 1 });
+      expect((await personOf(a.employee!.id)).google_user_id).toBeNull();
+
+      const done = (await (await TestRequest.post("/api/admin/google/link-existing", {}, accessToken)).json()).data;
+      expect(done).toMatchObject({ applied: true, linked: 2 });
+      expect((await personOf(a.employee!.id)).google_user_id).toBe("g-a");
+      expect((await personOf(taken.employee!.id)).google_user_id).toBeNull();
+      expect(await prismaClient.auditLog.count({ where: { action: AuditAction.GOOGLE_ACCOUNT_PROVISION } })).toBe(2);
+    });
+
+    it("is for Super Admins and needs the real Google", async () => {
+      const plain = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      expect((await TestRequest.get("/api/admin/google/link-existing", plain.accessToken)).status).toBe(403);
+      expect((await TestRequest.post("/api/admin/google/link-existing", {}, plain.accessToken)).status).toBe(403);
+
+      await AdminUserTest.delete();
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      setDirectoryClientForTests(new SimulatedDirectoryClient());
+      expect((await TestRequest.get("/api/admin/google/link-existing", accessToken)).status).toBe(400);
+    });
+  });
+
   describe("who may do what", () => {
     const unlinked = (email: string, unitId: string) =>
       EmployeeTest.create({
