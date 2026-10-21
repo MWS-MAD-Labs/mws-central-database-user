@@ -1,16 +1,39 @@
 import { describe, expect, it } from 'bun:test'
 import { screen, within } from '@testing-library/react'
-import { HintsPopover } from '../../../src/components/ui/HintsPopover.jsx'
+import { HintName } from '../../../src/components/ui/HintName.jsx'
 import { getEmployeeFlagBadges, getInternFlagBadges, groupHints, worstTone } from '../../../src/lib/format.js'
 import { renderWithProviders } from '../../helpers/render.jsx'
 import { employeeFixture } from '../../fixtures/employees.js'
 
 const withGoogle = (hints) => ({ ...employeeFixture(), google_account: { status: 'ACTIVE', hints } })
 
-describe('hints in a list', () => {
-  it('shows nothing when there is nothing to look at', () => {
-    renderWithProviders(<HintsPopover badges={getEmployeeFlagBadges(withGoogle([]))} />)
+describe('a name with hints in a list', () => {
+  it('is only the name when there is nothing to look at', () => {
+    renderWithProviders(<HintName name="Ari Employee" badges={getEmployeeFlagBadges(withGoogle([]))} />)
+    expect(screen.getByText('Ari Employee')).toBeVisible()
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('shows no count text and takes the colour of the worst hint', () => {
+    const tone = () => screen.getByRole('button').className
+    const red = renderWithProviders(<HintName name="Ari" badges={[{ key: 'a', label: 'A', tone: 'danger', category: 'Data To Review', title: 't' }, { key: 'b', label: 'B', tone: 'warn', category: 'Data To Review', title: 't' }]} />)
+    expect(screen.queryByText(/Hints?$/)).not.toBeInTheDocument()
+    expect(tone()).toContain('text-[#a43c41]')
+    expect(screen.getByRole('button', { name: 'Ari, 2 hints' })).toBeVisible()
+    red.unmount()
+
+    const amber = renderWithProviders(<HintName name="Ari" badges={[{ key: 'a', label: 'A', tone: 'warn', category: 'Data To Review', title: 't' }]} />)
+    expect(tone()).toContain('text-[#8a6419]')
+    expect(screen.getByRole('button', { name: 'Ari, 1 hint' })).toBeVisible()
+    amber.unmount()
+
+    const blue = renderWithProviders(<HintName name="Ari" badges={[{ key: 'a', label: 'A', tone: 'info', category: 'Data To Review', title: 't' }]} />)
+    expect(tone()).toContain('text-[#1d4ed8]')
+    blue.unmount()
+
+    renderWithProviders(<HintName name="Ari" badges={[{ key: 'a', label: 'A', tone: 'muted', category: 'Data To Review', title: 't' }]} />)
+    expect(tone()).toContain('text-(--mws-charcoal)')
+    expect(tone()).toContain('underline')
   })
 
   it('counts the hints and lists them by category when clicked', async () => {
@@ -21,9 +44,9 @@ describe('hints in a list', () => {
       ]),
       disciplinary_flag: { type: 'SURAT_PERINGATAN', level: 1 },
     }
-    const { user } = renderWithProviders(<HintsPopover badges={getEmployeeFlagBadges(employee)} />)
-    await user.click(screen.getByRole('button', { name: '3 Hints' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Hints' })
+    const { user } = renderWithProviders(<HintName name="Ari Employee" badges={getEmployeeFlagBadges(employee)} />)
+    await user.click(screen.getByRole('button', { name: 'Ari Employee, 3 hints' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Hints for Ari Employee' })
 
     const titles = within(dialog).getAllByText(/^(Discipline|Google Account|Data To Review)$/).map((node) => node.textContent)
     expect(titles).toEqual(['Discipline', 'Google Account'])

@@ -23,6 +23,12 @@ export function ListPopover({
   icon = true,
   mono = true,
   tone,
+  // Another face for the control: what it shows, how it looks, and what it is called. Without them it is the usual
+  // count or label.
+  trigger,
+  triggerClassName,
+  triggerLabel,
+  triggerTitle,
   className = "",
 }) {
   const [open, setOpen] = useState(false);
@@ -76,16 +82,23 @@ export function ListPopover({
       <button
         ref={triggerRef}
         type="button"
-        aria-label={compact ? label : undefined}
+        aria-label={triggerLabel ?? (compact ? label : undefined)}
         aria-expanded={open}
-        title={compact ? label : undefined}
+        title={triggerTitle ?? (compact ? label : undefined)}
         onClick={() => setOpen((value) => !value)}
-        className={`inline-flex cursor-pointer items-center gap-1 font-semibold transition-colors hover:text-(--mws-burgundy) ${
-          compact ? "text-sm text-(--mws-charcoal)" : `text-xs ${TONE_TEXT[tone] ?? "text-(--mws-muted)"}`
-        }`}
+        className={
+          triggerClassName ??
+          `inline-flex cursor-pointer items-center gap-1 font-semibold transition-colors hover:text-(--mws-burgundy) ${
+            compact ? "text-sm text-(--mws-charcoal)" : `text-xs ${TONE_TEXT[tone] ?? "text-(--mws-muted)"}`
+          }`
+        }
       >
-        {compact || !icon ? null : <ListChecks size={13} aria-hidden="true" />}
-        {compact ? count : label}
+        {trigger ?? (
+          <>
+            {compact || !icon ? null : <ListChecks size={13} aria-hidden="true" />}
+            {compact ? count : label}
+          </>
+        )}
       </button>
       {open && position
         ? createPortal(

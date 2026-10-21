@@ -7,7 +7,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Eye, RotateCcw } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link } from 'react-router'
 import { Button } from '../../../components/ui/Button.jsx'
-import { HintsPopover } from '../../../components/ui/HintsPopover.jsx'
+import { HintName } from '../../../components/ui/HintName.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import {
   formatDate,
@@ -177,9 +177,8 @@ function buildColumns({
         const flagBadges = getInternFlagBadges(row.original)
         return (
           <div className="min-w-0">
-            <div className="flex max-w-72 items-center gap-1.5">
-              <p className="truncate font-display font-bold text-(--mws-charcoal)">{row.original.identity.full_name}</p>
-              <HintsPopover badges={flagBadges} />
+            <div className="max-w-72">
+              <HintName name={row.original.identity.full_name} badges={flagBadges} />
             </div>
             <p className="max-w-72 truncate text-xs text-(--mws-muted)">
               {row.original.identity.email}

@@ -75,10 +75,11 @@ export function groupHints(badges) {
   })).filter((group) => group.hints.length > 0)
 }
 
-// The most serious tone among the hints: danger, then warn, then the rest.
+// The most serious tone among the hints: danger, then warn, then info, then the rest.
 export function worstTone(badges) {
-  if (badges.some((badge) => badge.tone === 'danger')) return 'danger'
-  if (badges.some((badge) => badge.tone === 'warn')) return 'warn'
+  for (const tone of ['danger', 'warn', 'info']) {
+    if (badges.some((badge) => badge.tone === tone)) return tone
+  }
   return 'muted'
 }
 

@@ -1,7 +1,7 @@
 import { Eye, RotateCcw } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
-import { HintsPopover } from "../../../components/ui/HintsPopover.jsx";
+import { HintName } from "../../../components/ui/HintName.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import {
@@ -135,9 +135,8 @@ export function StudentsTable({
                   {(() => {
                     const flagBadges = getStudentFlagBadges(student);
                     return (
-                      <div className="flex max-w-72 items-center gap-1.5">
-                        <p className="truncate font-display font-bold text-(--mws-charcoal)">{student.identity.full_name}</p>
-                        <HintsPopover badges={flagBadges} />
+                      <div className="max-w-72">
+                        <HintName name={student.identity.full_name} badges={flagBadges} />
                       </div>
                     );
                   })()}

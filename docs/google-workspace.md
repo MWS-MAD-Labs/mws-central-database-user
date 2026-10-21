@@ -73,7 +73,7 @@ A person made before the Google accounts has no link, even when their email is a
 
 ## Hints in the lists
 
-The name cell of Employees, Interns and Students has one small control, "2 Hints", coloured by the most serious one. A click lists them grouped as Discipline, Google Account and Data To Review, each with a sentence. The Google hints are only for things that need someone to look: a failed account, a deleted or missing one (with the last day it can be restored), a suspended one that nobody expected, a password not set after a week, and an account still active for someone who left. Having no account is not a hint, and neither is an account Central suspended because the person left. The server sends them as `google_account.hints` on every employee and intern.
+In Employees, Interns and Students a name that has hints is coloured by the most serious one (red: wrong, amber: worth a look, blue: information, plain with a dotted underline: only a note) and opens the hints when clicked. They are listed grouped as Discipline, Google Account and Data To Review, each with a sentence. The Google hints are only for things that need someone to look: a failed account, a deleted or missing one (with the last day it can be restored), a suspended one that nobody expected, a password not set after a week, and an account still active for someone who left. Having no account is not a hint, and neither is an account Central suspended because the person left. The server sends them as `google_account.hints` on every employee and intern.
 
 ## Rules the code keeps
 
