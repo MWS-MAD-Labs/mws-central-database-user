@@ -169,6 +169,16 @@ describe("google workspace accounts", () => {
   };
   const personOf = (employeeId: string) =>
     prismaClient.person.findFirstOrThrow({ where: { employee: { id: employeeId } } });
+  // The few minutes a new password and a new mail wait for the same person, taken as passed.
+  const letTimePass = async (employeeId: string) => {
+    const person = await personOf(employeeId);
+    const earlier = new Date(Date.now() - 10 * 60_000);
+    await prismaClient.person.update({ where: { id: person.id }, data: { google_password_issued_at: earlier } });
+    await prismaClient.auditLog.updateMany({
+      where: { action: AuditAction.GOOGLE_SIGNIN_EMAILED, entity_id: person.id },
+      data: { created_at: earlier },
+    });
+  };
 
   describe("the helpers", () => {
     it("gives Google a given and a family name", () => {
@@ -365,6 +375,34 @@ describe("google workspace accounts", () => {
       expect((await send(account.id, accessToken, { password: account.password })).status).toBe(200);
     });
 
+    it("makes the same person wait a few minutes between mails, and between new passwords, saying for how long", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      const base = `/api/admin/employees/${account.id}/google`;
+
+      // A password was just made with the account, so another cannot be made yet.
+      const tooSoon = await TestRequest.post(`${base}/reset-password`, {}, accessToken);
+      expect(tooSoon.status).toBe(429);
+      expect((await tooSoon.json()).errors).toMatch(/Wait \d+ more (seconds?|minutes) to make another/);
+
+      expect((await send(account.id, accessToken, { password: account.password })).status).toBe(200);
+      const again = await send(account.id, accessToken, { password: account.password });
+      expect(again.status).toBe(429);
+      expect((await again.json()).errors).toMatch(/Wait .* to send them again/);
+      expect(mailer.outbox).toHaveLength(1);
+
+      // The page is told when each is allowed again, so it can keep the buttons off.
+      const status = (await (await TestRequest.get(base, accessToken)).json()).data;
+      expect(Date.parse(status.password_available_at)).toBeGreaterThan(Date.now());
+      expect(Date.parse(status.email_available_at)).toBeGreaterThan(Date.now());
+
+      await letTimePass(account.id);
+      expect((await send(account.id, accessToken, { password: account.password })).status).toBe(200);
+      const after = (await (await TestRequest.get(base, accessToken)).json()).data;
+      expect(after.password_available_at).toBeNull();
+      expect(after.email_available_at).not.toBeNull();
+    });
+
     it("is for the admins who may create the account", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const account = await made(accessToken);
@@ -379,6 +417,8 @@ describe("google workspace accounts", () => {
       const account = await made(accessToken);
       for (let i = 0; i < 20; i += 1) {
         expect((await send(account.id, accessToken, { password: account.password })).status).toBe(200);
+        await letTimePass(account.id);
+        await prismaClient.person.update({ where: { id: (await personOf(account.id)).id }, data: { google_password_issued_at: new Date(Date.now() - 60_000) } });
       }
       expect((await send(account.id, accessToken, { password: account.password })).status).toBe(429);
     });
@@ -920,6 +960,7 @@ describe("google workspace accounts", () => {
 
       await AdminUserTest.delete();
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      await letTimePass(json.data.id);
       expect((await TestRequest.post(`${base}/reset-password`, {}, accessToken)).status).toBe(200);
       expect((await TestRequest.post(`${base}/recovery-email`, { recovery_email: "a@gmail.com" }, accessToken)).status).toBe(200);
     });
@@ -945,6 +986,7 @@ describe("google workspace accounts", () => {
     it("gives a Super Admin a new password once, and keeps it out of the audit log", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const { json } = await create(accessToken);
+      await letTimePass(json.data.id);
       const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/reset-password`, {}, accessToken);
       expect(response.status).toBe(200);
       expect(response.headers.get("cache-control")).toBe("no-store");
@@ -1171,6 +1213,7 @@ describe("google workspace accounts", () => {
       expect(done.password_state).toBe("SET");
       expect(done.last_login_at).toBe("2026-10-30T08:00:00.000Z");
 
+      await letTimePass(id);
       await TestRequest.post(`/api/admin/employees/${id}/google/reset-password`, {}, accessToken);
       expect((await statusOf(accessToken, id)).password_state).toBe("PENDING");
     });

@@ -31,6 +31,35 @@ const STATUS_FRESH_MS = 5 * 60 * 1000;
 
 export { passwordStateOf, PASSWORD_PENDING_WARN_DAYS };
 
+// Making a temporary password and mailing the details go together: a new password ends the one that was just given
+// out, and mail sent over and over is how a person is flooded. So both wait the same few minutes for the same person.
+export const SIGNIN_COOLDOWN_MINUTES = 2;
+const SIGNIN_COOLDOWN_MS = SIGNIN_COOLDOWN_MINUTES * 60 * 1000;
+
+const waitMessage = (leftMs: number): string => {
+  const seconds = Math.ceil(leftMs / 1000);
+  return seconds > 90 ? `${Math.ceil(seconds / 60)} more minutes` : `${seconds} more ${seconds === 1 ? "second" : "seconds"}`;
+};
+
+// When the next password or mail is allowed for this person, from the last one: the password made or reset, and the
+// last mail (read from the audit log, so a restart of the server does not forget it).
+async function nextSignInAllowedAt(person: { id: string; person_type: PersonType; google_password_issued_at: Date | null }): Promise<{
+  password: Date | null;
+  email: Date | null;
+}> {
+  const lastMail = await prismaClient.auditLog.findFirst({
+    where: { action: "GOOGLE_SIGNIN_EMAILED", entity_id: person.id, entity_type: entityTypeOf(person) },
+    orderBy: { created_at: "desc" },
+    select: { created_at: true },
+  });
+  const after = (since: Date | null | undefined): Date | null => {
+    if (!since) return null;
+    const at = new Date(since.getTime() + SIGNIN_COOLDOWN_MS);
+    return at.getTime() > Date.now() ? at : null;
+  };
+  return { password: after(person.google_password_issued_at), email: after(lastMail?.created_at) };
+}
+
 // How long after it was issued a first password may still be mailed, and how many mails one admin may send an hour.
 const SIGNIN_EMAIL_WINDOW_MS = 48 * 60 * 60 * 1000;
 const SIGNIN_EMAILS_PER_HOUR = 20;
@@ -415,6 +444,15 @@ export class GoogleWorkspaceService {
     }
     this.assertNotMissing(person);
     await this.assertNotLocked(personId);
+    const issuedAt = (await prismaClient.person.findUnique({ where: { id: personId }, select: { google_password_issued_at: true } }))
+      ?.google_password_issued_at ?? null;
+    const wait = (await nextSignInAllowedAt({ id: person.id, person_type: person.person_type, google_password_issued_at: issuedAt })).password;
+    if (wait) {
+      throw new ResponseError(
+        429,
+        `A password was made a moment ago and may not have reached the person yet. Wait ${waitMessage(wait.getTime() - Date.now())} to make another`,
+      );
+    }
     const client = getDirectoryClient();
     const password = generateTemporaryPassword();
 
@@ -435,6 +473,17 @@ export class GoogleWorkspaceService {
     });
     await record("GOOGLE_PASSWORD_RESET", person, admin, context, { mode: client.mode });
     return { password };
+  }
+
+  // When a new password and a new mail are next allowed (ISO), or null when they are allowed now. The page uses it to
+  // keep the buttons off and say for how long.
+  private static async signInAvailability(person: {
+    id: string;
+    person_type: PersonType;
+    google_password_issued_at: Date | null;
+  }): Promise<{ password_available_at: string | null; email_available_at: string | null }> {
+    const next = await nextSignInAllowedAt(person);
+    return { password_available_at: next.password?.toISOString() ?? null, email_available_at: next.email?.toISOString() ?? null };
   }
 
   // Emails the first sign-in details. The password is the one the admin was just shown: Central does not keep it, so it
@@ -474,6 +523,10 @@ export class GoogleWorkspaceService {
     const issued = person.google_password_issued_at;
     if (!person.google_password_pending || !issued || Date.now() - issued.getTime() > SIGNIN_EMAIL_WINDOW_MS) {
       throw new ResponseError(409, "The first sign-in details can only be sent for a new account that has not signed in yet");
+    }
+    const mailWait = (await nextSignInAllowedAt(person)).email;
+    if (mailWait) {
+      throw new ResponseError(429, `The details were mailed a moment ago. Wait ${waitMessage(mailWait.getTime() - Date.now())} to send them again`);
     }
     takeSignInEmailSlot(admin.id);
 
@@ -991,6 +1044,8 @@ export class GoogleWorkspaceService {
       prismaClient.person.findFirst({
         where: { id: personId, deleted_at: null },
         select: {
+          id: true,
+          person_type: true,
           google_user_id: true,
           google_sync_status: true,
           google_synced_at: true,
@@ -1036,6 +1091,7 @@ export class GoogleWorkspaceService {
           : null,
       mode: getDirectoryClient().mode,
       email_enabled: getMailer().enabled,
+      ...(person.google_user_id ? await this.signInAvailability(person) : {}),
     };
   }
 }

@@ -11,6 +11,7 @@ import { googleAccountApi } from "../api/googleAccountApi.js";
 import { recoveryEmailProblem, recoveryHint } from "../utils/instructions.js";
 import { GoogleInstructionsDialog } from "./GoogleInstructionsDialog.jsx";
 import { GoogleShareDialog } from "./GoogleShareDialog.jsx";
+import { formatWait, useWaitSeconds } from "../hooks/useWait.js";
 
 const BADGES = {
   ACTIVE: { tone: "green", label: "Linked" },
@@ -82,6 +83,8 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
   const domain = (email || "").split("@")[1] || "";
   const statusQuery = useQuery({ queryKey, queryFn: () => googleAccountApi.status(resource, id) });
   const status = statusQuery.data;
+  // A new password ends the one just given out, so it waits a few minutes after the last one.
+  const passwordWait = useWaitSeconds(status?.password_available_at);
 
   const refresh = useMutation({
     mutationFn: () => googleAccountApi.status(resource, id, { refresh: true }),
@@ -110,8 +113,12 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
     onSuccess: (result) => {
       setIssued({ password: result.password });
       setDialog("share");
+      queryClient.invalidateQueries({ queryKey });
     },
-    onError: (error) => showErrorToast(error, "Password was not reset."),
+    onError: (error) => {
+      queryClient.invalidateQueries({ queryKey });
+      showErrorToast(error, "Password was not reset.");
+    },
   });
 
   // Read from Google only while one of the two dialogs that show it is open.
@@ -297,8 +304,8 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
               variant="ghost"
               size="icon"
               aria-label="Make temporary password"
-              title={gone ? "Restore the account first." : "Make temporary password"}
-              disabled={gone}
+              title={gone ? "Restore the account first." : passwordWait > 0 ? `Wait ${formatWait(passwordWait)} to make another.` : "Make temporary password"}
+              disabled={gone || passwordWait > 0}
               onClick={() => setDialog("confirm")}
             >
               <KeyRound size={15} />

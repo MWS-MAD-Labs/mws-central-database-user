@@ -8,10 +8,10 @@ import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 const BASE = '/api/admin/employees/e1/google'
 const PASSWORD = 'Abcd1234Efgh5678'
 
-function setup({ emailEnabled = true, hint = 'p***@gmail.com', can = { create: true }, extra = [] } = {}) {
+function setup({ emailEnabled = true, hint = 'p***@gmail.com', can = { create: true }, extra = [], emailAvailableAt = null } = {}) {
   const onClose = mock()
   const fetchMock = createFetchRouter([
-    { path: BASE, response: jsonResponse({ data: { email_enabled: emailEnabled, can } }) },
+    { path: BASE, response: jsonResponse({ data: { email_enabled: emailEnabled, can, email_available_at: emailAvailableAt } }) },
     { path: `${BASE}/recovery-hint`, response: jsonResponse({ data: { hint } }) },
     ...extra,
   ])
@@ -118,5 +118,11 @@ describe('GoogleShareDialog', () => {
     const ask = await screen.findByRole('dialog', { name: 'Close Without Sharing' })
     await user.click(within(ask).getByRole('button', { name: 'Close Anyway' }))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+  it('keeps Send Email off, saying for how long, while the last mail for this person is recent', async () => {
+    setup({ emailAvailableAt: new Date(Date.now() + 90_000).toISOString() })
+    const view = await dialog()
+    await waitFor(() => expect(within(view).getByRole('button', { name: 'Send Email' })).toBeDisabled())
+    expect(within(view).getByRole('button', { name: 'Send Email' }).getAttribute('title')).toMatch(/^Wait 1:(2\d|30) to send again\.$/)
   })
 })

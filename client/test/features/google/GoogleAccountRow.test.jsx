@@ -305,6 +305,13 @@ describe('GoogleAccountRow', () => {
     await waitFor(() => expect(screen.queryByText('Abcd1234Efgh5678')).not.toBeInTheDocument())
   })
 
+  it('keeps Make Temporary Password off, saying for how long, right after a password was made', async () => {
+    setup(status({ password_available_at: new Date(Date.now() + 100_000).toISOString() }))
+    const button = await screen.findByRole('button', { name: 'Make temporary password' })
+    expect(button).toBeDisabled()
+    expect(button.getAttribute('title')).toMatch(/^Wait 1:(3\d|40) to make another\.$/)
+  })
+
   it('lets whoever may make the account add a recovery email when there is none, and only then', async () => {
     const create = { create: true, manage: false, takeover: false }
     const none = setup(status({ can: create }), [{ path: '/api/admin/employees/e1/google/recovery-hint', response: jsonResponse({ data: { hint: null } }) }])
