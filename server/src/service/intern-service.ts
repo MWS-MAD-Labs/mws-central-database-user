@@ -366,7 +366,7 @@ export class InternService {
     }
     // Before anything is written: a Google that already has the email, or would not take it, stops the create here.
     if (options.requireRecoveryEmail) {
-      await GoogleWorkspaceService.assertCanCreate(createRequest.email);
+      await GoogleWorkspaceService.assertCanCreate(createRequest.email, createRequest.recovery_email);
     }
     await assertCanWriteInternContactPii(admin, createRequest, context);
 

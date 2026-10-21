@@ -58,13 +58,10 @@ export const emailWithAllowedDomain = () =>
       "Email must use an allowed organization domain",
     );
 
-// Where Google sends the code when someone forgets the password of a new account. Outside the organization's domain,
-// or it could not help. It goes to Google and is not kept in Central.
-export const recoveryEmail = () =>
-  cleanEmail().refine(
-    (email) => !email.endsWith(`@${process.env.ALLOWED_DOMAIN!}`),
-    "Recovery email must be a personal address, not an organization address",
-  );
+// Where Google sends the code when someone forgets the password of a new account. Any clean address, including another
+// mailbox of the organization; only the account's own address is refused (see assertRecoveryIsNotOwn). It goes to Google
+// and is not kept in Central.
+export const recoveryEmail = () => cleanEmail();
 
 // Normalize Indonesian mobile numbers to the stored 62-prefixed form.
 export const normalizeIndonesianPhone = (value: string) => {

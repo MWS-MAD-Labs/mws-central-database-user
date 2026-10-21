@@ -245,8 +245,16 @@ export class GoogleWorkspaceService {
     }
   }
 
+  // The code for a forgotten password cannot be read from the account it is meant to recover.
+  static assertRecoveryIsNotOwn(recoveryEmail: string | undefined | null, accountEmail: string): void {
+    if (recoveryEmail && recoveryEmail.trim().toLowerCase() === accountEmail.trim().toLowerCase()) {
+      throw new ResponseError(400, "The recovery email cannot be the account's own address");
+    }
+  }
+
   // For the form that creates a person: it is not written when Google already has the email or would not take it.
-  static async assertCanCreate(email: string): Promise<void> {
+  static async assertCanCreate(email: string, recoveryEmail?: string): Promise<void> {
+    this.assertRecoveryIsNotOwn(recoveryEmail, email);
     const check = await this.checkEmailAvailable(email);
     if (check.reason === "IN_GOOGLE" || check.reason === "DELETED_IN_GOOGLE" || check.reason === "NOT_ALLOWED") {
       throw new ResponseError(400, check.message);
@@ -271,6 +279,7 @@ export class GoogleWorkspaceService {
   ): Promise<GoogleSyncResult> {
     const person = await load(personId);
     assertAllowedTarget(person.email);
+    this.assertRecoveryIsNotOwn(options.recoveryEmail, person.email);
     await this.assertNotLocked(personId);
     const client = getDirectoryClient();
     await markStatus(person.id, GoogleSyncStatus.PENDING);
@@ -528,6 +537,7 @@ export class GoogleWorkspaceService {
     const person = await load(personId);
     assertAllowedTarget(person.email);
     if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet");
+    this.assertRecoveryIsNotOwn(recoveryEmail, person.email);
     this.assertNotMissing(person);
     await this.assertNotLocked(personId);
     const client = getDirectoryClient();

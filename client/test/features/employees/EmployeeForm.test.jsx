@@ -144,7 +144,7 @@ describe('EmployeeForm', () => {
     expect(onSubmit.mock.calls[0][1]).toBeNull()
   })
 
-  it('does not let the form pass without a recovery email, or with an organization one', async () => {
+  it('does not let the form pass without a recovery email, or with the account\'s own address', async () => {
     const { user, onSubmit } = renderEmployeeForm({ mode: 'create' })
     await user.type(field('full_name').querySelector('input'), 'ari employee')
     await user.type(field('email_local').querySelector('input'), 'ari.employee')
@@ -153,8 +153,15 @@ describe('EmployeeForm', () => {
     fireEvent.submit(document.querySelector('form'))
     expect(await screen.findByText('Recovery email is required.')).toBeVisible()
 
-    await user.type(field('recovery_email').querySelector('input'), 'ari@millennia21.id')
-    expect(await screen.findByText(/personal address/)).toBeVisible()
+    // Another mailbox of the organization is a fine place for the code to go.
+    const recovery = field('recovery_email').querySelector('input')
+    await user.type(recovery, 'colleague@millennia21.id')
+    expect(await screen.findByText('An organization mailbox. Reset codes go to c***@millennia21.id.')).toBeVisible()
+
+    // The account's own address is not.
+    await user.clear(recovery)
+    await user.type(recovery, 'ARI.EMPLOYEE@millennia21.id')
+    expect(await screen.findByText("That is the account's own address. Use another mailbox.")).toBeVisible()
     expect(onSubmit).not.toHaveBeenCalled()
   })
 

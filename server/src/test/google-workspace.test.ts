@@ -365,10 +365,38 @@ describe("google workspace accounts", () => {
     });
   });
 
-  it("refuses a recovery email that is an organization address", async () => {
+  it("takes another mailbox of the organization as the recovery email, and refuses the account's own address", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
-    const { response } = await create(accessToken, { recovery_email: "someone@millennia21.id" });
-    expect(response.status).toBe(400);
+    const ok = await create(accessToken, { recovery_email: "someone.else@millennia21.id" });
+    expect(ok.response.status).toBe(200);
+    expect(google.created[0].recoveryEmail).toBe("someone.else@millennia21.id");
+
+    const email = "test_google_selfrec@millennia21.id";
+    const own = await create(accessToken, { email, recovery_email: "Test_Google_SelfRec@millennia21.id" });
+    expect(own.response.status).toBe(400);
+    expect(JSON.stringify(own.json)).toContain("own address");
+    expect(await prismaClient.person.count({ where: { email } })).toBe(0);
+  });
+
+  it("refuses the account's own address as the recovery email when making or changing it later", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+    const person = await EmployeeTest.create({
+      email: "test_google_ownlater@millennia21.id",
+      unitId: master.unit.id,
+      jobPositionId: master.position.id,
+      jobLevelId: master.level.id,
+      buildingId: master.building.id,
+    });
+    const refused = await TestRequest.post(`/api/admin/employees/${person.employee!.id}/google/provision`, { recovery_email: "test_google_ownlater@millennia21.id" }, accessToken);
+    expect(refused.status).toBe(400);
+    expect(google.created).toHaveLength(0);
+
+    const { json } = await create(accessToken);
+    const own = await personOf(json.data.id);
+    const change = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/recovery-email`, { recovery_email: own.email }, accessToken);
+    expect(change.status).toBe(400);
+    const other = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/recovery-email`, { recovery_email: "colleague@millennia21.id" }, accessToken);
+    expect(other.status).toBe(200);
   });
 
   it("updates the Google account when the name changes, and leaves it alone otherwise", async () => {
@@ -1141,11 +1169,11 @@ describe("google workspace accounts", () => {
       expect(JSON.stringify(entries)).toContain("recovery_email_changed");
     });
 
-    it("refuses an organization address, a non Super Admin, and someone without an account", async () => {
+    it("refuses a non Super Admin and someone without an account", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const { json } = await create(accessToken);
       const id = json.data.id as string;
-      const bad = await TestRequest.post(`/api/admin/employees/${id}/google/recovery-email`, { recovery_email: "x@millennia21.id" }, accessToken);
+      const bad = await TestRequest.post(`/api/admin/employees/${id}/google/recovery-email`, { recovery_email: "not an email" }, accessToken);
       expect(bad.status).toBe(400);
 
       const plain = await AdminUserTest.createDatabaseAdmin(master.unit.id);

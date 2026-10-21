@@ -151,8 +151,15 @@ describe('GoogleAccountRow', () => {
     expect(await within(dialog).findByText('Now: b***@gmail.com')).toBeVisible()
     const change = within(dialog).getByRole('button', { name: 'Change' })
     expect(change).toBeDisabled()
-    await user.type(within(dialog).getByPlaceholderText('name@gmail.com'), 'baru@millennia21.id')
+    // The account's own address cannot be its recovery email.
+    await user.type(within(dialog).getByPlaceholderText('name@gmail.com'), 'ari@millennia21.id')
     expect(change).toBeDisabled()
+    expect(within(dialog).getByText("That is the account's own address. Use another mailbox.")).toBeVisible()
+    // Another mailbox of the organization is fine.
+    await user.clear(within(dialog).getByPlaceholderText('name@gmail.com'))
+    await user.type(within(dialog).getByPlaceholderText('name@gmail.com'), 'colleague@millennia21.id')
+    expect(change).toBeEnabled()
+    expect(within(dialog).getByText('An organization mailbox. Reset codes go to c***@millennia21.id.')).toBeVisible()
     await user.clear(within(dialog).getByPlaceholderText('name@gmail.com'))
     await user.type(within(dialog).getByPlaceholderText('name@gmail.com'), 'baru@gmail.com')
     await user.click(change)

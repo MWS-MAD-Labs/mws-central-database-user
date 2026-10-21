@@ -1,4 +1,4 @@
-import { maskEmail } from "../../google/utils/instructions.js";
+import { maskEmail, recoveryEmailProblem, recoveryHint } from "../../google/utils/instructions.js";
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
@@ -697,11 +697,7 @@ export function EmployeeForm({
                 error={errors.recovery_email}
                 required
                 counter={{ value: values.recovery_email, max: 100, count: textLength }}
-                hint={
-                  values.recovery_email && !errors.recovery_email
-                    ? `Reset codes go to ${maskEmail(values.recovery_email)}.`
-                    : "A personal address. Google sends the reset code there."
-                }
+                hint={recoveryHint(values.recovery_email, errors.recovery_email, ALLOWED_EMAIL_DOMAIN)}
               >
                 <TextInput
                   type="email"
@@ -1883,11 +1879,11 @@ function computeEmployeeErrors(
     if (problem) errors.email_local = problem;
   }
   if (isCreate && values.recovery_email) {
-    const problem =
-      emailProblem(values.recovery_email, { external: true }) ||
-      (values.recovery_email.trim().toLowerCase().endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)
-        ? "Use a personal address, not an organization address."
-        : null);
+    const problem = recoveryEmailProblem(
+      values.recovery_email,
+      values.email_local ? `${values.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
+      emailProblem,
+    );
     if (problem) errors.recovery_email = problem;
   }
   if (

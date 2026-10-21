@@ -8,7 +8,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { emailProblem, sanitizeEmail, textLength } from "../../../lib/form.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { googleAccountApi } from "../api/googleAccountApi.js";
-import { maskEmail } from "../utils/instructions.js";
+import { recoveryEmailProblem, recoveryHint } from "../utils/instructions.js";
 import { GoogleInstructionsDialog } from "./GoogleInstructionsDialog.jsx";
 
 const BADGES = {
@@ -71,7 +71,8 @@ export function GoogleAccountRow({ resource, id, email }) {
   // Needed for the person to get in: Google sends the reset code there.
   const recoveryProblem = !recoveryEmail.trim()
     ? "Recovery email is required."
-    : emailProblem(recoveryEmail, { external: true }) || (recoveryEmail.trim().toLowerCase().endsWith("@millennia21.id") ? "Use a personal address, not an organization address." : null);
+    : recoveryEmailProblem(recoveryEmail, email, emailProblem);
+  const domain = (email || "").split("@")[1] || "";
   const statusQuery = useQuery({ queryKey, queryFn: () => googleAccountApi.status(resource, id) });
   const status = statusQuery.data;
 
@@ -344,11 +345,7 @@ export function GoogleAccountRow({ resource, id, email }) {
             required
             counter={{ value: recoveryEmail, max: 100, count: textLength }}
             error={recoveryEmail.trim() ? recoveryProblem || undefined : undefined}
-            hint={
-              recoveryEmail.trim() && !recoveryProblem
-                ? `Reset codes go to ${maskEmail(recoveryEmail)}.`
-                : "A personal address. Google sends the reset code there."
-            }
+            hint={recoveryHint(recoveryEmail, recoveryProblem, domain)}
           >
             <TextInput
               type="email"
@@ -418,7 +415,7 @@ export function GoogleAccountRow({ resource, id, email }) {
               required
               counter={{ value: recoveryEmail, max: 100, count: textLength }}
               error={recoveryEmail.trim() ? recoveryProblem || undefined : undefined}
-              hint="A personal address, not an organization address."
+              hint={recoveryHint(recoveryEmail, recoveryProblem, domain)}
             >
               <TextInput
                 type="email"

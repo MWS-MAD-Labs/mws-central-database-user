@@ -105,9 +105,9 @@ describe("email rules and the recovery email on create", () => {
     expect(response.status).toBe(400);
   });
 
-  it("refuses a recovery email with symbols or on the organization domain", async () => {
+  it("refuses a recovery email with symbols", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
-    for (const recovery_email of ["me%x@gmail.com", "me..x@gmail.com", "someone@millennia21.id"]) {
+    for (const recovery_email of ["me%x@gmail.com", "me..x@gmail.com"]) {
       const response = await TestRequest.postRaw("/api/admin/employees", employeeBody({ recovery_email }), accessToken);
       expect(response.status).toBe(400);
     }

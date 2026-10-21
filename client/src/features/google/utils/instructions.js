@@ -86,3 +86,24 @@ export function signInInstructions(email, maskedRecovery, language = 'id') {
     guide.warning,
   ].join('\n')
 }
+
+// What is wrong with a recovery email, or null. Any clean address works, another mailbox of the organization included;
+// the account's own address does not, because the code for a forgotten password cannot be read from that account.
+export function recoveryEmailProblem(recoveryEmail, accountEmail, emailProblem) {
+  const problem = emailProblem(recoveryEmail, { external: true })
+  if (problem) return problem
+  if (accountEmail && recoveryEmail.trim().toLowerCase() === accountEmail.trim().toLowerCase()) {
+    return "That is the account's own address. Use another mailbox."
+  }
+  return null
+}
+
+// The line under the recovery email field. `domain` is the organization's, so its own mailboxes are named as such.
+export function recoveryHint(recoveryEmail, problem, domain) {
+  const value = (recoveryEmail || '').trim()
+  if (!value || problem) return 'Google sends the reset code there. Use a mailbox the person can open.'
+  const masked = maskEmail(value)
+  return value.toLowerCase().endsWith(`@${domain}`)
+    ? `An organization mailbox. Reset codes go to ${masked}.`
+    : `Reset codes go to ${masked}.`
+}
