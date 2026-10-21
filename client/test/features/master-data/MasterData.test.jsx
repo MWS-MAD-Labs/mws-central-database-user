@@ -322,6 +322,21 @@ describe('MasterData', () => {
         String(url).endsWith('/google/link-existing') && options.method === 'POST')).toBe(true))
     })
 
+    it('does not break while the answer is not in yet, or when the reply is not a whole answer', async () => {
+      const pending = renderPage({
+        route: '/master-data?tab=employment&section=google-accounts',
+        routes: [{ path: '/api/admin/google/link-existing', method: 'GET', response: () => new Promise(() => {}) }],
+      })
+      expect(await screen.findByText('Loading...')).toBeVisible()
+      pending.unmount()
+
+      renderPage({
+        route: '/master-data?tab=employment&section=google-accounts',
+        routes: [{ path: '/api/admin/google/link-existing', method: 'GET', response: jsonResponse({ data: 'ok' }) }],
+      })
+      expect(await screen.findByText('Loading...')).toBeVisible()
+    })
+
     it('has nothing to link when everyone is already linked', async () => {
       renderPage({
         route: '/master-data?tab=employment&section=google-accounts',

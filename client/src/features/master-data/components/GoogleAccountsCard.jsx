@@ -9,6 +9,17 @@ import { PanelFrame } from './PanelFrame.jsx'
 
 const KEY = ['google-link-preview']
 
+// What the tiles read while the answer is not in yet, so nothing below ever reads a property of nothing.
+const EMPTY = {
+  matches: [],
+  skipped: { admin: 0, linked_elsewhere: 0, not_allowed: 0 },
+  linked_total: 0,
+  not_in_google: 0,
+  failed: 0,
+  suspended: 0,
+  missing: 0,
+}
+
 function Tile({ label, value }) {
   return (
     <div className="rounded-2xl border border-(--mws-line) bg-(--mws-soft) p-4">
@@ -25,6 +36,11 @@ export function GoogleAccountsCard() {
   const confirm = useConfirm()
   const query = useQuery({ queryKey: KEY, queryFn: googleAccountApi.linkPreview, retry: false, staleTime: 60_000 })
   const data = query.data
+  // Only a whole answer is shown; anything else (still loading, an odd reply) reads as loading.
+  const ready = Array.isArray(data?.matches)
+  const view = ready ? data : EMPTY
+  const matches = view.matches ?? []
+  const skipped = view.skipped ?? EMPTY.skipped
 
   const link = useMutation({
     mutationFn: googleAccountApi.linkExisting,
@@ -39,7 +55,7 @@ export function GoogleAccountsCard() {
   async function handleLink() {
     const confirmed = await confirm({
       title: 'Link Existing Accounts',
-      description: `${data.matches.length} ${data.matches.length === 1 ? 'person has' : 'people have'} an email that is already a Google account. Linking connects them and changes nothing in Google.`,
+      description: `${matches.length} ${matches.length === 1 ? 'person has' : 'people have'} an email that is already a Google account. Linking connects them and changes nothing in Google.`,
       confirmLabel: 'Link',
     })
     if (confirmed) link.mutate()
@@ -68,42 +84,42 @@ export function GoogleAccountsCard() {
       <div className="space-y-5 p-5">
         {query.isError ? (
           <p className="text-sm text-[#a43c41]">{query.error?.message || 'Google could not be read.'}</p>
-        ) : !data ? (
+        ) : !ready ? (
           <p className="text-sm text-(--mws-muted)">Loading...</p>
         ) : (
           <>
             <div className="grid gap-3 sm:grid-cols-3">
-              <Tile label="Linked" value={data.linked_total} />
-              <Tile label="In Google, Not Linked" value={data.matches.length} />
-              <Tile label="Not In Google" value={data.not_in_google} />
-              <Tile label="Failed" value={data.failed} />
-              <Tile label="Suspended" value={data.suspended} />
-              <Tile label="Deleted In Google" value={data.missing} />
+              <Tile label="Linked" value={view.linked_total} />
+              <Tile label="In Google, Not Linked" value={matches.length} />
+              <Tile label="Not In Google" value={view.not_in_google} />
+              <Tile label="Failed" value={view.failed} />
+              <Tile label="Suspended" value={view.suspended} />
+              <Tile label="Deleted In Google" value={view.missing} />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm text-(--mws-muted)">
                 <span>People who can be linked</span>
                 <ListPopover
                   label="List"
-                  count={data.matches.length}
+                  count={matches.length}
                   dialogLabel="People who can be linked"
                   mono={false}
                   groups={[
                     {
                       hideCount: true,
-                      items: data.matches.map((match) => ({ label: match.full_name, hint: match.email })),
+                      items: matches.map((match) => ({ label: match.full_name, hint: match.email })),
                     },
                   ]}
                 />
               </div>
-              <Button type="button" loading={link.isPending} disabled={data.matches.length === 0} onClick={handleLink}>
+              <Button type="button" loading={link.isPending} disabled={matches.length === 0} onClick={handleLink}>
                 Link
               </Button>
             </div>
-            {data.skipped.admin + data.skipped.linked_elsewhere + data.skipped.not_allowed > 0 ? (
+            {skipped.admin + skipped.linked_elsewhere + skipped.not_allowed > 0 ? (
               <p className="text-xs text-(--mws-muted)">
-                Left out: {data.skipped.admin} Workspace {data.skipped.admin === 1 ? 'admin' : 'admins'},{' '}
-                {data.skipped.linked_elsewhere} already linked to someone else, {data.skipped.not_allowed} not allowed here.
+                Left out: {skipped.admin} Workspace {skipped.admin === 1 ? 'admin' : 'admins'},{' '}
+                {skipped.linked_elsewhere} already linked to someone else, {skipped.not_allowed} not allowed here.
               </p>
             ) : null}
           </>
