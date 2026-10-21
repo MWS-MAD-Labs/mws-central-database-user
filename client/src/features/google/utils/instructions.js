@@ -98,12 +98,13 @@ export function recoveryEmailProblem(recoveryEmail, accountEmail, emailProblem) 
   return null
 }
 
-// The line under the recovery email field. `domain` is the organization's, so its own mailboxes are named as such.
+// The line under the recovery email field. The address itself is right above it, so it is not repeated: what helps is a
+// reminder to read it again, since Google asks nobody to confirm it. `domain` is the organization's, so its own mailboxes
+// are named as such.
 export function recoveryHint(recoveryEmail, problem, domain) {
   const value = (recoveryEmail || '').trim()
   if (!value || problem) return 'Google sends the reset code there. Use a mailbox the person can open.'
-  const masked = maskEmail(value)
   return value.toLowerCase().endsWith(`@${domain}`)
-    ? `An organization mailbox. Reset codes go to ${masked}.`
-    : `Reset codes go to ${masked}.`
+    ? 'An organization mailbox. The code goes straight to it.'
+    : 'Check the spelling. The code goes straight to this address and nobody confirms it.'
 }

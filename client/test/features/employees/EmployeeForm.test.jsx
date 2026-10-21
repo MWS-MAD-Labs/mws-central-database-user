@@ -103,7 +103,7 @@ describe('EmployeeForm', () => {
     await screen.findByText('Available')
     await user.type(field('recovery_email').querySelector('input'), 'Ari+Pribadi@Gmail.com')
     expect(field('recovery_email').querySelector('input').value).toBe('ari+pribadi@gmail.com')
-    expect(screen.getByText('Reset codes go to a***@gmail.com.')).toBeVisible()
+    expect(screen.getByText('Check the spelling. The code goes straight to this address and nobody confirms it.')).toBeVisible()
     await chooseSelect(user, 'Select Gender', 'Male')
     await chooseSelect(user, 'Select Religion', 'Islam')
     await user.type(field('birth_place').querySelector('input'), 'jakarta')
@@ -119,6 +119,8 @@ describe('EmployeeForm', () => {
 
     fireEvent.submit(document.querySelector('form'))
     const review = await screen.findByRole('dialog', { name: 'Review before creating' })
+    // The last look before saving shows the recovery email in full, so a typo can still be caught.
+    expect(within(review).getByText('ari+pribadi@gmail.com')).toBeVisible()
     await user.click(within(review).getByRole('button', { name: 'Create employee' }))
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
@@ -156,7 +158,7 @@ describe('EmployeeForm', () => {
     // Another mailbox of the organization is a fine place for the code to go.
     const recovery = field('recovery_email').querySelector('input')
     await user.type(recovery, 'colleague@millennia21.id')
-    expect(await screen.findByText('An organization mailbox. Reset codes go to c***@millennia21.id.')).toBeVisible()
+    expect(await screen.findByText('An organization mailbox. The code goes straight to it.')).toBeVisible()
 
     // The account's own address is not.
     await user.clear(recovery)

@@ -159,7 +159,7 @@ describe('GoogleAccountRow', () => {
     await user.clear(within(dialog).getByPlaceholderText('name@gmail.com'))
     await user.type(within(dialog).getByPlaceholderText('name@gmail.com'), 'colleague@millennia21.id')
     expect(change).toBeEnabled()
-    expect(within(dialog).getByText('An organization mailbox. Reset codes go to c***@millennia21.id.')).toBeVisible()
+    expect(within(dialog).getByText('An organization mailbox. The code goes straight to it.')).toBeVisible()
     await user.clear(within(dialog).getByPlaceholderText('name@gmail.com'))
     await user.type(within(dialog).getByPlaceholderText('name@gmail.com'), 'baru@gmail.com')
     await user.click(change)

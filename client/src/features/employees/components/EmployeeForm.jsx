@@ -1,4 +1,4 @@
-import { maskEmail, recoveryEmailProblem, recoveryHint } from "../../google/utils/instructions.js";
+import { recoveryEmailProblem, recoveryHint } from "../../google/utils/instructions.js";
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
@@ -1783,7 +1783,6 @@ const EMPLOYEE_ID_FIELD_OPTION_KEYS = {
 // the PII fields that must stay masked here exactly like everywhere else
 // the app shows them (EmployeeDetailPage's reveal gate, audit log snapshots).
 const EMPLOYEE_FIELD_FORMATTERS = {
-  recovery_email: (value) => maskEmail(value) || value,
   email_local: buildEmail,
   education_level: formatEducationLevel,
   nik: maskSensitiveValue,
