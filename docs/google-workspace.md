@@ -110,16 +110,18 @@ A new account is made with a temporary password (16 characters). The dialog that
 
 The server only mails for an account that still waits for its first password and was issued in the last 48 hours, to an address that is not the account's own, and at most 20 mails an hour per admin.
 
-Email needs an SMTP server. Without these variables Send Email is off and says so:
+Email needs an SMTP server, which is a mailbox's login for sending, not something Central makes. Use the same block as MTSS or Exima: copy their `SMTP_*` lines from Komodo (MTSS already sends from `no-reply@millennia21.id`). Without these variables Send Email is off and says so.
 
-| Variable | Value |
+| Variable | Where it comes from |
 |---|---|
-| `SMTP_HOST` | for example `smtp.gmail.com`, or `smtp-relay.gmail.com` |
-| `SMTP_PORT` | `587` (default), or `465` with `SMTP_SECURE=true` |
-| `SMTP_USER`, `SMTP_PASSWORD` | the sender mailbox and an app password. Leave empty for a relay that allows the server's IP |
-| `MAIL_FROM` | for example `Millennia Central <no-reply@millennia21.id>` |
+| `SMTP_HOST` | the mail server: `smtp.gmail.com` for Google Workspace (`smtp-relay.gmail.com` for a relay that allows the server's IP and needs no login) |
+| `SMTP_PORT` | `465` (SSL, what Exima uses) or `587` (the default here). Port 465 turns `SMTP_SECURE` on by itself |
+| `SMTP_SECURE` | `true` for 465, empty for 587 |
+| `SMTP_USER` | the sender mailbox, for example `no-reply@millennia21.id` |
+| `SMTP_PASSWORD` | an **app password** of that mailbox, not its normal password: Google Account of the mailbox > Security > 2-Step Verification (must be on) > App passwords. MTSS calls the same value `SMTP_PASS`, and that name works here too |
+| `SMTP_FROM` | what the person sees as sender, for example `Millennia Central <no-reply@millennia21.id>` |
 
-Use a mailbox made for this (not an admin's own), with 2-step verification on so it can have an app password. In development run Mailpit (`docker run -p 1025:1025 -p 8025:8025 axllent/mailpit`) with `SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025`, `MAIL_FROM=central@localhost`, and read the mail at `http://localhost:8025`. Tests never send mail.
+Use a mailbox made for this, not an admin's own. In development run Mailpit (`docker run -p 1025:1025 -p 8025:8025 axllent/mailpit`) with `SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025`, `SMTP_FROM=central@localhost`, and read the mail at `http://localhost:8025`. Tests never send mail.
 
 ## Recovery email
 

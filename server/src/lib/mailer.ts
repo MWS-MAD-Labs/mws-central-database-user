@@ -40,8 +40,21 @@ const disabled: Mailer = {
 let cached: Mailer | null = null;
 let override: Mailer | null = null;
 
-// SMTP_HOST and MAIL_FROM turn it on; SMTP_PORT (587), SMTP_SECURE (true for port 465), SMTP_USER and SMTP_PASSWORD
-// are optional, for a relay that does not ask for a login.
+export type SmtpConfig = { host: string; port: number; secure: boolean; from: string; user?: string; pass?: string };
+
+// The same names Exima and MTSS use, so their block can be copied: SMTP_HOST and SMTP_FROM turn it on. SMTP_PORT is 587
+// unless set, and port 465 is secure without SMTP_SECURE. SMTP_USER and the password (SMTP_PASSWORD, or SMTP_PASS as
+// MTSS calls it) are optional, for a relay that does not ask for a login.
+export function readSmtpConfig(env: Record<string, string | undefined> = process.env): SmtpConfig | null {
+  const host = env.SMTP_HOST?.trim();
+  const from = env.SMTP_FROM?.trim();
+  if (!host || !from) return null;
+  const port = Number(env.SMTP_PORT) || 587;
+  const user = env.SMTP_USER?.trim();
+  const pass = env.SMTP_PASSWORD || env.SMTP_PASS || "";
+  return { host, port, secure: env.SMTP_SECURE === "true" || port === 465, from, ...(user ? { user, pass } : {}) };
+}
+
 export function getMailer(): Mailer {
   if (override) return override;
   if (cached) return cached;
@@ -52,20 +65,18 @@ export function getMailer(): Mailer {
     return cached;
   }
 
-  const host = process.env.SMTP_HOST?.trim();
-  const from = process.env.MAIL_FROM?.trim();
-  if (!host || !from) {
+  const config = readSmtpConfig();
+  if (!config) {
     cached = disabled;
     return cached;
   }
-  const user = process.env.SMTP_USER?.trim();
   const transport = nodemailer.createTransport({
-    host,
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === "true",
-    ...(user ? { auth: { user, pass: process.env.SMTP_PASSWORD ?? "" } } : {}),
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    ...(config.user ? { auth: { user: config.user, pass: config.pass ?? "" } } : {}),
   });
-  cached = new SmtpMailer(from, transport);
+  cached = new SmtpMailer(config.from, transport);
   return cached;
 }
 
