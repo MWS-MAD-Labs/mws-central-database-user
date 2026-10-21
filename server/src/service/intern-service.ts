@@ -605,6 +605,10 @@ export class InternService {
       throw new ResponseError(400, "End date must be after join date");
     }
 
+    if (updateRequest.email && updateRequest.email !== existingIntern.email) {
+      await GoogleWorkspaceService.assertCanChangeEmail(existingIntern.person_id, updateRequest.email);
+    }
+
     const resolvedStatus = resolveInternStatus(
       updateRequest.status ?? existingIntern.status,
       nextEndDate,

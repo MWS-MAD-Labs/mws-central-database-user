@@ -1,5 +1,5 @@
-import { EmailAvailabilityNote } from "../../google/components/EmailAvailabilityNote.jsx";
-import { useEmailAvailability } from "../../google/hooks/useEmailAvailability.js";
+import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
+import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -213,10 +213,12 @@ export function EmployeeForm({
   }
 
   const isCreate = mode === "create";
-  // Before a new person is created: whether the email can be used (free, not in Central, not already in Google).
-  const emailAvailability = useEmailAvailability(
+  // A new or changed email has to pass the Check button before the form can be saved.
+  const emailCheck = useEmailCheck(
     values.email_local ? `${values.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
-    { enabled: isCreate },
+    {
+      initialEmail: !isCreate && initialValues.email_local ? `${initialValues.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
+    },
   );
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
@@ -304,6 +306,10 @@ export function EmployeeForm({
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (emailCheck.blocked) {
+      showErrorToast(emailCheck.message || "Check the email before saving.");
+      return;
+    }
     setHasAttemptedSubmit(true);
 
     const computedErrors = computeEmployeeErrors(values, isCreate, {
@@ -675,7 +681,7 @@ export function EmployeeForm({
               updateValue={updateValue}
             />
             <EmailField
-              note={isCreate ? <EmailAvailabilityNote availability={emailAvailability} /> : undefined}
+              note={<EmailCheckNote check={emailCheck} />}
               domain={ALLOWED_EMAIL_DOMAIN}
               max={EMAIL_LOCAL_MAX_LENGTH}
               sanitize={sanitizeEmailLocalPart}
@@ -1412,11 +1418,11 @@ export function EmployeeForm({
             disabled={
               isSubmitting ||
               missingRequiredCount > 0 ||
-              (isCreate && emailAvailability.blocked) ||
+              emailCheck.blocked ||
               (!isCreate && !isDirty)
             }
             title={
-              (isCreate && emailAvailability.blocked ? emailAvailability.message : undefined) ||
+              (emailCheck.blocked ? emailCheck.message : undefined) ||
               buildFixFieldsTooltip(allErrors) ||
               (!isCreate && !isDirty ? "No changes to save yet." : undefined)
             }

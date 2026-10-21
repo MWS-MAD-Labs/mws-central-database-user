@@ -69,6 +69,7 @@ describe('Employee create and edit pages', () => {
     const fetchMock = createFetchRouter([
       ...formOptionRoutes(),
       ...formSuggestionRoutes(),
+      { path: /email-availability/, response: jsonResponse({ data: { available: true, reason: 'FREE', message: 'Available' } }) },
       { path: '/api/admin/employees', method: 'POST', response: jsonResponse({ data: { id: 'employee-new' } }) },
     ])
     globalThis.fetch = fetchMock
@@ -79,6 +80,8 @@ describe('Employee create and edit pages', () => {
     await user.type(field('full_name').querySelector('input'), 'ari employee')
     await user.type(field('nick_name').querySelector('input'), 'ari')
     await user.type(field('email_local').querySelector('input'), 'ari.employee')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+    await screen.findByText('Available')
     await user.type(field('recovery_email').querySelector('input'), 'ari.pribadi@gmail.com')
     await user.click(screen.getByRole('button', { name: 'Select Gender' }))
     await user.click(screen.getByRole('option', { name: 'Male' }))
@@ -112,6 +115,7 @@ describe('Employee create and edit pages', () => {
     const fetchMock = createFetchRouter([
       ...formOptionRoutes(),
       ...formSuggestionRoutes(),
+      { path: /email-availability/, response: jsonResponse({ data: { available: true, reason: 'FREE', message: 'Available' } }) },
       { path: '/api/admin/employees', method: 'POST', response: jsonResponse({ data: { id: 'employee-new', identity: { email: 'ari.employee@millennia21.id' }, google: { status: 'ACTIVE', outcome: 'created' } } }) },
     ])
     globalThis.fetch = fetchMock
@@ -122,6 +126,8 @@ describe('Employee create and edit pages', () => {
     await user.type(field('full_name').querySelector('input'), 'ari employee')
     await user.type(field('nick_name').querySelector('input'), 'ari')
     await user.type(field('email_local').querySelector('input'), 'ari.employee')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+    await screen.findByText('Available')
     await user.type(field('recovery_email').querySelector('input'), 'ari.pribadi@gmail.com')
     await user.click(screen.getByRole('button', { name: 'Select Gender' }))
     await user.click(screen.getByRole('option', { name: 'Male' }))
@@ -161,6 +167,7 @@ describe('Employee create and edit pages', () => {
     const fetchMock = createFetchRouter([
       ...formOptionRoutes(),
       ...formSuggestionRoutes(),
+      { path: /email-availability/, response: jsonResponse({ data: { available: true, reason: 'FREE', message: 'Available' } }) },
       { path: '/api/admin/employees', method: 'POST', response: jsonResponse({ data: { id: 'employee-new', identity: { email: 'ari.employee@millennia21.id' }, google: { status: 'FAILED', outcome: 'failed', message: 'Google refused the request' } } }) },
     ])
     globalThis.fetch = fetchMock
@@ -171,6 +178,8 @@ describe('Employee create and edit pages', () => {
     await user.type(field('full_name').querySelector('input'), 'ari employee')
     await user.type(field('nick_name').querySelector('input'), 'ari')
     await user.type(field('email_local').querySelector('input'), 'ari.employee')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+    await screen.findByText('Available')
     await user.type(field('recovery_email').querySelector('input'), 'ari.pribadi@gmail.com')
     await user.click(screen.getByRole('button', { name: 'Select Gender' }))
     await user.click(screen.getByRole('option', { name: 'Male' }))
@@ -204,6 +213,7 @@ describe('Employee create and edit pages', () => {
     const fetchMock = createFetchRouter([
       ...formOptionRoutes(),
       ...formSuggestionRoutes(),
+      { path: /email-availability/, response: jsonResponse({ data: { available: true, reason: 'FREE', message: 'Available' } }) },
       { path: '/api/admin/employees/employee-1/sensitive-fields/access', method: 'POST', response: jsonResponse({ data: {} }) },
       {
         path: '/api/admin/employees/employee-1',

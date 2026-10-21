@@ -31,6 +31,9 @@ function renderEmployeeForm({
     if (url.includes('/identifier-change-requests/mine')) {
       return new Response(JSON.stringify({ data: myRequests, paging: { current_page: 1, total_page: 1, total_item: myRequests.length, size: 20 }, unseen_decided_count: 0 }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
+    if (url.includes('/email-availability')) {
+      return jsonResponse({ available: true, reason: 'FREE', message: 'Available' })
+    }
     if (url.includes('/education-suggestions')) {
       return jsonResponse({ institution_names: [], majors: [] })
     }
@@ -96,6 +99,8 @@ describe('EmployeeForm', () => {
     await user.type(field('email_local').querySelector('input'), 'ari.employee!')
     // The symbol is not accepted in the first place.
     expect(field('email_local').querySelector('input').value).toBe('ari.employee')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+    await screen.findByText('Available')
     await user.type(field('recovery_email').querySelector('input'), 'Ari+Pribadi@Gmail.com')
     expect(field('recovery_email').querySelector('input').value).toBe('ari+pribadi@gmail.com')
     await chooseSelect(user, 'Select Gender', 'Male')
@@ -142,11 +147,22 @@ describe('EmployeeForm', () => {
     const { user, onSubmit } = renderEmployeeForm({ mode: 'create' })
     await user.type(field('full_name').querySelector('input'), 'ari employee')
     await user.type(field('email_local').querySelector('input'), 'ari.employee')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+    await screen.findByText('Available')
     fireEvent.submit(document.querySelector('form'))
     expect(await screen.findByText('Recovery email is required.')).toBeVisible()
 
     await user.type(field('recovery_email').querySelector('input'), 'ari@millennia21.id')
     expect(await screen.findByText(/personal address/)).toBeVisible()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('keeps the form from saving a new email until it is checked', async () => {
+    const { user, onSubmit } = renderEmployeeForm({ mode: 'create' })
+    await user.type(field('email_local').querySelector('input'), 'ari.employee')
+    expect(screen.getByText('Check the email before saving.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Create employee' })).toBeDisabled()
+    fireEvent.submit(document.querySelector('form'))
     expect(onSubmit).not.toHaveBeenCalled()
   })
 

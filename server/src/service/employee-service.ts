@@ -1221,6 +1221,10 @@ export class EmployeeService {
       updateRequest.employee_id &&
       updateRequest.employee_id !== existingEmployee.employee_id;
 
+    if (emailChanged) {
+      await GoogleWorkspaceService.assertCanChangeEmail(existingEmployee.person_id, updateRequest.email!);
+    }
+
     if (emailChanged || empIdChanged) {
       const conditions: Array<{
         email?: string;

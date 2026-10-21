@@ -253,6 +253,17 @@ export class GoogleWorkspaceService {
     }
   }
 
+  // A person with a Google account gets that account renamed with their email, so the new address has to be free there.
+  // Someone with no account has nothing to rename and is not asked.
+  static async assertCanChangeEmail(personId: string, newEmail: string): Promise<void> {
+    const person = await prismaClient.person.findUnique({ where: { id: personId }, select: { google_user_id: true } });
+    if (!person?.google_user_id) return;
+    const check = await this.checkEmailAvailable(newEmail);
+    if (check.reason === "IN_GOOGLE" || check.reason === "DELETED_IN_GOOGLE" || check.reason === "NOT_ALLOWED") {
+      throw new ResponseError(400, check.message);
+    }
+  }
+
   // Link the account that is already in Google, or make one. Safe to run again: the lookup comes first.
   static async provision(
     personId: string,

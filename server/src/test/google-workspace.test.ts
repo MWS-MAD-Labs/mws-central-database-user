@@ -384,6 +384,42 @@ describe("google workspace accounts", () => {
     expect(google.updated[0].patch).toMatchObject({ givenName: "Rizqi Putra", familyName: "Baru" });
   });
 
+  describe("changing the email of someone with a Google account", () => {
+    const put = (token: string, id: string, email: string) =>
+      TestRequest.patch(`/api/admin/employees/${id}`, { email }, token);
+
+    it("refuses an email Google already has, and lets a free one through", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken);
+      google.users.set("taken", {
+        id: "taken", primaryEmail: "test_google_taken@millennia21.id", givenName: "A", familyName: "B",
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+      const refused = await put(accessToken, json.data.id, "test_google_taken@millennia21.id");
+      expect(refused.status).toBe(400);
+      expect((await personOf(json.data.id)).email).not.toBe("test_google_taken@millennia21.id");
+
+      const allowed = await put(accessToken, json.data.id, "test_google_renamed_ok@millennia21.id");
+      expect(allowed.status).toBe(200);
+    });
+
+    it("does not ask Google about someone who has no account", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const person = await EmployeeTest.create({
+        email: "test_google_nolink2@millennia21.id",
+        unitId: master.unit.id,
+        jobPositionId: master.position.id,
+        jobLevelId: master.level.id,
+        buildingId: master.building.id,
+      });
+      google.users.set("taken2", {
+        id: "taken2", primaryEmail: "test_google_taken2@millennia21.id", givenName: "A", familyName: "B",
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+      expect((await put(accessToken, person.employee!.id, "test_google_taken2@millennia21.id")).status).toBe(200);
+    });
+  });
+
   describe("reset password", () => {
     it("gives a Super Admin a new password once, and keeps it out of the audit log", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
