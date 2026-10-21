@@ -127,15 +127,16 @@ const majorResource = {
 // Master data about the work people do lives in one tab with its own sub tabs, so a new list goes there and the
 // sidebar stays short. The old links (?tab=job-positions and so on) open the right sub tab.
 const EMPLOYMENT_SECTIONS = [
+  { id: 'units', label: 'Units' },
+  { id: 'buildings', label: 'Buildings' },
   { id: 'job-positions', label: 'Job Positions' },
   { id: 'job-levels', label: 'Job Levels' },
   { id: 'education', label: 'Education' },
   { id: 'children-allowance', label: 'Children Allowance' },
 ]
-const LEGACY_EMPLOYMENT_TABS = ['job-positions', 'job-levels', 'education']
 
 function EmploymentTab({ section, onSection }) {
-  const active = EMPLOYMENT_SECTIONS.some((item) => item.id === section) ? section : 'job-positions'
+  const active = EMPLOYMENT_SECTIONS.some((item) => item.id === section) ? section : 'units'
   return (
     <div className="space-y-6">
       <Tabs label="Employment master data" tabs={EMPLOYMENT_SECTIONS} active={active} onChange={onSection} />
@@ -156,9 +157,10 @@ function EmploymentTab({ section, onSection }) {
 export default function MasterData() {
   const [searchParams, setSearchParams] = useSearchParams()
   const rawTab = searchParams.get('tab')
-  const isEmployment = rawTab === 'employment' || LEGACY_EMPLOYMENT_TABS.includes(rawTab)
+  // Employment is the first tab, so a bare /master-data opens it, and the old links (?tab=units and so on) open
+  // their sub tab.
+  const isPcActivities = rawTab === 'pc-activities'
   const section = rawTab === 'employment' ? searchParams.get('section') : rawTab
-  const activeResource = resources.find((resource) => resource.id === rawTab) || resources[0]
 
   return (
     <div className="min-w-0">
@@ -167,13 +169,13 @@ export default function MasterData() {
         description="Manage reusable data lists that are stored in the database and referenced across employee and admin workflows."
       />
 
-      {isEmployment ? (
+      {!isPcActivities ? (
         <EmploymentTab
           section={section}
           onSection={(next) => setSearchParams({ tab: 'employment', section: next })}
         />
       ) : (
-        <MasterResourcePanel resource={activeResource} />
+        <MasterResourcePanel resource={resources.find((resource) => resource.id === 'pc-activities')} />
       )}
     </div>
   )

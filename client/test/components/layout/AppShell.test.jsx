@@ -72,7 +72,7 @@ describe('AppShell', () => {
     expect(screen.getByRole('button', { name: 'Master Data' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Access' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Refresh all data' })).toBeVisible()
-    expect(screen.getByRole('link', { name: 'Units' })).toHaveAttribute('href', '/master-data?tab=units')
+    expect(screen.getByRole('link', { name: 'Employment' })).toHaveAttribute('href', '/master-data?tab=employment')
     expect(screen.getByText('Super Admin')).toBeVisible()
 
     const sidebar = document.querySelector('aside')

@@ -5,7 +5,7 @@ Branch `release/employee-children`, cut from `main`. Staging carries Application
 ## What is in
 
 - Children allowance rule: a Super Admin sets the most children that count, the age limit, and which kinds of child count, under Master Data > Employment > Children Allowance. Changes are written to the audit log.
-- Master Data has a new Employment tab with sub tabs (Job Positions, Job Levels, Education, Children Allowance). The old `?tab=job-positions`, `?tab=job-levels` and `?tab=education` links still open the right sub tab.
+- Master Data has a new Employment tab with sub tabs (Units, Buildings, Job Positions, Job Levels, Education, Children Allowance). The old `?tab=units`, `?tab=buildings`, `?tab=job-positions`, `?tab=job-levels` and `?tab=education` links still open the right sub tab.
 - Employee children: the table, the rules, the sensitive handling (written with employee PII access, released on reveal), the form block with birth dates or typed numbers, the detail page, and the export columns.
 - The newest UI: shared components (tabs, sensitive toggle, filter toolbar, number and date fields, text and icon buttons, list popovers), the toolbar layout on every list page, Title Case labels, and the Employees, Interns, Students, Academic, Master Data, Workspace, Dashboard, Access and Change Requests pages.
 - The small server parts those pages need: input limits (`constants/limits.ts` and the validations that use it), the unit filter on job levels and positions, the capacity scope filter on positions, `enrolled_academic_year_id` on the student list, and the candidate filter when assigning class teachers.

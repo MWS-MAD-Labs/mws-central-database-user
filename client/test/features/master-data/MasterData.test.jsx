@@ -199,7 +199,7 @@ describe('MasterData', () => {
       ...extra,
     ]
 
-    it('opens Job Positions first and moves between the sub tabs', async () => {
+    it('opens Units first and moves between the sub tabs', async () => {
       const routes = [
         { path: /^\/api\/admin\/job-positions\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'jp-1', name: 'Teacher Aide' }])) },
         { path: /^\/api\/admin\/job-levels\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'jl-1', name: 'Supervisor' }])) },
@@ -207,6 +207,9 @@ describe('MasterData', () => {
         ...ruleRoutes(),
       ]
       const { user } = renderPage({ route: '/master-data?tab=employment', routes })
+      expect(await screen.findByText('Elementary')).toBeVisible()
+      expect(screen.getByRole('tab', { name: 'Units' })).toHaveAttribute('aria-selected', 'true')
+      await user.click(screen.getByRole('tab', { name: 'Job Positions' }))
       expect(await screen.findByText('Teacher Aide')).toBeVisible()
       await user.click(screen.getByRole('tab', { name: 'Job Levels' }))
       expect(await screen.findByText('Supervisor')).toBeVisible()

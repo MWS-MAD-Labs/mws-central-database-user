@@ -1,7 +1,6 @@
 import {
   BookOpen,
   BriefcaseBusiness,
-  Building2,
   CalendarDays,
   ChevronDown,
   ClipboardCheck,
@@ -13,7 +12,6 @@ import {
   Layers3,
   LayoutDashboard,
   LogOut,
-  MapPinned,
   Menu,
   PanelLeftClose,
   Puzzle,
@@ -133,21 +131,15 @@ export function AppShell() {
           label: "Master Data",
           icon: Database,
           children: [
-            { to: "/master-data?tab=units", label: "Units", icon: Building2 },
             {
-              to: "/master-data?tab=buildings",
-              label: "Buildings",
-              icon: MapPinned,
+              to: "/master-data?tab=employment",
+              label: "Employment",
+              icon: BriefcaseBusiness,
             },
             {
               to: "/master-data?tab=pc-activities",
               label: "PC Activities",
               icon: Puzzle,
-            },
-            {
-              to: "/master-data?tab=employment",
-              label: "Employment",
-              icon: BriefcaseBusiness,
             },
           ],
         },
