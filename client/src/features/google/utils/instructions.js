@@ -103,8 +103,8 @@ export function recoveryEmailProblem(recoveryEmail, accountEmail, emailProblem) 
 // are named as such.
 export function recoveryHint(recoveryEmail, problem, domain) {
   const value = (recoveryEmail || '').trim()
-  if (!value || problem) return 'Google sends the reset code there. Use a mailbox the person can open.'
+  if (!value || problem) return 'Google sends the reset code here.'
   return value.toLowerCase().endsWith(`@${domain}`)
-    ? 'An organization mailbox. The code goes straight to it.'
-    : 'Check the spelling. The code goes straight to this address and nobody confirms it.'
+    ? 'An organization mailbox. Check the spelling.'
+    : 'Check the spelling. Nobody confirms it.'
 }

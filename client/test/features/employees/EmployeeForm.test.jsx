@@ -103,7 +103,7 @@ describe('EmployeeForm', () => {
     await screen.findByText('Available')
     await user.type(field('recovery_email').querySelector('input'), 'Ari+Pribadi@Gmail.com')
     expect(field('recovery_email').querySelector('input').value).toBe('ari+pribadi@gmail.com')
-    expect(screen.getByText('Check the spelling. The code goes straight to this address and nobody confirms it.')).toBeVisible()
+    expect(screen.getByText('Check the spelling. Nobody confirms it.')).toBeVisible()
     await chooseSelect(user, 'Select Gender', 'Male')
     await chooseSelect(user, 'Select Religion', 'Islam')
     await user.type(field('birth_place').querySelector('input'), 'jakarta')
@@ -158,7 +158,7 @@ describe('EmployeeForm', () => {
     // Another mailbox of the organization is a fine place for the code to go.
     const recovery = field('recovery_email').querySelector('input')
     await user.type(recovery, 'colleague@millennia21.id')
-    expect(await screen.findByText('An organization mailbox. The code goes straight to it.')).toBeVisible()
+    expect(await screen.findByText('An organization mailbox. Check the spelling.')).toBeVisible()
 
     // The account's own address is not.
     await user.clear(recovery)
