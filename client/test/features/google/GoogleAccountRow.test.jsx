@@ -17,6 +17,23 @@ function setup(statusData, extraRoutes = []) {
 }
 
 describe('GoogleAccountRow', () => {
+  it('keeps the password and recovery email actions off for a deleted account, with the reason', async () => {
+    setup(status({ status: 'MISSING', last_error: 'Deleted in Google, can be restored for about 20 days' }))
+    await screen.findByText('Deleted in Google')
+    for (const name of ['Make temporary password', 'Change recovery email']) {
+      const button = screen.getByRole('button', { name })
+      expect(button).toBeDisabled()
+      expect(button).toHaveAttribute('title', 'Restore the account first.')
+    }
+    expect(screen.getByRole('button', { name: 'Restore Google account' })).toBeEnabled()
+    expect(screen.getByText(/Use Restore, then check again/)).toBeVisible()
+  })
+
+  it('tells an admin who cannot restore to ask a Super Admin', async () => {
+    setup(status({ status: 'MISSING', last_error: 'Deleted in Google, can be restored for about 20 days', can: { create: true, manage: false, takeover: false } }))
+    expect(await screen.findByText(/Ask a Super Admin to restore it/)).toBeVisible()
+  })
+
   const only = (can) => status({ can: { create: false, manage: false, takeover: false, ...can } })
   const buttonNames = () => screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))
 
@@ -36,7 +53,7 @@ describe('GoogleAccountRow', () => {
     setup(status())
     await screen.findByText('Linked')
     expect(buttonNames()).toEqual([
-      'Sign-in instructions', 'Suspend Google account', 'Check Google again', 'Change recovery email', 'Reset Google password',
+      'Sign-in instructions', 'Suspend Google account', 'Check Google again', 'Change recovery email', 'Make temporary password',
     ])
   })
 
@@ -58,7 +75,7 @@ describe('GoogleAccountRow', () => {
   it('hides the ways to open the account for someone who left', async () => {
     setup(status({ status: 'SUSPENDED', locked: true, locked_reason: 'RESIGNED', last_error: 'Suspended in Google after RESIGNED' }))
     expect(await screen.findByText(/Locked because the person left \(RESIGNED\)/)).toBeVisible()
-    for (const name of ['Unsuspend Google account', 'Reset Google password', 'Change recovery email', 'Sign-in instructions', 'Create Google account']) {
+    for (const name of ['Unsuspend Google account', 'Make temporary password', 'Change recovery email', 'Sign-in instructions', 'Create Google account']) {
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
     }
     expect(screen.getByRole('button', { name: 'Check Google again' })).toBeVisible()
@@ -123,7 +140,7 @@ describe('GoogleAccountRow', () => {
   it('shows a deleted account and how to bring it back', async () => {
     setup(status({ status: 'MISSING', last_error: 'Deleted in Google, can be restored for about 20 days', password_state: null }))
     expect(await screen.findByText('Deleted in Google')).toBeVisible()
-    expect(screen.getByText(/Can be restored for about 20 days. Restore it in the Admin Console, then check again/)).toBeVisible()
+    expect(screen.getByText(/Can be restored for about 20 days. Use Restore, then check again/)).toBeVisible()
   })
 
   it('counts down the days left to restore a deleted account', async () => {
@@ -171,7 +188,7 @@ describe('GoogleAccountRow', () => {
   it('shows a linked account with the reset button only', async () => {
     setup(status())
     expect(await screen.findByText('Linked')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Reset Google password' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Make temporary password' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Create Google account' })).not.toBeInTheDocument()
   })
 
@@ -198,9 +215,9 @@ describe('GoogleAccountRow', () => {
     const { user } = setup(status(), [
       { path: '/api/admin/employees/e1/google/reset-password', method: 'POST', response: jsonResponse({ data: { password: 'Abcd1234Efgh5678' } }) },
     ])
-    await user.click(await screen.findByRole('button', { name: 'Reset Google password' }))
-    const confirmDialog = await screen.findByRole('dialog', { name: 'Reset Google Password' })
-    await user.click(within(confirmDialog).getByRole('button', { name: 'Reset' }))
+    await user.click(await screen.findByRole('button', { name: 'Make temporary password' }))
+    const confirmDialog = await screen.findByRole('dialog', { name: 'Make Temporary Password' })
+    await user.click(within(confirmDialog).getByRole('button', { name: 'Make' }))
 
     const result = await screen.findByRole('dialog', { name: 'Temporary Password' })
     expect(within(result).getByText('Abcd1234Efgh5678')).toBeVisible()

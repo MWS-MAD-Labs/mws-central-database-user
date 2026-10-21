@@ -135,6 +135,8 @@ export function GoogleAccountRow({ resource, id, email }) {
   const deleted = status.status === "MISSING" && Boolean(status.last_error?.startsWith("Deleted"));
   const can = status.can ?? {};
   const unlinkedInGoogle = !status.linked && status.in_google;
+  // The account is deleted or gone in Google, so there is nothing to change until it is restored.
+  const gone = status.status === "MISSING";
   const badge = deleted
     ? { tone: "red", label: "Deleted in Google" }
     : unlinkedInGoogle
@@ -167,7 +169,7 @@ export function GoogleAccountRow({ resource, id, email }) {
         ) : null}
         {deleted ? (
           <span className="w-full text-xs text-[#a43c41]">
-            {restoreNote(status)} Restore it in the Admin Console, then check again.
+            {restoreNote(status)} {can.manage ? "Use Restore, then check again." : "Ask a Super Admin to restore it."}
           </span>
         ) : null}
         {note ? (
@@ -218,13 +220,14 @@ export function GoogleAccountRow({ resource, id, email }) {
               <RefreshCw size={15} />
             </Button>
           ) : null}
-          {can.takeover && status.linked && !locked && status.status !== "MISSING" ? (
+          {can.takeover && status.linked && !locked ? (
             <Button
               type="button"
               variant="ghost"
               size="icon"
               aria-label="Change recovery email"
-              title="Change recovery email"
+              title={gone ? "Restore the account first." : "Change recovery email"}
+              disabled={gone}
               onClick={() => {
                 setRecoveryEmail("");
                 setDialog("recovery");
@@ -238,8 +241,9 @@ export function GoogleAccountRow({ resource, id, email }) {
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Reset Google password"
-              title="Reset Google password"
+              aria-label="Make temporary password"
+              title={gone ? "Restore the account first." : "Make temporary password"}
+              disabled={gone}
               onClick={() => setDialog("confirm")}
             >
               <KeyRound size={15} />
@@ -430,8 +434,8 @@ export function GoogleAccountRow({ resource, id, email }) {
 
       {dialog === "confirm" ? (
         <CrudDialog
-          title="Reset Google Password"
-          description="A new temporary password is made and shown once. The person must change it at their next sign in."
+          title="Make Temporary Password"
+          description="A temporary password is made and shown once. The person must change it at their next sign in."
           panelClassName="max-w-lg"
           onClose={() => setDialog(null)}
           footer={
@@ -440,7 +444,7 @@ export function GoogleAccountRow({ resource, id, email }) {
                 Cancel
               </Button>
               <Button type="button" loading={reset.isPending} onClick={() => reset.mutate()}>
-                Reset
+                Make
               </Button>
             </>
           }

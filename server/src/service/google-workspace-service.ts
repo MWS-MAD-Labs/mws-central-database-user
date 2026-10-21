@@ -332,6 +332,10 @@ export class GoogleWorkspaceService {
     if (!person.google_user_id) {
       return { status: person.google_sync_status, google_user_id: null, outcome: "unchanged" };
     }
+    // Deleted in Google: nothing to rename. Restoring the account renames it to what Central holds then.
+    if (person.google_sync_status === GoogleSyncStatus.MISSING) {
+      return { status: person.google_sync_status, google_user_id: person.google_user_id, outcome: "unchanged" };
+    }
     assertAllowedTarget(person.email);
     const client = getDirectoryClient();
 
@@ -339,9 +343,14 @@ export class GoogleWorkspaceService {
       const { givenName, familyName } = splitName(person.full_name);
       const user = await client.updateUser(person.google_user_id, { primaryEmail: person.email, givenName, familyName });
       await assertNotLinkedElsewhere(user.id, person.id);
-      await markStatus(person.id, GoogleSyncStatus.ACTIVE, { google_user_id: user.id, user });
+      const status = user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE;
+      await markStatus(person.id, status, {
+        google_user_id: user.id,
+        user,
+        error: user.suspended ? "Suspended in Google" : null,
+      });
       await record("GOOGLE_ACCOUNT_UPDATE", person, options.admin, options.context ?? {}, { mode: client.mode });
-      return { status: GoogleSyncStatus.ACTIVE, google_user_id: user.id, outcome: "updated" };
+      return { status, google_user_id: user.id, outcome: "updated" };
     } catch (error) {
       logger.error(`Google update failed for person ${person.id}`, error);
       const message = messageOf(error);
@@ -361,6 +370,7 @@ export class GoogleWorkspaceService {
     if (!person.google_user_id) {
       throw new ResponseError(404, "This person has no Google account yet. Create it first");
     }
+    this.assertNotMissing(person);
     await this.assertNotLocked(personId);
     const client = getDirectoryClient();
     const password = generateTemporaryPassword();
@@ -410,6 +420,13 @@ export class GoogleWorkspaceService {
       return { locked: false, reason: intern.status };
     }
     return person.deleted_at ? { locked: true, reason: "ARCHIVED" } : { locked: false, reason: "ACTIVE" };
+  }
+
+  // Nothing can be changed on an account that is deleted in Google until it is restored.
+  private static assertNotMissing(person: Pick<Person, "google_sync_status">): void {
+    if (person.google_sync_status === GoogleSyncStatus.MISSING) {
+      throw new ResponseError(400, "The account is deleted in Google. Restore it first");
+    }
   }
 
   // The rule that a person who left keeps a locked account, whatever is asked from Central.
@@ -511,6 +528,7 @@ export class GoogleWorkspaceService {
     const person = await load(personId);
     assertAllowedTarget(person.email);
     if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet");
+    this.assertNotMissing(person);
     await this.assertNotLocked(personId);
     const client = getDirectoryClient();
     try {
@@ -548,9 +566,11 @@ export class GoogleWorkspaceService {
       const status = user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE;
       await markStatus(person.id, status, { user, error: user.suspended ? "Suspended in Google" : null });
       await record("GOOGLE_ACCOUNT_RESTORE", person, admin, context, { mode: client.mode });
+      // The email or name may have changed in Central while the account was deleted.
+      const synced = await this.syncProfile(person.id, { admin, context });
       // Someone who left gets the account back locked.
       await this.syncAccess(person.id, { admin, context });
-      return { status, google_user_id: user.id, outcome: "updated" };
+      return synced.status === GoogleSyncStatus.FAILED ? synced : { status, google_user_id: user.id, outcome: "updated" };
     } catch (error) {
       if (error instanceof ResponseError) throw error;
       logger.error(`Google restore failed for person ${person.id}`, error);
@@ -568,6 +588,7 @@ export class GoogleWorkspaceService {
     const person = await load(personId);
     assertAllowedTarget(person.email);
     if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet");
+    this.assertNotMissing(person);
     if (!suspended) await this.assertNotLocked(personId);
     const client = getDirectoryClient();
     try {

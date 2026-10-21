@@ -40,9 +40,13 @@ The key is a secret. Keep it out of Git and out of chat, and make a new one if i
 |---|---|---|
 | Create | Super Admin, or a Database Admin who may write employees in the person's unit | Create or Link the account, see the sign-in instructions |
 | Manage | Super Admin | Suspend, Unsuspend, Restore, Check Google again, see the recovery email hidden, link existing accounts |
-| Takeover | Protected Super Admin (`PROTECTED_SUPER_ADMIN_EMAILS`) | Reset Google password, Change recovery email |
+| Takeover | Protected Super Admin (`PROTECTED_SUPER_ADMIN_EMAILS`) | Make temporary password, Change recovery email |
 
 The page asks the server what the admin may do and shows only those buttons.
+
+## Deleted in Google
+
+Until the account is restored, Make temporary password, Change recovery email, Suspend and Unsuspend are off, in the page and on the server. The email of the person can still be changed in Central (it has to pass the check); the Google account is not touched, and Restore renames it to the email and name Central holds at that moment. A person who forgot their password and has no usable recovery email gets a temporary password from **Make temporary password**, shown once.
 
 ## Checking an email
 
@@ -75,7 +79,7 @@ Central only reads here, it never blocks anyone because of it.
 
 With `GOOGLE_SUSPEND_ON_OFFBOARD=true` (off by default), Central suspends the Google account of anyone who resigns (also when the last working date passes), is archived, or is an intern who completed or was terminated. It opens the account again only when Central was the one that suspended it, for instance after a restore. On Leave and Inactive keep their account. Nothing is ever deleted by Central: move the Drive and Calendar data in the Admin Console, then delete there.
 
-- While a person is locked, Central refuses Unsuspend, Reset password, Change recovery email and Create account for them.
+- While a person is locked, Central refuses Unsuspend, Make temporary password, Change recovery email and Create account for them.
 - An account turned on again directly in Google is locked again by the hourly status check, or when the detail page is opened. There is up to an hour of delay: Google sends no event to Central. Near real time would need the Reports API (another scope).
 - Suspending is recorded in the audit log with the reason, and `reactivated_in_google` when it was undone in Google.
 

@@ -420,6 +420,52 @@ describe("google workspace accounts", () => {
     });
   });
 
+  describe("an account that is deleted in Google", () => {
+    const deleteInGoogle = async (token: string) => {
+      const { json } = await create(token);
+      const person = await personOf(json.data.id);
+      const user = google.users.get(person.google_user_id!)!;
+      google.users.delete(user.id);
+      google.deleted.set(user.id, { ...user, deletionTime: new Date() });
+      await TestRequest.get(`/api/admin/employees/${json.data.id}/google?refresh=true`, token);
+      return { id: json.data.id as string, person, user };
+    };
+
+    it("refuses a temporary password, a recovery email and suspending until it is restored", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id } = await deleteInGoogle(accessToken);
+      const base = `/api/admin/employees/${id}/google`;
+      for (const [path, body] of [
+        ["reset-password", {}],
+        ["recovery-email", { recovery_email: "a@gmail.com" }],
+        ["suspend", {}],
+        ["unsuspend", {}],
+      ] as const) {
+        const response = await TestRequest.post(`${base}/${path}`, body, accessToken);
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(await response.json())).toContain("Restore it first");
+      }
+      expect(google.passwords).toHaveLength(0);
+    });
+
+    it("lets the email change in Central without touching Google, and restoring renames the account", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { id, person, user } = await deleteInGoogle(accessToken);
+      const updatesBefore = google.updated.length;
+
+      const changed = await TestRequest.patch(`/api/admin/employees/${id}`, { email: "test_google_afterdelete@millennia21.id" }, accessToken);
+      expect(changed.status).toBe(200);
+      expect(google.updated).toHaveLength(updatesBefore);
+      expect((await personOf(id)).google_sync_status).toBe(GoogleSyncStatus.MISSING);
+
+      const restored = await TestRequest.post(`/api/admin/employees/${id}/google/restore`, {}, accessToken);
+      expect(restored.status).toBe(200);
+      expect(google.users.get(user.id)!.primaryEmail).toBe("test_google_afterdelete@millennia21.id");
+      expect((await personOf(id)).google_sync_status).toBe(GoogleSyncStatus.ACTIVE);
+      expect(person.id).toBeTruthy();
+    });
+  });
+
   describe("accounts that were in Google before Central", () => {
     const gUser = (id: string, email: string, over: Partial<DirectoryUser> = {}): DirectoryUser => ({
       id, primaryEmail: email, givenName: "A", familyName: "B", suspended: false, isAdmin: false,
