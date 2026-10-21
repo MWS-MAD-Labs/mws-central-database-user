@@ -564,6 +564,39 @@ describe("google workspace accounts", () => {
       expect(google.created).toHaveLength(0);
     });
 
+    it("counts only working accounts as linked, and says which addresses it could not look at", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const ok = await unlinked("test_google_cok@millennia21.id");
+      const gone = await unlinked("test_google_cgone@millennia21.id");
+      const broken = await unlinked("test_google_cbroken@millennia21.id");
+      await unlinked("dummystaff@millennia21.id");
+      await unlinked("test_google_cnone@millennia21.id");
+      await prismaClient.person.update({ where: { id: ok.id }, data: { google_user_id: "g-ok", google_sync_status: GoogleSyncStatus.ACTIVE } });
+      await prismaClient.person.update({ where: { id: gone.id }, data: { google_user_id: "g-gone", google_sync_status: GoogleSyncStatus.MISSING } });
+      await prismaClient.person.update({ where: { id: broken.id }, data: { google_sync_status: GoogleSyncStatus.FAILED } });
+
+      const data = (await (await TestRequest.get("/api/admin/google/link-existing", accessToken)).json()).data;
+      expect(data).toMatchObject({ linked_total: 1, missing: 1, failed: 1, suspended: 0, not_checked: 1, not_in_google: 2 });
+    });
+
+    it("removes links the simulated Google made, once the real one is used", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const person = await unlinked("asdasd@millennia21.id");
+      await prismaClient.person.update({
+        where: { id: person.id },
+        data: { google_user_id: "simulated-1", google_sync_status: GoogleSyncStatus.ACTIVE, google_synced_at: new Date() },
+      });
+      const status = await readStatus(accessToken, person.employee!.id);
+      expect(status).toMatchObject({ linked: false, status: GoogleSyncStatus.NONE });
+      expect(status.lookup.state).toBe("blocked");
+      expect((await personOf(person.employee!.id)).google_user_id).toBeNull();
+
+      // The simulated Google keeps its own links.
+      setDirectoryClientForTests(new SimulatedDirectoryClient());
+      await prismaClient.person.update({ where: { id: person.id }, data: { google_user_id: "simulated-2", google_sync_status: GoogleSyncStatus.ACTIVE } });
+      expect((await readStatus(accessToken, person.employee!.id)).linked).toBe(true);
+    });
+
     it("is for Super Admins and needs the real Google", async () => {
       const plain = await AdminUserTest.createDatabaseAdmin(master.unit.id);
       expect((await TestRequest.get("/api/admin/google/link-existing", plain.accessToken)).status).toBe(403);

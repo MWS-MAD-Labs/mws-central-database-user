@@ -65,6 +65,8 @@ For a person with no link, the row says what Central could find out about the em
 | admin | Workspace Admin | A Workspace admin account, not managed from Central |
 | failed | Not Checked | Google did not answer. Press **Check Google** |
 
+The Google Accounts tab counts **Linked** as the working accounts only. Suspended, Deleted In Google and Failed have their own tiles, and **Not Checked** counts the people whose address Central may not look up from here. Links with an id like `simulated-1` come from the simulated Google; they are removed as soon as the real Google is used, so those people read as having no account.
+
 On a development machine with the test prefix set, a real person such as `dummystaff@` shows **Not Checked**. To try Link there, use a person whose email starts with the prefix and already exists in Google. In production (no prefix) the same person shows **In Google**.
 
 A person made before the Google accounts has no link, even when their email is already a Google account. The row then says **In Google** with a **Link** button that needs no recovery email. Master Data > Employment > Google Accounts shows how everyone stands and links all the matches at once, after a preview. Workspace admins and addresses outside the allowed prefix are left out.

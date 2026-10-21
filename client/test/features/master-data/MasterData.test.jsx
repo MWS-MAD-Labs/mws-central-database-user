@@ -290,6 +290,7 @@ describe('MasterData', () => {
       skipped: { admin: 1, linked_elsewhere: 0, not_allowed: 0 },
       unlinked_total: 5,
       not_in_google: 2,
+      not_checked: 4,
       linked_total: 9,
       failed: 1,
       suspended: 3,
@@ -305,6 +306,8 @@ describe('MasterData', () => {
       expect(await screen.findByText('In Google, Not Linked')).toBeVisible()
       expect(screen.getByText('Linked')).toBeVisible()
       expect(screen.getByText(/1 Workspace admin/)).toBeVisible()
+      expect(screen.getByText('Not Checked')).toBeVisible()
+      expect(screen.getByText(/may not look up from here/)).toBeVisible()
       expect(screen.getByRole('button', { name: 'Link' })).toBeEnabled()
     })
 

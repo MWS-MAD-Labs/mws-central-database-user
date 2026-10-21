@@ -15,6 +15,7 @@ const EMPTY = {
   skipped: { admin: 0, linked_elsewhere: 0, not_allowed: 0 },
   linked_total: 0,
   not_in_google: 0,
+  not_checked: 0,
   failed: 0,
   suspended: 0,
   missing: 0,
@@ -90,11 +91,12 @@ export function GoogleAccountsCard() {
           <>
             <div className="grid gap-3 sm:grid-cols-3">
               <Tile label="Linked" value={view.linked_total} />
-              <Tile label="In Google, Not Linked" value={matches.length} />
-              <Tile label="Not In Google" value={view.not_in_google} />
-              <Tile label="Failed" value={view.failed} />
               <Tile label="Suspended" value={view.suspended} />
               <Tile label="Deleted In Google" value={view.missing} />
+              <Tile label="Failed" value={view.failed} />
+              <Tile label="In Google, Not Linked" value={matches.length} />
+              <Tile label="Not In Google" value={view.not_in_google} />
+              <Tile label="Not Checked" value={view.not_checked ?? 0} />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm text-(--mws-muted)">
@@ -116,10 +118,16 @@ export function GoogleAccountsCard() {
                 Link
               </Button>
             </div>
-            {skipped.admin + skipped.linked_elsewhere + skipped.not_allowed > 0 ? (
+            {(view.not_checked ?? 0) > 0 ? (
+              <p className="text-xs text-(--mws-muted)">
+                Not Checked are the people whose address Central may not look up from here. Outside production only addresses
+                starting with the test prefix are sent to Google.
+              </p>
+            ) : null}
+            {skipped.admin + skipped.linked_elsewhere > 0 ? (
               <p className="text-xs text-(--mws-muted)">
                 Left out: {skipped.admin} Workspace {skipped.admin === 1 ? 'admin' : 'admins'},{' '}
-                {skipped.linked_elsewhere} already linked to someone else, {skipped.not_allowed} not allowed here.
+                {skipped.linked_elsewhere} already linked to someone else.
               </p>
             ) : null}
           </>

@@ -672,6 +672,7 @@ export class GoogleWorkspaceService {
   static async refreshAllStatuses(): Promise<number> {
     const client = getDirectoryClient();
     if (client.mode === "simulated") return 0;
+    await this.clearSimulatedLinks();
     const linked = await prismaClient.person.findMany({
       where: {
         deleted_at: null,
@@ -722,6 +723,28 @@ export class GoogleWorkspaceService {
     return changed;
   }
 
+  // The simulated Google hands out ids like "simulated-1". They are not Google accounts, and in the real Google they
+  // can never exist. Where the real Google is used, such a link is removed so the person reads as having no account.
+  static async clearSimulatedLinks(): Promise<number> {
+    if (getDirectoryClient().mode !== "google") return 0;
+    const { count } = await prismaClient.person.updateMany({
+      where: { google_user_id: { startsWith: "simulated-" } },
+      data: {
+        google_user_id: null,
+        google_sync_status: GoogleSyncStatus.NONE,
+        google_last_error: null,
+        google_synced_at: null,
+        google_checked_at: null,
+        google_password_pending: null,
+        google_password_issued_at: null,
+        google_last_login_at: null,
+        google_suspended_by_central: false,
+      },
+    });
+    if (count > 0) logger.warn(`Removed ${count} Google link(s) made by the simulated Google`);
+    return count;
+  }
+
   // What Central can say about an unlinked person's email in Google. Not asking is not the same as "not there", so the
   // answer tells which it was: found, absent, simulated (this environment cannot ask), blocked (Central may not reach
   // that address from here, with the reason), admin (a Workspace admin, not managed here) or failed (Google did not answer).
@@ -755,6 +778,7 @@ export class GoogleWorkspaceService {
     if (client.mode === "simulated") {
       throw new ResponseError(400, "Linking needs the real Google. This environment only simulates it");
     }
+    await this.clearSimulatedLinks();
     const [people, users] = await Promise.all([
       prismaClient.person.findMany({
         where: { deleted_at: null, google_user_id: null, person_type: { in: [PersonType.EMPLOYEE, PersonType.INTERN] } },
@@ -773,21 +797,26 @@ export class GoogleWorkspaceService {
     const matches: { person_id: string; full_name: string; email: string; person_type: PersonType }[] = [];
     const skipped = { admin: 0, linked_elsewhere: 0, not_allowed: 0 };
     const found = new Map<string, DirectoryUser>();
+    let notInGoogle = 0;
     for (const person of people) {
+      // An address Central may not reach from here is not looked at, so nothing is known about it.
+      try {
+        assertAllowedTarget(person.email);
+      } catch {
+        skipped.not_allowed += 1;
+        continue;
+      }
       const user = byEmail.get(person.email.toLowerCase());
-      if (!user) continue;
+      if (!user) {
+        notInGoogle += 1;
+        continue;
+      }
       if (user.isAdmin) {
         skipped.admin += 1;
         continue;
       }
       if (linkedElsewhere.has(user.id)) {
         skipped.linked_elsewhere += 1;
-        continue;
-      }
-      try {
-        assertAllowedTarget(person.email);
-      } catch {
-        skipped.not_allowed += 1;
         continue;
       }
       matches.push({ person_id: person.id, full_name: person.full_name, email: person.email, person_type: person.person_type });
@@ -813,23 +842,30 @@ export class GoogleWorkspaceService {
       }
     }
 
-    const states = await prismaClient.person.groupBy({
-      by: ["google_sync_status"],
-      where: { deleted_at: null, google_user_id: { not: null }, person_type: { in: [PersonType.EMPLOYEE, PersonType.INTERN] } },
-      _count: true,
-    });
-    const count = (status: GoogleSyncStatus) => states.find((row) => row.google_sync_status === status)?._count ?? 0;
+    const staff = { deleted_at: null, person_type: { in: [PersonType.EMPLOYEE, PersonType.INTERN] } };
+    const count = (status: GoogleSyncStatus, linkedOnly: boolean) =>
+      prismaClient.person.count({
+        where: { ...staff, google_sync_status: status, ...(linkedOnly ? { google_user_id: { not: null } } : {}) },
+      });
+    const [active, suspended, missing, failed] = await Promise.all([
+      count(GoogleSyncStatus.ACTIVE, true),
+      count(GoogleSyncStatus.SUSPENDED, true),
+      count(GoogleSyncStatus.MISSING, true),
+      count(GoogleSyncStatus.FAILED, false),
+    ]);
     return {
       applied: options.link,
       linked,
       matches,
       skipped,
       unlinked_total: people.length,
-      not_in_google: people.length - matches.length - skipped.admin - skipped.linked_elsewhere - skipped.not_allowed,
-      linked_total: states.reduce((sum, row) => sum + row._count, 0),
-      failed: count(GoogleSyncStatus.FAILED),
-      suspended: count(GoogleSyncStatus.SUSPENDED),
-      missing: count(GoogleSyncStatus.MISSING),
+      not_in_google: notInGoogle,
+      not_checked: skipped.not_allowed,
+      // Only the accounts that work. Suspended, deleted and failed ones are counted on their own.
+      linked_total: active,
+      failed,
+      suspended,
+      missing,
     };
   }
 
@@ -854,6 +890,9 @@ export class GoogleWorkspaceService {
       });
     let person = await read();
     if (!person) throw new ResponseError(404, "Person not found");
+    if (person.google_user_id?.startsWith("simulated-") && (await this.clearSimulatedLinks()) > 0) {
+      person = (await read()) ?? person;
+    }
     const stale = !person.google_checked_at || Date.now() - person.google_checked_at.getTime() > STATUS_FRESH_MS;
     if (person.google_user_id && (options.refresh || stale)) {
       await this.refreshStatus(personId);
