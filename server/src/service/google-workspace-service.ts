@@ -32,7 +32,8 @@ export { passwordStateOf, PASSWORD_PENDING_WARN_DAYS };
 export const restorableUntil = (deletedAt: Date): Date => new Date(deletedAt.getTime() + RESTORE_WINDOW_DAYS * 86_400_000);
 
 function deletedMessage(deletedAt?: Date | null): string {
-  const left = deletedAt ? Math.max(Math.ceil((restorableUntil(deletedAt).getTime() - Date.now()) / 86_400_000), 0) : null;
+  const utcDay = (date: Date) => Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  const left = deletedAt ? Math.max(Math.round((utcDay(restorableUntil(deletedAt)) - utcDay(new Date())) / 86_400_000), 0) : null;
   const when = left === null ? "less than 20 days ago" : `${RESTORE_WINDOW_DAYS - left} days ago`;
   const wait = left === null ? "" : `, and the address is free again in about ${left} ${left === 1 ? "day" : "days"}`;
   return `This email belongs to a Google account that was deleted ${when}, so it cannot be reused yet${wait}. Use another address, or restore that account in the Admin Console if it is the same person`;

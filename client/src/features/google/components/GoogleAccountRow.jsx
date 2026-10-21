@@ -40,10 +40,15 @@ function lookupLine(lookup) {
 const formatDay = (value) =>
   new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
-// Google keeps a deleted account for 20 days. Counts down from the day it reports.
+const dayStart = (value) => {
+  const date = new Date(value);
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+};
+
+// Google keeps a deleted account for 20 days. Counts calendar days, so it agrees with the date shown next to it.
 function restoreNote(status) {
   if (!status.restorable_until) return "Can be restored for about 20 days.";
-  const left = Math.ceil((new Date(status.restorable_until).getTime() - Date.now()) / 86_400_000);
+  const left = Math.round((dayStart(status.restorable_until) - dayStart(Date.now())) / 86_400_000);
   if (left <= 0) return "The restore period ends today.";
   return `Can be restored for ${left} more ${left === 1 ? "day" : "days"}, until ${formatDay(status.restorable_until)}.`;
 }

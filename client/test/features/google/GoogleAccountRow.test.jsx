@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, setSystemTime } from 'bun:test'
 import { screen, waitFor, within } from '@testing-library/react'
 import { GoogleAccountRow } from '../../../src/features/google/components/GoogleAccountRow.jsx'
 import { renderWithProviders } from '../../helpers/render.jsx'
@@ -205,10 +205,21 @@ describe('GoogleAccountRow', () => {
   })
 
   it('counts down the days left to restore a deleted account', async () => {
-    const until = new Date(Date.now() + 12 * 86_400_000 - 3_600_000).toISOString()
+    const today = new Date()
+    const until = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 12, 12).toISOString()
     setup(status({ status: 'MISSING', last_error: 'Deleted in Google, can be restored for about 20 days', restorable_until: until }))
     expect(await screen.findByText(/Can be restored for 12 more days, until/)).toBeVisible()
     expect(screen.queryByText(/^Deleted in Google, can be restored/)).not.toBeInTheDocument()
+  })
+
+  it('counts calendar days, so the number agrees with the date beside it', async () => {
+    setSystemTime(new Date(2026, 9, 21, 10, 0))
+    try {
+      setup(status({ status: 'MISSING', last_error: 'Deleted in Google, can be restored for about 20 days', restorable_until: new Date(2026, 10, 9, 23, 0).toISOString() }))
+      expect(await screen.findByText(/Can be restored for 19 more days, until 9 Nov 2026/)).toBeVisible()
+    } finally {
+      setSystemTime()
+    }
   })
 
   it('shows an account that is not in Google at all, and one that is suspended', async () => {
