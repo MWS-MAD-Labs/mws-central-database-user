@@ -40,6 +40,7 @@ internRouter.get("/:id/google", GoogleAccountController.status("intern"));
 internRouter.post("/:id/google/provision", GoogleAccountController.provision("intern"));
 internRouter.post("/:id/google/reset-password", GoogleAccountController.resetPassword("intern"));
 internRouter.post("/:id/google/send-sign-in", GoogleAccountController.sendSignIn("intern"));
+internRouter.get("/:id/google/recovery-hint", GoogleAccountController.recoveryHint("intern"));
 internRouter.post("/:id/google/restore", GoogleAccountController.restore("intern"));
 internRouter.post("/:id/google/suspend", GoogleAccountController.suspend("intern", true));
 internRouter.post("/:id/google/unsuspend", GoogleAccountController.suspend("intern", false));

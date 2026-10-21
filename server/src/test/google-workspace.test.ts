@@ -296,6 +296,39 @@ describe("google workspace accounts", () => {
       expect(mailer.outbox).toHaveLength(0);
     });
 
+    it("sends to the recovery email Google holds when no address is given, without the browser ever having it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      const response = await TestRequest.post(
+        `/api/admin/employees/${account.id}/google/send-sign-in`,
+        { language: "id", password: account.password },
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+      expect(JSON.stringify(await response.json())).not.toContain("pribadi.owner");
+      expect(mailer.outbox).toHaveLength(1);
+      expect(mailer.outbox[0].to).toBe("pribadi.owner@gmail.com");
+      const entries = await prismaClient.auditLog.findMany({ where: { action: AuditAction.GOOGLE_SIGNIN_EMAILED } });
+      expect(JSON.stringify(entries)).not.toContain("pribadi.owner@gmail.com");
+    });
+
+    it("says so, and sends nothing, when Google has no recovery email and no address was given", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      const person = await personOf(account.id);
+      google.users.set(person.google_user_id!, { ...google.users.get(person.google_user_id!)!, recoveryEmail: null });
+      const response = await TestRequest.post(
+        `/api/admin/employees/${account.id}/google/send-sign-in`,
+        { language: "id", password: account.password },
+        accessToken,
+      );
+      expect(response.status).toBe(409);
+      expect((await response.json()).errors).toContain("no recovery email");
+      expect(mailer.outbox).toHaveLength(0);
+      // An address typed by the admin still works.
+      expect((await send(account.id, accessToken, { password: account.password })).status).toBe(200);
+    });
+
     it("is for the admins who may create the account", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const account = await made(accessToken);
@@ -1285,6 +1318,66 @@ describe("google workspace accounts", () => {
       const entries = await prismaClient.auditLog.findMany({ where: { action: AuditAction.GOOGLE_ACCOUNT_UPDATE } });
       expect(JSON.stringify(entries)).not.toContain("baru.pribadi");
       expect(JSON.stringify(entries)).toContain("recovery_email_changed");
+    });
+
+    describe("hint and adding one", () => {
+      const withoutRecovery = async (token: string) => {
+        const { json } = await create(token);
+        const person = await personOf(json.data.id);
+        google.users.set(person.google_user_id!, { ...google.users.get(person.google_user_id!)!, recoveryEmail: null });
+        return { id: json.data.id as string, googleId: person.google_user_id! };
+      };
+
+      it("gives the admin who may create the account only a hidden hint, or null", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+        await AdminUserTest.delete();
+        const dbAdmin = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+        const hint = await TestRequest.get(`/api/admin/employees/${json.data.id}/google/recovery-hint`, dbAdmin.accessToken);
+        expect(hint.status).toBe(200);
+        expect(hint.headers.get("cache-control")).toBe("no-store");
+        expect((await hint.json()).data).toEqual({ hint: "r***@gmail.com" });
+      });
+
+      it("returns null when the account has none, and turns away an admin who may not create", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const none = await withoutRecovery(accessToken);
+        expect((await (await TestRequest.get(`/api/admin/employees/${none.id}/google/recovery-hint`, accessToken)).json()).data).toEqual({ hint: null });
+        await AdminUserTest.delete();
+        const noWrite = await AdminUserTest.createDatabaseAdmin(master.unit.id, { canWriteEmployeeData: false });
+        expect((await TestRequest.get(`/api/admin/employees/${none.id}/google/recovery-hint`, noWrite.accessToken)).status).toBe(403);
+      });
+
+      it("lets whoever may create the account add one when it is empty, but not replace one that is there", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const none = await withoutRecovery(accessToken);
+        await AdminUserTest.delete();
+        const dbAdmin = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+        const url = `/api/admin/employees/${none.id}/google/recovery-email`;
+        expect((await TestRequest.post(url, { recovery_email: "baru.pribadi@gmail.com" }, dbAdmin.accessToken)).status).toBe(200);
+        expect(google.users.get(none.googleId)!.recoveryEmail).toBe("baru.pribadi@gmail.com");
+        const entries = await prismaClient.auditLog.findMany({ where: { action: AuditAction.GOOGLE_ACCOUNT_UPDATE } });
+        expect(JSON.stringify(entries)).toContain("recovery_email_set");
+        expect(JSON.stringify(entries)).not.toContain("baru.pribadi");
+
+        // Now there is one: replacing it is for the protected Super Admins only.
+        const second = await TestRequest.post(url, { recovery_email: "lain@gmail.com" }, dbAdmin.accessToken);
+        expect(second.status).toBe(403);
+        expect(google.users.get(none.googleId)!.recoveryEmail).toBe("baru.pribadi@gmail.com");
+        await AdminUserTest.delete();
+        const protectedAdmin = await AdminUserTest.createSuperAdmin(master.unit.id);
+        expect((await TestRequest.post(url, { recovery_email: "lain@gmail.com" }, protectedAdmin.accessToken)).status).toBe(200);
+        expect(google.users.get(none.googleId)!.recoveryEmail).toBe("lain@gmail.com");
+      });
+
+      it("refuses the account's own address as the one to add", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const none = await withoutRecovery(accessToken);
+        const own = (await personOf(none.id)).email;
+        await AdminUserTest.delete();
+        const dbAdmin = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+        expect((await TestRequest.post(`/api/admin/employees/${none.id}/google/recovery-email`, { recovery_email: own }, dbAdmin.accessToken)).status).toBe(400);
+      });
     });
 
     it("refuses a non Super Admin and someone without an account", async () => {

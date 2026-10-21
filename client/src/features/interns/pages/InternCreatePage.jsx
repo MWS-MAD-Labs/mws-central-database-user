@@ -82,7 +82,6 @@ export function InternCreatePage() {
             name={ready.name}
             email={ready.email}
             password={ready.password}
-            defaultTo={ready.recovery}
             onClose={() => navigate(`/interns/${ready.id}`)}
           />
         ) : (

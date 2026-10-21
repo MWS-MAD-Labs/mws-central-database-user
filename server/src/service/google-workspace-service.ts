@@ -437,7 +437,7 @@ export class GoogleWorkspaceService {
   // lately, so this cannot be used to mail out text for an account that is already in use.
   static async sendSignInEmail(
     personId: string,
-    input: { to: string; language: SignInLanguage; password: string },
+    input: { to?: string; language: SignInLanguage; password: string },
     admin: Pick<AdminUser, "id">,
     context: AuditRequestContext = {},
   ): Promise<{ sent: true }> {
@@ -458,9 +458,14 @@ export class GoogleWorkspaceService {
     });
     if (!person) throw new ResponseError(404, "Person not found");
     assertAllowedTarget(person.email);
-    this.assertRecoveryIsNotOwn(input.to, person.email);
     if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet. Create it first");
     await this.assertNotLocked(personId);
+    // Without an address the mail goes to the recovery email Google holds, which this server reads and never returns.
+    const to = input.to ?? (await this.recoveryEmailInGoogle(person.google_user_id, person.id));
+    if (!to) {
+      throw new ResponseError(409, "This account has no recovery email. Add one, or send to another address");
+    }
+    this.assertRecoveryIsNotOwn(to, person.email);
     const issued = person.google_password_issued_at;
     if (!person.google_password_pending || !issued || Date.now() - issued.getTime() > SIGNIN_EMAIL_WINDOW_MS) {
       throw new ResponseError(409, "The first sign-in details can only be sent for a new account that has not signed in yet");
@@ -469,12 +474,12 @@ export class GoogleWorkspaceService {
 
     const { subject, text } = signInEmail(input.language, { name: person.full_name, email: person.email, password: input.password });
     try {
-      await mailer.send({ to: input.to, subject, text });
+      await mailer.send({ to, subject, text });
     } catch (error) {
       logger.error(`Sign-in email failed for person ${person.id}`, error);
       throw new ResponseError(502, "The email could not be sent. Check the address and try again");
     }
-    await record("GOOGLE_SIGNIN_EMAILED", person, admin, context, { to: maskEmail(input.to), language: input.language });
+    await record("GOOGLE_SIGNIN_EMAILED", person, admin, context, { to: maskEmail(to), language: input.language });
     return { sent: true };
   }
 
@@ -602,12 +607,28 @@ export class GoogleWorkspaceService {
     }
   }
 
-  // Sent to Google and nowhere else: Central does not keep it, and the audit entry only says it changed.
+  // The whole recovery email, for the server alone: it is used as the place to send the first sign-in details and is
+  // never returned to a browser. null when Google has none.
+  private static async recoveryEmailInGoogle(googleUserId: string, personId: string): Promise<string | null> {
+    try {
+      const user = await getDirectoryClient().findUser(googleUserId);
+      if (!user) throw new ResponseError(404, "The account is not in Google Workspace any more");
+      return user.recoveryEmail?.trim() || null;
+    } catch (error) {
+      if (error instanceof ResponseError) throw error;
+      logger.error(`Google recovery email read failed for person ${personId}`, error);
+      throw new ResponseError(502, messageOf(error));
+    }
+  }
+
+  // Sent to Google and nowhere else: Central does not keep it, and the audit entry only says it changed. With
+  // `onlyIfEmpty` it refuses an account that already has one, which only a protected Super Admin may replace.
   static async changeRecoveryEmail(
     personId: string,
     recoveryEmail: string,
     admin: Pick<AdminUser, "id">,
     context: AuditRequestContext = {},
+    options: { onlyIfEmpty?: boolean } = {},
   ): Promise<void> {
     const person = await load(personId);
     assertAllowedTarget(person.email);
@@ -620,13 +641,19 @@ export class GoogleWorkspaceService {
       const current = await client.findUser(person.google_user_id);
       if (!current) throw new ResponseError(404, "The account is not in Google Workspace any more");
       if (current.isAdmin) throw new ResponseError(400, "A Workspace admin is not managed from here");
+      if (options.onlyIfEmpty && current.recoveryEmail?.trim()) {
+        throw new ResponseError(403, "Forbidden: this account already has a recovery email. Only a protected Super Admin can change it");
+      }
       await client.setRecoveryEmail(person.google_user_id, recoveryEmail);
     } catch (error) {
       if (error instanceof ResponseError) throw error;
       logger.error(`Google recovery email change failed for person ${person.id}`, error);
       throw new ResponseError(502, messageOf(error));
     }
-    await record("GOOGLE_ACCOUNT_UPDATE", person, admin, context, { mode: client.mode, recovery_email_changed: true });
+    await record("GOOGLE_ACCOUNT_UPDATE", person, admin, context, {
+      mode: client.mode,
+      ...(options.onlyIfEmpty ? { recovery_email_set: true } : { recovery_email_changed: true }),
+    });
   }
 
   // Brings back the person's own account that was deleted in Google, inside the 20 days. Only the account linked to

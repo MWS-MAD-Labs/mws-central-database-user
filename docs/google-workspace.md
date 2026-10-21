@@ -106,7 +106,7 @@ With `GOOGLE_SUSPEND_ON_OFFBOARD=true` (off by default), Central suspends the Go
 
 ## Sending the first sign-in details
 
-A new account is made with a temporary password (16 characters). The dialog that opens right after, **Share Sign-in Details**, shows it once (hidden until Show) with a message ready to paste into WhatsApp: "Halo {name}, ..." in Bahasa Indonesia or English, editable before Copy Message. **Send Email** mails the same details to an address the admin types (usually the recovery email, which Central does not keep, so it is prefilled only right after creating the account). Make Temporary Password opens the same dialog. Closing it without copying or sending asks first, because the password cannot be shown again.
+A new account is made with a temporary password (16 characters). The dialog that opens right after, **Share Sign-in Details**, shows it once (hidden until Show) with a message ready to paste into WhatsApp: "Halo {name}, ..." in Bahasa Indonesia or English, editable before Copy Message. While the password is hidden it is hidden in the message too (dots, read-only); Show reveals both and lets the admin edit the message. Copy Message always copies the real text. **Send Email** mails the same details, by default to the account's recovery email: the server reads it from Google and sends there, the browser only sees it hidden (`b***@gmail.com`). The admin can choose another address instead. An account with no recovery email says so and offers Add Recovery Email. Make Temporary Password opens the same dialog. Closing it without copying or sending asks first, because the password cannot be shown again.
 
 The server only mails for an account that still waits for its first password and was issued in the last 48 hours, to an address that is not the account's own, and at most 20 mails an hour per admin.
 
@@ -125,7 +125,7 @@ Use a mailbox made for this, not an admin's own. In development run Mailpit (`do
 
 ## Recovery email
 
-The recovery email lives only in Google, so "Forgot password" sends its code there. A Super Admin can see it hidden (`b***@gmail.com`) and change it from the Google account row. The new address goes to Google and is not kept in Central or the audit log. If the person cannot use any recovery email, Reset Google password gives a temporary password without it. Self-service recovery must be on in the Admin Console (Security, Account recovery), otherwise Reset in Central is the only way.
+The recovery email lives only in Google, so "Forgot password" sends its code there. A Super Admin can see it hidden (`b***@gmail.com`) and the admin who may make the account sees the same hint. Whoever may make the account can **add** one when the account has none (older accounts); replacing one that is there stays with the protected Super Admins. The new address goes to Google and is not kept in Central or the audit log. If the person cannot use any recovery email, Reset Google password gives a temporary password without it. Self-service recovery must be on in the Admin Console (Security, Account recovery), otherwise Reset in Central is the only way.
 
 ## Not done yet
 

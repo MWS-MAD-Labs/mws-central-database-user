@@ -92,7 +92,6 @@ export function EmployeeCreatePage() {
             name={ready.name}
             email={ready.email}
             password={ready.password}
-            defaultTo={ready.recovery}
             onClose={() => navigate(`/employees/${ready.id}`)}
           />
         ) : (

@@ -17,7 +17,7 @@ type Kind = "employee" | "intern";
 const PROVISION = z.object({ recovery_email: recoveryEmail().optional() });
 const CHANGE_RECOVERY = z.object({ recovery_email: recoveryEmail() });
 const SEND_SIGN_IN = z.object({
-  to: recoveryEmail(),
+  to: recoveryEmail().optional(),
   language: z.enum(["id", "en"]),
   password: z.string().min(8).max(64),
 });
@@ -151,14 +151,34 @@ export class GoogleAccountController {
     };
   }
 
+  // A recovery email that is missing may be added by whoever may make the account; replacing one that is there can take
+  // the account over, so that stays with the protected Super Admins.
   static changeRecoveryEmail(kind: Kind) {
     return async (c: Context<{ Variables: AdminVariables }>) => {
-      assertProtectedSuperAdmin(c, "change a recovery email");
-      const personId = await personIdOf(kind, c.req.param("id"));
+      const target = await targetOf(kind, c.req.param("id"));
+      const protectedAdmin = isProtected(c.var.admin);
+      if (!protectedAdmin) await assertCanCreate(c, target);
       const body = await c.req.json().catch(() => ({}));
       const { recovery_email } = Validation.validate(CHANGE_RECOVERY, body);
-      await GoogleWorkspaceService.changeRecoveryEmail(personId, recovery_email, c.var.admin, getAuditRequestContext(c));
+      await GoogleWorkspaceService.changeRecoveryEmail(
+        target.personId,
+        recovery_email,
+        c.var.admin,
+        getAuditRequestContext(c),
+        { onlyIfEmpty: !protectedAdmin },
+      );
       return c.json({ data: true });
+    };
+  }
+
+  // Where the sign-in details would go, hidden ("b***@gmail.com"), or null when the account has no recovery email.
+  static recoveryHint(kind: Kind) {
+    return async (c: Context<{ Variables: AdminVariables }>) => {
+      const target = await targetOf(kind, c.req.param("id"));
+      await assertCanCreate(c, target);
+      const { recovery_email } = await GoogleWorkspaceService.recoveryEmailOf(target.personId);
+      c.header("Cache-Control", "no-store");
+      return c.json({ data: { hint: recovery_email } });
     };
   }
 }

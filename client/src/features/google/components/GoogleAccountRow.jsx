@@ -95,7 +95,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
       queryClient.invalidateQueries({ queryKey });
       setDialog(null);
       if (result.temporary_password) {
-        setIssued({ password: result.temporary_password, to: recoveryEmail.trim() });
+        setIssued({ password: result.temporary_password });
         setDialog("share");
       }
       setRecoveryEmail("");
@@ -108,7 +108,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
   const reset = useMutation({
     mutationFn: () => googleAccountApi.resetPassword(resource, id),
     onSuccess: (result) => {
-      setIssued({ password: result.password, to: "" });
+      setIssued({ password: result.password });
       setDialog("share");
     },
     onError: (error) => showErrorToast(error, "Password was not reset."),
@@ -123,13 +123,22 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
     gcTime: 0,
   });
   const currentRecovery = recoveryQuery.data?.recovery_email ?? "";
+  // Who may make the account may also add a recovery email when there is none, so they need to know whether there is.
+  const hintQuery = useQuery({
+    queryKey: ["google-recovery-hint", resource, id],
+    queryFn: () => googleAccountApi.recoveryHint(resource, id),
+    enabled: Boolean(status?.can?.create) && Boolean(status?.linked) && status?.status === "ACTIVE" && !status?.locked,
+    staleTime: 0,
+  });
+  const noRecovery = hintQuery.isSuccess && hintQuery.data.hint === null;
 
   const changeRecovery = useMutation({
     mutationFn: () => googleAccountApi.changeRecoveryEmail(resource, id, recoveryEmail.trim()),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["google-recovery-hint", resource, id] });
       setDialog(null);
       setRecoveryEmail("");
-      showSuccessToast("Recovery email changed.");
+      showSuccessToast(noRecovery ? "Recovery email added." : "Recovery email changed.");
     },
     onError: (error) => showErrorToast(error, "Recovery email was not changed."),
   });
@@ -266,13 +275,13 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
               <RefreshCw size={15} />
             </Button>
           ) : null}
-          {can.takeover && status.linked && !locked ? (
+          {(can.takeover || (can.create && noRecovery)) && status.linked && !locked ? (
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Change recovery email"
-              title={gone ? "Restore the account first." : "Change recovery email"}
+              aria-label={noRecovery ? "Add recovery email" : "Change recovery email"}
+              title={gone ? "Restore the account first." : noRecovery ? "Add recovery email" : "Change recovery email"}
               disabled={gone}
               onClick={() => {
                 setRecoveryEmail("");
@@ -402,7 +411,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
 
       {dialog === "recovery" ? (
         <CrudDialog
-          title="Change Recovery Email"
+          title={noRecovery ? "Add Recovery Email" : "Change Recovery Email"}
           description="Google sends the reset code here. The address goes to Google only and is not kept in Central."
           panelClassName="max-w-lg"
           onClose={() => setDialog(null)}
@@ -412,17 +421,21 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
                 Cancel
               </Button>
               <Button type="button" loading={changeRecovery.isPending} disabled={Boolean(recoveryProblem)} onClick={() => changeRecovery.mutate()}>
-                Change
+                {noRecovery ? "Add" : "Change"}
               </Button>
             </>
           }
         >
           <div className="space-y-3">
             <p className="text-sm text-(--mws-muted)">
-              {recoveryQuery.isPending ? "Reading from Google..." : currentRecovery ? `Now: ${currentRecovery}` : "No recovery email is set."}
+              {hintQuery.isPending && recoveryQuery.isPending
+                ? "Reading from Google..."
+                : currentRecovery || hintQuery.data?.hint
+                  ? `Now: ${currentRecovery || hintQuery.data.hint}`
+                  : "No recovery email is set."}
             </p>
             <Field
-              label="New Recovery Email"
+              label={noRecovery ? "Recovery Email" : "New Recovery Email"}
               required
               counter={{ value: recoveryEmail, max: 100, count: textLength }}
               error={recoveryEmail.trim() ? recoveryProblem || undefined : undefined}
@@ -515,7 +528,6 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
           name={name}
           email={email}
           password={issued.password}
-          defaultTo={issued.to}
           title="Share Sign-in Details"
           onClose={closeShare}
         />

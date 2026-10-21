@@ -118,6 +118,7 @@ describe('Employee create and edit pages', () => {
       { path: /email-availability/, response: jsonResponse({ data: { available: true, reason: 'FREE', message: 'Available' } }) },
       { path: '/api/admin/employees', method: 'POST', response: jsonResponse({ data: { id: 'employee-new', identity: { full_name: 'Ari Employee', email: 'ari.employee@millennia21.id' }, google: { status: 'ACTIVE', outcome: 'created', temporary_password: 'Abcd1234Efgh5678' } } }) },
       { path: '/api/admin/employees/employee-new/google', response: jsonResponse({ data: { email_enabled: true } }) },
+      { path: '/api/admin/employees/employee-new/google/recovery-hint', response: jsonResponse({ data: { hint: 'a***@gmail.com' } }) },
     ])
     globalThis.fetch = fetchMock
     const { user } = renderRoute(<EmployeeCreatePage />, '/employees/new', '/employees/new')
@@ -154,6 +155,8 @@ describe('Employee create and edit pages', () => {
 
     // The new account comes with a temporary password, shown once with a message to pass on.
     const share = await screen.findByRole('dialog', { name: 'Share Sign-in Details' })
+    expect(within(share).getByLabelText('Message').value).not.toContain('Abcd1234Efgh5678')
+    await user.click(within(share).getByRole('button', { name: 'Show' }))
     const message = within(share).getByLabelText('Message').value
     expect(message).toContain('Halo Ari Employee,')
     expect(message).toContain('ari.employee@millennia21.id')

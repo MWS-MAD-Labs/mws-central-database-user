@@ -305,6 +305,18 @@ describe('GoogleAccountRow', () => {
     await waitFor(() => expect(screen.queryByText('Abcd1234Efgh5678')).not.toBeInTheDocument())
   })
 
+  it('lets whoever may make the account add a recovery email when there is none, and only then', async () => {
+    const create = { create: true, manage: false, takeover: false }
+    const none = setup(status({ can: create }), [{ path: '/api/admin/employees/e1/google/recovery-hint', response: jsonResponse({ data: { hint: null } }) }])
+    expect(await screen.findByRole('button', { name: 'Add recovery email' })).toBeVisible()
+    none.unmount()
+
+    setup(status({ can: create }), [{ path: '/api/admin/employees/e1/google/recovery-hint', response: jsonResponse({ data: { hint: 'a***@gmail.com' } }) }])
+    await screen.findByText('Linked')
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Add recovery email' })).not.toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'Change recovery email' })).not.toBeInTheDocument()
+  })
+
   it('sends the recovery email when the account is created', async () => {
     const { user, fetchMock } = setup(status({ linked: false, status: 'NONE' }), [
       { path: '/api/admin/employees/e1/google/provision', method: 'POST', response: jsonResponse({ data: { status: 'ACTIVE', outcome: 'created' } }) },
