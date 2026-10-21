@@ -17,6 +17,53 @@ function setup(statusData, extraRoutes = []) {
 }
 
 describe('GoogleAccountRow', () => {
+  const unlinked = (state, message = null) => status({ linked: false, status: 'NONE', lookup: { state, message } })
+
+  it('says there is no account yet only when Google was asked and had none', async () => {
+    setup(unlinked('absent'))
+    expect(await screen.findByText('Not created')).toBeVisible()
+    expect(screen.getByText('No Google account for this email yet.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Create Google account' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Link Google account' })).not.toBeInTheDocument()
+  })
+
+  it('does not call an address Central may not reach "not created"', async () => {
+    setup(unlinked('blocked', 'Outside production only test addresses starting with "test.central." are sent to Google'))
+    expect(await screen.findByText('Not Checked')).toBeVisible()
+    expect(screen.queryByText('Not created')).not.toBeInTheDocument()
+    expect(screen.getByText(/Outside production only test addresses starting with "test.central." are sent to Google\./)).toBeVisible()
+    const create = screen.getByRole('button', { name: 'Create Google account' })
+    expect(create).toBeDisabled()
+    expect(create).toHaveAttribute('title', expect.stringContaining('test.central.'))
+    expect(screen.queryByRole('button', { name: 'Link Google account' })).not.toBeInTheDocument()
+  })
+
+  it('says a simulated Google cannot tell, and still lets an account be made', async () => {
+    setup(unlinked('simulated', 'Google is only simulated in this environment, so it cannot say if the account exists'))
+    expect(await screen.findByText('Not Checked')).toBeVisible()
+    expect(screen.getByText(/only simulated in this environment/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Create Google account' })).toBeEnabled()
+  })
+
+  it('shows a Workspace admin with no action, and a failed lookup as not checked', async () => {
+    const { unmount } = setup(unlinked('admin', 'A Workspace admin account. Central does not manage it'))
+    expect(await screen.findByText('Workspace Admin')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Create Google account' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Link Google account' })).not.toBeInTheDocument()
+    unmount()
+
+    setup(unlinked('failed', 'Could not reach Google. Try again'))
+    expect(await screen.findByText('Not Checked')).toBeVisible()
+    expect(screen.getByText('Could not reach Google. Try again.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Check Google' })).toBeVisible()
+  })
+
+  it('looks again when Check Google is pressed on a person with no link', async () => {
+    const { user, fetchMock } = setup(unlinked('absent'))
+    await user.click(await screen.findByRole('button', { name: 'Check Google' }))
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/employees/e1/google')).length).toBeGreaterThan(1))
+  })
+
   it('keeps the password and recovery email actions off for a deleted account, with the reason', async () => {
     setup(status({ status: 'MISSING', last_error: 'Deleted in Google, can be restored for about 20 days' }))
     await screen.findByText('Deleted in Google')
@@ -58,7 +105,7 @@ describe('GoogleAccountRow', () => {
   })
 
   it('shows an account that is in Google but not linked, and links it without asking for a recovery email', async () => {
-    const { user, fetchMock } = setup(status({ linked: false, status: 'NONE', in_google: true }), [
+    const { user, fetchMock } = setup(status({ linked: false, status: 'NONE', lookup: { state: 'found', message: null } }), [
       { path: '/api/admin/employees/e1/google/provision', method: 'POST', response: jsonResponse({ data: { status: 'ACTIVE', outcome: 'linked' } }) },
     ])
     expect(await screen.findByText('In Google')).toBeVisible()

@@ -193,6 +193,8 @@ async function load(personId: string): Promise<GooglePerson> {
   return person;
 }
 
+export type GoogleLookupState = "found" | "absent" | "simulated" | "blocked" | "admin" | "failed";
+
 export type EmailAvailability = {
   // False only when the email cannot be used for a new person.
   available: boolean;
@@ -720,18 +722,27 @@ export class GoogleWorkspaceService {
     return changed;
   }
 
-  // Whether Google already has an account for this email that is not an admin's. Asks the real Google only, and only
-  // about addresses Central may manage.
-  static async existsInGoogle(email: string): Promise<boolean> {
+  // What Central can say about an unlinked person's email in Google. Not asking is not the same as "not there", so the
+  // answer tells which it was: found, absent, simulated (this environment cannot ask), blocked (Central may not reach
+  // that address from here, with the reason), admin (a Workspace admin, not managed here) or failed (Google did not answer).
+  static async lookupInGoogle(email: string): Promise<{ state: GoogleLookupState; message: string | null }> {
     const client = getDirectoryClient();
-    if (client.mode === "simulated") return false;
+    if (client.mode === "simulated") {
+      return { state: "simulated", message: "Google is only simulated in this environment, so it cannot say if the account exists" };
+    }
     try {
       assertAllowedTarget(email);
+    } catch (error) {
+      return { state: "blocked", message: error instanceof ResponseError ? error.message : "This address is not sent to Google from here" };
+    }
+    try {
       const user = await client.findUser(email);
-      return Boolean(user) && !user!.isAdmin;
+      if (!user) return { state: "absent", message: null };
+      if (user.isAdmin) return { state: "admin", message: "A Workspace admin account. Central does not manage it" };
+      return { state: "found", message: null };
     } catch (error) {
       logger.error("Google lookup of an unlinked person failed", error);
-      return false;
+      return { state: "failed", message: "Could not reach Google. Try again" };
     }
   }
 
@@ -850,10 +861,11 @@ export class GoogleWorkspaceService {
     }
     const lock = person.google_user_id ? await this.lockState(personId) : null;
     // Someone made before the Google accounts, whose email is already there: not linked, but not missing either.
-    const inGoogle = person.google_user_id ? false : await this.existsInGoogle(person.email);
+    const lookup = person.google_user_id ? null : await this.lookupInGoogle(person.email);
     return {
       linked: Boolean(person.google_user_id),
-      in_google: inGoogle,
+      lookup,
+      in_google: lookup?.state === "found",
       locked: Boolean(lock?.locked),
       locked_reason: lock?.locked ? lock.reason : null,
       status: person.google_sync_status,

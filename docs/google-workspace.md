@@ -54,6 +54,19 @@ A new or changed email has to pass the **Check** button before Create or Save is
 
 ## Accounts that were in Google before Central
 
+For a person with no link, the row says what Central could find out about the email, and "not asking" is never shown as "not there":
+
+| State | Badge | Meaning |
+|---|---|---|
+| found | In Google | The account exists. **Link** it, no recovery email needed |
+| absent | Not created | Google was asked and has none. **Create** it (the recovery email is only needed to make one) |
+| simulated | Not Checked | This environment only simulates Google, so it cannot say |
+| blocked | Not Checked | Central may not reach this address from here. Outside production only addresses starting with `GOOGLE_WORKSPACE_TEST_PREFIX` do, and protected admins never do. Create is off |
+| admin | Workspace Admin | A Workspace admin account, not managed from Central |
+| failed | Not Checked | Google did not answer. Press **Check Google** |
+
+On a development machine with the test prefix set, a real person such as `dummystaff@` shows **Not Checked**. To try Link there, use a person whose email starts with the prefix and already exists in Google. In production (no prefix) the same person shows **In Google**.
+
 A person made before the Google accounts has no link, even when their email is already a Google account. The row then says **In Google** with a **Link** button that needs no recovery email. Master Data > Employment > Google Accounts shows how everyone stands and links all the matches at once, after a preview. Workspace admins and addresses outside the allowed prefix are left out.
 
 ## Rules the code keeps

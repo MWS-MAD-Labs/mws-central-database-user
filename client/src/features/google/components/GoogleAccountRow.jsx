@@ -21,6 +21,22 @@ const BADGES = {
   IN_GOOGLE: { tone: "amber", label: "In Google" },
 };
 
+// How the badge reads for a person with no link, by what the lookup in Google came back with.
+const LOOKUP_BADGES = {
+  found: BADGES.IN_GOOGLE,
+  simulated: { tone: "neutral", label: "Not Checked" },
+  blocked: { tone: "neutral", label: "Not Checked" },
+  failed: { tone: "neutral", label: "Not Checked" },
+  admin: { tone: "neutral", label: "Workspace Admin" },
+};
+
+function lookupLine(lookup) {
+  if (!lookup) return null;
+  if (lookup.state === "found") return "Not linked to this person yet.";
+  if (lookup.state === "absent") return "No Google account for this email yet.";
+  return lookup.message ? `${lookup.message}.` : null;
+}
+
 const formatDay = (value) =>
   new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
@@ -134,14 +150,17 @@ export function GoogleAccountRow({ resource, id, email }) {
   if (!status) return null;
   const deleted = status.status === "MISSING" && Boolean(status.last_error?.startsWith("Deleted"));
   const can = status.can ?? {};
-  const unlinkedInGoogle = !status.linked && status.in_google;
+  // For a person with no link: what Central could find out about the email in Google. Not asking is not "not there".
+  const lookup = status.linked ? null : (status.lookup ?? { state: status.in_google ? "found" : "absent", message: null });
+  const lookupState = lookup?.state ?? null;
   // The account is deleted or gone in Google, so there is nothing to change until it is restored.
   const gone = status.status === "MISSING";
   const badge = deleted
     ? { tone: "red", label: "Deleted in Google" }
-    : unlinkedInGoogle
-      ? BADGES.IN_GOOGLE
+    : lookupState && lookupState !== "absent"
+      ? (LOOKUP_BADGES[lookupState] ?? BADGES.NONE)
       : (BADGES[status.status] ?? BADGES.NONE);
+  const lookupNote = lookupLine(lookup);
   const locked = Boolean(status.locked);
   const note = passwordNote(status);
   const overdue = status.password_state === "OVERDUE" && status.status === "ACTIVE";
@@ -157,7 +176,7 @@ export function GoogleAccountRow({ resource, id, email }) {
           </span>
         ) : null}
         {overdue ? <StatusBadge tone="amber">Password not set</StatusBadge> : null}
-        {unlinkedInGoogle ? <span className="w-full text-xs">Not linked to this person yet.</span> : null}
+        {lookupNote ? <span className="w-full text-xs">{lookupNote}</span> : null}
         {status.status === "FAILED" && status.last_error ? (
           <span className="w-full text-xs text-[#a43c41]">{status.last_error}</span>
         ) : null}
@@ -249,23 +268,35 @@ export function GoogleAccountRow({ resource, id, email }) {
               <KeyRound size={15} />
             </Button>
           ) : null}
-          {can.create && !status.linked && !locked ? (
-            unlinkedInGoogle ? (
-              <Button type="button" variant="ghost" size="icon" aria-label="Link Google account" title="Link Google account" onClick={() => setDialog("link")}>
-                <Link2 size={15} />
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Create Google account"
-                title="Create Google account"
-                onClick={() => setDialog("create")}
-              >
-                <UserPlus size={15} />
-              </Button>
-            )
+          {can.create && !status.linked ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Check Google"
+              title="Check Google"
+              onClick={() => queryClient.invalidateQueries({ queryKey })}
+            >
+              <RefreshCw size={15} />
+            </Button>
+          ) : null}
+          {can.create && !status.linked && !locked && lookupState === "found" ? (
+            <Button type="button" variant="ghost" size="icon" aria-label="Link Google account" title="Link Google account" onClick={() => setDialog("link")}>
+              <Link2 size={15} />
+            </Button>
+          ) : null}
+          {can.create && !status.linked && !locked && (lookupState === "absent" || lookupState === "simulated" || lookupState === "blocked") ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Create Google account"
+              title={lookupState === "blocked" ? (lookup.message ?? "Not available here") : "Create Google account"}
+              disabled={lookupState === "blocked"}
+              onClick={() => setDialog("create")}
+            >
+              <UserPlus size={15} />
+            </Button>
           ) : null}
         </div>
       ) : null}
@@ -273,7 +304,7 @@ export function GoogleAccountRow({ resource, id, email }) {
       {dialog === "create" ? (
         <CrudDialog
           title="Create Google Account"
-          description="The account uses the email of this person. Nobody knows its password: they set it with Forgot password."
+          description="The account uses the email of this person. Nobody knows its password: they set it with Forgot password. The recovery email is only needed to make a new account, not to look for one."
           panelClassName="max-w-lg"
           onClose={() => setDialog(null)}
           footer={

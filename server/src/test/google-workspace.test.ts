@@ -533,6 +533,37 @@ describe("google workspace accounts", () => {
       expect(await prismaClient.auditLog.count({ where: { action: AuditAction.GOOGLE_ACCOUNT_PROVISION } })).toBe(2);
     });
 
+    it("says what it could and could not find out about an unlinked person", async () => {
+      google.users.set("here", gUser("here", "test_google_here@millennia21.id"));
+      google.users.set("boss2", gUser("boss2", "test_google_boss2@millennia21.id", { isAdmin: true }));
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const lookupOf = async (email: string) => (await readStatus(accessToken, (await unlinked(email)).employee!.id)).lookup;
+
+      expect(await lookupOf("test_google_here@millennia21.id")).toMatchObject({ state: "found" });
+      expect(await lookupOf("test_google_nobody@millennia21.id")).toMatchObject({ state: "absent", message: null });
+      expect(await lookupOf("test_google_boss2@millennia21.id")).toMatchObject({ state: "admin" });
+      // Outside the test prefix the address is never sent to Google, so nothing is known about it.
+      const outside = await lookupOf("dummystaff@millennia21.id");
+      expect(outside.state).toBe("blocked");
+      expect(outside.message).toContain("test_google");
+
+      google.findUser = async () => {
+        throw new DirectoryError("FAILED", "down");
+      };
+      expect(await lookupOf("test_google_down@millennia21.id")).toMatchObject({ state: "failed" });
+
+      setDirectoryClientForTests(new SimulatedDirectoryClient());
+      expect(await lookupOf("test_google_sim@millennia21.id")).toMatchObject({ state: "simulated" });
+    });
+
+    it("still refuses to make an account for an address Central may not reach", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const person = await unlinked("dummystaff2@millennia21.id");
+      const response = await TestRequest.post(`/api/admin/employees/${person.employee!.id}/google/provision`, { recovery_email: "a@gmail.com" }, accessToken);
+      expect(response.status).toBe(400);
+      expect(google.created).toHaveLength(0);
+    });
+
     it("is for Super Admins and needs the real Google", async () => {
       const plain = await AdminUserTest.createDatabaseAdmin(master.unit.id);
       expect((await TestRequest.get("/api/admin/google/link-existing", plain.accessToken)).status).toBe(403);
