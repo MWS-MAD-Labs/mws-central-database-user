@@ -3,6 +3,7 @@ import { adminAuthMiddleware } from "../../middleware/admin-auth-middleware";
 import { adminLimiterMiddleware } from "../../middleware/rate-limiter";
 import { employeeRouter } from "./employee-router";
 import { internRouter } from "./intern-router";
+import { employeeSettingsRouter } from "./employee-settings-router";
 import { adminUserRouter } from "./admin-user-router";
 import { apiClientRouter } from "./api-client-router";
 import { workingDayRouter } from "./working-day-router";
@@ -32,6 +33,7 @@ adminRouter.use("*", adminAuthMiddleware);
 
 adminRouter.route("/employees", employeeRouter);
 adminRouter.route("/interns", internRouter);
+adminRouter.route("/employee-settings", employeeSettingsRouter);
 adminRouter.route("/admin-users", adminUserRouter);
 adminRouter.route("/api-clients", apiClientRouter);
 adminRouter.route("/working-days", workingDayRouter);

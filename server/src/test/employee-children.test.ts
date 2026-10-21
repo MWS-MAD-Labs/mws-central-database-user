@@ -207,7 +207,7 @@ describe("employee children", () => {
       where: { action: AuditAction.CREATE_EMPLOYEE, entity_id: body.data.id },
     });
     const text = JSON.stringify(entry.new_values);
-    expect(text).toContain('"total":1');
+    expect(text).toContain('"children":"1 child"');
     expect(text).not.toContain(birth);
   });
 
@@ -222,7 +222,7 @@ describe("employee children", () => {
     expect(await prismaClient.employeeChild.count({ where: { employee_id: id } })).toBe(0);
 
     const entry = await prismaClient.auditLog.findFirstOrThrow({ where: { action: AuditAction.DELETE_EMPLOYEE, entity_id: id } });
-    expect(JSON.stringify(entry.old_values)).toContain('"total":2');
+    expect(JSON.stringify(entry.old_values)).toContain('"children":"2 children"');
     expect(JSON.stringify(entry.old_values)).not.toContain(birth);
   });
 
@@ -331,7 +331,7 @@ describe("employee children", () => {
       const entry = await prismaClient.auditLog.findFirstOrThrow({
         where: { action: AuditAction.CREATE_EMPLOYEE, entity_id: body.data.id },
       });
-      expect(JSON.stringify(entry.new_values)).toContain('"total":2');
+      expect(JSON.stringify(entry.new_values)).toContain('"children":"2 children"');
     });
 
     it("releases the numbers when the employee is archived and shows them in the export", async () => {
@@ -345,6 +345,73 @@ describe("employee children", () => {
       const row = await prismaClient.employee.findUniqueOrThrow({ where: { id } });
       expect(row.children_declared_under_23).toBeNull();
       expect(row.children_declared_at).toBeNull();
+    });
+  });
+
+  describe("allowance rule", () => {
+    const rulePath = "/api/admin/employee-settings/children-allowance";
+    const valid = { max_children: 2, age_limit: 21, count_biological: true, count_adopted: true, count_step: false };
+
+    afterEach(async () => {
+      await prismaClient.childrenAllowanceRule.deleteMany();
+    });
+
+    it("starts with the default rule and shows it to any admin", async () => {
+      const viewer = await AdminUserTest.createViewer(master.unit.id);
+      const response = await TestRequest.get(rulePath, viewer.accessToken);
+      expect(response.status).toBe(200);
+      expect((await response.json()).data).toEqual({ max_children: 3, age_limit: 23, count_biological: true, count_adopted: true, count_step: true });
+    });
+
+    it("is changed by a Super Admin only, and the change is audited", async () => {
+      const plain = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      expect((await TestRequest.put(rulePath, valid, plain.accessToken)).status).toBe(403);
+
+      await AdminUserTest.delete();
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const response = await TestRequest.put(rulePath, valid, accessToken);
+      expect(response.status).toBe(200);
+      expect((await response.json()).data).toEqual(valid);
+      expect((await (await TestRequest.get(rulePath, accessToken)).json()).data).toEqual(valid);
+
+      const entry = await prismaClient.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.UPDATE_MASTER_DATA, entity_type: "ChildrenAllowanceRule" },
+      });
+      expect(entry.old_values).toMatchObject({ max_children: 3 });
+      expect(entry.new_values).toMatchObject({ max_children: 2, count_step: false });
+    });
+
+    it("refuses a rule that makes no sense", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      for (const bad of [
+        { ...valid, max_children: 0 },
+        { ...valid, max_children: 21 },
+        { ...valid, age_limit: 0 },
+        { ...valid, count_biological: false, count_adopted: false, count_step: false },
+      ]) {
+        expect((await TestRequest.put(rulePath, bad, accessToken)).status).toBe(400);
+      }
+      expect((await TestRequest.put(rulePath, { ...valid, max_children: null }, accessToken)).status).toBe(200);
+    });
+
+    it("decides how many children the employee gets the allowance for", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { body } = await create(accessToken, {
+        children: [
+          { birth_date: yearsAgo(3) },
+          { birth_date: yearsAgo(5) },
+          { birth_date: yearsAgo(7), relation: ChildRelation.STEP },
+          { birth_date: yearsAgo(9) },
+        ],
+      });
+      const id = body.data.id as string;
+      expect((await reveal(accessToken, id)).children.summary).toMatchObject({ total: 4, allowance_eligible: 3 });
+
+      await TestRequest.put(rulePath, valid, accessToken);
+      expect((await reveal(accessToken, id)).children.summary).toMatchObject({ total: 4, allowance_eligible: 2 });
+
+      await TestRequest.put(rulePath, { ...valid, max_children: null, count_step: true }, accessToken);
+      expect((await reveal(accessToken, id)).children.summary).toMatchObject({ total: 4, allowance_eligible: 4 });
     });
   });
 });

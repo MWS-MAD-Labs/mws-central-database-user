@@ -82,6 +82,7 @@ import {
   type ExportColumn,
   type PlainExportSheet,
 } from "../utils/export-file";
+import { ChildrenAllowanceRuleService } from "./children-allowance-rule-service";
 import { ExportValidation } from "../validation/export-validation";
 import { Validation } from "../validation/validation";
 
@@ -630,11 +631,12 @@ export class ExportService {
         prismaClient.masterBuilding.findMany({ select: { name: true } }),
       ]);
 
+    const allowanceRule = await ChildrenAllowanceRuleService.get();
     const rows: EmployeeExportRow[] = [];
     for (const person of persons) {
       if (!person.employee) continue;
       const response = includeSensitive
-        ? toEmployeeDetailResponse(person, admin)
+        ? toEmployeeDetailResponse(person, admin, allowanceRule)
         : toEmployeeResponse(person, admin);
       rows.push(toEmployeeExportRow(response));
     }

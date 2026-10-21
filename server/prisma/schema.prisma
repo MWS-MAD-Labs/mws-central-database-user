@@ -832,6 +832,21 @@ model EmployeeChild {
   @@map("employee_children")
 }
 
+// Which children count for the allowance, set by a Super Admin. One row, with the fixed id "default".
+model ChildrenAllowanceRule {
+  id               String   @id @default("default")
+  // The most children that count. Empty means no limit.
+  max_children     Int?
+  // A child counts until the day they reach this age.
+  age_limit        Int      @default(23)
+  count_biological Boolean  @default(true)
+  count_adopted    Boolean  @default(true)
+  count_step       Boolean  @default(true)
+  updated_at       DateTime @updatedAt
+
+  @@map("children_allowance_rules")
+}
+
 model EmployeePcMentorUnit {
   employee_id String
   unit_id     String
@@ -1679,21 +1694,21 @@ enum IdentifierChangeRequestStatus {
 // "Employee" or "Student"; field_name is one of the identifier fields each
 // service's assertIdentifierFieldsEditable already governs.
 model IdentifierChangeRequest {
-  id            String                        @id @default(cuid())
-  entity_type   String
-  entity_id     String
-  field_name    String
-  old_value     String?
-  new_value     String
-  reason        String
-  status        IdentifierChangeRequestStatus @default(PENDING)
-  requested_by  String
-  requester     AdminUser                     @relation("IdentifierChangeRequester", fields: [requested_by], references: [id])
-  requested_at  DateTime                      @default(now())
-  decided_by    String?
-  decider       AdminUser?                    @relation("IdentifierChangeDecider", fields: [decided_by], references: [id])
-  decided_at    DateTime?
-  decision_note String?
+  id                String                        @id @default(cuid())
+  entity_type       String
+  entity_id         String
+  field_name        String
+  old_value         String?
+  new_value         String
+  reason            String
+  status            IdentifierChangeRequestStatus @default(PENDING)
+  requested_by      String
+  requester         AdminUser                     @relation("IdentifierChangeRequester", fields: [requested_by], references: [id])
+  requested_at      DateTime                      @default(now())
+  decided_by        String?
+  decider           AdminUser?                    @relation("IdentifierChangeDecider", fields: [decided_by], references: [id])
+  decided_at        DateTime?
+  decision_note     String?
   // Set when the requester opens their own list after a decision.
   requester_seen_at DateTime?
 

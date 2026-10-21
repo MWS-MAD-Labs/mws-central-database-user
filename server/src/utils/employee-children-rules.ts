@@ -13,6 +13,38 @@ export const ALLOWANCE_AGE_LIMIT = 23;
 // Numbers typed in for a parent who does not share birth dates. They cannot age, so they are reviewed after this long.
 export const COUNTS_REVIEW_AFTER_MONTHS = 12;
 
+// Which children count for the allowance. Set by a Super Admin; these are the values before anyone sets them: the
+// most that tax and BPJS count (3 children), the age the form has always used, and every kind of child.
+export type AllowanceRule = {
+  max_children: number | null;
+  age_limit: number;
+  count_biological: boolean;
+  count_adopted: boolean;
+  count_step: boolean;
+};
+
+export const DEFAULT_ALLOWANCE_RULE: AllowanceRule = {
+  max_children: 3,
+  age_limit: 23,
+  count_biological: true,
+  count_adopted: true,
+  count_step: true,
+};
+
+const relationCounts = (relation: ChildRelation | undefined, rule: AllowanceRule) =>
+  relation === ChildRelation.ADOPTED
+    ? rule.count_adopted
+    : relation === ChildRelation.STEP
+      ? rule.count_step
+      : rule.count_biological;
+
+const capped = (eligible: number, rule: AllowanceRule) =>
+  rule.max_children == null ? eligible : Math.min(eligible, rule.max_children);
+
+// "1 child", "3 children". What the audit log and the review screens say, with no ages and no birth dates.
+export const describeChildCount = (total: number) =>
+  total === 0 ? "No children" : `${total} ${total === 1 ? "child" : "children"}`;
+
 export type ChildrenCounts = { under_23: number; age_23_plus: number; adopted: number };
 
 export type ChildDraft = { birth_date: Date; relation: ChildRelation };
@@ -46,15 +78,19 @@ function addYears(date: Date, years: number): Date {
 }
 
 export function summarizeChildren(
-  children: Pick<ChildDraft, "birth_date">[],
+  children: (Pick<ChildDraft, "birth_date"> & { relation?: ChildRelation })[],
   today: Date = new Date(),
+  rule: AllowanceRule = DEFAULT_ALLOWANCE_RULE,
 ): ChildrenSummary {
   const under = children.filter((child) => ageOn(child.birth_date, today) < ALLOWANCE_AGE_LIMIT).length;
+  const counted = children.filter(
+    (child) => ageOn(child.birth_date, today) < rule.age_limit && relationCounts(child.relation, rule),
+  ).length;
   return {
     total: children.length,
     under_23: under,
     age_23_plus: children.length - under,
-    allowance_eligible: under,
+    allowance_eligible: capped(counted, rule),
   };
 }
 
@@ -106,12 +142,17 @@ export function findChildrenProblems(input: {
   return problems;
 }
 
-export function summarizeCounts(counts: ChildrenCounts): ChildrenSummary {
+// The typed numbers do not say how old the adopted children are, so they are taken from the ones under 23 first.
+// The numbers are split at 23, so a different age limit cannot be told apart here.
+export function summarizeCounts(counts: ChildrenCounts, rule: AllowanceRule = DEFAULT_ALLOWANCE_RULE): ChildrenSummary {
+  const adoptedUnder = Math.min(counts.adopted, counts.under_23);
+  const otherUnder = counts.under_23 - adoptedUnder;
+  const counted = (rule.count_adopted ? adoptedUnder : 0) + (rule.count_biological ? otherUnder : 0);
   return {
     total: counts.under_23 + counts.age_23_plus,
     under_23: counts.under_23,
     age_23_plus: counts.age_23_plus,
-    allowance_eligible: counts.under_23,
+    allowance_eligible: capped(counted, rule),
   };
 }
 
