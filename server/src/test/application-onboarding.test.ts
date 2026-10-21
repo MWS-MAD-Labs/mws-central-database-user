@@ -896,6 +896,7 @@ describe("application onboarding", () => {
           "HUB_CENTRAL_ACCESS_MODE",
           "HUB_CENTRAL_ACCESS_APP_ID",
           "HUB_CENTRAL_ACCESS_BYPASS_EMAILS",
+          "HUB_ACCESS_COOKIE_NAME",
           "HUB_INTERNAL_SECRET",
         ]);
         const byKey = Object.fromEntries(items.map((item) => [item.key, item]));
@@ -1024,7 +1025,7 @@ describe("application onboarding", () => {
 
         expect((await patch({ hub_access_mode: "enforce", hub_bypass_emails: ["Boss@Millennia21.id"] })).status).toBe(200);
         const setup = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
-        expect(setup.env_settings).toEqual({ hub_access_mode: "enforce", hub_bypass_emails: ["boss@millennia21.id"] });
+        expect(setup.env_settings).toEqual({ hub_access_mode: "enforce", hub_bypass_emails: ["boss@millennia21.id"], hub_access_cookie_name: "hub_at" });
 
         expect(setup.env_keys.map((item: { key: string }) => item.key)).toContain("HUB_CENTRAL_ACCESS_MODE");
         expect(setup.env_keys.find((item: { key: string }) => item.key === "CENTRAL_API_TOKEN").secret).toBe(true);
@@ -1033,6 +1034,53 @@ describe("application onboarding", () => {
         expect(lines).toContain('HUB_CENTRAL_ACCESS_MODE="enforce"');
         expect(lines).toContain('HUB_CENTRAL_ACCESS_BYPASS_EMAILS="boss@millennia21.id"');
       });
+    });
+
+    it("sets the cookie name of the shared session once, for the Hub and for the applications that read it", async () => {
+      const shared = `test-cookie-${randomBytes(3).toString("hex")}`;
+      await asHub(async (accessToken) => {
+        await TestRequest.post(`${ACCESS}/applications`, { name: "HUB", is_hub: true, connect: true, hub_base_url: "https://hub.example.com/", hub_secret: "master-secret-0123456789abcdef" }, accessToken);
+        const patch = (body: Record<string, unknown>) =>
+          TestRequest.patch(`${ACCESS}/apps/${appId}/env-settings`, { hub_access_mode: "warn", hub_bypass_emails: [], ...body }, accessToken);
+
+        // Without the name the usual one stays, and bad names are refused.
+        expect((await patch({})).status).toBe(200);
+        const plain = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+        expect(plain.env_settings.hub_access_cookie_name).toBe("hub_at");
+        expect(plain.hub_access_cookie_name).toBe("hub_at");
+        for (const bad of ["", "ab", "has space", "hub_rt", "HUB_SESSION", "a;b"]) {
+          expect((await patch({ hub_access_cookie_name: bad })).status).toBe(400);
+        }
+
+        // An application that reads the shared session.
+        const made = await create(accessToken, { application_id: shared, name: "TEST_Cookie", connect: true });
+        const line = (env: { key: string; line: string }[]) => env.find((item) => item.key === "HUB_ACCESS_COOKIE_NAME")?.line;
+        expect(line((await made.json()).data.connection.env)).toBe('HUB_ACCESS_COOKIE_NAME="hub_at"');
+
+        expect((await patch({ hub_access_cookie_name: "hub_at_stg" })).status).toBe(200);
+        const hub = (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data;
+        expect(hub.env_settings.hub_access_cookie_name).toBe("hub_at_stg");
+        const hubRotated = (await (await TestRequest.post(`${ACCESS}/apps/${appId}/rotate`, { immediate: true }, accessToken)).json()).data;
+        expect(line(hubRotated.env)).toBe('HUB_ACCESS_COOKIE_NAME="hub_at_stg"');
+        // The applications that need the new line are named, with the Hub itself left out.
+        const sharedIds = hub.shared_apps.map((app: { application_id: string }) => app.application_id);
+        expect(sharedIds).toContain(shared);
+        expect(sharedIds).not.toContain(appId);
+
+        const app = (await (await TestRequest.get(`${ACCESS}/apps/${shared}/setup`, accessToken)).json()).data;
+        expect(app.hub_access_cookie_name).toBe("hub_at_stg");
+        expect(app.env_keys.map((item: { key: string }) => item.key)).toContain("HUB_ACCESS_COOKIE_NAME");
+        const appRotated = (await (await TestRequest.post(`${ACCESS}/apps/${shared}/rotate`, { immediate: true }, accessToken)).json()).data;
+        expect(line(appRotated.env)).toBe('HUB_ACCESS_COOKIE_NAME="hub_at_stg"');
+        expect(app.shared_apps).toBeNull();
+
+        const logs = await prismaClient.auditLog.findMany({ where: { entity_type: "Application" } });
+        expect(JSON.stringify(logs.map((log) => log.new_values))).toContain("hub_at_stg");
+      });
+      await prismaClient.applicationRole.deleteMany({ where: { application_id: shared } });
+      await prismaClient.applicationOrganization.deleteMany({ where: { application_id: shared } });
+      await prismaClient.application.deleteMany({ where: { application_id: shared } });
+      await prismaClient.apiClient.deleteMany({ where: { profile: { code: shared } } });
     });
 
     it("has no sign-in settings for an ordinary application", async () => {
@@ -1269,7 +1317,7 @@ describe("application onboarding", () => {
         const body = (await made.json()).data;
         expect(body.connection.hub_lines_missing).toBe(false);
         const keys = body.connection.env.map((item: { key: string }) => item.key);
-        expect(keys).toEqual(["HUB_SSO_APP_ID", "CENTRAL_API_BASE_URL", "CENTRAL_API_TOKEN", "CENTRAL_ORGANIZATION_ID", "HUB_BASE_URL"]);
+        expect(keys).toEqual(["HUB_SSO_APP_ID", "CENTRAL_API_BASE_URL", "CENTRAL_API_TOKEN", "CENTRAL_ORGANIZATION_ID", "HUB_BASE_URL", "HUB_ACCESS_COOKIE_NAME"]);
         expect(keys).not.toContain("HUB_INTERNAL_SECRET");
         expect(keys).not.toContain("HUB_SSO_JWKS_URL");
 
@@ -1291,9 +1339,10 @@ describe("application onboarding", () => {
         expect(movedData.session_mode).toBe("relay");
         // The lines to add come back once, with the secret, and the token is not part of it.
         expect(movedData.env_changes.add.map((item: { key: string }) => item.key)).toEqual(["HUB_BASE_URL", "HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"]);
-        expect(movedData.env_changes.remove).toEqual([]);
+expect(movedData.env_changes.remove).toEqual(["HUB_ACCESS_COOKIE_NAME"]);
         const back = await (await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { session_mode: "shared" }, accessToken)).json();
-        expect(back.data.env_changes).toEqual({ add: [], remove: ["HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"] });
+        expect(back.data.env_changes.add.map((item: { key: string }) => item.key)).toEqual(["HUB_ACCESS_COOKIE_NAME"]);
+        expect(back.data.env_changes.remove).toEqual(["HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"]);
         expect((await (await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { name: "TEST_Shared2" }, accessToken)).json()).data.env_changes).toBeUndefined();
         await TestRequest.patch(`${ACCESS}/apps/${shared}/details`, { session_mode: "relay" }, accessToken);
         // The secret handed out once never reaches the log.

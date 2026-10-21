@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildEnvItems, envText, hubLinesMissing, quoteEnv, resolveHubSettings } from "../utils/application-env";
+import { accessCookieNameProblem, buildEnvItems, envText, hubLinesMissing, quoteEnv, resolveHubSettings } from "../utils/application-env";
 
 const facts = { organizationId: "org_x_abc", publicUrl: "https://db.mws.web.id", token: "mws_abc.def" };
 
@@ -32,7 +32,9 @@ describe("application env", () => {
 
   it("gives an application that reads the Hub session only the Hub address, with no secret and no keys address", () => {
     const items = buildEnvItems({ ...facts, applicationId: "exima", isHub: false, hub, sessionMode: "shared" });
-    expect(items.map((item) => item.key)).toEqual(["HUB_SSO_APP_ID", "CENTRAL_API_BASE_URL", "CENTRAL_API_TOKEN", "CENTRAL_ORGANIZATION_ID", "HUB_BASE_URL"]);
+    expect(items.map((item) => item.key)).toEqual([
+      "HUB_SSO_APP_ID", "CENTRAL_API_BASE_URL", "CENTRAL_API_TOKEN", "CENTRAL_ORGANIZATION_ID", "HUB_BASE_URL", "HUB_ACCESS_COOKIE_NAME",
+    ]);
     expect(items.find((item) => item.key === "HUB_BASE_URL")!.line).toBe('HUB_BASE_URL="https://app.mws.web.id"');
     expect(envText(items)).toContain("reads the Hub's session");
     // Only the address is needed, so a missing secret is not a problem.
@@ -81,7 +83,7 @@ describe("application env", () => {
       ...facts,
       applicationId: "hub",
       isHub: true,
-      hubSettings: { hub_access_mode: "enforce", hub_bypass_emails: ["a@millennia21.id", "b@millennia21.id"] },
+      hubSettings: { hub_access_mode: "enforce", hub_bypass_emails: ["a@millennia21.id", "b@millennia21.id"], hub_access_cookie_name: "hub_at_stg" },
     });
     expect(envText(items)).toBe(
       [
@@ -94,6 +96,9 @@ describe("application env", () => {
         'HUB_CENTRAL_ACCESS_MODE="enforce"',
         'HUB_CENTRAL_ACCESS_APP_ID="hub"',
         'HUB_CENTRAL_ACCESS_BYPASS_EMAILS="a@millennia21.id,b@millennia21.id"',
+        "",
+        "# The cookie that carries the shared session. Every application that reads it must use the same name. Changes in the Hub setup wizard.",
+        'HUB_ACCESS_COOKIE_NAME="hub_at_stg"',
       ].join("\n"),
     );
     // The Hub has no application ID line of its own, but it sends the Organization ID like every other application.
@@ -110,10 +115,15 @@ describe("application env", () => {
   });
 
   it("starts safe: warn, and the admin who sets it up gets in", () => {
-    expect(resolveHubSettings(null, "me@millennia21.id")).toEqual({ hub_access_mode: "warn", hub_bypass_emails: ["me@millennia21.id"] });
+    expect(resolveHubSettings(null, "me@millennia21.id")).toEqual({
+      hub_access_mode: "warn",
+      hub_bypass_emails: ["me@millennia21.id"],
+      hub_access_cookie_name: "hub_at",
+    });
     expect(resolveHubSettings({ hub_access_mode: "enforce", hub_bypass_emails: [] }, "me@millennia21.id")).toEqual({
       hub_access_mode: "enforce",
       hub_bypass_emails: [],
+      hub_access_cookie_name: "hub_at",
     });
     expect(resolveHubSettings({ hub_access_mode: "nonsense" }).hub_access_mode).toBe("warn");
   });
@@ -132,5 +142,39 @@ describe("pasted Hub secret", () => {
     expect(NOT_A_HUB_SECRET.test(raw)).toBe(false);
     // Wrapped again and again by earlier copies.
     expect(cleanPastedSecret(`HUB_INTERNAL_SECRET="HUB_INTERNAL_SECRET=\\"${raw}\\""`)).toBe(raw);
+  });
+
+  describe("the cookie of the shared session", () => {
+    const sharedKeys = (hubFacts: object) =>
+      buildEnvItems({ ...facts, applicationId: "exima", isHub: false, sessionMode: "shared", hub: { baseUrl: "https://app.mws.web.id", secret: "s", ...hubFacts } });
+
+    it("gives an application that reads the shared session the name the Hub uses", () => {
+      expect(sharedKeys({ accessCookieName: "hub_at_stg" }).find((item) => item.key === "HUB_ACCESS_COOKIE_NAME")!.line).toBe(
+        'HUB_ACCESS_COOKIE_NAME="hub_at_stg"',
+      );
+      // The usual name is written too, so nothing is left to a hidden default.
+      expect(sharedKeys({}).find((item) => item.key === "HUB_ACCESS_COOKIE_NAME")!.value).toBe("hub_at");
+    });
+
+    it("leaves it out for an application that has its own session", () => {
+      const relay = buildEnvItems({ ...facts, applicationId: "exima", isHub: false, hub: { baseUrl: "https://app.mws.web.id", secret: "s" } });
+      expect(relay.map((item) => item.key)).not.toContain("HUB_ACCESS_COOKIE_NAME");
+    });
+
+    it("gives the Hub the name it was given, and the usual one until then", () => {
+      const named = buildEnvItems({ ...facts, applicationId: "hub", isHub: true, hubSettings: resolveHubSettings({ hub_access_cookie_name: "hub_at_stg" }) });
+      expect(named.find((item) => item.key === "HUB_ACCESS_COOKIE_NAME")!.value).toBe("hub_at_stg");
+      const plain = buildEnvItems({ ...facts, applicationId: "hub", isHub: true });
+      expect(plain.find((item) => item.key === "HUB_ACCESS_COOKIE_NAME")!.value).toBe("hub_at");
+    });
+
+    it("takes only a name every browser and cookie library accepts, and not the Hub's other cookies", () => {
+      for (const good of ["hub_at", "hub_at_stg", "HUB-AT-2"]) expect(accessCookieNameProblem(good)).toBeNull();
+      for (const bad of ["", "ab", "has space", "a;b", "x".repeat(41), "hub_rt", "Hub_Session"]) {
+        expect(accessCookieNameProblem(bad)).not.toBeNull();
+      }
+      // A stored value that is not a sound name is not used.
+      expect(resolveHubSettings({ hub_access_cookie_name: "bad name" }).hub_access_cookie_name).toBe("hub_at");
+    });
   });
 });

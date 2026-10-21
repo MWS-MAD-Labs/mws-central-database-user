@@ -1,7 +1,23 @@
 export type HubAccessMode = "off" | "warn" | "enforce";
 
 // What the Hub is told about who may sign in. Kept on the Hub's own application in Central.
-export type HubEnvSettings = { hub_access_mode: HubAccessMode; hub_bypass_emails: string[] };
+export type HubEnvSettings = {
+  hub_access_mode: HubAccessMode;
+  hub_bypass_emails: string[];
+  // The cookie that carries the shared session. The Hub and every application that reads it use the same name.
+  hub_access_cookie_name: string;
+};
+
+export const DEFAULT_ACCESS_COOKIE_NAME = "hub_at";
+// Names the Hub already uses for its other cookies, which this one must not take.
+export const RESERVED_COOKIE_NAMES = ["hub_rt", "hub_session"];
+
+// Letters, digits, underscore and dash: a name every browser and every cookie library takes as it is.
+export function accessCookieNameProblem(name: string): string | null {
+  if (!/^[A-Za-z0-9_-]{3,40}$/.test(name)) return "Use 3 to 40 letters, numbers, underscores or dashes";
+  if (RESERVED_COOKIE_NAMES.includes(name.toLowerCase())) return `${name} is already used for another Hub cookie`;
+  return null;
+}
 
 export type EnvItem = {
   key: string;
@@ -41,6 +57,10 @@ const HEADINGS = {
   hubSession:
     "From the Hub. This application reads the Hub's session, so it needs only the Hub's address and no secret. Changes only if the Hub's address changes.",
   hubOwnCentral: "The Hub's own connection to Central. Changes when the Hub's token is rotated.",
+  appCookie:
+    "From the Hub. The name of the cookie this application reads the shared session from. Pass it to createHubSession as cookieName. Changes if the name is changed in the Hub setup wizard.",
+  hubCookie:
+    "The cookie that carries the shared session. Every application that reads it must use the same name. Changes in the Hub setup wizard.",
   hubSignIn: "How the Hub checks who may sign in. Changes in the Hub setup wizard.",
   hubMaster: "The Hub's master secret. Never copy it into another application. Changes only when it is rotated here.",
 };
@@ -71,7 +91,11 @@ export function resolveHubSettings(stored: unknown, adminEmail?: string): HubEnv
     : adminEmail
       ? [adminEmail]
       : [];
-  return { hub_access_mode: mode, hub_bypass_emails: emails };
+  const cookie =
+    typeof value.hub_access_cookie_name === "string" && !accessCookieNameProblem(value.hub_access_cookie_name)
+      ? value.hub_access_cookie_name
+      : DEFAULT_ACCESS_COOKIE_NAME;
+  return { hub_access_mode: mode, hub_bypass_emails: emails, hub_access_cookie_name: cookie };
 }
 
 type Facts = {
@@ -89,7 +113,12 @@ type Facts = {
   sessionMode?: "relay" | "shared";
 };
 
-export type HubFacts = { baseUrl: string | null; secret: string | null };
+export type HubFacts = {
+  baseUrl: string | null;
+  secret: string | null;
+  // What the Hub calls the cookie of the shared session. Missing means the usual name.
+  accessCookieName?: string;
+};
 
 // The lines every application that signs in through the Hub reads about the Hub.
 function hubLines(hub: HubFacts | undefined, group: number, secretHeading = HEADINGS.hubSecret): EnvItem[] {
@@ -125,8 +154,9 @@ export function buildEnvItems(facts: Facts): EnvItem[] {
       item("HUB_CENTRAL_ACCESS_MODE", settings.hub_access_mode, 1, false, HEADINGS.hubSignIn),
       item("HUB_CENTRAL_ACCESS_APP_ID", facts.applicationId, 1),
       item("HUB_CENTRAL_ACCESS_BYPASS_EMAILS", settings.hub_bypass_emails.join(","), 1),
+      item("HUB_ACCESS_COOKIE_NAME", settings.hub_access_cookie_name, 2, false, HEADINGS.hubCookie),
       // The Hub's own address is not read by the Hub. The secret is the same one the applications get.
-      ...hubLines(facts.hub ? { baseUrl: null, secret: facts.hub.secret } : undefined, 2, HEADINGS.hubMaster),
+      ...hubLines(facts.hub ? { baseUrl: null, secret: facts.hub.secret } : undefined, 3, HEADINGS.hubMaster),
     ];
   }
   // Every other application gets the same block, only its id, token and organization differ.
@@ -137,7 +167,10 @@ export function buildEnvItems(facts: Facts): EnvItem[] {
     item("CENTRAL_ORGANIZATION_ID", facts.organizationId, 1),
     ...(facts.sessionMode === "shared"
       ? facts.hub?.baseUrl
-        ? [item("HUB_BASE_URL", facts.hub.baseUrl.replace(/\/+$/, ""), 2, false, HEADINGS.hubSession)]
+        ? [
+            item("HUB_BASE_URL", facts.hub.baseUrl.replace(/\/+$/, ""), 2, false, HEADINGS.hubSession),
+            item("HUB_ACCESS_COOKIE_NAME", facts.hub.accessCookieName ?? DEFAULT_ACCESS_COOKIE_NAME, 3, false, HEADINGS.appCookie),
+          ]
         : []
       : hubLines(facts.hub, 2, facts.hubSecretOwn ? HEADINGS.hubSecretOwn : HEADINGS.hubSecret)),
   ];

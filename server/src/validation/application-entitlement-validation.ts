@@ -1,3 +1,4 @@
+import { accessCookieNameProblem, DEFAULT_ACCESS_COOKIE_NAME } from "../utils/application-env";
 import { z } from "zod";
 import { EmploymentType } from "../generated/prisma/client";
 import { AUDIENCE_NAMES, audienceProblem, type AudienceName } from "../utils/audience";
@@ -211,6 +212,15 @@ const envSettings = z.object({
     .array(z.string().trim().toLowerCase().max(LIMITS.EMAIL_MAX, `Email can have up to ${LIMITS.EMAIL_MAX} characters`).pipe(z.email("Use a valid email")).refine((email) => email.endsWith(`@${LIMITS.EMAIL_DOMAIN}`), `Only ${LIMITS.EMAIL_DOMAIN} emails`))
     .max(3, "At most 3 emails")
     .refine((emails) => new Set(emails).size === emails.length, "Each email only once"),
+  // Older clients do not send it, and then the usual name stays.
+  hub_access_cookie_name: z
+    .string()
+    .trim()
+    .default(DEFAULT_ACCESS_COOKIE_NAME)
+    .superRefine((name, context) => {
+      const problem = accessCookieNameProblem(name);
+      if (problem) context.addIssue({ code: "custom", message: problem });
+    }),
 });
 
 // The public address of the Hub, as an origin: scheme and host, no path.

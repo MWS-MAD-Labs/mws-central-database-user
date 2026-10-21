@@ -75,6 +75,10 @@ export type SetupStatus = {
   env_settings: HubEnvSettings | null;
   // The Hub's address and whether it has a secret. The secret itself is never in the setup.
   hub: { base_url: string | null; secret_set: boolean; key_ready: boolean } | null;
+  // What the Hub calls the cookie of the shared session. An application that reads that session uses the same name.
+  hub_access_cookie_name: string;
+  // For the Hub only: the applications that read the shared session, which need the line when the name changes.
+  shared_apps: { application_id: string; name: string }[] | null;
   // Which Central this is (development, staging or production), its public address, and where the Hub is. The guide
   // for the pipeline shows these as the values of the environment this Central belongs to.
   environment: "development" | "test" | "staging" | "production";
@@ -294,9 +298,10 @@ async function findConnectionClient(applicationId: string) {
 async function loadHubFacts(reveal = true): Promise<HubFacts> {
   const row = await prismaClient.application.findUnique({
     where: { application_id: hubApplicationId() },
-    select: { hub_base_url: true, hub_internal_secret: true },
+    select: { hub_base_url: true, hub_internal_secret: true, env_settings: true },
   });
   return {
+    accessCookieName: resolveHubSettings(row?.env_settings).hub_access_cookie_name,
     baseUrl: row?.hub_base_url ?? null,
     secret: row?.hub_internal_secret ? (reveal ? decryptSecret(row.hub_internal_secret) : "-") : null,
   };
@@ -342,10 +347,15 @@ const HUB_RELAY_KEYS = ["HUB_BASE_URL", "HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET
 
 // What the .env must gain or lose after the sign-in way changed. The Central token stays as it is.
 async function envChangesFor(app: Parameters<typeof envFor>[0]): Promise<EnvChanges> {
-  if (app.session_mode === ApplicationSessionMode.SHARED) return { add: [], remove: ["HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"] };
   if (app.uses_hub === false) return { add: [], remove: [] };
   const { env } = await envFor(app, "", "", "", undefined, true);
-  return { add: env.filter((line) => HUB_RELAY_KEYS.includes(line.key)), remove: [] };
+  if (app.session_mode === ApplicationSessionMode.SHARED) {
+    return {
+      add: env.filter((line) => line.key === "HUB_ACCESS_COOKIE_NAME"),
+      remove: ["HUB_SSO_JWKS_URL", "HUB_INTERNAL_SECRET"],
+    };
+  }
+  return { add: env.filter((line) => HUB_RELAY_KEYS.includes(line.key)), remove: ["HUB_ACCESS_COOKIE_NAME"] };
 }
 
 export class ApplicationOnboardingService {
@@ -592,6 +602,15 @@ export class ApplicationOnboardingService {
       environment: getIntegrationEnvironment().toLowerCase() as SetupStatus["environment"],
       central_url: publicUrl,
       hub_address: applicationId === hubApplicationId() ? null : (await loadHubFacts(false)).baseUrl,
+      hub_access_cookie_name: (await loadHubFacts(false)).accessCookieName ?? "hub_at",
+      shared_apps:
+        applicationId === hubApplicationId()
+          ? await prismaClient.application.findMany({
+              where: { session_mode: ApplicationSessionMode.SHARED, retired_at: null, NOT: { application_id: hubApplicationId() } },
+              select: { application_id: true, name: true },
+              orderBy: { name: "asc" },
+            })
+          : null,
       organization: {
         id: organizationId,
         check: app.organization_checked_at ? (app.organization_check_ok ? "matches" : "mismatch") : "not_reported",
