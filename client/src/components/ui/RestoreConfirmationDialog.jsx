@@ -1,4 +1,3 @@
-import { RotateCcw } from "lucide-react";
 import { Link } from "react-router";
 import { CrudDialog } from "./CrudDialog.jsx";
 import { Button } from "./Button.jsx";
@@ -27,7 +26,6 @@ export function RestoreConfirmationDialog({
             Cancel
           </Button>
           <Button type="button" onClick={onConfirm} loading={isSubmitting}>
-            <RotateCcw size={15} />
             {`Restore ${records.length} record${records.length === 1 ? "" : "s"}`}
           </Button>
         </>

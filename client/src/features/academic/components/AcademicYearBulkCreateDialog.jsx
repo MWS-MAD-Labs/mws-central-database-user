@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
-import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
+import { Field, NumberInput } from "../../../components/ui/FormControls.jsx";
 import { cleanPayload, optionalNumber } from "../../../lib/form.js";
+import { LIMITS } from "../../../lib/limits.js";
+import { isValidYear, yearProblem } from "../utils/yearRange.js";
 
 const MAX_RANGE_YEARS = 50;
 
 function computeYearNames(startYear, endYear) {
-  if (!startYear || !endYear || endYear <= startYear) return [];
+  if (!isValidYear(String(startYear ?? "")) || !isValidYear(String(endYear ?? "")) || endYear <= startYear) return [];
   const names = [];
   for (let year = startYear; year <= endYear; year++) {
     names.push(`${year}/${year + 1}`);
@@ -19,13 +21,15 @@ function computeErrors(values) {
   const errors = {};
   const startYear = optionalNumber(values.start_year);
   const endYear = optionalNumber(values.end_year);
-  if (!startYear) errors.start_year = "Start year is required.";
-  if (!endYear) errors.end_year = "End year is required.";
-  if (startYear && endYear && endYear <= startYear) {
+  const startProblem = yearProblem(values.start_year, "Start year");
+  const endProblem = yearProblem(values.end_year, "End year");
+  if (startProblem) errors.start_year = startProblem;
+  if (endProblem) errors.end_year = endProblem;
+  if (!startProblem && !endProblem && endYear <= startYear) {
     errors.end_year =
       "Needs at least 2 years. Use New Year instead for just one.";
   }
-  if (startYear && endYear && endYear - startYear >= MAX_RANGE_YEARS) {
+  if (!startProblem && !endProblem && endYear - startYear >= MAX_RANGE_YEARS) {
     errors.end_year = `Can't create ${MAX_RANGE_YEARS} or more academic years in one request.`;
   }
   return errors;
@@ -90,23 +94,21 @@ export function AcademicYearBulkCreateDialog({
         className="grid gap-4 sm:grid-cols-2"
       >
         <Field label="Start Year" error={errors.start_year}>
-          <TextInput
+          <NumberInput
             invalid={Boolean(errors.start_year)}
-            type="number"
+            min={LIMITS.ACADEMIC_YEAR_MIN}
+            max={LIMITS.ACADEMIC_YEAR_MAX}
             value={values.start_year}
-            onChange={(event) =>
-              setValues({ ...values, start_year: event.target.value })
-            }
+            onChange={(start_year) => setValues({ ...values, start_year })}
           />
         </Field>
         <Field label="End Year" error={errors.end_year}>
-          <TextInput
+          <NumberInput
             invalid={Boolean(errors.end_year)}
-            type="number"
+            min={LIMITS.ACADEMIC_YEAR_MIN}
+            max={LIMITS.ACADEMIC_YEAR_MAX}
             value={values.end_year}
-            onChange={(event) =>
-              setValues({ ...values, end_year: event.target.value })
-            }
+            onChange={(end_year) => setValues({ ...values, end_year })}
           />
         </Field>
 

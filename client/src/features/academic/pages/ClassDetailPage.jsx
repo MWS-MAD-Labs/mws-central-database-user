@@ -1,17 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  CalendarDays,
   Edit,
   GraduationCap,
-  HeartHandshake,
-  LogOut,
   Plus,
-  Repeat,
-  RotateCcw,
-  Undo2,
   Users,
-  Wrench,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -183,13 +176,39 @@ export function ClassDetailPage() {
       )
     : [];
 
+  // Each person is assigned on their own, so the rules of one (homeroom limit, unit) never block the others. What
+  // went through and what did not is said once at the end.
   const assignTeacherMutation = useMutation({
-    mutationFn: (payload) => classesApi.assignTeacher(classId, payload),
-    onSuccess: () => {
+    mutationFn: async (items) => {
+      const failed = [];
+      let assigned = 0;
+      for (const item of items) {
+        try {
+          await classesApi.assignTeacher(classId, item.payload);
+          assigned += 1;
+        } catch (error) {
+          failed.push({ label: item.label, message: error?.message || "Could not assign" });
+        }
+      }
+      return { assigned, failed };
+    },
+    onSuccess: ({ assigned, failed }) => {
       queryClient.invalidateQueries({
         queryKey: ["classes", classId, "teacher-assignments"],
       });
       queryClient.invalidateQueries({ queryKey: ["classes", classId] });
+      if (assigned > 0) showSuccessToast(assigned === 1 ? "Teacher assigned." : `${assigned} teachers assigned.`);
+      if (failed.length > 0) {
+        showErrorToast(
+          new Error(
+            failed
+              .slice(0, 3)
+              .map((item) => `${item.label}: ${item.message}`)
+              .join(" ") + (failed.length > 3 ? ` And ${failed.length - 3} more.` : ""),
+          ),
+          "Some teachers were not assigned.",
+        );
+      }
     },
   });
 
@@ -309,6 +328,7 @@ export function ClassDetailPage() {
   });
 
   const endTeacherAssignmentMutation = useMutation({
+    meta: { successMessage: "Teacher assignment ended." },
     mutationFn: (assignment) =>
       classesApi.endTeacherAssignment(classId, assignment.id),
     onSuccess: () => queryClient.invalidateQueries({
@@ -317,6 +337,7 @@ export function ClassDetailPage() {
   });
 
   const removeTeacherAssignmentMutation = useMutation({
+    meta: { successMessage: "Teacher assignment removed." },
     mutationFn: (assignment) =>
       classesApi.removeTeacherAssignment(classId, assignment.id),
     onSuccess: () => queryClient.invalidateQueries({
@@ -325,6 +346,7 @@ export function ClassDetailPage() {
   });
 
   const reopenTeacherAssignmentMutation = useMutation({
+    meta: { successMessage: "Teacher assignment reopened." },
     mutationFn: (assignment) =>
       classesApi.reopenTeacherAssignment(classId, assignment.id),
     onSuccess: () => queryClient.invalidateQueries({
@@ -333,6 +355,7 @@ export function ClassDetailPage() {
   });
 
   const updateMutation = useMutation({
+    meta: { successMessage: "Class updated." },
     mutationFn: (payload) => classesApi.update(classId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["classes", classId] });
@@ -726,16 +749,13 @@ export function ClassDetailPage() {
                 variant="secondary"
                 disabled={optionsQuery.isLoading}
                 onClick={() => setEditDialogOpen(true)}
+                size="icon" aria-label="Edit class" title="Edit class"
               >
                 <Edit size={16} />
-                Edit class
               </Button>
             ) : null}
-            <Button asChild variant="secondary">
-              <Link to="/academic?tab=classes">
-                <ArrowLeft size={16} />
-                Back
-              </Link>
+            <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+              <Link to="/academic?tab=classes"><ArrowLeft size={16} /></Link>
             </Button>
           </>
         }
@@ -777,7 +797,7 @@ export function ClassDetailPage() {
             }
             canWrite={canWriteTeacher}
             isAssigning={assignTeacherMutation.isPending}
-            onAssign={(payload) => assignTeacherMutation.mutate(payload)}
+            onAssign={(items) => assignTeacherMutation.mutate(items)}
             currentClassId={classId}
             academicYearStartDate={klass?.academic_year?.start_date}
             academicYearEndDate={klass?.academic_year?.end_date}
@@ -906,7 +926,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <Wrench size={15} />
                               Fix Class
                             </span>
                           </ActionsMenuItem>
@@ -919,7 +938,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <CalendarDays size={15} />
                               Edit date
                             </span>
                           </ActionsMenuItem>
@@ -935,7 +953,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <GraduationCap size={15} />
                               Promote
                             </span>
                           </ActionsMenuItem>
@@ -951,7 +968,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <Repeat size={15} />
                               Move
                             </span>
                           </ActionsMenuItem>
@@ -967,7 +983,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <LogOut size={15} />
                               Close
                             </span>
                           </ActionsMenuItem>
@@ -989,7 +1004,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <RotateCcw size={15} />
                               Reactivate
                             </span>
                           </ActionsMenuItem>
@@ -1003,7 +1017,6 @@ export function ClassDetailPage() {
                             }}
                           >
                             <span className="flex items-center gap-2">
-                              <HeartHandshake size={15} />
                               Add SE teacher
                             </span>
                           </ActionsMenuItem>
@@ -1018,7 +1031,6 @@ export function ClassDetailPage() {
                               }}
                             >
                               <span className="flex items-center gap-2">
-                                <HeartHandshake size={15} />
                                 Change SE teacher
                               </span>
                             </ActionsMenuItem>
@@ -1033,7 +1045,6 @@ export function ClassDetailPage() {
                               }}
                             >
                               <span className="flex items-center gap-2">
-                                <Undo2 size={15} />
                                 Remove SE teacher
                               </span>
                             </ActionsMenuItem>
@@ -1047,7 +1058,7 @@ export function ClassDetailPage() {
                             if (
                               await confirm({
                                 title: "Drop students",
-                                description: `Drop ${selectedEnrollments.length} student(s) from this class? Any that were promoted here will move back to their previous class. The rest will just be removed.`,
+                                description: `Drop ${selectedEnrollments.length} student(s) from this class? Promoted students move back to their previous class, the rest are removed.`,
                                 confirmLabel: "Drop",
                                 tone: "danger",
                               })
@@ -1057,7 +1068,6 @@ export function ClassDetailPage() {
                           }}
                         >
                           <span className="flex items-center gap-2">
-                            <Undo2 size={15} />
                             Drop
                           </span>
                         </ActionsMenuItem>

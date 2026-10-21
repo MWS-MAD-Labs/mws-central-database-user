@@ -52,6 +52,7 @@ export function AcademicYearsPanel() {
   );
 
   const createMutation = useMutation({
+    meta: { successMessage: "Academic year created." },
     mutationFn: academicYearsApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
@@ -74,6 +75,7 @@ export function AcademicYearsPanel() {
   });
 
   const updateMutation = useMutation({
+    meta: { successMessage: "Academic year updated." },
     mutationFn: ({ id, payload }) => academicYearsApi.update(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
@@ -82,6 +84,7 @@ export function AcademicYearsPanel() {
   });
 
   const deleteMutation = useMutation({
+    meta: { successMessage: "Academic year deleted." },
     mutationFn: academicYearsApi.remove,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
@@ -162,17 +165,16 @@ export function AcademicYearsPanel() {
           description: (
             <>
               <p>
-                Moving to {formatStatus(payload.status)} will deactivate{" "}
+                Moving to {formatStatus(payload.status)} deactivates{" "}
                 {counts.class_count} class(es) below
                 {counts.active_enrollment_count > 0
-                  ? `, stranding ${counts.active_enrollment_count} student(s) mid-year`
+                  ? `, leaves ${counts.active_enrollment_count} student(s) mid-year`
                   : ""}
                 {counts.active_teacher_assignment_count > 0
-                  ? `${counts.active_enrollment_count > 0 ? " and" : ","} ending ${counts.active_teacher_assignment_count} active teacher assignment(s)`
+                  ? `${counts.active_enrollment_count > 0 ? " and" : ","} ends ${counts.active_teacher_assignment_count} teacher assignment(s)`
                   : ""}
-                . Promote, transfer, or close the students, and end the
-                teacher assignments yourself first if you'd rather not have
-                them ended automatically.
+                . Promote, transfer or close the students first. Teacher
+                assignments end automatically.
               </p>
               <div className="mt-3 max-h-56 overflow-y-auto rounded-xl border border-(--mws-line)">
                 <table className="w-full text-left text-xs">
@@ -243,7 +245,7 @@ export function AcademicYearsPanel() {
       if (count > 0) {
         const proceed = await confirm({
           title: "Enrollment dates fall outside the new range",
-          description: `${count} enrollment(s) in this year have a start or end date outside the new range. Nothing about those enrollments changes automatically. Update them yourself if needed.`,
+          description: `${count} enrollment(s) have a start or end date outside the new range. They are not changed, update them if needed.`,
           confirmLabel: "Continue Anyway",
           tone: "danger",
         });
@@ -281,17 +283,17 @@ export function AcademicYearsPanel() {
             variant="secondary"
             disabled={!canWrite}
             onClick={() => setBulkDialogOpen(true)}
+            size="icon" aria-label="Bulk Create" title="Bulk Create"
           >
             <Layers size={16} />
-            Bulk Create
           </Button>
           <Button
             type="button"
             disabled={!canWrite}
             onClick={() => setDialog({ mode: "create" })}
+            size="icon" aria-label="New Year" title="New Year"
           >
             <Plus size={16} />
-            New Year
           </Button>
         </>
       }

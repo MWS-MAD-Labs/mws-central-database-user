@@ -5,10 +5,14 @@ import {
   Layers3,
   MapPinned,
   Puzzle,
+  Shapes,
+  Tags,
 } from 'lucide-react'
 import { useSearchParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import {
+  applicationCategoriesApi,
+  applicationScopesApi,
   buildingsApi,
   institutionsApi,
   jobLevelsApi,
@@ -122,11 +126,32 @@ const majorResource = {
   itemLabel: 'majors',
 }
 
+const scopeResource = {
+  id: 'application-scopes',
+  label: 'Scopes',
+  singular: 'Scope',
+  description: 'The product space an application belongs to, like Safespace. Applications pick one in their details.',
+  icon: Shapes,
+  api: applicationScopesApi,
+  itemLabel: 'scopes',
+}
+
+const categoryResource = {
+  id: 'application-categories',
+  label: 'Categories',
+  singular: 'Category',
+  description: 'The kind of tool an application is, like Reporting. The Hub groups its cards by it.',
+  icon: Tags,
+  api: applicationCategoriesApi,
+  itemLabel: 'categories',
+}
+
 export default function MasterData() {
   const [searchParams] = useSearchParams()
   const tab = searchParams.get('tab')
   const isEducationTab = tab === 'education'
-  const activeResource = isEducationTab
+  const isScopesTab = tab === 'scopes'
+  const activeResource = isEducationTab || isScopesTab
     ? null
     : resources.find((resource) => resource.id === tab) || resources[0]
 
@@ -141,6 +166,11 @@ export default function MasterData() {
         <div className="space-y-6">
           <MasterResourcePanel resource={institutionResource} />
           <MasterResourcePanel resource={majorResource} />
+        </div>
+      ) : isScopesTab ? (
+        <div className="space-y-6">
+          <MasterResourcePanel resource={scopeResource} />
+          <MasterResourcePanel resource={categoryResource} />
         </div>
       ) : (
         <MasterResourcePanel resource={activeResource} />

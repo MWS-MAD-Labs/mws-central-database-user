@@ -37,11 +37,8 @@ export function InternCreatePage() {
         title="New Intern"
         description="Create an intern profile and assign unit, position, and building."
         actions={
-          <Button asChild variant="secondary">
-            <Link to="/interns">
-              <ArrowLeft size={16} />
-              Back
-            </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+            <Link to="/interns"><ArrowLeft size={16} /></Link>
           </Button>
         }
       />

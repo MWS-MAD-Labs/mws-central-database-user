@@ -1,4 +1,3 @@
-import { FileClock, RotateCcw } from 'lucide-react'
 import { Button } from './Button.jsx'
 import { CrudDialog } from './CrudDialog.jsx'
 
@@ -15,10 +14,10 @@ export function CreateDraftDialog({ entityLabel, draft, onContinue, onStartFresh
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onStartFresh}>
-            <RotateCcw size={15} /> Start fresh
+Start fresh
           </Button>
           <Button type="button" onClick={onContinue}>
-            <FileClock size={15} /> Continue draft
+Continue draft
           </Button>
         </>
       }

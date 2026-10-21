@@ -1,4 +1,3 @@
-import { X } from 'lucide-react'
 import { Button } from './Button.jsx'
 
 export function BulkActionBar({ selectedCount, children, onClear }) {
@@ -12,7 +11,6 @@ export function BulkActionBar({ selectedCount, children, onClear }) {
       <div className="flex flex-wrap items-center gap-2 lg:justify-end">
         {children}
         <Button type="button" variant="ghost" size="sm" onClick={onClear}>
-          <X size={15} />
           Clear
         </Button>
       </div>

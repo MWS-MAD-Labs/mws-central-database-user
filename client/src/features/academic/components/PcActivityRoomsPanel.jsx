@@ -2,13 +2,9 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router";
 import {
-  CalendarOff,
   Eye,
-  MoveRight,
   Plus,
   Puzzle,
-  RotateCcw,
-  Trash2,
   UserRoundPlus,
   Users,
 } from "lucide-react";
@@ -52,6 +48,7 @@ import { LoadingRows } from "../../master-data/components/LoadingRows.jsx";
 import { PanelFrame } from "../../master-data/components/PanelFrame.jsx";
 import { RowActions } from "../../master-data/components/RowActions.jsx";
 import { SearchBox } from "../../master-data/components/SearchBox.jsx";
+import { RoomCoverage, RoomMentors } from "./RoomCoverage.jsx";
 import { SelectFilter } from "./SelectFilter.jsx";
 import { useMentorOptions } from "../../master-data/hooks/useMentorOptions.js";
 import { workforceTargetValue } from "../utils/selectOptions.js";
@@ -261,11 +258,10 @@ export function PcActivityRoomsPanel() {
         canWrite ? (
           <Button
             type="button"
-            size="sm"
             onClick={() => setFormDialog({ mode: "create" })}
+            size="icon" aria-label="Create Room" title="Create Room"
           >
             <Plus size={16} />
-            Create Room
           </Button>
         ) : null
       }
@@ -329,51 +325,10 @@ export function PcActivityRoomsPanel() {
                     {formatStatus(room.day)}
                   </td>
                   <td className="px-4 py-3 align-middle text-(--mws-muted)">
-                    <p
-                      className="truncate font-medium text-(--mws-charcoal)"
-                      title={room.units.map((unit) => unit.name).join(", ")}
-                    >
-                      {room.units.map((unit) => unit.name).join(", ")}
-                    </p>
-                    {room.grades.length > 0 || room.classes.length > 0 ? (
-                      <p
-                        className="mt-1 truncate text-xs"
-                        title={[
-                          room.grades.length > 0
-                            ? room.grades.map((grade) => grade.name).join(", ")
-                            : null,
-                          room.classes.length > 0
-                            ? room.classes.map((klass) => klass.name).join(", ")
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      >
-                        {room.grades.length > 0
-                          ? `${room.grades.length} grade${room.grades.length === 1 ? "" : "s"}`
-                          : "All grades"}
-                        {room.classes.length > 0
-                          ? ` · ${room.classes.length} class${room.classes.length === 1 ? "" : "es"}`
-                          : ""}
-                      </p>
-                    ) : null}
+                    <RoomCoverage room={room} />
                   </td>
                   <td className="px-4 py-3 align-middle text-(--mws-muted)">
-                    {room.mentors.length === 0 ? (
-                      "No mentor"
-                    ) : (
-                      <p
-                        className="truncate text-(--mws-charcoal)"
-                        title={room.mentors
-                          .map((mentor) => mentor.name)
-                          .join(", ")}
-                      >
-                        {room.mentors[0].name}
-                        {room.mentors.length > 1
-                          ? ` +${room.mentors.length - 1} more`
-                          : ""}
-                      </p>
-                    )}
+                    <RoomMentors room={room} />
                   </td>
                   <td className="px-4 py-3 align-middle text-(--mws-muted)">
                     {room.student_count} active
@@ -1118,7 +1073,7 @@ export function RoomStudentsSection({ room, canManage }) {
   async function handleBulkEnd() {
     const confirmed = await confirm({
       title: "End student assignments",
-      description: `End ${selected.length} student assignment(s)? The history remains and each same-day slot becomes available.`,
+      description: `End ${selected.length} student assignment(s)? The history stays and the slots open up.`,
       confirmLabel: "End Assignments",
     });
     if (confirmed) bulkEndMutation.mutate(Array.from(selectedIds));
@@ -1127,7 +1082,7 @@ export function RoomStudentsSection({ room, canManage }) {
   async function handleBulkDrop() {
     const confirmed = await confirm({
       title: "Drop student assignments",
-      description: `Drop ${selected.length} student assignment(s) as a mistake? This soft-deletes the history rows.`,
+      description: `Drop ${selected.length} student assignment(s) as a mistake? Their history rows are removed.`,
       confirmLabel: "Drop",
       tone: "danger",
     });
@@ -1161,11 +1116,10 @@ export function RoomStudentsSection({ room, canManage }) {
           <Button
             type="button"
             variant="secondary"
-            size="sm"
             onClick={() => setAddOpen(true)}
+            size="icon" aria-label="Add Students" title="Add Students"
           >
             <UserRoundPlus size={15} />
-            Add Students
           </Button>
         ) : null}
       </div>
@@ -1185,8 +1139,7 @@ export function RoomStudentsSection({ room, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <MoveRight size={15} />
-                    Move selected
+                    Move Selected
                   </span>
                 </ActionsMenuItem>
                 <ActionsMenuItem
@@ -1196,7 +1149,6 @@ export function RoomStudentsSection({ room, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <MoveRight size={15} />
                     Promote to Next Year
                   </span>
                 </ActionsMenuItem>
@@ -1207,8 +1159,7 @@ export function RoomStudentsSection({ room, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <CalendarOff size={15} />
-                    End selected
+                    End Selected
                   </span>
                 </ActionsMenuItem>
                 <ActionsMenuItem
@@ -1224,8 +1175,7 @@ export function RoomStudentsSection({ room, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <RotateCcw size={15} />
-                    Reopen selected
+                    Reopen Selected
                   </span>
                 </ActionsMenuItem>
                 <div className="my-1 border-t border-(--mws-line)" />
@@ -1237,8 +1187,7 @@ export function RoomStudentsSection({ room, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <Trash2 size={15} />
-                    Drop selected
+                    Drop Selected
                   </span>
                 </ActionsMenuItem>
               </>
@@ -1774,7 +1723,7 @@ export function RoomMentorsSection({ room, units, canManage }) {
   async function handleBulkRemove() {
     const confirmed = await confirm({
       title: "Remove mentor assignments",
-      description: `Remove ${selected.length} mentor assignment(s)? Use this only to correct a mistake, not to close a finished mentorship. "End selected" does that instead.`,
+      description: `Remove ${selected.length} mentor assignment(s)? Only to correct a mistake. To close a finished mentorship use End Selected.`,
       confirmLabel: "Remove",
       tone: "danger",
     });
@@ -1807,11 +1756,10 @@ export function RoomMentorsSection({ room, units, canManage }) {
           <Button
             type="button"
             variant="secondary"
-            size="sm"
             onClick={() => setAddOpen(true)}
+            size="icon" aria-label="Add Mentor" title="Add Mentor"
           >
             <Users size={15} />
-            Add Mentor
           </Button>
         ) : null}
       </div>
@@ -1837,8 +1785,7 @@ export function RoomMentorsSection({ room, units, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <MoveRight size={15} />
-                    Move selected
+                    Move Selected
                   </span>
                 </ActionsMenuItem>
                 <ActionsMenuItem
@@ -1854,7 +1801,6 @@ export function RoomMentorsSection({ room, units, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <MoveRight size={15} />
                     Promote to Next Year
                   </span>
                 </ActionsMenuItem>
@@ -1865,8 +1811,7 @@ export function RoomMentorsSection({ room, units, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <CalendarOff size={15} />
-                    End selected
+                    End Selected
                   </span>
                 </ActionsMenuItem>
                 <ActionsMenuItem
@@ -1882,8 +1827,7 @@ export function RoomMentorsSection({ room, units, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <RotateCcw size={15} />
-                    Reopen selected
+                    Reopen Selected
                   </span>
                 </ActionsMenuItem>
                 <div className="my-1 border-t border-(--mws-line)" />
@@ -1895,8 +1839,7 @@ export function RoomMentorsSection({ room, units, canManage }) {
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <Trash2 size={15} />
-                    Remove selected
+                    Remove Selected
                   </span>
                 </ActionsMenuItem>
               </>
@@ -2277,7 +2220,6 @@ function AddMentorDialog({ room, existingMentorIds, onClose, onAdded }) {
             disabled={!targetValue || atCap}
             loading={assignMutation.isPending}
           >
-            <Plus size={16} />
             Add assignment
           </Button>
         </>

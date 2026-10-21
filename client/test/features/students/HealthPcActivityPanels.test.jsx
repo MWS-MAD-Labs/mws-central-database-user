@@ -22,7 +22,7 @@ describe('StudentHealthPanel mutations', () => {
     const { user } = renderPanel(<StudentHealthPanel studentId="student-1" canWrite canViewSensitive />)
     expect(await screen.findByText('No health or special needs notes yet.')).toBeVisible()
 
-    await user.click(screen.getByRole('button', { name: 'Health Note' }))
+    await user.click(screen.getByRole('button', { name: 'Add Health Note' }))
     const dialog = screen.getByRole('dialog', { name: 'New Health Note' })
     await user.type(dialog.querySelector('[data-field="description"] textarea'), 'Updated health information')
     await user.click(screen.getByRole('button', { name: 'Save' }))

@@ -1,11 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Download,
-  RefreshCw,
-  RotateCcw,
   Upload,
   X,
 } from "lucide-react";
@@ -51,11 +48,13 @@ export function DataTransferActions({
       <Button
         type="button"
         variant="secondary"
+        size="icon"
+        aria-label="Import"
+        title="Import"
         disabled={!canImport}
         onClick={() => setIsImportOpen(true)}
       >
         <Upload size={16} />
-        Import
       </Button>
       <ExportMenu
         entity={entity}
@@ -92,8 +91,8 @@ function ExportMenu({ entity, exportParams, canExport, canExportSensitive }) {
     const confirmed = await confirm({
       title: sensitive ? "Export sensitive data?" : `Export ${format.toUpperCase()}?`,
       description: sensitive
-        ? "This file may contain personal identifiers, contact details, birth data, and other sensitive fields. The export will be recorded in Audit Logs."
-        : `${format.toUpperCase()} export will be recorded in Audit Logs with the selected filters.`,
+        ? "This file may contain personal identifiers, contact details and birth data. The export is recorded in Audit Logs."
+        : `${format.toUpperCase()} export is recorded in Audit Logs with the selected filters.`,
       confirmLabel: sensitive ? "Export sensitive data" : `Export ${format.toUpperCase()}`,
       tone: sensitive ? "danger" : undefined,
       wide: true,
@@ -109,12 +108,14 @@ function ExportMenu({ entity, exportParams, canExport, canExportSensitive }) {
         <Button
           type="button"
           variant="secondary"
+          size="icon"
+          aria-label="Export"
+          title="Export"
           disabled={!canExport}
           loading={exportMutation.isPending}
           onClick={onClick}
         >
           <Download size={16} />
-          Export
         </Button>
       )}
     >
@@ -496,9 +497,8 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
           <>
             <p>
               {excludedRowNumbers.size} row(s) will be dropped from this
-              import. Re-check them now if any of this was unchecked by
-              accident, since there's no way back after this besides
-              re-uploading the file:
+              import. Re-check any you unchecked by mistake, the only way
+              back is to upload the file again:
             </p>
             <ul className="mt-2 max-h-64 list-disc space-y-0.5 overflow-y-auto pl-5 font-medium text-(--mws-charcoal)">
               {excludedLabels.map((label, index) => (
@@ -566,11 +566,16 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
       }
       description={
         initialJobId
-          ? "Rows from this import job. Edit invalid cells, revalidate, then commit if it's still pending, or roll back if it's already done."
-          : "Upload CSV or Excel, edit invalid cells in preview, revalidate, then commit. Uncheck a row to drop it entirely instead of fixing it. Rows still in error are skipped on commit."
+          ? "Rows from this import job. Fix any errors, then commit, or roll back if it is already done."
+          : "Upload a CSV or Excel file, fix any errors in the preview, then commit."
       }
       onClose={onClose}
-      panelClassName="max-w-[min(96rem,calc(100vw-2rem))]"
+      panelClassName={
+        // Upload needs little room, the preview table needs the width.
+        preview || initialJobId
+          ? "max-w-[min(80rem,calc(100vw-2rem))]"
+          : "max-w-3xl"
+      }
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose}>
@@ -585,7 +590,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               onClick={refreshReferenceData}
               title="Reload units, grades, and other reference data, then revalidate"
             >
-              <RefreshCw size={16} />
               Refresh data
             </Button>
           ) : null}
@@ -597,7 +601,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               loading={previewMutation.isPending}
               onClick={revalidateDraft}
             >
-              <RefreshCw size={16} />
               Revalidate
             </Button>
           ) : null}
@@ -608,7 +611,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               loading={rollbackMutation.isPending}
               onClick={() => rollbackMutation.mutate()}
             >
-              <RotateCcw size={16} />
               Rollback
             </Button>
           ) : null}
@@ -617,11 +619,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
             disabled={!canCommit || commitState?.isRunning}
             onClick={runCommit}
           >
-            {commitState?.isRunning ? (
-              <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-            ) : (
-              <CheckCircle2 size={16} />
-            )}
             {commitState?.isRunning
               ? commitState.totalBatches > 1
                 ? `Committing (${commitState.completed}/${commitState.total})...`
@@ -705,7 +702,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               loading={previewMutation.isPending}
               onClick={() => previewSelectedSheet()}
             >
-              <Upload size={16} />
               Preview
             </Button>
           </div>
@@ -763,7 +759,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                   }
                   onClick={() => previewSelectedSheet(selectedSheetName)}
                 >
-                  <RefreshCw size={16} />
                   Preview Sheet
                 </Button>
               </div>
@@ -1117,12 +1112,13 @@ function ImportPreviewPager({
         <Button
           type="button"
           variant="secondary"
-          size="sm"
+          size="icon"
+          aria-label="Prev"
+          title="Previous page"
           disabled={currentPage <= 1 || isLoading}
           onClick={() => goTo(currentPage - 1)}
         >
           <ChevronLeft size={15} />
-          Prev
         </Button>
         {pageWindow.map((page, index) => {
           const previousPage = pageWindow[index - 1];
@@ -1162,11 +1158,12 @@ function ImportPreviewPager({
         <Button
           type="button"
           variant="secondary"
-          size="sm"
+          size="icon"
+          aria-label="Next"
+          title="Next page"
           disabled={currentPage >= totalPages || isLoading}
           onClick={() => goTo(currentPage + 1)}
         >
-          Next
           <ChevronRight size={15} />
         </Button>
       </div>

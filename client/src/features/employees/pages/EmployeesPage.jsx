@@ -1,11 +1,8 @@
+import { FilterToolbar } from "../../../components/ui/FilterToolbar.jsx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CalendarClock,
   ImagePlus,
-  PencilLine,
   Plus,
-  RotateCcw,
-  Trash2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -42,10 +39,7 @@ import { EmployeesTable } from "../components/EmployeesTable.jsx";
 import { useEmployeesSearchParams } from "../hooks/useEmployeesSearchParams.js";
 import { formatStatus } from "../../../lib/format.js";
 import { useBulkSelection } from "../../../lib/useBulkSelection.js";
-import {
-  showBulkFailureToast,
-  showSuccessToast,
-} from "../../../lib/toast.js";
+import { showBulkFailureToast, showSuccessToast } from "../../../lib/toast.js";
 
 export function EmployeesPage() {
   const { params, updateParams, resetPageAndUpdate } =
@@ -86,6 +80,7 @@ export function EmployeesPage() {
   });
 
   const restoreMutation = useMutation({
+    meta: { successMessage: "Employee restored." },
     mutationFn: employeesApi.restore,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
@@ -312,7 +307,10 @@ export function EmployeesPage() {
     setBulkExtendIds(ids);
   }
 
-  function runBulkExtendContract({ durationMonths, contractEndDate, baselineOverrides }, includedIds) {
+  function runBulkExtendContract(
+    { durationMonths, contractEndDate, baselineOverrides },
+    includedIds,
+  ) {
     if (!includedIds || includedIds.length === 0) return;
     if (!durationMonths && !contractEndDate) return;
 
@@ -325,7 +323,7 @@ export function EmployeesPage() {
   }
 
   return (
-      <div className="min-w-0">
+    <div className="min-w-0">
       <PageHeader
         title="Staff & Teachers"
         description="Manage employee records, work assignments, and profile authority data."
@@ -336,29 +334,30 @@ export function EmployeesPage() {
               exportParams={queryParams}
               canImport={canImport}
               canExport={canWrite}
-              canExportSensitive={user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_employee_pii)}
+              canExportSensitive={
+                user?.role === "SUPER_ADMIN" ||
+                Boolean(user?.can_view_employee_pii)
+              }
             />
             {canManagePhotos ? (
               <Button
                 type="button"
                 variant="secondary"
+                size="icon"
+                aria-label="Bulk Photo Upload"
+                title="Bulk Photo Upload"
                 onClick={() => setBulkPhotoDialogOpen(true)}
               >
                 <ImagePlus size={16} />
-                Bulk Photo Upload
               </Button>
             ) : null}
             {canWrite ? (
-              <Button asChild>
-                <Link to="/employees/new">
-                  <Plus size={16} />
-                  New Employee
-                </Link>
+              <Button asChild size="icon" aria-label="New Employee" title="New Employee">
+                <Link to="/employees/new"><Plus size={16} /></Link>
               </Button>
             ) : (
-              <Button type="button" disabled>
+              <Button type="button" disabled size="icon" aria-label="New Employee" title="New Employee">
                 <Plus size={16} />
-                New Employee
               </Button>
             )}
           </>
@@ -367,23 +366,19 @@ export function EmployeesPage() {
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="border-b border-(--mws-line) p-4">
-          <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-            <DebouncedSearchInput
-              value={params.search}
-              placeholder="Search Employees"
-              className="xl:max-w-lg"
-              onChange={(search) => resetPageAndClearSelection({ search })}
-            />
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <LiveIndicator isSyncing={employeesQuery.isFetching} />
-              <FilterResetButton
-                visible={hasActiveFilters}
-                onReset={resetFilters}
+          <FilterToolbar
+            search={
+              <DebouncedSearchInput
+                value={params.search}
+                placeholder="Search Employees"
+                onChange={(search) => resetPageAndClearSelection({ search })}
               />
-            </div>
-          </div>
-
-          <div className="mt-4 flex min-w-0 flex-wrap gap-3">
+            }
+            status={<LiveIndicator isSyncing={employeesQuery.isFetching} />}
+            reset={
+              <FilterResetButton visible={hasActiveFilters} onReset={resetFilters} />
+            }
+          >
             <FilterSelect
               label="Employment Type"
               value={params.employment_type}
@@ -398,9 +393,7 @@ export function EmployeesPage() {
             <FilterSelect
               label="Status"
               value={params.status}
-              onChange={(value) =>
-                resetPageAndClearSelection({ status: value })
-              }
+              onChange={(value) => resetPageAndClearSelection({ status: value })}
               options={[
                 { value: "ALL", label: "All Statuses" },
                 ...statusOptions(employeeStatuses),
@@ -414,15 +407,13 @@ export function EmployeesPage() {
               }
               options={[
                 { value: "", label: "Active Records" },
-                { value: "true", label: "Trash bin" },
+                { value: "true", label: "Trash Bin" },
               ]}
             />
             <FilterSelect
               label="Unit"
               value={params.unit_id}
-              onChange={(value) =>
-                resetPageAndClearSelection({ unit_id: value })
-              }
+              onChange={(value) => resetPageAndClearSelection({ unit_id: value })}
               options={[
                 { value: "", label: "All Units" },
                 ...unitOptions(optionsQuery.data?.units || []),
@@ -431,15 +422,13 @@ export function EmployeesPage() {
             <FilterSelect
               label="Building"
               value={params.building_id}
-              onChange={(value) =>
-                resetPageAndClearSelection({ building_id: value })
-              }
+              onChange={(value) => resetPageAndClearSelection({ building_id: value })}
               options={[
                 { value: "", label: "All Buildings" },
                 ...buildingOptions(optionsQuery.data?.buildings || []),
               ]}
             />
-          </div>
+          </FilterToolbar>
         </div>
 
         <BulkActionBar selectedCount={selectedCount} onClear={clearSelection}>
@@ -454,13 +443,14 @@ export function EmployeesPage() {
                   onClick={() => {
                     closeMenu();
                     setRestoreEmployeeRecords(
-                      employees.filter((employee) => selectedEmployeeIds.has(employee.id)),
+                      employees.filter((employee) =>
+                        selectedEmployeeIds.has(employee.id),
+                      ),
                     );
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <RotateCcw size={15} />
-                    Restore selected
+                    Restore Selected
                   </span>
                 </ActionsMenuItem>
               )}
@@ -477,8 +467,7 @@ export function EmployeesPage() {
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      <PencilLine size={15} />
-                      Bulk edit
+                      Bulk Edit
                     </span>
                   </ActionsMenuItem>
                   <div className="my-1 border-t border-(--mws-line)" />
@@ -490,8 +479,7 @@ export function EmployeesPage() {
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      <CalendarClock size={15} />
-                      Extend contracts
+                      Extend Contracts
                     </span>
                   </ActionsMenuItem>
                   <div className="my-1 border-t border-(--mws-line)" />
@@ -508,8 +496,7 @@ export function EmployeesPage() {
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      <Trash2 size={15} />
-                      Archive selected
+                      Archive Selected
                     </span>
                   </ActionsMenuItem>
                 </>
@@ -557,11 +544,31 @@ export function EmployeesPage() {
           description="Review the archived employee records before restoring them."
           records={restoreEmployeeRecords}
           columns={[
-            { key: "name", label: "Name", render: (employee) => employee.identity.full_name },
-            { key: "employee_id", label: "Employee ID", render: (employee) => employee.employment.employee_id },
-            { key: "unit", label: "Unit", render: (employee) => employee.employment.unit || "-" },
-            { key: "position", label: "Position", render: (employee) => employee.employment.job_position || "-" },
-            { key: "status", label: "Previous Status", render: (employee) => formatStatus(employee.status_info.status) },
+            {
+              key: "name",
+              label: "Name",
+              render: (employee) => employee.identity.full_name,
+            },
+            {
+              key: "employee_id",
+              label: "Employee ID",
+              render: (employee) => employee.employment.employee_id,
+            },
+            {
+              key: "unit",
+              label: "Unit",
+              render: (employee) => employee.employment.unit || "-",
+            },
+            {
+              key: "position",
+              label: "Position",
+              render: (employee) => employee.employment.job_position || "-",
+            },
+            {
+              key: "status",
+              label: "Previous Status",
+              render: (employee) => formatStatus(employee.status_info.status),
+            },
           ]}
           getDetailHref={(employee) => `/employees/${employee.id}`}
           isSubmitting={restoreMutation.isPending || bulkMutation.isPending}
@@ -573,7 +580,10 @@ export function EmployeesPage() {
               });
             } else {
               bulkMutation.mutate(
-                { action: "restore", ids: restoreEmployeeRecords.map((employee) => employee.id) },
+                {
+                  action: "restore",
+                  ids: restoreEmployeeRecords.map((employee) => employee.id),
+                },
                 { onSettled: () => setRestoreEmployeeRecords(null) },
               );
             }
@@ -590,7 +600,7 @@ export function EmployeesPage() {
             isLoading={employeesQuery.isLoading}
             isTrash={isTrash}
             canRestore={canRestore}
-            restoringId={restoreMutation.variables}
+            restoringId={restoreMutation.isPending ? restoreMutation.variables : undefined}
             onRestore={handleRestore}
             canSelect={canSelectEmployees}
             selectedIds={selectedEmployeeIds}

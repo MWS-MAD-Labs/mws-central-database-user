@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Undo2, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
+import { Tabs } from "../../../components/ui/Tabs.jsx";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -10,7 +10,6 @@ import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
-import { cn } from "../../../lib/cn.js";
 import { formatDateTime, formatStatus } from "../../../lib/format.js";
 import { showSuccessToast } from "../../../lib/toast.js";
 import { changeRequestsApi } from "../api/changeRequestsApi.js";
@@ -114,25 +113,16 @@ export function ChangeRequestsPage() {
         }
       />
 
-      <div className="mb-4 flex gap-2">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => {
-              setActiveTab(tab.id);
-              setPage(1);
-            }}
-            className={cn(
-              "rounded-full px-4 py-2 font-display text-sm font-semibold transition-colors",
-              activeTab === tab.id
-                ? "bg-(--mws-burgundy) text-white"
-                : "bg-white text-(--mws-muted) hover:bg-(--mws-soft)",
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="mb-5">
+        <Tabs
+          label="Change requests"
+          tabs={tabs}
+          active={activeTab}
+          onChange={(id) => {
+            setActiveTab(id);
+            setPage(1);
+          }}
+        />
       </div>
 
       {query.isLoading ? (
@@ -222,7 +212,6 @@ export function ChangeRequestsPage() {
                               size="sm"
                               onClick={() => setDecisionDialog({ mode: "approve", request })}
                             >
-                              <Check size={15} />
                               Approve
                             </Button>
                             <Button
@@ -231,7 +220,6 @@ export function ChangeRequestsPage() {
                               variant="secondary"
                               onClick={() => setDecisionDialog({ mode: "reject", request })}
                             >
-                              <X size={15} />
                               Reject
                             </Button>
                           </>
@@ -255,7 +243,6 @@ export function ChangeRequestsPage() {
                               }
                             }}
                           >
-                            <Undo2 size={15} />
                             Cancel
                           </Button>
                         ) : null}
@@ -337,7 +324,6 @@ function DecisionDialog({ mode, request, isSubmitting, onClose, onSubmit }) {
             disabled={isSubmitting}
             loading={isSubmitting}
           >
-            {isReject ? <X size={16} /> : <Check size={16} />}
             {isReject ? "Reject" : "Approve"}
           </Button>
         </>

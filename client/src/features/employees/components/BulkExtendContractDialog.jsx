@@ -6,7 +6,7 @@ import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import { DateField, Field, SearchableSelect } from '../../../components/ui/FormControls.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { CONTRACT_DURATION_OPTIONS, isoFromDateInput } from '../../../lib/form.js'
-import { formatDate } from '../../../lib/format.js'
+import { formatDate, formatStatus } from '../../../lib/format.js'
 
 export function BulkExtendContractDialog({
   employees,
@@ -78,7 +78,7 @@ export function BulkExtendContractDialog({
 
   return (
     <CrudDialog
-      title="Extend contracts"
+      title="Extend Contracts"
       description={
         mode === 'exact'
           ? `Set the same exact contract end date for ${employees.length} selected employee(s).`
@@ -180,19 +180,19 @@ export function BulkExtendContractDialog({
 
                   <div className="flex shrink-0 items-center gap-2">
                     {isPermanent ? (
-                      <StatusBadge tone="neutral">PERMANENT</StatusBadge>
+                      <StatusBadge tone="neutral">{formatStatus('PERMANENT')}</StatusBadge>
                     ) : isResigned ? (
-                      <StatusBadge tone="neutral">RESIGNED</StatusBadge>
+                      <StatusBadge tone="neutral">{formatStatus('RESIGNED')}</StatusBadge>
                     ) : hasEndDate ? (
                       <p className="text-xs text-(--mws-muted)">
-                        Current end date:{' '}
+                        Current End Date:{' '}
                         <span className="font-semibold text-(--mws-charcoal)">
                           {formatDate(employee.status_info.contract_end_date)}
                         </span>
                       </p>
                     ) : mode === 'duration' && !isExcluded ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-[#9f3d41]">No end date set</span>
+                        <span className="text-xs text-[#9f3d41]">No End Date Set</span>
                         <DateField
                           className="h-8 w-36 text-xs"
                           value={baselineInputs[employee.id] || ''}
@@ -205,7 +205,7 @@ export function BulkExtendContractDialog({
                         />
                       </div>
                     ) : mode === 'exact' ? (
-                      <span className="text-xs text-(--mws-muted)">No end date set</span>
+                      <span className="text-xs text-(--mws-muted)">No End Date Set</span>
                     ) : null}
 
                     {!isSkippedAutomatically ? (

@@ -16,6 +16,18 @@ const AcademicPage = lazy(() => import('../features/academic/pages/AcademicPage.
 const ClassDetailPage = lazy(() => import('../features/academic/pages/ClassDetailPage.jsx').then((module) => ({ default: module.ClassDetailPage })))
 const PcActivityRoomDetailPage = lazy(() => import('../features/academic/pages/PcActivityRoomDetailPage.jsx').then((module) => ({ default: module.PcActivityRoomDetailPage })))
 const ApiClientsPage = lazy(() => import('../features/api-clients/pages/ApiClientsPage.jsx').then((module) => ({ default: module.ApiClientsPage })))
+const AppAccessPage = lazy(() => import('../features/application-access/pages/AppAccessPage.jsx').then((module) => ({ default: module.AppAccessPage })))
+const GroupFormPage = lazy(() => import('../features/application-access/pages/GroupFormPage.jsx').then((module) => ({ default: module.GroupFormPage })))
+const ExceptionAddPage = lazy(() => import('../features/application-access/pages/ExceptionAddPage.jsx').then((module) => ({ default: module.ExceptionAddPage })))
+const GroupAccessEditPage = lazy(() => import('../features/application-access/pages/GroupAccessEditPage.jsx').then((module) => ({ default: module.GroupAccessEditPage })))
+const AppCreatePage = lazy(() => import('../features/application-access/pages/AppCreatePage.jsx').then((module) => ({ default: module.AppCreatePage })))
+const AppGuidePage = lazy(() => import('../features/application-access/pages/AppGuidePage.jsx').then((module) => ({ default: module.AppGuidePage })))
+const AppStartGuidePage = lazy(() => import('../features/application-access/pages/AppStartGuidePage.jsx').then((module) => ({ default: module.AppStartGuidePage })))
+const AppSetupPage = lazy(() => import('../features/application-access/pages/AppSetupPage.jsx').then((module) => ({ default: module.AppSetupPage })))
+const AppSettingsPage = lazy(() => import('../features/application-access/pages/AppSettingsPage.jsx').then((module) => ({ default: module.AppSettingsPage })))
+const BulkRolesPage = lazy(() => import('../features/application-access/pages/BulkRolesPage.jsx').then((module) => ({ default: module.BulkRolesPage })))
+const RoleFormPage = lazy(() => import('../features/application-access/pages/RoleFormPage.jsx').then((module) => ({ default: module.RoleFormPage })))
+const ApplicationAccessPage = lazy(() => import('../features/application-access/pages/ApplicationAccessPage.jsx').then((module) => ({ default: module.ApplicationAccessPage })))
 const AuditLogsPage = lazy(() => import('../features/audit/pages/AuditLogsPage.jsx').then((module) => ({ default: module.AuditLogsPage })))
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage.jsx').then((module) => ({ default: module.LoginPage })))
 const DashboardPage = lazy(() => import('../features/dashboard/pages/DashboardPage.jsx').then((module) => ({ default: module.DashboardPage })))
@@ -81,6 +93,19 @@ export default function App() {
           <Route path="access" element={<AccessPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="api-clients" element={<ApiClientsPage />} />
+          <Route path="application-access" element={<ApplicationAccessPage />} />
+          <Route path="application-access/guide" element={<AppStartGuidePage />} />
+          <Route path="application-access/apps/new" element={<AppCreatePage />} />
+          <Route path="application-access/apps/:applicationId" element={<AppAccessPage />} />
+          <Route path="application-access/apps/:applicationId/setup" element={<AppSetupPage />} />
+          <Route path="application-access/apps/:applicationId/settings" element={<AppSettingsPage />} />
+          <Route path="application-access/apps/:applicationId/guide" element={<AppGuidePage />} />
+          <Route path="application-access/apps/:applicationId/groups/new" element={<GroupFormPage />} />
+          <Route path="application-access/apps/:applicationId/groups/:ruleId" element={<GroupAccessEditPage />} />
+          <Route path="application-access/apps/:applicationId/groups/:ruleId/exceptions/new" element={<ExceptionAddPage />} />
+          <Route path="application-access/apps/:applicationId/roles/new" element={<BulkRolesPage />} />
+          <Route path="application-access/apps/:applicationId/roles/bulk" element={<BulkRolesPage />} />
+          <Route path="application-access/apps/:applicationId/roles/:roleId" element={<RoleFormPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route element={<CapabilityRoute allowed={(user) => Boolean(user?.is_employee_identifier_change_approver)} title="Approver Access Required" description="Only change request approvers can review requests." />}>
             <Route path="change-requests" element={<ChangeRequestsPage />} />

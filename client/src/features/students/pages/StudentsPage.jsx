@@ -1,11 +1,8 @@
+import { FilterToolbar } from "../../../components/ui/FilterToolbar.jsx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ImagePlus,
   Plus,
-  RotateCcw,
-  Trash2,
-  UserCheck,
-  UserX,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -35,10 +32,7 @@ import { StudentsTable } from "../components/StudentsTable.jsx";
 import { useStudentsSearchParams } from "../hooks/useStudentsSearchParams.js";
 import { formatStatus } from "../../../lib/format.js";
 import { useBulkSelection } from "../../../lib/useBulkSelection.js";
-import {
-  showBulkFailureToast,
-  showSuccessToast,
-} from "../../../lib/toast.js";
+import { showBulkFailureToast, showSuccessToast } from "../../../lib/toast.js";
 
 export function StudentsPage() {
   const { params, updateParams, resetPageAndUpdate } =
@@ -73,6 +67,7 @@ export function StudentsPage() {
   });
 
   const restoreMutation = useMutation({
+    meta: { successMessage: "Student restored." },
     mutationFn: studentsApi.restore,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
@@ -218,7 +213,7 @@ export function StudentsPage() {
       action === "deactivate" &&
       !(await confirm({
         title: "Deactivate students",
-        description: `Deactivate ${ids.length} selected student(s)? Their class enrollments stay exactly as they are. This only flags them as inactive.`,
+        description: `Deactivate ${ids.length} selected student(s)? Their class enrollments stay as they are.`,
         confirmLabel: "Deactivate",
         tone: "danger",
       }))
@@ -258,29 +253,30 @@ export function StudentsPage() {
               exportParams={queryParams}
               canImport={canImport}
               canExport={canWrite}
-              canExportSensitive={user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_sensitive_data)}
+              canExportSensitive={
+                user?.role === "SUPER_ADMIN" ||
+                Boolean(user?.can_view_sensitive_data)
+              }
             />
             {canManagePhotos ? (
               <Button
                 type="button"
                 variant="secondary"
+                size="icon"
+                aria-label="Bulk Photo Upload"
+                title="Bulk Photo Upload"
                 onClick={() => setBulkPhotoDialogOpen(true)}
               >
                 <ImagePlus size={16} />
-                Bulk Photo Upload
               </Button>
             ) : null}
             {canWrite ? (
-              <Button asChild>
-                <Link to="/students/new">
-                  <Plus size={16} />
-                  New Student
-                </Link>
+              <Button asChild size="icon" aria-label="New Student" title="New Student">
+                <Link to="/students/new"><Plus size={16} /></Link>
               </Button>
             ) : (
-              <Button type="button" disabled>
+              <Button type="button" disabled size="icon" aria-label="New Student" title="New Student">
                 <Plus size={16} />
-                New Student
               </Button>
             )}
           </>
@@ -289,36 +285,28 @@ export function StudentsPage() {
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="border-b border-(--mws-line) p-4">
-          <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-            <DebouncedSearchInput
-              value={params.search}
-              placeholder="Search Name, Email, NIS, Or NISN"
-              className="xl:max-w-lg"
-              onChange={(search) => resetPageAndClearSelection({ search })}
-            />
-
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <LiveIndicator isSyncing={studentsQuery.isFetching} />
-              <FilterResetButton
-                visible={hasActiveFilters}
-                onReset={resetFilters}
+          <FilterToolbar
+            search={
+              <DebouncedSearchInput
+                value={params.search}
+                placeholder="Search Name, Email, NIS, Or NISN"
+                onChange={(search) => resetPageAndClearSelection({ search })}
               />
-            </div>
-          </div>
-
-          <div className="mt-4 flex min-w-0 flex-wrap gap-3">
+            }
+            status={<LiveIndicator isSyncing={studentsQuery.isFetching} />}
+            reset={
+              <FilterResetButton visible={hasActiveFilters} onReset={resetFilters} />
+            }
+          >
             <FilterSelect
               label="Status"
               value={params.status}
-              onChange={(value) =>
-                resetPageAndClearSelection({ status: value })
-              }
+              onChange={(value) => resetPageAndClearSelection({ status: value })}
               options={[
                 { value: "ALL", label: "All Statuses" },
                 ...statusOptions(studentStatuses),
               ]}
             />
-
             <FilterSelect
               label="Grade"
               value={params.current_grade_id}
@@ -330,7 +318,6 @@ export function StudentsPage() {
                 ...gradeOptions(optionsQuery.data?.grades || []),
               ]}
             />
-
             <FilterSelect
               label="Class"
               value={params.current_class_id}
@@ -342,7 +329,6 @@ export function StudentsPage() {
                 ...classOptions(optionsQuery.data?.classes || []),
               ]}
             />
-
             <FilterSelect
               label="Join Year"
               value={params.join_academic_year_id}
@@ -354,7 +340,6 @@ export function StudentsPage() {
                 ...academicYearOptions(optionsQuery.data?.academicYears || []),
               ]}
             />
-
             <FilterSelect
               label="Records"
               value={params.is_deleted}
@@ -363,10 +348,10 @@ export function StudentsPage() {
               }
               options={[
                 { value: "", label: "Active Records" },
-                { value: "true", label: "Trash bin" },
+                { value: "true", label: "Trash Bin" },
               ]}
             />
-          </div>
+          </FilterToolbar>
         </div>
 
         <BulkActionBar selectedCount={selectedCount} onClear={clearSelection}>
@@ -381,13 +366,14 @@ export function StudentsPage() {
                   onClick={() => {
                     closeMenu();
                     setRestoreStudentRecords(
-                      students.filter((student) => selectedStudentIds.has(student.id)),
+                      students.filter((student) =>
+                        selectedStudentIds.has(student.id),
+                      ),
                     );
                   }}
                 >
                   <span className="flex items-center gap-2">
-                    <RotateCcw size={15} />
-                    Restore selected
+                    Restore Selected
                   </span>
                 </ActionsMenuItem>
               )}
@@ -414,8 +400,7 @@ export function StudentsPage() {
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      <UserX size={15} />
-                      Deactivate selected
+                      Deactivate Selected
                     </span>
                   </ActionsMenuItem>
                   <ActionsMenuItem
@@ -435,8 +420,7 @@ export function StudentsPage() {
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      <UserCheck size={15} />
-                      Reactivate selected
+                      Reactivate Selected
                     </span>
                   </ActionsMenuItem>
                   <div className="my-1 border-t border-(--mws-line)" />
@@ -449,8 +433,7 @@ export function StudentsPage() {
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      <Trash2 size={15} />
-                      Archive selected
+                      Archive Selected
                     </span>
                   </ActionsMenuItem>
                 </>
@@ -468,7 +451,7 @@ export function StudentsPage() {
           isLoading={studentsQuery.isLoading}
           isTrash={isTrash}
           canRestore={canRestore}
-          restoringId={restoreMutation.variables}
+          restoringId={restoreMutation.isPending ? restoreMutation.variables : undefined}
           onRestore={handleRestore}
           canSelect={canBulkManage}
           selectedIds={selectedStudentIds}
@@ -509,11 +492,32 @@ export function StudentsPage() {
         description="Review the archived student record before restoring it."
         records={restoreStudentRecords}
         columns={[
-          { key: "name", label: "Name", render: (student) => student.identity.full_name },
-          { key: "nis", label: "NIS", render: (student) => student.academic.nis || "-" },
-          { key: "grade", label: "Grade", render: (student) => student.academic.current_grade || "-" },
-          { key: "class", label: "Class", render: (student) => student.academic.current_class || "-" },
-          { key: "join_year", label: "Join Year", render: (student) => yearsById[student.academic.join_academic_year_id] || "-" },
+          {
+            key: "name",
+            label: "Name",
+            render: (student) => student.identity.full_name,
+          },
+          {
+            key: "nis",
+            label: "NIS",
+            render: (student) => student.academic.nis || "-",
+          },
+          {
+            key: "grade",
+            label: "Grade",
+            render: (student) => student.academic.current_grade || "-",
+          },
+          {
+            key: "class",
+            label: "Class",
+            render: (student) => student.academic.current_class || "-",
+          },
+          {
+            key: "join_year",
+            label: "Join Year",
+            render: (student) =>
+              yearsById[student.academic.join_academic_year_id] || "-",
+          },
         ]}
         getDetailHref={(student) => `/students/${student.id}`}
         isSubmitting={restoreMutation.isPending}
@@ -525,7 +529,10 @@ export function StudentsPage() {
             });
           } else {
             bulkMutation.mutate(
-              { action: "restore", ids: restoreStudentRecords.map((student) => student.id) },
+              {
+                action: "restore",
+                ids: restoreStudentRecords.map((student) => student.id),
+              },
               { onSettled: () => setRestoreStudentRecords(null) },
             );
           }

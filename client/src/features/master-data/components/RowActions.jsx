@@ -14,39 +14,35 @@ export function RowActions({
   return (
     <div className="flex justify-end gap-1">
       {onView ? (
-        <Button type="button" variant="ghost" size="sm" onClick={onView}>
+        <Button type="button" variant="ghost" onClick={onView} size="icon" aria-label="View" title="View">
           <Eye size={15} />
-          View
         </Button>
       ) : null}
       {onManageMentors ? (
-        <Button type="button" variant="ghost" size="sm" onClick={onManageMentors}>
+        <Button type="button" variant="ghost" onClick={onManageMentors} size="icon" aria-label="Mentors" title="Mentors">
           <Users size={15} />
-          Mentors
         </Button>
       ) : null}
       {onEdit ? (
         <Button
           type="button"
           variant="ghost"
-          size="sm"
           disabled={disableEdit ?? disabled}
           onClick={onEdit}
+          size="icon" aria-label="Edit" title="Edit"
         >
           <Edit size={15} />
-          Edit
         </Button>
       ) : null}
       <Button
         type="button"
         variant="ghost"
-        size="sm"
         disabled={disableDelete ?? disabled}
-        title={disableDelete ? deleteTitle : undefined}
+        title={disableDelete ? deleteTitle : "Delete"}
         onClick={onDelete}
+        size="icon" aria-label="Delete"
       >
         <Trash2 size={15} />
-        Delete
       </Button>
     </div>
   )

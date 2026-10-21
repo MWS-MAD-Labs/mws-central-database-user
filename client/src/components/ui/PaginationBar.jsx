@@ -94,21 +94,23 @@ export function PaginationBar({
         <Button
           type="button"
           variant="secondary"
-          size="sm"
+          size="icon"
+          aria-label="Prev"
+          title="Previous page"
           disabled={currentPage <= 1 || isLoading}
           onClick={onPrevious}
         >
           <ChevronLeft size={15} />
-          Prev
         </Button>
         <Button
           type="button"
           variant="secondary"
-          size="sm"
+          size="icon"
+          aria-label="Next"
+          title="Next page"
           disabled={currentPage >= totalPage || isLoading}
           onClick={onNext}
         >
-          Next
           <ChevronRight size={15} />
         </Button>
         {showPageJump && onPageChange && totalPage > JUMP_THRESHOLD_PAGES ? (

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LIMITS } from "../constants/limits";
 import { AcademicYearStatus } from "../generated/prisma/client";
 import { ACADEMIC_YEAR_SORT_FIELDS } from "../model/academic-year-model";
 
@@ -16,9 +17,21 @@ function isConsecutiveYearPair(name: string): boolean {
   return Number(match[2]) === Number(match[1]) + 1;
 }
 
+const withinYears = (value: number) => value >= LIMITS.ACADEMIC_YEAR_MIN && value <= LIMITS.ACADEMIC_YEAR_MAX;
+
+// The dates may fall in the start year, the end year, or a little around them.
+const dateInRange = (value: string) => {
+  const year = new Date(value).getUTCFullYear();
+  return year >= LIMITS.ACADEMIC_YEAR_MIN && year <= LIMITS.ACADEMIC_YEAR_MAX + 1;
+};
+const DATE_RANGE_MESSAGE = `Use a date in ${LIMITS.ACADEMIC_YEAR_MIN} to ${LIMITS.ACADEMIC_YEAR_MAX + 1}`;
+
 const NAME_SCHEMA = z
   .string()
   .regex(NAME_PATTERN, 'Name must be in "YYYY/YYYY" format, e.g. 2026/2027')
+  .refine((name) => withinYears(Number(name.slice(0, 4))), {
+    message: `Use a year between ${LIMITS.ACADEMIC_YEAR_MIN} and ${LIMITS.ACADEMIC_YEAR_MAX}`,
+  })
   .refine(isConsecutiveYearPair, {
     message: "The second year must be exactly one year after the first",
   });
@@ -27,11 +40,12 @@ export class AcademicYearValidation {
   static readonly CREATE = z
     .object({
       name: NAME_SCHEMA,
-      start_date: z.iso.datetime(
-        "Start date must be a valid ISO-8601 datetime string",
-      ),
+      start_date: z.iso
+        .datetime("Start date must be a valid ISO-8601 datetime string")
+        .refine(dateInRange, DATE_RANGE_MESSAGE),
       end_date: z.iso
         .datetime("End date must be a valid ISO-8601 datetime string")
+        .refine(dateInRange, DATE_RANGE_MESSAGE)
         .optional(),
       status: z
         .enum(ACADEMIC_YEAR_STATUS_VALUES, {
@@ -55,9 +69,11 @@ export class AcademicYearValidation {
     name: NAME_SCHEMA.optional(),
     start_date: z.iso
       .datetime("Start date must be a valid ISO-8601 datetime string")
+      .refine(dateInRange, DATE_RANGE_MESSAGE)
       .optional(),
     end_date: z.iso
       .datetime("End date must be a valid ISO-8601 datetime string")
+      .refine(dateInRange, DATE_RANGE_MESSAGE)
       .optional(),
     status: z
       .enum(ACADEMIC_YEAR_STATUS_VALUES, {
@@ -76,8 +92,8 @@ export class AcademicYearValidation {
   // Bulk creation requires 2-50 academic years.
   static readonly BULK_CREATE = z
     .object({
-      start_year: z.number().int().min(1000).max(9999),
-      end_year: z.number().int().min(1000).max(9999),
+      start_year: z.number().int().min(LIMITS.ACADEMIC_YEAR_MIN).max(LIMITS.ACADEMIC_YEAR_MAX),
+      end_year: z.number().int().min(LIMITS.ACADEMIC_YEAR_MIN).max(LIMITS.ACADEMIC_YEAR_MAX),
     })
     .refine((data) => data.end_year > data.start_year, {
       message:

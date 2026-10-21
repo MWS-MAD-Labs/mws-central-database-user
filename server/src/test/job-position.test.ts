@@ -681,6 +681,66 @@ describe("GET /api/admin/job-positions", () => {
     expect(body.data[0].name).toBe("TEST_Sombrero");
   });
 
+  it("should filter by unit while including positions available in all units", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const selectedUnit = await prismaClient.masterUnit.findFirstOrThrow();
+    const otherUnit = await prismaClient.masterUnit.create({
+      data: { name: "TEST_Filter_Position_Other" },
+    });
+    await prismaClient.masterJobPosition.create({
+      data: { name: "TEST_Filter_Position_All" },
+    });
+    await prismaClient.masterJobPosition.create({
+      data: {
+        name: "TEST_Filter_Position_Selected",
+        units: { create: [{ unit_id: selectedUnit.id }] },
+      },
+    });
+    await prismaClient.masterJobPosition.create({
+      data: {
+        name: "TEST_Filter_Position_OtherOnly",
+        units: { create: [{ unit_id: otherUnit.id }] },
+      },
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/job-positions?search=TEST_Filter_Position&unit_id=${selectedUnit.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.map((item: { name: string }) => item.name).sort()).toEqual([
+      "TEST_Filter_Position_All",
+      "TEST_Filter_Position_Selected",
+    ]);
+  });
+
+  it("should filter by active holder limit scope", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await prismaClient.masterJobPosition.create({ data: { name: "TEST_Capacity_Unlimited" } });
+    await prismaClient.masterJobPosition.create({
+      data: { name: "TEST_Capacity_PerUnit", capacity_scope: "PER_UNIT", max_active_holders: 1 },
+    });
+    await prismaClient.masterJobPosition.create({
+      data: { name: "TEST_Capacity_Global", capacity_scope: "GLOBAL", max_active_holders: 2 },
+    });
+
+    for (const [scope, expected] of [
+      ["UNLIMITED", "TEST_Capacity_Unlimited"],
+      ["PER_UNIT", "TEST_Capacity_PerUnit"],
+      ["GLOBAL", "TEST_Capacity_Global"],
+    ] as const) {
+      const response = await TestRequest.get(
+        `/api/admin/job-positions?search=TEST_Capacity&capacity_scope=${scope}`,
+        accessToken,
+      );
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.data.map((item: { name: string }) => item.name)).toEqual([expected]);
+    }
+  });
+
   it("should sort by name descending when requested", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await prismaClient.masterJobPosition.create({

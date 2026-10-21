@@ -674,7 +674,7 @@ describe("POST /api/admin/classes", () => {
     const response = await TestRequest.post(
       "/api/admin/classes",
       {
-        name: "TEST_DbAdminCreatedNoEmployeeDomain",
+        name: "TEST_DbAdminNoEmpDomain",
         grade_id: gradeOneId, // Grade 1 -> Elementary, same unit as this admin
         academic_year_id: academicYearId,
       },
@@ -2415,6 +2415,47 @@ describe("GET /api/admin/classes", () => {
       (t: { subject: string }) => t.subject,
     );
     expect(subjects.sort()).toEqual(["Art", "Math"]);
+  });
+
+  it("should not offer a subject teacher again who already teaches in the class", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const taken = await createSubjectTeacherEmployee("test_cand_subject_taken@millennia21.id");
+    const free = await createSubjectTeacherEmployee("test_cand_subject_free@millennia21.id");
+    const klass = await ClassTest.create({
+      name: "TEST_CandidateSubject",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const otherClass = await ClassTest.create({
+      name: "TEST_CandidateSubjectOther",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const assign = (classId: string, employeeId: string) =>
+      TestRequest.post(
+        `/api/admin/classes/${classId}/teachers`,
+        { employee_id: employeeId, role: ClassTeacherRole.SUBJECT_TEACHER, subject: "Math" },
+        accessToken,
+      );
+    const candidates = async () => {
+      const response = await TestRequest.get(
+        `/api/admin/classes/${klass.id}/teacher-candidates?role=SUBJECT_TEACHER&size=100`,
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+      return ((await response.json()).data as { id: string }[]).map((item) => item.id);
+    };
+
+    expect(await candidates()).toEqual(expect.arrayContaining([taken.id, free.id]));
+    expect((await assign(klass.id, taken.id)).status).toBe(200);
+    // In this class the teacher is no longer offered. Another person still is.
+    let ids = await candidates();
+    expect(ids).not.toContain(taken.id);
+    expect(ids).toContain(free.id);
+    // Teaching in another class does not hide them here.
+    expect((await assign(otherClass.id, free.id)).status).toBe(200);
+    ids = await candidates();
+    expect(ids).toContain(free.id);
   });
 });
 

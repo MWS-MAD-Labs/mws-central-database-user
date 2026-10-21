@@ -1,4 +1,4 @@
-import { AlertCircle, LoaderCircle, LogIn } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { env } from "../../../config/env.js";
@@ -34,14 +34,9 @@ export function GoogleLoginButton() {
       <Button
         type="button"
         className="w-full"
-        disabled={isLoggingIn}
+        loading={isLoggingIn}
         onClick={handleLogin}
       >
-        {isLoggingIn ? (
-          <LoaderCircle size={18} className="animate-spin" />
-        ) : (
-          <LogIn size={18} />
-        )}
         Continue with Google
       </Button>
       {unregisteredError ? (

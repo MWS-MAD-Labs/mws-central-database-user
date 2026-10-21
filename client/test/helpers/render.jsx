@@ -4,9 +4,11 @@ import userEvent from '@testing-library/user-event'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import { MemoryRouter } from 'react-router'
+import { createMutationCache } from '../../src/lib/mutationFeedback.js'
 
 export function createTestQueryClient() {
   return new QueryClient({
+    mutationCache: createMutationCache(),
     defaultOptions: {
       queries: {
         retry: false,

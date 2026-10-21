@@ -1,4 +1,5 @@
-import { ArrowLeft, Edit, Eye, EyeOff, Mail, Phone, Trash2, UserRound } from 'lucide-react'
+import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx"
+import { ArrowLeft, Edit, Mail, Phone, Trash2, UserRound } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router'
@@ -151,23 +152,16 @@ export function InternDetailPage() {
         }
         actions={
           <>
-            <Button asChild variant="secondary">
-              <Link to="/interns">
-                <ArrowLeft size={16} />
-                Back
-              </Link>
+            <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+              <Link to="/interns"><ArrowLeft size={16} /></Link>
             </Button>
             {canWrite && !editBlockedText ? (
-              <Button asChild variant="secondary">
-                <Link to={`/interns/${internId}/edit`}>
-                  <Edit size={16} />
-                  Edit
-                </Link>
+              <Button asChild variant="secondary" size="icon" aria-label="Edit" title="Edit">
+                <Link to={`/interns/${internId}/edit`}><Edit size={16} /></Link>
               </Button>
             ) : intern && editBlockedText ? (
-              <Button type="button" variant="secondary" disabled title={editBlockedText}>
+              <Button type="button" variant="secondary" disabled title={editBlockedText} size="icon" aria-label="Edit">
                 <Edit size={16} />
-                Edit
               </Button>
             ) : null}
             {canDelete ? (
@@ -176,9 +170,9 @@ export function InternDetailPage() {
                 variant="danger"
                 loading={deleteMutation.isPending}
                 onClick={handleDelete}
+                size="icon" aria-label="Delete" title="Delete"
               >
                 <Trash2 size={16} />
-                Delete
               </Button>
             ) : null}
           </>
@@ -248,12 +242,12 @@ export function InternDetailPage() {
                   <h2 className="text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
                     Identity
                   </h2>
-                  {pii ? (
-                    <Button type="button" variant="ghost" size="sm" onClick={handleHideSensitiveFields}>
-                      <EyeOff size={15} />
-                      Hide
-                    </Button>
-                  ) : null}
+                  <SensitiveToggle
+                    revealed={Boolean(pii)}
+                    loading={revealMutation.isPending}
+                    onShow={handleRevealSensitiveFields}
+                    onHide={handleHideSensitiveFields}
+                  />
                 </div>
                 {pii ? (
                   <dl>
@@ -263,21 +257,7 @@ export function InternDetailPage() {
                     <DetailRow compact label="Birth Date" value={formatDate(pii.birth_date)} warning={birthDateWarning} />
                   </dl>
                 ) : (
-                  <div className="mb-2 flex flex-col items-start gap-2 rounded-xl border border-dashed border-(--mws-line) bg-(--mws-soft) p-3">
-                    <p className="text-sm text-(--mws-muted)">
-                      Gender, religion, and birth details are hidden by default.
-                    </p>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      loading={revealMutation.isPending}
-                      onClick={handleRevealSensitiveFields}
-                    >
-                      <Eye size={15} />
-                      Show Sensitive Fields
-                    </Button>
-                  </div>
+                  <SensitiveHiddenNote className="mb-2 text-sm text-(--mws-muted)" />
                 )}
                 <dl>
                   <DetailRow compact label="Address" value={intern.identity.residential_address} />

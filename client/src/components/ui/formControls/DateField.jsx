@@ -57,22 +57,42 @@ export function DateField({
             fullWidth: true,
             className,
             error: invalid,
+            // Same look as the other inputs (inputClasses): font, text colour, padding, border and focus ring.
             sx: {
-              "& .MuiInputBase-root": {
+              "& .MuiPickersInputBase-root": {
                 height: "2.75rem",
                 borderRadius: "0.75rem",
                 backgroundColor: "#fff",
+                fontFamily: "inherit",
                 fontSize: "0.875rem",
+                color: "var(--mws-charcoal)",
+                paddingLeft: "0.75rem",
+                paddingRight: "0.75rem",
+                transition: "box-shadow 150ms",
               },
-              "& .MuiOutlinedInput-notchedOutline": {
+              "& .MuiPickersSectionList-root, & .MuiPickersInputBase-sectionsContainer": {
+                fontFamily: "inherit",
+                fontSize: "0.875rem",
+                padding: 0,
+              },
+              "& .MuiPickersOutlinedInput-notchedOutline": {
+                borderWidth: "1px",
                 borderColor: invalid ? "#c75f64" : "var(--mws-line)",
               },
-              "&:hover .MuiOutlinedInput-notchedOutline": {
+              "&:hover .MuiPickersOutlinedInput-notchedOutline": {
                 borderColor: invalid ? "#c75f64" : "var(--mws-line)",
               },
-              "& .Mui-focused .MuiOutlinedInput-notchedOutline": {
+              "& .Mui-focused": {
+                boxShadow: "0 0 0 2px #7E15181A",
+              },
+              "& .Mui-focused .MuiPickersOutlinedInput-notchedOutline": {
                 borderColor: "var(--mws-burgundy)",
-                borderWidth: "2px",
+                borderWidth: "1px",
+              },
+              "& .Mui-disabled": {
+                backgroundColor: "var(--mws-soft)",
+                color: "#8d7b7d",
+                WebkitTextFillColor: "#8d7b7d",
               },
             },
           },

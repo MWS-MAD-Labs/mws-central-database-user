@@ -1,7 +1,7 @@
+import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Save } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
 import { ChangeReviewTable } from "../../../components/ui/ChangeReviewTable.jsx";
@@ -288,9 +288,14 @@ export function InternForm({
         noValidate
       >
         <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
-            Identity
-          </h2>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-(--mws-charcoal)">
+              Identity
+            </h2>
+            {!identityRevealed && canRevealIdentity ? (
+              <SensitiveToggle revealed={false} loading={revealMutation.isPending} onShow={handleRevealIdentity} />
+            ) : null}
+          </div>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
             <LimitedField
               label="Full Name"
@@ -363,22 +368,7 @@ export function InternForm({
               </Field>
               </>
             ) : (
-              <div className="flex flex-col items-start gap-2 rounded-xl border border-dashed border-(--mws-line) bg-(--mws-soft) p-3 md:col-span-2">
-                <p className="text-sm text-(--mws-muted)">
-                  Gender, religion, and birth details are hidden by default.
-                </p>
-                {canRevealIdentity ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    loading={revealMutation.isPending}
-                    onClick={handleRevealIdentity}
-                  >
-                    Show Sensitive Fields
-                  </Button>
-                ) : null}
-              </div>
+              <SensitiveHiddenNote className="text-sm text-(--mws-muted) md:col-span-2" />
             )}
             {canEditContactPii ? (
               <>
@@ -629,7 +619,6 @@ export function InternForm({
               (!isCreate && !isDirty ? "No changes to save yet." : undefined)
             }
           >
-            <Save size={16} />
             {isCreate ? "Create intern" : "Save changes"}
           </Button>
         </FormActionBar>

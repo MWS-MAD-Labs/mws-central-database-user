@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { EyeOff, Plus, RotateCcw, Trash2, UsersRound } from 'lucide-react'
+import { EyeOff, Pencil, Plus, RotateCcw, Trash2, UsersRound } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../../components/ui/CrudDialog.jsx'
@@ -18,6 +18,7 @@ import { enumOptions, formatStatus } from '../../../../lib/format.js'
 import { parentTypes, studentSensitiveApi } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame, SensitiveDataReveal } from './panelPrimitives.jsx'
 import { invalidateStudentRelation } from './panelHelpers.js'
+import { isPendingFor } from "../../../../lib/mutationState.js";
 
 export function StudentParentsPanel({ studentId, canWrite, revealed = true, onReveal, onHide }) {
   const queryClient = useQueryClient()
@@ -39,6 +40,7 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
   })
 
   const createMutation = useMutation({
+    meta: { successMessage: "Parent added." },
     mutationFn: (payload) => studentSensitiveApi.createParent(studentId, payload),
     onSuccess: () => {
       invalidateStudentRelation(queryClient, studentId, 'parents')
@@ -46,6 +48,7 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
     },
   })
   const updateMutation = useMutation({
+    meta: { successMessage: "Parent updated." },
     mutationFn: ({ id, payload }) =>
       studentSensitiveApi.updateParent(studentId, id, payload),
     onSuccess: () => {
@@ -54,10 +57,12 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
     },
   })
   const deleteMutation = useMutation({
+    meta: { successMessage: "Parent removed." },
     mutationFn: (id) => studentSensitiveApi.removeParent(studentId, id),
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'parents'),
   })
   const restoreMutation = useMutation({
+    meta: { successMessage: "Parent restored." },
     mutationFn: (id) => studentSensitiveApi.restoreParent(studentId, id),
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'parents'),
   })
@@ -76,9 +81,8 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
       action={
         <>
           {onHide ? (
-            <Button type="button" variant="ghost" size="sm" onClick={onHide}>
+            <Button type="button" variant="ghost" onClick={onHide} size="icon" aria-label="Hide" title="Hide">
               <EyeOff size={15} />
-              Hide
             </Button>
           ) : null}
           <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
@@ -86,12 +90,11 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
           </ToggleChip>
           <Button
             type="button"
-            size="sm"
             disabled={!canWrite}
             onClick={() => setDialog({ mode: 'create' })}
+            size="icon" aria-label="Add Parent" title="Add Parent"
           >
             <Plus size={15} />
-            Parent
           </Button>
         </>
       }
@@ -126,29 +129,30 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
                     <Button
                       type="button"
                       variant="ghost"
-                      size="sm"
-                      disabled={!canWrite || restoreMutation.variables === parent.id}
+                      disabled={!canWrite || isPendingFor(restoreMutation, parent.id)}
                       onClick={() => restoreMutation.mutate(parent.id)}
+                      size="icon" aria-label="Restore" title="Restore"
                     >
                       <RotateCcw size={15} />
-                      Restore
                     </Button>
                   ) : (
                     <>
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
+                        size="icon"
+                        aria-label="Edit"
+                        title="Edit"
                         disabled={!canWrite}
                         onClick={() => setDialog({ mode: 'edit', record: parent })}
                       >
-                        Edit
+                        <Pencil size={15} />
                       </Button>
-                      <Button
+                      <Button aria-label="Delete" title="Delete"
                         type="button"
                         variant="ghost"
-                        size="sm"
-                        disabled={!canWrite || deleteMutation.variables === parent.id}
+                        size="icon"
+                        disabled={!canWrite || isPendingFor(deleteMutation, parent.id)}
                         onClick={() => deleteMutation.mutate(parent.id)}
                       >
                         <Trash2 size={15} />

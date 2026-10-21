@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { EyeOff, Plus, RotateCcw, Syringe, Trash2 } from 'lucide-react'
+import { EyeOff, Pencil, Plus, RotateCcw, Syringe, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../../components/ui/Button.jsx'
 import { useConfirm } from '../../../../components/ui/useConfirm.js'
@@ -19,6 +19,7 @@ import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../../lib/p
 import { studentSensitiveApi, vaccineTypes } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame, SensitiveDataReveal } from './panelPrimitives.jsx'
 import { invalidateStudentRelation } from './panelHelpers.js'
+import { isPendingFor } from "../../../../lib/mutationState.js";
 
 const studentVaccinePiiScope = (studentId) => `student-vaccine:${studentId}`
 
@@ -50,6 +51,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
     enabled: Boolean(studentId) && canViewSensitive && revealed,
   })
   const createMutation = useMutation({
+    meta: { successMessage: "Vaccine record added." },
     mutationFn: (payload) => studentSensitiveApi.createVaccine(studentId, payload),
     onSuccess: () => {
       invalidateStudentRelation(queryClient, studentId, 'vaccine-records')
@@ -57,6 +59,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const updateMutation = useMutation({
+    meta: { successMessage: "Vaccine record updated." },
     mutationFn: ({ id, payload }) =>
       studentSensitiveApi.updateVaccine(studentId, id, payload),
     onSuccess: () => {
@@ -65,10 +68,12 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const deleteMutation = useMutation({
+    meta: { successMessage: "Vaccine record deleted." },
     mutationFn: (id) => studentSensitiveApi.removeVaccine(studentId, id),
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'vaccine-records'),
   })
   const restoreMutation = useMutation({
+    meta: { successMessage: "Vaccine record restored." },
     mutationFn: (id) => studentSensitiveApi.restoreVaccine(studentId, id),
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'vaccine-records'),
   })
@@ -100,24 +105,24 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
       isFetching={vaccinesQuery.isFetching}
       action={
         <>
-          <Button type="button" variant="ghost" size="sm" onClick={() => {
+          <Button type="button" variant="ghost" onClick={() => {
             forgetReveal(studentVaccinePiiScope(studentId))
             setRevealed(false)
-          }}>
+          }}
+            size="icon" aria-label="Hide" title="Hide"
+          >
             <EyeOff size={15} />
-            Hide
           </Button>
           <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
             Show Deleted
           </ToggleChip>
           <Button
             type="button"
-            size="sm"
             disabled={!canWrite}
             onClick={() => setDialog({ mode: 'create' })}
+            size="icon" aria-label="Add Vaccine" title="Add Vaccine"
           >
             <Plus size={15} />
-            Vaccine
           </Button>
         </>
       }
@@ -148,29 +153,30 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
                     <Button
                       type="button"
                       variant="ghost"
-                      size="sm"
-                      disabled={!canWrite || restoreMutation.variables === record.id}
+                      disabled={!canWrite || isPendingFor(restoreMutation, record.id)}
                       onClick={() => restoreMutation.mutate(record.id)}
+                      size="icon" aria-label="Restore" title="Restore"
                     >
                       <RotateCcw size={15} />
-                      Restore
                     </Button>
                   ) : (
                     <>
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
+                        size="icon"
+                        aria-label="Edit"
+                        title="Edit"
                         disabled={!canWrite}
                         onClick={() => setDialog({ mode: 'edit', record })}
                       >
-                        Edit
+                        <Pencil size={15} />
                       </Button>
-                      <Button
+                      <Button aria-label="Delete" title="Delete"
                         type="button"
                         variant="ghost"
-                        size="sm"
-                        disabled={!canWrite || deleteMutation.variables === record.id}
+                        size="icon"
+                        disabled={!canWrite || isPendingFor(deleteMutation, record.id)}
                         onClick={() => deleteMutation.mutate(record.id)}
                       >
                         <Trash2 size={15} />

@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { LIMITS } from "../constants/limits";
 import { SIMPLE_MASTER_DATA_SORT_FIELDS } from "../model/simple-master-data-model";
 
 export class SimpleMasterDataValidation {
   static readonly CREATE = z.object({
-    name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+    name: z.string().min(1, "Name is required").max(LIMITS.MASTER_NAME_MAX, `Name can have up to ${LIMITS.MASTER_NAME_MAX} characters`),
   });
 
   static readonly UPDATE = z.object({
@@ -11,7 +12,7 @@ export class SimpleMasterDataValidation {
     name: z
       .string()
       .min(1, "Name is required")
-      .max(100, "Name is too long")
+      .max(LIMITS.MASTER_NAME_MAX, `Name can have up to ${LIMITS.MASTER_NAME_MAX} characters`)
       .optional(),
   });
 

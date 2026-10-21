@@ -331,6 +331,12 @@ export class AcademicYearTest {
 }
 
 export class GradeTest {
+  // A level nobody has, so tests that need a grade never collide on the unique level (tests run one at a time).
+  static async freeLevel(floor = 9000): Promise<number> {
+    const top = await prismaClient.grade.aggregate({ _max: { level: true } });
+    return Math.max(floor, (top._max.level ?? 0) + 1);
+  }
+
   static async getByName(name: string) {
     return prismaClient.grade.findUniqueOrThrow({ where: { name } });
   }
@@ -483,6 +489,23 @@ export class TestRequest {
       {
         method: "PATCH",
         headers: this.makeHeaders(accessToken),
+        body: JSON.stringify(body),
+      },
+      this.createMockEnv(),
+    );
+  }
+
+  static async put<T>(
+    url: string,
+    body: T,
+    accessToken?: string,
+    customHeaders?: Record<string, string>,
+  ): Promise<Response> {
+    return web.request(
+      url,
+      {
+        method: "PUT",
+        headers: this.makeHeaders(accessToken, customHeaders),
         body: JSON.stringify(body),
       },
       this.createMockEnv(),

@@ -1,4 +1,6 @@
-import { ArrowLeft, Camera, CalendarClock, Edit, Eye, EyeOff, Mail, Phone, Trash2, UserRound, X } from 'lucide-react'
+import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx"
+import { describeChildren } from '../utils/childrenRules.js'
+import { ArrowLeft, Camera, CalendarClock, Edit, Mail, Phone, Trash2, UserRound, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
@@ -225,23 +227,16 @@ export function EmployeeDetailPage() {
         }
         actions={
           <>
-            <Button asChild variant="secondary">
-              <Link to="/employees">
-                <ArrowLeft size={16} />
-                Back
-              </Link>
+            <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+              <Link to="/employees"><ArrowLeft size={16} /></Link>
             </Button>
             {canWrite && !editBlockedText ? (
-              <Button asChild variant="secondary">
-                <Link to={`/employees/${employeeId}/edit`}>
-                  <Edit size={16} />
-                  Edit
-                </Link>
+              <Button asChild variant="secondary" size="icon" aria-label="Edit" title="Edit">
+                <Link to={`/employees/${employeeId}/edit`}><Edit size={16} /></Link>
               </Button>
             ) : employee && editBlockedText ? (
-              <Button type="button" variant="secondary" disabled title={editBlockedText}>
+              <Button type="button" variant="secondary" disabled title={editBlockedText} size="icon" aria-label="Edit">
                 <Edit size={16} />
-                Edit
               </Button>
             ) : null}
             {canExtendContract ? (
@@ -249,9 +244,9 @@ export function EmployeeDetailPage() {
                 type="button"
                 variant="secondary"
                 onClick={() => setIsExtendDialogOpen(true)}
+                size="icon" aria-label="Extend contract" title="Extend contract"
               >
                 <CalendarClock size={16} />
-                Extend contract
               </Button>
             ) : null}
             {canDelete ? (
@@ -260,9 +255,9 @@ export function EmployeeDetailPage() {
                 variant="danger"
                 loading={deleteMutation.isPending}
                 onClick={handleDelete}
+                size="icon" aria-label="Archive" title="Archive"
               >
                 <Trash2 size={16} />
-                Archive
               </Button>
             ) : null}
           </>
@@ -440,22 +435,21 @@ export function EmployeeDetailPage() {
               <h2 className="text-base font-semibold text-(--mws-charcoal)">
                 Sensitive Fields
               </h2>
-              {sensitiveFieldsRevealed && !isSelfView ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    forgetReveal(employeePiiScope(employeeId))
-                    setSensitiveFieldsRevealed(false)
-                    setPii(null)
-                    hasRequestedPiiRef.current = false
-                  }}
-                >
-                  <EyeOff size={15} />
-                  Hide
-                </Button>
-              ) : null}
+              <SensitiveToggle
+                revealed={sensitiveFieldsRevealed}
+                loading={revealSensitiveFieldsMutation.isPending}
+                onShow={handleRevealSensitiveFields}
+                onHide={
+                  isSelfView
+                    ? undefined
+                    : () => {
+                        forgetReveal(employeePiiScope(employeeId))
+                        setSensitiveFieldsRevealed(false)
+                        setPii(null)
+                        hasRequestedPiiRef.current = false
+                      }
+                }
+              />
             </div>
 
             {isSensitiveFieldsRevealed ? (
@@ -465,6 +459,31 @@ export function EmployeeDetailPage() {
                 <DetailRow compact label="Birth Place" value={pii.birth_place} />
                 <DetailRow compact label="Birth Date" value={formatDate(pii.birth_date)} warning={birthDateWarning} />
                 <DetailRow compact label="Marital Status" value={formatStatus(pii.marital_status)} />
+                <DetailRow compact label="Children" value={describeChildren(pii.children?.summary)} />
+                {pii.children?.mode === 'COUNTS' ? (
+                  <DetailRow
+                    compact
+                    label="Children Recorded"
+                    value={`As numbers on ${formatDate(pii.children.declared_at)}`}
+                    warning={pii.children.needs_review ? 'Needs review, last confirmed more than a year ago' : undefined}
+                  />
+                ) : null}
+                {pii.children?.items?.length ? (
+                  <DetailRow
+                    compact
+                    label="Children Born"
+                    value={pii.children.items
+                      .map((child) => `${formatDate(child.birth_date)} (${formatStatus(child.relation)})`)
+                      .join(', ')}
+                  />
+                ) : null}
+                {pii.children?.summary?.total ? (
+                  <DetailRow
+                    compact
+                    label="Allowance Eligible"
+                    value={`${pii.children.summary.allowance_eligible} of ${pii.children.summary.total} (under 23)`}
+                  />
+                ) : null}
                 <DetailRow compact label="NIK" value={pii.nik} />
                 <DetailRow compact label="NPWP" value={pii.npwp} />
                 <DetailRow compact label="Bank Account" value={pii.bank_account_number} />
@@ -473,21 +492,7 @@ export function EmployeeDetailPage() {
                 <DetailRow compact label="KPJ Number" value={pii.kpj_number} />
               </dl>
             ) : (
-              <div className="flex flex-col items-center gap-3 py-6 text-center">
-                <p className="text-sm text-(--mws-muted)">
-                  Gender, religion, birth details, and PII (NIK/NPWP/bank account/BPJS) are hidden by default.
-                </p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  loading={revealSensitiveFieldsMutation.isPending}
-                  onClick={handleRevealSensitiveFields}
-                >
-                  <Eye size={15} />
-                  Show Sensitive Fields
-                </Button>
-              </div>
+              <SensitiveHiddenNote />
             )}
           </section>
         ) : null}

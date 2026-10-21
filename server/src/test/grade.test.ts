@@ -347,10 +347,10 @@ describe("PATCH /api/admin/grades/:id", () => {
   it("should reject changing to an already-used level", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const taken = await prismaClient.grade.create({
-      data: { name: "TEST_LevelTakenA", level: 23 },
+      data: { name: "TEST_LevelTakenA", level: 15 },
     });
     const other = await prismaClient.grade.create({
-      data: { name: "TEST_LevelTakenB", level: 24 },
+      data: { name: "TEST_LevelTakenB", level: 16 },
     });
 
     const response = await TestRequest.patch(
@@ -368,7 +368,7 @@ describe("PATCH /api/admin/grades/:id", () => {
   it("should allow re-saving with the same name and level (no-op)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const grade = await prismaClient.grade.create({
-      data: { name: "TEST_SameName", level: 25 },
+      data: { name: "TEST_SameName", level: 17 },
     });
 
     const response = await TestRequest.patch(
@@ -990,5 +990,20 @@ describe("DELETE /api/admin/grades/:id", () => {
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+});
+
+describe("GradeTest.freeLevel", () => {
+  it("gives a level above every grade, also right after one was made with it", async () => {
+    const first = await GradeTest.freeLevel();
+    const unit = await prismaClient.masterUnit.findFirstOrThrow();
+    await prismaClient.grade.create({ data: { name: `TEST_FreeLevel_${Date.now()}`, level: first, unit_id: unit.id } });
+    try {
+      const second = await GradeTest.freeLevel();
+      expect(second).toBeGreaterThan(first);
+      expect(first).toBeGreaterThanOrEqual(9000);
+    } finally {
+      await GradeTest.delete();
+    }
   });
 });

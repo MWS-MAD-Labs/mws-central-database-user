@@ -39,7 +39,7 @@ describe('Dashboard permission metrics', () => {
     expect(screen.getByText('Total Students')).toBeVisible()
     expect(screen.getAllByText('Active Classes').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('Restricted').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Employee & Intern access is required to view this metric.')).toBeVisible()
+    expect(screen.getByText('Needs Employee & Intern access')).toBeVisible()
     expect(screen.getByText('Employee & Intern access is required to view this gender distribution.')).toBeVisible()
     expect(screen.getByText('Employee & Intern access is required to view this age distribution.')).toBeVisible()
     expect(screen.getByText('Employee & Intern access is required to view staff birthdays.')).toBeVisible()

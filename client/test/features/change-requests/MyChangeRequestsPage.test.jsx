@@ -67,7 +67,7 @@ describe('MyChangeRequestsPage', () => {
     expect(screen.getByText('Please attach the KTP')).toBeVisible()
     expect(screen.getByText('Care Head')).toBeVisible()
     expect(screen.getByText('Waiting for an approver')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Cancel request' })).toBeVisible()
 
     await waitFor(() =>
       expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/mine/seen'))).toHaveLength(1),

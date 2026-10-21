@@ -187,6 +187,7 @@ export function StudentDetailPage() {
   });
 
   const reissueNisMutation = useMutation({
+    meta: { successMessage: "NIS reissued." },
     mutationFn: () =>
       studentsApi.reissueNis(studentId, reissueEntryType, {
         joinGradeId: reissueJoinGradeId,
@@ -297,7 +298,7 @@ export function StudentDetailPage() {
     const confirmed = await confirm({
       title: "Deactivate student",
       description:
-        "Deactivate this student? Their class enrollment stays exactly as it is. This only flags them as inactive.",
+        "Deactivate this student? Their class enrollment stays as it is.",
       confirmLabel: "Deactivate",
       tone: "danger",
     });
@@ -317,23 +318,16 @@ export function StudentDetailPage() {
         }
         actions={
           <>
-            <Button asChild variant="secondary">
-              <Link to="/students">
-                <ArrowLeft size={16} />
-                Back
-              </Link>
+            <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+              <Link to="/students"><ArrowLeft size={16} /></Link>
             </Button>
             {canWrite && !editBlockedText ? (
-              <Button asChild variant="secondary">
-                <Link to={`/students/${studentId}/edit`}>
-                  <Edit size={16} />
-                  Edit
-                </Link>
+              <Button asChild variant="secondary" size="icon" aria-label="Edit" title="Edit">
+                <Link to={`/students/${studentId}/edit`}><Edit size={16} /></Link>
               </Button>
             ) : student && editBlockedText ? (
-              <Button type="button" variant="secondary" disabled title={editBlockedText}>
+              <Button type="button" variant="secondary" disabled title={editBlockedText} size="icon" aria-label="Edit">
                 <Edit size={16} />
-                Edit
               </Button>
             ) : null}
             {canWrite && student?.status === "INACTIVE" ? (
@@ -342,9 +336,9 @@ export function StudentDetailPage() {
                 variant="secondary"
                 loading={reactivateMutation.isPending}
                 onClick={() => reactivateMutation.mutate()}
+                size="icon" aria-label="Reactivate" title="Reactivate"
               >
                 <UserCheck size={16} />
-                Reactivate
               </Button>
             ) : canWrite ? (
               <Button
@@ -360,9 +354,9 @@ export function StudentDetailPage() {
                     : undefined
                 }
                 onClick={handleDeactivate}
+                size="icon" aria-label="Deactivate"
               >
                 <UserX size={16} />
-                Deactivate
               </Button>
             ) : null}
             {canDelete ? (
@@ -371,9 +365,9 @@ export function StudentDetailPage() {
                 variant="danger"
                 loading={deleteMutation.isPending}
                 onClick={handleDelete}
+                size="icon" aria-label="Archive" title="Archive"
               >
                 <Trash2 size={16} />
-                Archive
               </Button>
             ) : null}
           </>
@@ -596,7 +590,6 @@ export function StudentDetailPage() {
                           <Button
                             type="button"
                             variant="secondary"
-                            size="sm"
                             disabled={reissueNisMutation.isPending}
                             onClick={() => {
                               setReissueEntryType("");
@@ -608,9 +601,9 @@ export function StudentDetailPage() {
                               );
                               setIsReissueModalOpen(true);
                             }}
+                            size="icon" aria-label="Reissue NIS" title="Reissue NIS"
                           >
                             <RefreshCw size={14} />
-                            Reissue NIS
                           </Button>
                         ) : null}
                       </span>
@@ -692,20 +685,17 @@ export function StudentDetailPage() {
                     </h2>
                     {canViewSensitive ? (
                       pii.revealed ? (
-                        <Button type="button" variant="ghost" size="sm" onClick={pii.hide}>
+                        <Button type="button" variant="secondary" onClick={pii.hide} size="icon" aria-label="Hide birth details" title="Hide birth details">
                           <EyeOff size={15} />
-                          Hide birth details
                         </Button>
                       ) : (
                         <Button
                           type="button"
-                          variant="ghost"
-                          size="sm"
                           loading={pii.isRevealing}
                           onClick={pii.reveal}
+                          size="icon" aria-label="Show birth details" title="Show birth details"
                         >
                           <Eye size={15} />
-                          Show birth details
                         </Button>
                       )
                     ) : null}
@@ -1189,7 +1179,6 @@ export function StudentDetailPage() {
                   });
                 }}
               >
-                <RefreshCw size={14} />
                 Generate NIS
               </Button>
             </div>

@@ -474,6 +474,10 @@ export function buildStudentSearchWhere(
     studentFilters.current_class_id = searchRequest.current_class_id;
   if (searchRequest.join_academic_year_id)
     studentFilters.join_academic_year_id = searchRequest.join_academic_year_id;
+  if (searchRequest.enrolled_academic_year_id)
+    studentFilters.enrollments = {
+      some: { academic_year_id: searchRequest.enrolled_academic_year_id, deleted_at: null },
+    };
   if (searchRequest.leave_year)
     studentFilters.leave_year = searchRequest.leave_year;
   if (searchRequest.pickup_drop_service !== undefined)

@@ -1,5 +1,11 @@
+// First letter of each word in capitals, so a name that was seeded from an email still reads properly.
+const capitalize = (text) => text.replace(/(^|[\s'-])(\p{L})/gu, (_, before, letter) => before + letter.toUpperCase())
+
 export function getUserDisplayName(user) {
-  return user?.full_name || user?.identity?.full_name || user?.email || 'User'
+  const name = user?.full_name || user?.identity?.full_name
+  if (name) return capitalize(name.trim())
+  const emailName = user?.email?.split('@')[0]
+  return emailName ? capitalize(emailName) : 'User'
 }
 
 export function getUserEmail(user) {

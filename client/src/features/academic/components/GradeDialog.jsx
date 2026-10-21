@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
-import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
+import { Field, NumberInput, TextInput } from "../../../components/ui/FormControls.jsx";
+import { LIMITS } from "../../../lib/limits.js";
 import {
   capitalizeWords,
   cleanPayload,
@@ -12,7 +13,16 @@ import {
 function computeGradeErrors(values) {
   const errors = {};
   if (!values.name.trim()) errors.name = "Name is required.";
-  if (!values.level) errors.level = "Level is required.";
+  if (values.name.length > LIMITS.GRADE_NAME_MAX) errors.name = `Name can have up to ${LIMITS.GRADE_NAME_MAX} characters.`;
+  const level = optionalNumber(values.level);
+  if (values.level === "" || values.level === "-") errors.level = "Level is required.";
+  else if (level < LIMITS.GRADE_LEVEL_MIN || level > LIMITS.GRADE_LEVEL_MAX) {
+    errors.level = `Use a level from ${LIMITS.GRADE_LEVEL_MIN} to ${LIMITS.GRADE_LEVEL_MAX}.`;
+  }
+  const age = optionalNumber(values.typical_age);
+  if (values.typical_age !== "" && (age < LIMITS.GRADE_AGE_MIN || age > LIMITS.GRADE_AGE_MAX)) {
+    errors.typical_age = `Use an age from ${LIMITS.GRADE_AGE_MIN} to ${LIMITS.GRADE_AGE_MAX}.`;
+  }
   return errors;
 }
 
@@ -59,35 +69,44 @@ export function GradeDialog({ dialog, isSubmitting, onClose, onSubmit }) {
         noValidate
         className="grid gap-4 md:grid-cols-2"
       >
-        <Field label="Name" error={errors.name}>
+        <Field
+          label="Name"
+          error={errors.name}
+          hint={`${values.name.length}/${LIMITS.GRADE_NAME_MAX}`}
+        >
           <TextInput
             invalid={Boolean(errors.name)}
+            maxLength={LIMITS.GRADE_NAME_MAX}
             value={values.name}
             onChange={(event) =>
               setValues({ ...values, name: capitalizeWords(event.target.value) })
             }
           />
         </Field>
-        <Field label="Level" error={errors.level}>
-          <TextInput
+        <Field
+          label="Level"
+          error={errors.level}
+          hint={`${LIMITS.GRADE_LEVEL_MIN} to ${LIMITS.GRADE_LEVEL_MAX}`}
+        >
+          <NumberInput
             invalid={Boolean(errors.level)}
-            type="number"
+            min={LIMITS.GRADE_LEVEL_MIN}
+            max={LIMITS.GRADE_LEVEL_MAX}
             value={values.level}
-            onChange={(event) =>
-              setValues({ ...values, level: event.target.value })
-            }
+            onChange={(level) => setValues({ ...values, level })}
           />
         </Field>
         <Field
           label="Typical Age"
+          error={errors.typical_age}
           hint="Used for the age-vs-grade sanity check on student registration. Leave blank to skip the check for this grade."
         >
-          <TextInput
-            type="number"
+          <NumberInput
+            invalid={Boolean(errors.typical_age)}
+            min={LIMITS.GRADE_AGE_MIN}
+            max={LIMITS.GRADE_AGE_MAX}
             value={values.typical_age}
-            onChange={(event) =>
-              setValues({ ...values, typical_age: event.target.value })
-            }
+            onChange={(typical_age) => setValues({ ...values, typical_age })}
           />
         </Field>
       </form>

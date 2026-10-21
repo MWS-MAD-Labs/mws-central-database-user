@@ -1,4 +1,3 @@
-import { Eye } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button.jsx'
 import { LiveIndicator } from '../../../../components/ui/LiveIndicator.jsx'
 import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
@@ -31,7 +30,6 @@ export function SensitiveDataReveal({ icon, title, onReveal }) {
     <PanelFrame title={title} icon={icon} isFetching={false}>
       <div className="flex flex-col items-center gap-3 py-6 text-center">
         <Button type="button" variant="secondary" size="sm" onClick={onReveal}>
-          <Eye size={15} />
           Show {title}
         </Button>
       </div>

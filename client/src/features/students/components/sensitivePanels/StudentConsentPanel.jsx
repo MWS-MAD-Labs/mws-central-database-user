@@ -20,6 +20,7 @@ import { MAX_ATTACHMENT_SIZE_BYTES, formatFileSize, validateFileSize } from '../
 import { showErrorToast } from '../../../../lib/toast.js'
 import { consentStatuses, consentTypes, studentSensitiveApi } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame } from './panelPrimitives.jsx'
+import { isPendingFor } from "../../../../lib/mutationState.js";
 
 export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
@@ -35,6 +36,7 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
   })
 
   const createMutation = useMutation({
+    meta: { successMessage: "Consent added." },
     mutationFn: (payload) => studentSensitiveApi.createConsent(studentId, payload),
     onSuccess: () => {
       invalidateConsents(queryClient, studentId)
@@ -42,6 +44,7 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const updateMutation = useMutation({
+    meta: { successMessage: "Consent updated." },
     mutationFn: ({ id, payload }) =>
       studentSensitiveApi.updateConsent(studentId, id, payload),
     onSuccess: () => {
@@ -50,10 +53,12 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
     },
   })
   const deleteMutation = useMutation({
+    meta: { successMessage: "Consent deleted." },
     mutationFn: (id) => studentSensitiveApi.removeConsent(studentId, id),
     onSuccess: () => invalidateConsents(queryClient, studentId),
   })
   const restoreMutation = useMutation({
+    meta: { successMessage: "Consent restored." },
     mutationFn: (id) => studentSensitiveApi.restoreConsent(studentId, id),
     onSuccess: () => invalidateConsents(queryClient, studentId),
   })
@@ -83,12 +88,11 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
           </ToggleChip>
           <Button
             type="button"
-            size="sm"
             disabled={!canWrite}
             onClick={() => setDialog({ mode: 'create' })}
+            size="icon" aria-label="Add Consent" title="Add Consent"
           >
             <Plus size={15} />
-            Consent
           </Button>
         </>
       }
@@ -107,7 +111,7 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
               onEdit={() => setDialog({ mode: 'edit', record: consent })}
               onDelete={() => handleDelete(consent)}
               onRestore={() => restoreMutation.mutate(consent.id)}
-              isRestoring={restoreMutation.variables === consent.id}
+              isRestoring={isPendingFor(restoreMutation, consent.id)}
             />
           ))}
         </div>
@@ -165,9 +169,8 @@ function ConsentCard({
         </div>
         <div className="flex gap-1">
           {consent.deleted_at ? (
-            <Button type="button" variant="ghost" size="sm" disabled={!canWrite || isRestoring} onClick={onRestore}>
+            <Button type="button" variant="ghost" disabled={!canWrite || isRestoring} onClick={onRestore} size="icon" aria-label="Restore" title="Restore">
               <RotateCcw size={15} />
-              Restore
             </Button>
           ) : (
             <>
@@ -221,6 +224,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
     enabled: canViewSensitive,
   })
   const uploadMutation = useMutation({
+    meta: { successMessage: "File uploaded." },
     mutationFn: (file) => studentSensitiveApi.uploadAttachment(studentId, consentId, file),
     onSuccess: () =>
       queryClient.invalidateQueries({
@@ -228,6 +232,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
       }),
   })
   const deleteMutation = useMutation({
+    meta: { successMessage: "File deleted." },
     mutationFn: (attachmentId) =>
       studentSensitiveApi.removeAttachment(studentId, consentId, attachmentId),
     onSuccess: () =>
@@ -236,6 +241,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
       }),
   })
   const restoreMutation = useMutation({
+    meta: { successMessage: "File restored." },
     mutationFn: (attachmentId) =>
       studentSensitiveApi.restoreAttachment(studentId, consentId, attachmentId),
     onSuccess: () =>
@@ -325,27 +331,27 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
                 </div>
               </div>
               <div className="flex shrink-0 gap-1">
-                <Button asChild variant="ghost" size="sm">
+                <Button aria-label="Download attachment" title="Download attachment" asChild variant="ghost" size="icon">
                   <a href={attachmentDownloadUrl(studentId, consentId, attachment.id)} target="_blank" rel="noreferrer">
                     <Download size={15} />
                   </a>
                 </Button>
                 {attachment.deleted_at ? (
-                  <Button
+                  <Button aria-label="Restore attachment" title="Restore attachment"
                     type="button"
                     variant="ghost"
-                    size="sm"
-                    disabled={!canWrite || restoreMutation.variables === attachment.id}
+                    size="icon"
+                    disabled={!canWrite || isPendingFor(restoreMutation, attachment.id)}
                     onClick={() => restoreMutation.mutate(attachment.id)}
                   >
                     <RotateCcw size={15} />
                   </Button>
                 ) : (
-                  <Button
+                  <Button aria-label="Delete attachment" title="Delete attachment"
                     type="button"
                     variant="ghost"
-                    size="sm"
-                    disabled={!canWrite || deleteMutation.variables === attachment.id}
+                    size="icon"
+                    disabled={!canWrite || isPendingFor(deleteMutation, attachment.id)}
                     onClick={() => deleteMutation.mutate(attachment.id)}
                   >
                     <Trash2 size={15} />

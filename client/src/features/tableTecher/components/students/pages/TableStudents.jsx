@@ -17,7 +17,7 @@ export function TableStudents({ context, academicYearsById }) {
   const queryParams = useMemo(
     () => ({
       search: context.search,
-      join_academic_year_id: context.academicYearId,
+      enrolled_academic_year_id: context.academicYearId,
       current_grade_id: context.gradeId,
       current_class_id: context.classId,
       sort_by: "full_name",
@@ -29,6 +29,8 @@ export function TableStudents({ context, academicYearsById }) {
   const studentsQuery = useQuery({
     queryKey: ["workspace", "students", queryParams],
     queryFn: () => fetchAllStudents(queryParams),
+    // Nothing to list before there is an academic year to list for.
+    enabled: Boolean(context.academicYearId),
     placeholderData: (previous) => previous,
   });
 
@@ -71,11 +73,12 @@ export function TableStudents({ context, academicYearsById }) {
           <Button
             type="button"
             variant="secondary"
-            size="sm"
+            size="icon"
+            aria-label={showRawResponse ? "Hide raw JSON" : "Raw JSON"}
+            title={showRawResponse ? "Hide raw JSON" : "Raw JSON"}
             onClick={() => setShowRawResponse((current) => !current)}
           >
-            <Braces size={14} />
-            {showRawResponse ? "Hide raw JSON" : "Raw JSON"}
+            <Braces size={15} />
           </Button>
         </div>
       </div>
@@ -94,7 +97,11 @@ export function TableStudents({ context, academicYearsById }) {
         isLoading={studentsQuery.isLoading}
         isError={studentsQuery.isError}
         errorMessage={studentsQuery.error?.message}
-        emptyMessage="No students match the current workspace context."
+        emptyMessage={
+          context.academicYearId
+            ? "No students are enrolled in this academic year with these filters."
+            : "There is no academic year yet."
+        }
       />
     </div>
   );

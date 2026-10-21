@@ -73,7 +73,7 @@ describe('student sensitive panels', () => {
     await user.click(screen.getByRole('button', { name: 'View' }))
     expect(await screen.findByText('No vaccine records yet.')).toBeVisible()
 
-    await user.click(screen.getByRole('button', { name: 'Vaccine' }))
+    await user.click(screen.getByRole('button', { name: 'Add Vaccine' }))
     expect(screen.getByRole('dialog', { name: 'New Vaccine Record' })).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Save' }))
 

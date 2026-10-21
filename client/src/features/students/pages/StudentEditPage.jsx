@@ -25,6 +25,7 @@ export function StudentEditPage() {
   })
 
   const updateMutation = useMutation({
+    meta: { successMessage: 'Student updated.' },
     mutationFn: (payload) => studentsApi.update(studentId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['students'] })
@@ -46,11 +47,8 @@ export function StudentEditPage() {
             : 'Update student identity and academic data.'
         }
         actions={
-          <Button asChild variant="secondary">
-            <Link to={`/students/${studentId}`}>
-              <ArrowLeft size={16} />
-              Back
-            </Link>
+          <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+            <Link to={`/students/${studentId}`}><ArrowLeft size={16} /></Link>
           </Button>
         }
       />

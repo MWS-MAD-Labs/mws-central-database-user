@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
+import toast from 'react-hot-toast'
 import { fireEvent, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
@@ -119,6 +120,7 @@ describe('Employee create and edit pages', () => {
       },
     ])
     globalThis.fetch = fetchMock
+    const success = spyOn(toast, 'success').mockImplementation(() => '')
     const { user } = renderRoute(<EmployeeEditPage />, '/employees/employee-1/edit', '/employees/:employeeId/edit')
 
     expect(screen.getByText('Loading employee...')).toBeVisible()
@@ -134,6 +136,8 @@ describe('Employee create and edit pages', () => {
     const patch = fetchMock.mock.calls.find(([url, options]) =>
       url === '/api/admin/employees/employee-1' && options.method === 'PATCH')
     expect(JSON.parse(patch[1].body).full_name).toBe('Ari Updated')
+    expect(success).toHaveBeenCalledWith('Employee updated.')
+    success.mockRestore()
   })
 
   it('renders edit error state when employee data fails', async () => {

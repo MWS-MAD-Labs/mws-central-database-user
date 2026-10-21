@@ -183,8 +183,10 @@ export function MyChangeRequestsPage() {
                 {request.can_cancel ? (
                   <Button
                     type="button"
-                    size="sm"
+                    size="icon"
                     variant="ghost"
+                    aria-label="Cancel request"
+                    title="Cancel request"
                     disabled={cancelMutation.isPending}
                     onClick={async () => {
                       if (
@@ -200,7 +202,6 @@ export function MyChangeRequestsPage() {
                     }}
                   >
                     <Undo2 size={15} />
-                    Cancel
                   </Button>
                 ) : null}
               </td>

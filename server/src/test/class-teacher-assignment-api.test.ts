@@ -13,6 +13,7 @@ import {
   InternTest,
   MasterDataTest,
   TestRequest,
+  GradeTest,
 } from "./test-utils";
 
 const READ_SCOPE = "class_teacher_assignments:read";
@@ -65,7 +66,7 @@ describe("Class Teacher Assignment API (internal)", () => {
     const grade = await prismaClient.grade.create({
       data: {
         name: `TEST_API_GRADE_${suffix}`,
-        level: 7000 + Math.floor(Math.random() * 1000),
+        level: await GradeTest.freeLevel(),
         unit_id: unitId,
       },
     });

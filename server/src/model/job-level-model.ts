@@ -33,6 +33,7 @@ export type SearchJobLevelRequest = {
   page: number;
   size: number;
   search?: string;
+  unit_id?: string;
   sort_by?: JobLevelSortField;
   sort_order?: "asc" | "desc";
 };

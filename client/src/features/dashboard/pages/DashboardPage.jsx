@@ -46,8 +46,7 @@ export function DashboardPage() {
     user?.type === "admin" ? canViewStudents(user) : isTeacher;
   const showAcademic =
     user?.type === "admin" ? canViewAcademic(user) : isTeacher;
-  const showWorkforce =
-    user?.type === "admin" ? canViewWorkforce(user) : true;
+  const showWorkforce = user?.type === "admin" ? canViewWorkforce(user) : true;
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -73,9 +72,9 @@ export function DashboardPage() {
       tone: "green",
       caption: showWorkforce
         ? summary?.totals.interns > 0
-          ? `Employee records available in the central database (including ${summary.totals.interns} intern${summary.totals.interns === 1 ? "" : "s"})`
-          : "Employee records available in the central database"
-        : "Employee & Intern access is required to view this metric.",
+          ? `Includes ${summary.totals.interns} intern${summary.totals.interns === 1 ? "" : "s"}`
+          : undefined
+        : "Needs Employee & Intern access",
     },
     {
       label: "Total Students",
@@ -83,9 +82,7 @@ export function DashboardPage() {
       restricted: !showStudents,
       icon: GraduationCap,
       tone: "amber",
-      caption: showStudents
-        ? "Student records across active and historical cohorts"
-        : "Student access is required to view this metric.",
+      caption: showStudents ? undefined : "Needs Student access",
     },
     {
       label: "Active Classes",
@@ -93,9 +90,7 @@ export function DashboardPage() {
       restricted: !showAcademic,
       icon: BookOpen,
       tone: "neutral",
-      caption: showAcademic
-        ? "Classes currently marked active"
-        : "Student or Employee & Intern access is required to view this metric.",
+      caption: showAcademic ? undefined : "Needs Student or Employee & Intern access",
     },
   ];
 
@@ -129,9 +124,7 @@ export function DashboardPage() {
       <PageHeader
         title="Dashboard"
         description={`Welcome back, ${getUserDisplayName(user)}.`}
-        actions={
-          <LiveIndicator isSyncing={isSyncing} />
-        }
+        actions={<LiveIndicator isSyncing={isSyncing} />}
       />
 
       <div className="grid min-w-0 gap-5">
@@ -139,15 +132,11 @@ export function DashboardPage() {
           <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,0.42fr)] xl:items-center">
             <div className="min-w-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <StatusBadge tone="green">Public workspace</StatusBadge>
+                <StatusBadge tone="green">Public Workspace</StatusBadge>
               </div>
               <h2 className="break-words font-display text-2xl font-extrabold text-(--mws-charcoal)">
                 {greetingFor(now)}, {getUserDisplayName(user)}
               </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-(--mws-muted)">
-                General school data view for employees, students, active
-                classes, age groups, gender split, and staff birthdays.
-              </p>
             </div>
 
             <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
@@ -182,16 +171,25 @@ export function DashboardPage() {
           <SectionTitle
             icon={VenusAndMars}
             title="Gender Distribution"
-            caption="General split across employee and student records"
           />
 
           <div className="grid h-full min-w-0 gap-4 lg:grid-cols-2">
-              {showWorkforce ? <GenderMuiDonut title="Employees" rows={employeeGender} /> : (
-                <RestrictedDashboardPanel title="Employees" message="Employee & Intern access is required to view this gender distribution." />
-              )}
-              {showStudents ? <GenderMuiDonut title="Students" rows={studentGender} /> : (
-                <RestrictedDashboardPanel title="Students" message="Student access is required to view this gender distribution." />
-              )}
+            {showWorkforce ? (
+              <GenderMuiDonut title="Employees" rows={employeeGender} />
+            ) : (
+              <RestrictedDashboardPanel
+                title="Employees"
+                message="Employee & Intern access is required to view this gender distribution."
+              />
+            )}
+            {showStudents ? (
+              <GenderMuiDonut title="Students" rows={studentGender} />
+            ) : (
+              <RestrictedDashboardPanel
+                title="Students"
+                message="Student access is required to view this gender distribution."
+              />
+            )}
           </div>
         </section>
 
@@ -207,14 +205,23 @@ export function DashboardPage() {
           <SectionTitle
             icon={BarChart3}
             title="Age Distribution"
-            caption="Age buckets calculated from birth dates"
           />
           <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-            {showWorkforce ? <DistributionBars title="Employees" rows={employeeAges} /> : (
-              <RestrictedDashboardPanel title="Employees" message="Employee & Intern access is required to view this age distribution." />
+            {showWorkforce ? (
+              <DistributionBars title="Employees" rows={employeeAges} />
+            ) : (
+              <RestrictedDashboardPanel
+                title="Employees"
+                message="Employee & Intern access is required to view this age distribution."
+              />
             )}
-            {showStudents ? <DistributionBars title="Students" rows={studentAges} /> : (
-              <RestrictedDashboardPanel title="Students" message="Student access is required to view this age distribution." />
+            {showStudents ? (
+              <DistributionBars title="Students" rows={studentAges} />
+            ) : (
+              <RestrictedDashboardPanel
+                title="Students"
+                message="Student access is required to view this age distribution."
+              />
             )}
           </div>
         </section>
@@ -223,12 +230,18 @@ export function DashboardPage() {
           <SectionTitle
             icon={ShieldCheck}
             title="Active Classes"
-            caption="Class count grouped by grade"
           />
           {showAcademic ? (
-            <DistributionBars title="Classes by grade" rows={classRows} scrollable />
+            <DistributionBars
+              title="Classes by grade"
+              rows={classRows}
+              scrollable
+            />
           ) : (
-            <RestrictedDashboardPanel title="Active Classes" message="Student or Employee & Intern access is required to view class distribution." />
+            <RestrictedDashboardPanel
+              title="Active Classes"
+              message="Student or Employee & Intern access is required to view class distribution."
+            />
           )}
         </section>
       </div>

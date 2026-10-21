@@ -1,15 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FilterToolbar } from "../../../components/ui/FilterToolbar.jsx";
 import {
-  ArrowLeftRight,
-  Ban,
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
   CalendarPlus,
   CheckCircle2,
   ChevronDown,
   Clock3,
-  Eye,
   Plus,
-  RotateCcw,
   Trash2,
+  UserPlus,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
@@ -18,6 +21,7 @@ import {
   ActionsMenu,
   ActionsMenuItem,
 } from "../../../components/ui/ActionsMenu.jsx";
+import { Tabs } from "../../../components/ui/Tabs.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -55,6 +59,7 @@ import {
 import { auditLogsApi } from "../../audit/api/auditLogsApi.js";
 import { AuditDiffTable } from "../../audit/pages/AuditLogsPage.jsx";
 import { adminRoles, adminUsersApi, workingDaysApi } from "../api/accessApi.js";
+import { isPendingFor } from "../../../lib/mutationState.js";
 
 const tabs = [
   { id: "admins", label: "Admin Users" },
@@ -116,17 +121,8 @@ export function AccessPage() {
         description="Manage admin panel access, emergency write grants, and working Saturday overrides."
       />
 
-      <div className="mb-4 flex min-w-0 flex-wrap gap-2">
-        {tabs.map((tab) => (
-          <Button
-            key={tab.id}
-            type="button"
-            variant={activeTab === tab.id ? "primary" : "secondary"}
-            onClick={() => setTab(tab.id)}
-          >
-            {tab.label}
-          </Button>
-        ))}
+      <div className="mb-5">
+        <Tabs label="Access" tabs={tabs} active={activeTab} onChange={setTab} />
       </div>
 
       {activeTab === "working-days" ? (
@@ -464,7 +460,7 @@ function AdminUsersPanel() {
     if (
       await confirm({
         title: "Demote Super Admin",
-        description: `Demote ${admin.email} from Super Admin to Database Admin? They'll keep the account, just lose Super Admin access.`,
+        description: `Demote ${admin.email} from Super Admin to Database Admin? They keep the account and lose Super Admin access.`,
         confirmLabel: "Demote",
         tone: "danger",
       })
@@ -498,34 +494,37 @@ function AdminUsersPanel() {
           <p className="mt-0.5">
             Requests to change a locked NIK, NPWP, bank or BPJS number can't be
             reviewed. Pick an admin who is linked to an employee with the Head
-            of CARE position, then tick Change Request Approver in their
-            row. Only a protected Super Admin can do this. Requests filed
-            earlier appear for them automatically.
+            of CARE position, then tick Change Request Approver in their row.
+            Only a protected Super Admin can do this. Requests filed earlier
+            appear for them automatically.
           </p>
         </div>
       ) : null}
       <div className="border-b border-(--mws-line) p-4">
-        <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-          <DebouncedSearchInput
-            value={params.search}
-            placeholder="Search Admin Name Or Email"
-            className="xl:max-w-lg"
-            onChange={(search) => resetPageAndUpdate({ search })}
-          />
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <LiveIndicator isSyncing={adminsQuery.isFetching} />
-            <FilterResetButton
-              visible={hasActiveFilters}
-              onReset={resetFilters}
+        <FilterToolbar
+          search={
+            <DebouncedSearchInput
+              value={params.search}
+              placeholder="Search Admin Name Or Email"
+              onChange={(search) => resetPageAndUpdate({ search })}
             />
-            <Button type="button" onClick={() => setPromoteOpen(true)}>
-              <Plus size={16} />
-              Promote
+          }
+          status={<LiveIndicator isSyncing={adminsQuery.isFetching} />}
+          reset={
+            <FilterResetButton visible={hasActiveFilters} onReset={resetFilters} />
+          }
+          actions={
+            <Button
+              type="button"
+              size="icon"
+              aria-label="Promote"
+              title="Promote"
+              onClick={() => setPromoteOpen(true)}
+            >
+              <UserPlus size={16} />
             </Button>
-          </div>
-        </div>
-
-        <div className="mt-4 flex min-w-0 flex-wrap gap-3">
+          }
+        >
           <FilterSelect
             label="Role"
             value={params.role}
@@ -548,7 +547,7 @@ function AdminUsersPanel() {
               { value: "false", label: "Inactive" },
             ]}
           />
-        </div>
+        </FilterToolbar>
       </div>
 
       <div className="w-full min-w-0 overflow-x-auto">
@@ -852,7 +851,6 @@ function AdminUsersPanel() {
                               }}
                             >
                               <span className="flex items-center gap-2">
-                                <Eye size={15} />
                                 History
                               </span>
                             </ActionsMenuItem>
@@ -875,7 +873,6 @@ function AdminUsersPanel() {
                                   }}
                                 >
                                   <span className="flex items-center gap-2">
-                                    <Clock3 size={15} />
                                     Grant after-hours
                                   </span>
                                 </ActionsMenuItem>
@@ -898,7 +895,6 @@ function AdminUsersPanel() {
                                     }}
                                   >
                                     <span className="flex items-center gap-2">
-                                      <ArrowLeftRight size={15} />
                                       Make DB Admin
                                     </span>
                                   </ActionsMenuItem>
@@ -915,7 +911,6 @@ function AdminUsersPanel() {
                                     }}
                                   >
                                     <span className="flex items-center gap-2">
-                                      <ArrowLeftRight size={15} />
                                       {admin.role === "DATABASE_ADMIN"
                                         ? "Make Viewer"
                                         : "Make DB Admin"}
@@ -937,23 +932,22 @@ function AdminUsersPanel() {
                                   }}
                                 >
                                   <span className="flex items-center gap-2">
-                                    <Ban size={15} />
                                     Demote
                                   </span>
                                 </ActionsMenuItem>
                               </>
                             ) : (
                               <ActionsMenuItem
-                                disabled={
-                                  reactivateMutation.variables?.id === admin.id
-                                }
+                                disabled={isPendingFor(
+                                  reactivateMutation,
+                                  (variables) => variables?.id === admin.id,
+                                )}
                                 onClick={() => {
                                   closeMenu();
                                   handleReactivate(admin);
                                 }}
                               >
                                 <span className="flex items-center gap-2">
-                                  <RotateCcw size={15} />
                                   Reactivate
                                 </span>
                               </ActionsMenuItem>
@@ -1085,9 +1079,8 @@ function WorkingDaysPanel() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <LiveIndicator isSyncing={workingDaysQuery.isFetching} />
-          <Button type="button" onClick={() => setCreateOpen(true)}>
+          <Button type="button" onClick={() => setCreateOpen(true)} size="icon" aria-label="Add Saturday" title="Add Saturday">
             <Plus size={16} />
-            Saturday
           </Button>
         </div>
       </div>
@@ -1138,12 +1131,11 @@ function WorkingDaysPanel() {
                     <Button
                       type="button"
                       variant="ghost"
-                      size="sm"
-                      disabled={deleteMutation.variables === day.id}
+                      disabled={isPendingFor(deleteMutation, day.id)}
                       onClick={() => handleDelete(day)}
+                      size="icon" aria-label="Remove" title="Remove"
                     >
                       <Trash2 size={15} />
-                      Remove
                     </Button>
                   </td>
                 </tr>
@@ -1365,16 +1357,20 @@ function GrantDialog({ admin, isSubmitting, onClose, onSubmit }) {
 }
 
 function AdminHistoryDialog({ admin, onClose }) {
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(10);
   const historyQuery = useQuery({
-    queryKey: ["admin-users", admin.id, "history"],
+    queryKey: ["admin-users", admin.id, "history", page, size],
     queryFn: () =>
       auditLogsApi.list({
         entity_type: "AdminUser",
         search: admin.id,
-        size: 50,
+        page,
+        size,
         sort_by: "created_at",
         sort_order: "desc",
       }),
+    placeholderData: keepPreviousData,
   });
   const logs = historyQuery.data?.data || [];
 
@@ -1393,7 +1389,7 @@ function AdminHistoryDialog({ admin, onClose }) {
           No recorded role or permission changes for this admin.
         </p>
       ) : (
-        <ul className="max-h-[28rem] space-y-4 overflow-y-auto pr-1">
+        <ul className="max-h-[24rem] space-y-4 overflow-y-auto pr-1">
           {logs.map((log) => (
             <li
               key={log.id}
@@ -1416,6 +1412,22 @@ function AdminHistoryDialog({ admin, onClose }) {
           ))}
         </ul>
       )}
+      {logs.length > 0 || page > 1 ? (
+        <div className="-mx-1 mt-4 overflow-hidden rounded-xl border border-(--mws-line)">
+          <PaginationBar
+            paging={historyQuery.data?.paging}
+            itemLabel="changes"
+            isLoading={historyQuery.isFetching}
+            onPrevious={() => setPage((current) => Math.max(current - 1, 1))}
+            onNext={() => setPage((current) => current + 1)}
+            onPageSizeChange={(next) => {
+              setSize(next);
+              setPage(1);
+            }}
+            showPageJump={false}
+          />
+        </div>
+      ) : null}
     </CrudDialog>
   );
 }
@@ -1651,13 +1663,13 @@ function UnitScopeDialog({ admin, domain, isSubmitting, onClose, onSubmit }) {
     >
       <form id="unit-scope-form" className="space-y-3" onSubmit={handleSubmit}>
         <ScopeModeOption
-          label="Assigned unit only"
+          label="Assigned Unit Only"
           description="Only the unit this admin is assigned to."
           checked={mode === "own"}
           onChange={() => setMode("own")}
         />
         <ScopeModeOption
-          label={`Selected ${isStudent ? "academic" : "organization"} units`}
+          label={`Selected ${isStudent ? "Academic" : "Organization"} Units`}
           description="Only the units on this list, for viewing and editing."
           checked={mode === "custom"}
           onChange={() => setMode("custom")}
@@ -1691,7 +1703,7 @@ function UnitScopeDialog({ admin, domain, isSubmitting, onClose, onSubmit }) {
           </div>
         ) : null}
         <ScopeModeOption
-          label="All units"
+          label="All Units"
           description="Every unit, for viewing and editing."
           checked={mode === "all"}
           onChange={() => setMode("all")}

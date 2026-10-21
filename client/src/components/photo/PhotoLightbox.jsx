@@ -1,4 +1,4 @@
-import { Camera, Trash2, X } from "lucide-react";
+import { Camera, X } from "lucide-react";
 
 export function PhotoLightbox({
   photoUrl,
@@ -39,12 +39,11 @@ export function PhotoLightbox({
               type="button"
               onClick={onRequestReplace}
               disabled={isReplacing}
-              className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/0 text-transparent transition group-hover:bg-black/55 group-hover:text-white focus-visible:bg-black/55 focus-visible:text-white disabled:cursor-wait"
+              aria-label="Change Photo"
+              title="Change Photo"
+              className="absolute inset-0 flex items-center justify-center bg-black/0 text-transparent transition group-hover:bg-black/55 group-hover:text-white focus-visible:bg-black/55 focus-visible:text-white disabled:cursor-wait"
             >
-              <Camera size={22} />
-              <span className="text-xs font-semibold">
-                {isReplacing ? "Uploading..." : "Change Photo"}
-              </span>
+              <Camera size={isReplacing ? 18 : 24} className={isReplacing ? "animate-pulse" : undefined} />
             </button>
           ) : null}
         </div>
@@ -57,7 +56,6 @@ export function PhotoLightbox({
               disabled={isRemoving}
               className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white disabled:opacity-60"
             >
-              <Trash2 size={14} />
               Remove photo
             </button>
           </div>

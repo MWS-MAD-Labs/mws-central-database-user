@@ -8,12 +8,13 @@ export function FilterResetButton({ visible, onReset, className }) {
     <Button
       type="button"
       variant="ghost"
-      size="sm"
+      size="icon"
+      aria-label="Clear filters"
+      title="Clear filters"
       className={className}
       onClick={onReset}
     >
-      <RotateCcw size={14} />
-      Clear filters
+      <RotateCcw size={15} />
     </Button>
   )
 }

@@ -7,6 +7,7 @@ import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { formatDate, formatStatus } from '../../../lib/format.js'
 import { studentSensitiveApi } from '../../students/api/studentSensitiveApi.js'
 import { employeesApi } from '../api/employeesApi.js'
+import { isPendingFor } from "../../../lib/mutationState.js";
 
 export function SupportAssignmentsPanel({
   memberId,
@@ -24,6 +25,7 @@ export function SupportAssignmentsPanel({
   })
 
   const endMutation = useMutation({
+    meta: { successMessage: "Assignment ended." },
     mutationFn: ({ studentId, assignmentId }) =>
       studentSensitiveApi.endSupportAssignment(studentId, assignmentId),
     onSuccess: () =>
@@ -32,6 +34,7 @@ export function SupportAssignmentsPanel({
       }),
   })
   const dropMutation = useMutation({
+    meta: { successMessage: "Assignment removed." },
     mutationFn: ({ studentId, assignmentId }) =>
       studentSensitiveApi.removeSupportAssignment(studentId, assignmentId),
     onSuccess: () =>
@@ -40,6 +43,7 @@ export function SupportAssignmentsPanel({
       }),
   })
   const reactivateMutation = useMutation({
+    meta: { successMessage: "Assignment reactivated." },
     mutationFn: ({ studentId, assignmentId }) =>
       studentSensitiveApi.reactivateSupportAssignment(studentId, assignmentId),
     onSuccess: () =>
@@ -65,7 +69,7 @@ export function SupportAssignmentsPanel({
     if (
       await confirm({
         title: 'Drop assignment',
-        description: `Drop the Special Education Teacher assignment for ${assignment.student.full_name}? Use this only to undo a mistaken assignment - it won't be kept in this student's assignment history at all. For a real, legitimate handover, use "End assignment" instead.`,
+        description: `Drop the Special Education Teacher assignment for ${assignment.student.full_name}? Only to undo a mistake, it is not kept in the history. For a real handover use End Assignment.`,
         confirmLabel: 'Drop assignment',
         tone: 'danger',
       })
@@ -78,7 +82,7 @@ export function SupportAssignmentsPanel({
     if (
       await confirm({
         title: 'Reactivate assignment',
-        description: `Undo ending the Special Education Teacher assignment for ${assignment.student.full_name} and make it active again?`,
+        description: `Make the Special Education Teacher assignment for ${assignment.student.full_name} active again?`,
         confirmLabel: 'Reactivate',
       })
     ) {
@@ -155,7 +159,7 @@ export function SupportAssignmentsPanel({
                           title="End assignment"
                           aria-label="End assignment"
                           disabled={!canWrite}
-                          loading={endMutation.variables?.assignmentId === assignment.id}
+                          loading={isPendingFor(endMutation, (variables) => variables?.assignmentId === assignment.id)}
                           onClick={() => handleEnd(assignment)}
                         >
                           <Ban size={15} />
@@ -169,7 +173,7 @@ export function SupportAssignmentsPanel({
                           title="Reactivate assignment (undo an accidental End)"
                           aria-label="Reactivate assignment"
                           disabled={!canWrite}
-                          loading={reactivateMutation.variables?.assignmentId === assignment.id}
+                          loading={isPendingFor(reactivateMutation, (variables) => variables?.assignmentId === assignment.id)}
                           onClick={() => handleReactivate(assignment)}
                         >
                           <RotateCcw size={15} />
@@ -183,7 +187,7 @@ export function SupportAssignmentsPanel({
                         title="Drop assignment (undo a mistake)"
                         aria-label="Drop assignment"
                         disabled={!canWrite}
-                        loading={dropMutation.variables?.assignmentId === assignment.id}
+                        loading={isPendingFor(dropMutation, (variables) => variables?.assignmentId === assignment.id)}
                         onClick={() => handleDrop(assignment)}
                       >
                         <Trash2 size={15} />

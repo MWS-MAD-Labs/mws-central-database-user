@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { Button } from './Button.jsx'
+import { TextAction } from './TextAction.jsx'
 import { ConfirmContext } from './confirmContext.js'
 
 export function ConfirmProvider({ children }) {
@@ -63,13 +63,17 @@ export function ConfirmProvider({ children }) {
                 </div>
               )
             ) : null}
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={() => settle(false)}>
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-6 border-t border-(--mws-line) pt-4">
+              <TextAction className="text-sm!" onClick={() => settle(false)}>
                 {request.cancelLabel || 'Cancel'}
-              </Button>
-              <Button
-                type="button"
-                variant={request.tone === 'danger' ? 'danger' : 'primary'}
+              </TextAction>
+              <TextAction
+                className={
+                  'text-sm! font-semibold! ' +
+                  (request.tone === 'danger'
+                    ? 'text-[#a43c41]! hover:text-[#7f2a2f]!'
+                    : 'text-(--mws-burgundy)! hover:text-(--mws-burgundy-dark)!')
+                }
                 disabled={remainingSeconds > 0}
                 onClick={() => settle(true)}
               >
@@ -81,7 +85,7 @@ export function ConfirmProvider({ children }) {
                 ) : (
                   request.confirmLabel || 'Confirm'
                 )}
-              </Button>
+              </TextAction>
             </div>
           </div>
         </div>

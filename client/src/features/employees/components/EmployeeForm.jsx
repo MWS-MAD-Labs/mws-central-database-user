@@ -1,11 +1,10 @@
+import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   GraduationCap,
-  RotateCcw,
-  Save,
   UserRound,
 } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -75,6 +74,14 @@ import { RequestIdentifierChangeDialog } from "../../change-requests/components/
 import { RequestStatusHint } from "../../change-requests/components/RequestStatusHint.jsx";
 import { useMyRequestsForRecord } from "../../change-requests/hooks/useMyRequestsForRecord.js";
 import { rememberReveal } from "../../../lib/piiRevealMemory.js";
+import { ChildrenField } from "./ChildrenField.jsx";
+import {
+  childrenPayload,
+  childrenValueFromResponse,
+  describeChildren,
+  findProblemsFor,
+  summarizeChildrenValue,
+} from "../utils/childrenRules.js";
 
 const employeePiiScope = (employeeId) => `employee:${employeeId}`;
 import {
@@ -426,7 +433,11 @@ export function EmployeeForm({
     }
 
     onSubmit(
-      buildPayload(values, { includeSensitive: sensitiveFieldsRevealed }),
+      buildPayload(values, {
+        includeSensitive: sensitiveFieldsRevealed,
+        isCreate,
+        initialChildren: initialValues.children,
+      }),
       pendingPhotoBlob,
     );
   }
@@ -584,9 +595,18 @@ export function EmployeeForm({
         noValidate
       >
         <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
-            Identity
-          </h2>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-(--mws-charcoal)">
+              Identity
+            </h2>
+            {!sensitiveFieldsRevealed ? (
+              <SensitiveToggle
+                revealed={false}
+                loading={revealSensitiveFieldsMutation.isPending}
+                onShow={handleRevealSensitiveFields}
+              />
+            ) : null}
+          </div>
           {isCreate ? (
             <div className="mb-4 flex items-center gap-4">
               <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
@@ -663,21 +683,7 @@ export function EmployeeForm({
               </Field>
             ) : null}
             {!sensitiveFieldsRevealed ? (
-              <div className="flex flex-col items-start gap-2 rounded-xl border border-dashed border-(--mws-line) bg-(--mws-soft) p-3 md:col-span-2">
-                <p className="text-sm text-(--mws-muted)">
-                  Gender, religion, birth details, and PII (NIK/NPWP/bank
-                  account/BPJS) are hidden by default.
-                </p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  loading={revealSensitiveFieldsMutation.isPending}
-                  onClick={handleRevealSensitiveFields}
-                >
-                  Show Sensitive Fields
-                </Button>
-              </div>
+              <SensitiveHiddenNote className="text-sm text-(--mws-muted) md:col-span-2" />
             ) : null}
             <Field label="Gender" name="gender" error={errors.gender} required>
               {sensitiveFieldsRevealed ? (
@@ -1016,6 +1022,25 @@ export function EmployeeForm({
                 />
               ) : (
                 <SensitiveFieldPlaceholder />
+              )}
+            </Field>
+            <Field
+              label="Children"
+              name="children"
+              error={errors.children}
+              className="md:col-span-2"
+            >
+              {!sensitiveFieldsRevealed ? (
+                <SensitiveFieldPlaceholder />
+              ) : !canEditEmployeePii ? (
+                <RestrictedPiiHint />
+              ) : (
+                <ChildrenField
+                  value={values.children}
+                  onChange={(next) => updateValue("children", next)}
+                  maritalStatus={values.marital_status}
+                  parentBirthDate={values.birth_date}
+                />
               )}
             </Field>
             <PhoneField
@@ -1364,7 +1389,6 @@ export function EmployeeForm({
               disabled={isSubmitting}
               onClick={handleReset}
             >
-              <RotateCcw size={16} />
               Reset
             </Button>
           ) : null}
@@ -1381,7 +1405,6 @@ export function EmployeeForm({
               (!isCreate && !isDirty ? "No changes to save yet." : undefined)
             }
           >
-            <Save size={16} />
             {isCreate ? "Create employee" : "Save changes"}
           </Button>
         </FormActionBar>
@@ -1472,6 +1495,7 @@ function getInitialValues(mode, employee, options) {
     ),
     kpj_number: formatKpjNumber(identity.kpj_number || ""),
     is_kpj_number: Boolean(identity.kpj_number),
+    children: childrenValueFromResponse(identity.children),
     education_level: identity.education_level || "",
     institution_name: identity.institution_name || "",
     major: identity.major || "",
@@ -1496,13 +1520,21 @@ const SENSITIVE_VALUE_KEYS = [
   "bpjs_employment_number",
   "kpj_number",
   "is_kpj_number",
+  "children",
 ];
 
-function buildPayload(values, { includeSensitive = true } = {}) {
+function buildPayload(
+  values,
+  { includeSensitive = true, isCreate = false, initialChildren } = {},
+) {
   const payload = buildFullPayload(values);
-  if (includeSensitive) return payload;
-  // Never revealed means never loaded: leave those fields out so nothing is overwritten.
-  for (const key of SENSITIVE_VALUE_KEYS) delete payload[key];
+  if (!includeSensitive) {
+    // Never revealed means never loaded: leave those fields out so nothing is overwritten.
+    for (const key of SENSITIVE_VALUE_KEYS) delete payload[key];
+    return payload;
+  }
+  // Children go as birth dates or as numbers, only when they changed (on create, only when there are some).
+  Object.assign(payload, childrenPayload(values.children, { isCreate, initial: initialChildren }));
   return payload;
 }
 
@@ -1737,6 +1769,8 @@ const EMPLOYEE_FIELD_FORMATTERS = {
   bpjs_number: maskSensitiveValue,
   bpjs_employment_number: maskSensitiveValue,
   kpj_number: maskSensitiveValue,
+  // Only how many, never the birth dates of the children.
+  children: (value) => describeChildren(summarizeChildrenValue(value)) + (value?.mode === "COUNTS" ? " (numbers only)" : ""),
 };
 
 // contract_duration_months is a scratch input that only computes
@@ -1753,6 +1787,7 @@ const EMPLOYEE_DIFF_LABELS = {
   is_kpj_number: "Uses KPJ number",
   is_pc_mentor_eligible: "PC mentor eligible",
   pc_mentor_unit_ids: "PC mentor units",
+  children: "Children",
 };
 
 // Groups the review dialog's fields, in display order - see
@@ -1792,6 +1827,7 @@ const EMPLOYEE_FIELD_SECTIONS = {
   bpjs_employment_number: "Sensitive",
   kpj_number: "Sensitive",
   is_kpj_number: "Sensitive",
+  children: "Sensitive",
 
   education_level: "Education",
   institution_name: "Education",
@@ -1814,6 +1850,14 @@ function computeEmployeeErrors(
         errors[field] = `${label} is required.`;
       }
     }
+  }
+  if (
+    findProblemsFor(values.children, {
+      maritalStatus: values.marital_status,
+      parentBirthDate: values.birth_date,
+    }).hasProblems
+  ) {
+    errors.children = "Fix the children marked in red before saving.";
   }
   if (values.religion === "OTHER" && !values.religion_other) {
     errors.religion_other = "Religion (Please Specify) is required.";

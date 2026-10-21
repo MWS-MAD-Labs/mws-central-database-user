@@ -1,6 +1,5 @@
 import {
   AlertTriangle,
-  Eye,
   Paperclip,
   Pencil,
   Plus,
@@ -190,7 +189,7 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage, canEdi
   async function handleRevoke(entry) {
     const confirmed = await confirm({
       title: 'Revoke record',
-      description: `Revoke this ${formatDisciplinaryType(entry.type)} ${entry.level}? This marks it as issued by mistake. It stops counting toward escalation, but stays visible in the history.`,
+      description: `Revoke this ${formatDisciplinaryType(entry.type)} ${entry.level}? It was issued by mistake: it stops counting toward escalation but stays in the history.`,
       confirmLabel: 'Revoke',
       tone: 'danger',
     })
@@ -217,7 +216,6 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage, canEdi
             loading={revealMutation.isPending}
             onClick={handleReveal}
           >
-            <Eye size={15} />
             Show Disciplinary Actions
           </Button>
         </div>
@@ -241,9 +239,8 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage, canEdi
           </p>
         </div>
         {canManage ? (
-          <Button type="button" size="sm" onClick={() => setIssueDialogOpen(true)}>
+          <Button type="button" onClick={() => setIssueDialogOpen(true)} size="icon" aria-label="Issue Record" title="Issue Record">
             <Plus size={15} />
-            Issue Record
           </Button>
         ) : null}
       </div>
@@ -617,10 +614,10 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canManage, needsA
               {canManage ? (
                 <div className="flex shrink-0 gap-1">
                   {attachment.deleted_at ? (
-                    <Button
+                    <Button aria-label="Restore" title="Restore"
                       type="button"
                       variant="ghost"
-                      size="sm"
+                      size="icon"
                       disabled={restoreMutation.isPending}
                       onClick={() =>
                         startChange({ kind: 'restore', attachmentId: attachment.id }, () =>
@@ -631,10 +628,10 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canManage, needsA
                       <RotateCcw size={15} />
                     </Button>
                   ) : (
-                    <Button
+                    <Button aria-label="Delete" title="Delete"
                       type="button"
                       variant="ghost"
-                      size="sm"
+                      size="icon"
                       disabled={deleteMutation.isPending}
                       onClick={() =>
                         startChange({ kind: 'remove', attachmentId: attachment.id }, () =>
@@ -860,7 +857,7 @@ function IssueDisciplinaryActionDialog({ isSubmitting, onClose, onSubmit }) {
                   <span className="min-w-0 truncate">{file.name}</span>
                   <button
                     type="button"
-                    onClick={() => removeAttachmentAt(index)}
+                    aria-label="Remove attachment" title="Remove attachment" onClick={() => removeAttachmentAt(index)}
                     className="shrink-0 text-(--mws-muted) hover:text-[#a43c41]"
                   >
                     <X size={13} />
