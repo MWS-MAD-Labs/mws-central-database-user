@@ -58,6 +58,13 @@ describe('GoogleAccountRow', () => {
     expect(screen.getByRole('button', { name: 'Check Google' })).toBeVisible()
   })
 
+  it('keeps Check Google off where asking again cannot change the answer, and says why', async () => {
+    setup(unlinked('blocked', 'Outside production only test addresses starting with "test.central." are sent to Google'))
+    const button = await screen.findByRole('button', { name: 'Check Google' })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('title', expect.stringContaining('would not change anything'))
+  })
+
   it('looks again when Check Google is pressed on a person with no link', async () => {
     const { user, fetchMock } = setup(unlinked('absent'))
     await user.click(await screen.findByRole('button', { name: 'Check Google' }))

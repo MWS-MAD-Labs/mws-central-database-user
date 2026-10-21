@@ -71,6 +71,10 @@ On a development machine with the test prefix set, a real person such as `dummys
 
 A person made before the Google accounts has no link, even when their email is already a Google account. The row then says **In Google** with a **Link** button that needs no recovery email. Master Data > Employment > Google Accounts shows how everyone stands and links all the matches at once, after a preview. Workspace admins and addresses outside the allowed prefix are left out.
 
+## Hints in the lists
+
+The name cell of Employees, Interns and Students has one small control, "2 Hints", coloured by the most serious one. A click lists them grouped as Discipline, Google Account and Data To Review, each with a sentence. The Google hints are only for things that need someone to look: a failed account, a deleted or missing one (with the last day it can be restored), a suspended one that nobody expected, a password not set after a week, and an account still active for someone who left. Having no account is not a hint, and neither is an account Central suspended because the person left. The server sends them as `google_account.hints` on every employee and intern.
+
 ## Rules the code keeps
 
 - Only people held in Central, on `ALLOWED_DOMAIN`. Workspace admins and `PROTECTED_SUPER_ADMIN_EMAILS` are never changed from here.

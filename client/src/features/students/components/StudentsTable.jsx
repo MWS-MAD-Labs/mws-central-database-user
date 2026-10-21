@@ -1,7 +1,7 @@
 import { Eye, RotateCcw } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
-import { FlagBadgeList } from "../../../components/ui/FlagBadgeList.jsx";
+import { HintsPopover } from "../../../components/ui/HintsPopover.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import {
@@ -9,7 +9,6 @@ import {
   getStudentFlagBadges,
   statusTone,
 } from "../../../lib/format.js";
-import { cn } from "../../../lib/cn.js";
 import { terminalStudentStatuses } from "../api/studentsApi.js";
 
 export function StudentsTable({
@@ -135,18 +134,11 @@ export function StudentsTable({
                 <td className="px-4 py-3">
                   {(() => {
                     const flagBadges = getStudentFlagBadges(student);
-                    const [primaryFlag] = flagBadges;
                     return (
-                      <p
-                        className={cn(
-                          "max-w-72 truncate font-display font-bold",
-                          primaryFlag ? primaryFlag.textClass : "text-(--mws-charcoal)",
-                        )}
-                        title={flagBadges.map((flag) => flag.title).join(" ")}
-                      >
-                        {student.identity.full_name}
-                        <FlagBadgeList badges={flagBadges} />
-                      </p>
+                      <div className="flex max-w-72 items-center gap-1.5">
+                        <p className="truncate font-display font-bold text-(--mws-charcoal)">{student.identity.full_name}</p>
+                        <HintsPopover badges={flagBadges} />
+                      </div>
                     );
                   })()}
                   <p className="max-w-72 truncate text-xs text-(--mws-muted)">

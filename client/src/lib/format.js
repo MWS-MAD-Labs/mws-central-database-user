@@ -4,6 +4,84 @@ import {
   isWithinReasonableFutureCeiling,
 } from './form.js'
 
+// The groups a hint can belong to, in the order the list shows them.
+export const HINT_CATEGORIES = ['Discipline', 'Google Account', 'Data To Review']
+
+// Hints of a person's Google account, as the server lists them. Only things that need someone to look.
+function googleHintBadges(googleAccount) {
+  return (googleAccount?.hints ?? []).map((hint) => {
+    const until = hint.detail ? formatDate(hint.detail) : null
+    const base = { key: `google-${hint.code}`, category: 'Google Account' }
+    switch (hint.code) {
+      case 'FAILED':
+        return {
+          ...base,
+          label: 'Google Failed',
+          tone: 'danger',
+          textClass: 'text-[#a43c41]',
+          title: `The Google account could not be made or updated${hint.detail ? `: ${hint.detail}` : ''}. Open the person and try again.`,
+        }
+      case 'DELETED':
+        return {
+          ...base,
+          label: 'Google Deleted',
+          tone: 'danger',
+          textClass: 'text-[#a43c41]',
+          title: `The Google account was deleted. It can be restored until ${until}.`,
+        }
+      case 'MISSING':
+        return {
+          ...base,
+          label: 'Google Missing',
+          tone: 'danger',
+          textClass: 'text-[#a43c41]',
+          title: 'The Google account is no longer in Google.',
+        }
+      case 'SUSPENDED':
+        return {
+          ...base,
+          label: 'Google Suspended',
+          tone: 'warn',
+          textClass: 'text-[#8a6419]',
+          title: 'The Google account is suspended, though this person is still here.',
+        }
+      case 'PASSWORD_OVERDUE':
+        return {
+          ...base,
+          label: 'Password Not Set',
+          tone: 'warn',
+          textClass: 'text-[#8a6419]',
+          title: 'The password of the Google account was not set after a week. Send the sign-in instructions again, or make a temporary password.',
+        }
+      case 'LEFT_STILL_ACTIVE':
+        return {
+          ...base,
+          label: 'Still Active',
+          tone: 'danger',
+          textClass: 'text-[#a43c41]',
+          title: 'This person left, but the Google account is still active. Suspend it.',
+        }
+      default:
+        return null
+    }
+  }).filter(Boolean)
+}
+
+// Hints by category, in the order of HINT_CATEGORIES, each group in the order the hints came.
+export function groupHints(badges) {
+  return HINT_CATEGORIES.map((category) => ({
+    category,
+    hints: (badges ?? []).filter((badge) => badge.category === category),
+  })).filter((group) => group.hints.length > 0)
+}
+
+// The most serious tone among the hints: danger, then warn, then the rest.
+export function worstTone(badges) {
+  if (badges.some((badge) => badge.tone === 'danger')) return 'danger'
+  if (badges.some((badge) => badge.tone === 'warn')) return 'warn'
+  return 'muted'
+}
+
 export const UNKNOWN_LEGACY_GRADE_NAME = 'Unknown (Legacy Import)'
 
 export const IMPORT_DEFAULTED_FIELD_LABELS = {
@@ -24,6 +102,8 @@ export function getStudentFlagBadges(student) {
       .join(', ')
     badges.push({
       key: 'defaulted',
+      category: 'Data To Review',
+      tone: 'warn',
       label: 'Auto-Filled',
       textClass: 'text-(--mws-gold)',
       title: `Imported with placeholder data for: ${fieldNames}. Update the real value once known.`,
@@ -34,6 +114,8 @@ export function getStudentFlagBadges(student) {
   if (overrideReason) {
     badges.push({
       key: 'override',
+      category: 'Data To Review',
+      tone: 'info',
       label: 'Override',
       textClass: 'text-[#1d4ed8]',
       title: `Grade consistency check overridden by a Super Admin: "${overrideReason}"`,
@@ -43,6 +125,8 @@ export function getStudentFlagBadges(student) {
   if (student?.academic?.has_unresolved_placeholder_class) {
     badges.push({
       key: 'placeholder-class',
+      category: 'Data To Review',
+      tone: 'warn',
       label: 'Fix Class',
       textClass: 'text-[#b45309]',
       title: 'One of this student\'s enrollments sits in a placeholder "Unknown (Legacy Import)" class. Open that class\'s detail page and use Fix Class once the real class is known.',
@@ -53,6 +137,8 @@ export function getStudentFlagBadges(student) {
   if (birthDateWarning) {
     badges.push({
       key: 'dates',
+      category: 'Data To Review',
+      tone: 'danger',
       label: 'Dates',
       textClass: 'text-[#a43c41]',
       title: birthDateWarning,
@@ -193,7 +279,7 @@ export function getEmployeeFlagBadges(employee) {
 
   const disciplinaryFlag = getDisciplinaryFlagStyle(employee.disciplinary_flag)
   if (disciplinaryFlag) {
-    badges.push({ key: 'disciplinary', ...disciplinaryFlag })
+    badges.push({ key: 'disciplinary', category: 'Discipline', tone: disciplinaryFlag.textClass.includes('#dc2626') || disciplinaryFlag.textClass.includes('#991b1b') ? 'danger' : 'warn', ...disciplinaryFlag })
   }
 
   const dateFields = []
@@ -205,6 +291,8 @@ export function getEmployeeFlagBadges(employee) {
   if (dateFields.length > 0) {
     badges.push({
       key: 'dates',
+      category: 'Data To Review',
+      tone: 'danger',
       label: 'Dates',
       textClass: 'text-[#a43c41]',
       title: `${dateFields.join(', ')} ${dateFields.length > 1 ? 'look' : 'looks'} off. Review this record.`,
@@ -214,12 +302,15 @@ export function getEmployeeFlagBadges(employee) {
   if (getContractExpiryFlag(employee) === 'missing') {
     badges.push({
       key: 'no-contract-end',
+      category: 'Data To Review',
+      tone: 'muted',
       label: 'No End Date',
       textClass: 'text-(--mws-muted)',
       title: 'No contract end date on file. Edit this employee to set one.',
     })
   }
 
+  badges.push(...googleHintBadges(employee.google_account))
   return badges
 }
 
@@ -233,12 +324,15 @@ export function getInternFlagBadges(intern) {
   if (dateFields.length > 0) {
     badges.push({
       key: 'dates',
+      category: 'Data To Review',
+      tone: 'danger',
       label: 'Dates',
       textClass: 'text-[#a43c41]',
       title: `${dateFields.join(', ')} ${dateFields.length > 1 ? 'look' : 'looks'} off. Review this record.`,
     })
   }
 
+  badges.push(...googleHintBadges(intern.google_account))
   return badges
 }
 

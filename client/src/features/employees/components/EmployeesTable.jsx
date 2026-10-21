@@ -7,7 +7,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Eye, RotateCcw } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link } from 'react-router'
 import { Button } from '../../../components/ui/Button.jsx'
-import { FlagBadgeList } from '../../../components/ui/FlagBadgeList.jsx'
+import { HintsPopover } from '../../../components/ui/HintsPopover.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import {
   formatDate,
@@ -182,19 +182,12 @@ function buildColumns({
     enableSorting: true,
     cell: ({ row }) => {
       const flagBadges = getEmployeeFlagBadges(row.original)
-      const [primaryFlag] = flagBadges
       return (
         <div className="min-w-0">
-          <p
-            className={cn(
-              'max-w-72 truncate font-display font-bold',
-              primaryFlag ? primaryFlag.textClass : 'text-(--mws-charcoal)',
-            )}
-            title={flagBadges.map((flag) => flag.title).join(' ')}
-          >
-            {row.original.identity.full_name}
-            <FlagBadgeList badges={flagBadges} />
-          </p>
+          <div className="flex max-w-72 items-center gap-1.5">
+            <p className="truncate font-display font-bold text-(--mws-charcoal)">{row.original.identity.full_name}</p>
+            <HintsPopover badges={flagBadges} />
+          </div>
           <p className="max-w-72 truncate text-xs text-(--mws-muted)">
             {row.original.identity.email}
           </p>

@@ -50,8 +50,9 @@ describe('StudentsTable', () => {
     })
 
     expect(screen.getByText('Ari Student')).toBeVisible()
-    expect(screen.getByText('Auto-Filled')).toBeVisible()
-    expect(screen.getByText('Dates')).toBeVisible()
+    // The hints sit in one control that opens on a click.
+    expect(screen.queryByText('Auto-Filled')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '2 Hints' })).toBeVisible()
     expect(screen.getByText('No NIS yet')).toBeVisible()
     expect(screen.getByText('Graduated')).toBeVisible()
     expect(screen.getByText('No class history')).toBeVisible()

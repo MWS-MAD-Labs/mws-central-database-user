@@ -2,6 +2,13 @@ import { ListChecks } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+const TONE_TEXT = {
+  danger: "text-[#a43c41]",
+  warn: "text-[#8a6419]",
+  info: "text-[#1d4ed8]",
+  muted: "text-(--mws-muted)",
+};
+
 const GAP = 8;
 const WIDTH = 320;
 const MAX_HEIGHT = 288;
@@ -15,6 +22,7 @@ export function ListPopover({
   compact = false,
   icon = true,
   mono = true,
+  tone,
   className = "",
 }) {
   const [open, setOpen] = useState(false);
@@ -73,7 +81,7 @@ export function ListPopover({
         title={compact ? label : undefined}
         onClick={() => setOpen((value) => !value)}
         className={`inline-flex cursor-pointer items-center gap-1 font-semibold transition-colors hover:text-(--mws-burgundy) ${
-          compact ? "text-sm text-(--mws-charcoal)" : "text-xs text-(--mws-muted)"
+          compact ? "text-sm text-(--mws-charcoal)" : `text-xs ${TONE_TEXT[tone] ?? "text-(--mws-muted)"}`
         }`}
       >
         {compact || !icon ? null : <ListChecks size={13} aria-hidden="true" />}
@@ -99,10 +107,10 @@ export function ListPopover({
                   <ul className="space-y-1.5">
                     {group.items.map((item) => {
                       // An item is a word, or a word with a line of explanation under it.
-                      const { label, hint } = typeof item === "string" ? { label: item, hint: null } : item;
+                      const { label, hint, tone: itemTone } = typeof item === "string" ? { label: item, hint: null } : item;
                       return (
                         <li key={label} className="break-words">
-                          <span className={`text-xs font-semibold text-(--mws-burgundy) ${mono ? "font-mono" : ""}`}>{label}</span>
+                          <span className={`text-xs font-semibold ${itemTone ? TONE_TEXT[itemTone] : "text-(--mws-burgundy)"} ${mono ? "font-mono" : ""}`}>{label}</span>
                           {hint ? <span className="block text-[11px] leading-4 text-(--mws-muted)">{hint}</span> : null}
                         </li>
                       );

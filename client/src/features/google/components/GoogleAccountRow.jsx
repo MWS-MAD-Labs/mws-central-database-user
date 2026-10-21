@@ -122,6 +122,19 @@ export function GoogleAccountRow({ resource, id, email }) {
     onError: (error) => showErrorToast(error, "Recovery email was not changed."),
   });
 
+  // For a person with no link: look again, and say what came back, since the answer often stays the same.
+  const recheck = useMutation({
+    mutationFn: () => googleAccountApi.status(resource, id),
+    onSuccess: (result) => {
+      queryClient.setQueryData(queryKey, result);
+      const state = result.lookup?.state;
+      if (state === "found") showSuccessToast("Checked. The account is in Google.");
+      else if (state === "absent") showSuccessToast("Checked. No Google account for this email yet.");
+      else showErrorToast(new Error(result.lookup?.message || "Could not check Google."), "Google was not checked.");
+    },
+    onError: (error) => showErrorToast(error, "Could not check Google."),
+  });
+
   const restore = useMutation({
     mutationFn: () => googleAccountApi.restore(resource, id),
     onSuccess: () => {
@@ -161,6 +174,8 @@ export function GoogleAccountRow({ resource, id, email }) {
       ? (LOOKUP_BADGES[lookupState] ?? BADGES.NONE)
       : (BADGES[status.status] ?? BADGES.NONE);
   const lookupNote = lookupLine(lookup);
+  // These answers do not depend on asking again, so the button is off instead of doing nothing.
+  const noNewAnswer = lookupState === "blocked" || lookupState === "simulated" || lookupState === "admin";
   const locked = Boolean(status.locked);
   const note = passwordNote(status);
   const overdue = status.password_state === "OVERDUE" && status.status === "ACTIVE";
@@ -274,8 +289,9 @@ export function GoogleAccountRow({ resource, id, email }) {
               variant="ghost"
               size="icon"
               aria-label="Check Google"
-              title="Check Google"
-              onClick={() => queryClient.invalidateQueries({ queryKey })}
+              title={noNewAnswer ? `Asking again would not change anything. ${lookup.message ?? ""}`.trim() : "Check Google"}
+              disabled={noNewAnswer || recheck.isPending}
+              onClick={() => recheck.mutate()}
             >
               <RefreshCw size={15} />
             </Button>
