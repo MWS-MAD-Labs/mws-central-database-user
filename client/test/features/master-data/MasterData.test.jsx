@@ -90,19 +90,6 @@ describe('MasterData', () => {
     expect(screen.getByRole('button', { name: 'New Major' })).toBeDisabled()
   })
 
-  it('shows scopes and categories together on one tab', async () => {
-    const routes = [
-      { path: /^\/api\/admin\/application-scopes\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'scope-1', name: 'Safespace' }])) },
-      { path: /^\/api\/admin\/application-categories\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'cat-1', name: 'Utilities' }])) },
-    ]
-    renderPage({ route: '/master-data?tab=scopes', routes })
-
-    expect(await screen.findByText('Safespace')).toBeVisible()
-    expect(await screen.findByText('Utilities')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'New Scope' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'New Category' })).toBeEnabled()
-  })
-
   it('filters job levels by unit and clears all filters', async () => {
     const routes = [
       { path: /^\/api\/admin\/job-levels\?.*$/, response: jsonResponse(listPayload([])) },

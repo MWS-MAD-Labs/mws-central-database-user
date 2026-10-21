@@ -9,7 +9,6 @@ import {
   DoorOpen,
   FileClock,
   GraduationCap,
-  Tags,
   KeyRound,
   Layers3,
   LayoutDashboard,
@@ -49,7 +48,6 @@ import {
   canSeeMyChangeRequests,
   useMyChangeRequestCount,
 } from "../../features/change-requests/hooks/useMyChangeRequestCount.js";
-import { canManageApplications } from "../../features/application-access/utils/canManageApplications.js";
 
 const adminNavItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -161,11 +159,6 @@ export function AppShell() {
               label: "Education",
               icon: GraduationCap,
             },
-            {
-              to: "/master-data?tab=scopes",
-              label: "Scopes & Categories",
-              icon: Tags,
-            },
           ],
         },
         {
@@ -179,8 +172,7 @@ export function AppShell() {
               icon: CalendarDays,
             },
             { to: "/audit-logs", label: "Audit Logs", icon: FileClock },
-            { to: "/api-clients", label: "API Reference", icon: KeyRound },
-            ...(canManageApplications(user) ? [{ to: "/application-access", label: "Application Access", icon: ShieldCheck }] : []),
+            { to: "/api-clients", label: "API Clients", icon: KeyRound },
           ],
         },
       );
