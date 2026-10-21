@@ -303,6 +303,7 @@ export function AppSetupPage() {
           settings={setup.env_settings}
           hub={setup.hub}
           applicationId={applicationId}
+          sharedApps={setup.shared_apps ?? []}
         />
       ) : null}
 
@@ -343,6 +344,14 @@ export function AppSetupPage() {
                 <p className="font-display text-sm font-bold text-(--mws-charcoal)">Do This Next</p>
                 <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-(--mws-charcoal)">
                   <li>Put the .env values you copied in the application.</li>
+                  {setup.application.session_mode === "shared" && setup.hub_access_cookie_name && setup.hub_access_cookie_name !== "hub_at" ? (
+                    <li>
+                      This Hub uses the cookie <span className="font-mono">{setup.hub_access_cookie_name}</span>. Keep the{" "}
+                      <span className="font-mono">HUB_ACCESS_COOKIE_NAME</span> line and pass it to{" "}
+                      <span className="font-mono">createHubSession</span> as <span className="font-mono">cookieName</span>. Without it the
+                      application looks for <span className="font-mono">hub_at</span> and will not find the sign-in.
+                    </li>
+                  ) : null}
                   {githubEnvironment ? (
                     <li>
                       In the repository, add the token, the Central address and the Organization ID in GitHub, so the deploy can send the

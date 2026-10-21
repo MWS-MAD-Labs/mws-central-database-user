@@ -8,7 +8,7 @@ const MODE_LABEL = { warn: "Warn", enforce: "Enforce", off: "Off" };
 
 // The Hub's address, its shared secret and how it checks sign-in, on its setup page. What an application needs from the
 // Hub comes from here, so the steps depend on each other and sit in one wizard.
-export function HubSettingsCard({ settings, hub, applicationId }) {
+export function HubSettingsCard({ settings, hub, applicationId, sharedApps = [] }) {
   const [open, setOpen] = useState(false);
   const [lines, setLines] = useState(false);
   const complete = Boolean(hub?.base_url) && Boolean(hub?.secret_set);
@@ -47,7 +47,15 @@ export function HubSettingsCard({ settings, hub, applicationId }) {
         </dd>
         <dt className="text-(--mws-muted)">Emergency Admins</dt>
         <dd>{settings.hub_bypass_emails.length === 0 ? "None" : settings.hub_bypass_emails.length}</dd>
+        <dt className="text-(--mws-muted)">Session Cookie</dt>
+        <dd className="font-mono text-xs text-(--mws-charcoal)">{settings.hub_access_cookie_name ?? "hub_at"}</dd>
       </dl>
+      {sharedApps.length > 0 ? (
+        <p role="note" className="rounded-xl border border-(--mws-line) bg-(--mws-soft) px-3 py-2 text-xs text-(--mws-muted)">
+          These applications read the shared session and need the same cookie name in their .env, so copy the new line when the name changes:{" "}
+          <span className="font-semibold text-(--mws-charcoal)">{sharedApps.map((app) => app.name).join(", ")}</span>.
+        </p>
+      ) : null}
       <div className="flex justify-end">
         <TextAction onClick={() => setLines(true)}>
           Copy Sign-in Lines

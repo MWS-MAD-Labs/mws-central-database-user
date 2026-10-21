@@ -22,6 +22,19 @@ export const HUB_MODES = [
 
 export const MAX_BYPASS_EMAILS = 3
 
+// The cookie that carries the shared session. The Hub and every application that reads it use one name.
+export const DEFAULT_COOKIE_NAME = 'hub_at'
+const RESERVED_COOKIE_NAMES = ['hub_rt', 'hub_session']
+
+// The same rule as the server: letters, digits, underscore and dash, 3 to 40, and not another Hub cookie.
+export function cookieNameProblem(name) {
+  // Not sent yet (an older answer): the usual name stays.
+  if (name === undefined || name === null) return null
+  if (!/^[A-Za-z0-9_-]{3,40}$/.test(name ?? '')) return 'Use 3 to 40 letters, numbers, underscores or dashes.'
+  if (RESERVED_COOKIE_NAMES.includes(name.toLowerCase())) return `${name} is already used for another Hub cookie.`
+  return null
+}
+
 const NAME = /^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$/
 
 // What may stay in the name box: letters, digits, dot, underscore and dash, in lower case.
@@ -70,13 +83,16 @@ export function emailsProblem(emails) {
 
 const quote = (value) => `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 
-// The three sign-in lines of the Hub's .env, written like the server writes them.
+// The sign-in lines of the Hub's .env, written like the server writes them.
 export function signInEnvLines(applicationId, settings) {
   return [
     '# How the Hub checks who may sign in. Changes in the Hub setup wizard.',
     `HUB_CENTRAL_ACCESS_MODE=${quote(settings.hub_access_mode)}`,
     `HUB_CENTRAL_ACCESS_APP_ID=${quote(applicationId)}`,
     `HUB_CENTRAL_ACCESS_BYPASS_EMAILS=${quote(settings.hub_bypass_emails.join(','))}`,
+    '',
+    '# The cookie that carries the shared session. Every application that reads it must use the same name. Changes in the Hub setup wizard.',
+    `HUB_ACCESS_COOKIE_NAME=${quote(settings.hub_access_cookie_name ?? DEFAULT_COOKIE_NAME)}`,
   ].join('\n')
 }
 

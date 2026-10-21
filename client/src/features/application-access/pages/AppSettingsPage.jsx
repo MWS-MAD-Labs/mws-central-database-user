@@ -303,7 +303,7 @@ export function AppSettingsPage() {
           />
         ) : null}
 
-        {active === "hub" && setup.env_settings ? <HubSettingsCard settings={setup.env_settings} hub={setup.hub} applicationId={applicationId} /> : null}
+        {active === "hub" && setup.env_settings ? <HubSettingsCard settings={setup.env_settings} hub={setup.hub} applicationId={applicationId} sharedApps={setup.shared_apps ?? []} /> : null}
 
         {active === "connection" ? (
           <div className="space-y-4">

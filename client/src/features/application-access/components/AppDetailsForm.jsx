@@ -16,7 +16,7 @@ import { IconPicker } from "./IconPicker.jsx";
 import { NextStepsCard } from "./NextStepsCard.jsx";
 import { HubSetupWizard } from "./HubSetupWizard.jsx";
 import { ScopePicker } from "./ScopePicker.jsx";
-import { emailsProblem } from "../utils/hubSettings.js";
+import { cookieNameProblem, emailsProblem } from "../utils/hubSettings.js";
 import { sameParentDomain } from "../utils/sessionDomain.js";
 import { DifferentDomainNote } from "./DifferentDomainNote.jsx";
 import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.js";
@@ -114,7 +114,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const scopeOptions = [{ value: "", label: "No scope" }, ...taxonomy.scopes.map((item) => ({ value: item.key, label: item.name }))];
   const hub = isHub || hubChosen;
   // Safe to start with: people still get in, and the one setting it up always does.
-  const hubSettingsProblem = layout === "page" && hubChosen && hubWizard.settings ? emailsProblem(hubWizard.settings.hub_bypass_emails) : null;
+  const hubSettingsProblem = layout === "page" && hubChosen && hubWizard.settings ? (emailsProblem(hubWizard.settings.hub_bypass_emails) ?? cookieNameProblem(hubWizard.settings.hub_access_cookie_name)) : null;
   const set = (key) => (event) => setValues((current) => ({ ...current, [key]: event.target.value }));
   const tidyOnBlur = (key) => () => setValues((current) => ({ ...current, [key]: tidyText(current[key]) }));
 

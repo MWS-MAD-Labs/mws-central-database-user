@@ -162,3 +162,19 @@ Checklist sebelum mengisi kolom itu untuk aplikasi yang sudah berjalan:
 3. Semua permission pada role sudah dikenal aplikasi.
 4. Aplikasi tidak menolak `version` yang lebih kecil bila `id` berubah.
 5. Coba Launch dengan akun group, akun exception, dan akun tanpa akses di staging.
+
+## Cookie sesi bersama
+
+Aplikasi yang membaca sesi Hub (`session_mode` SHARED) mencari cookie access token di domain induk. Nama cookie itu diatur satu kali di setelan Hub di Central (Application Access, Hub, Sign-in, Access Cookie Name), bawaannya `hub_at`. Central menulis nama yang sama ke `.env` Hub dan ke `.env` setiap aplikasi sesi bersama sebagai `HUB_ACCESS_COOKIE_NAME`, jadi aplikasi cukup menyalin `.env` seperti biasa. Aplikasi sesi relay tidak mendapat baris itu.
+
+Staging dan production yang berbagi domain induk tidak boleh memakai nama yang sama, karena cookie yang satu menimpa yang lain. Beri Hub staging nama lain (misalnya `hub_at_stg`) di Central staging, lalu salin env yang baru.
+
+Kode aplikasi harus meneruskan nilainya, karena paket `mws-central-auth` tidak membaca env itu sendiri:
+
+```ts
+createHubSession({ hubBaseUrl: process.env.HUB_BASE_URL!, cookieName: process.env.HUB_ACCESS_COOKIE_NAME });
+```
+
+Tanpa baris itu Hub dan aplikasi sama-sama memakai `hub_at`, dan itu benar selama Hub juga memakai `hub_at`. Bahayanya hanya bila nama di Hub diganti sementara ada aplikasi yang belum menyalin barisnya: aplikasi terus mencari `hub_at`, tidak menemukan sesi, dan mengirim orang kembali ke Hub. Karena itu halaman setup aplikasi sesi bersama memberi catatan bila Hub tidak memakai `hub_at`, dan kartu setelan Hub menyebut aplikasi sesi bersama yang harus mendapat baris barunya. Central tidak bisa melihat env aplikasi yang sedang berjalan, jadi pemeriksaan otomatis belum ada.
+
+Jalan sementara ini sah, tetapi yang lebih baik adalah discovery: Hub menyediakan `/.well-known/hub-config` (`access_cookie_name`, `audience`, `issuer`), `mws-central-auth` membacanya sekali, dan aplikasi tidak perlu env cookie lagi, sehingga ketidakcocokan tidak mungkin terjadi. Itu perlu perubahan di `mws-hub` dan `mws-central-auth` serta kenaikan versi paket di tiap aplikasi. Alternatif lain: staging di domain terdaftar sendiri, sehingga nama bawaan cukup. Saat discovery ada, baris env ini bisa dihapus.

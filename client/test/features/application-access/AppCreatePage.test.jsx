@@ -290,7 +290,7 @@ describe('AppCreatePage', () => {
         is_hub: true,
         connect: true,
         scope_names: ['employees:read'],
-        env_settings: { hub_access_mode: 'warn', hub_bypass_emails: [] },
+        env_settings: { hub_access_mode: 'warn', hub_bypass_emails: [], hub_access_cookie_name: 'hub_at' },
         hub_base_url: 'https://app.mws.web.id',
         hub_signing: { kid: 'mws-hub-sso-2026-10-ab12', thumbprint: THUMBPRINT },
       })

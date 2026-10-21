@@ -1,12 +1,14 @@
 import { Check, Plus, X } from "lucide-react";
 import { useState } from "react";
-import { Field } from "../../../components/ui/FormControls.jsx";
+import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { cn } from "../../../lib/cn.js";
 import { LIMITS } from "../../../lib/limits.js";
 import {
+  DEFAULT_COOKIE_NAME,
   HUB_MODES,
   MAX_BYPASS_EMAILS,
+  cookieNameProblem,
   emailName,
   emailsProblem,
   nameProblem,
@@ -15,9 +17,11 @@ import {
 } from "../utils/hubSettings.js";
 
 // How strictly the Hub checks who may sign in, and the emergency admins who still can when Central gives them nothing. Both go into the Hub's .env.
-// The parent keeps `value` as { hub_access_mode, hub_bypass_emails } and is told of each change.
+// The parent keeps `value` as { hub_access_mode, hub_bypass_emails, hub_access_cookie_name } and is told of each change.
 export function HubAccessSettings({ value, onChange }) {
   const emails = value.hub_bypass_emails;
+  const cookieName = value.hub_access_cookie_name ?? DEFAULT_COOKIE_NAME;
+  const cookieProblem = cookieNameProblem(cookieName);
   const [draft, setDraft] = useState("");
   const [draftProblem, setDraftProblem] = useState(null);
 
@@ -166,6 +170,22 @@ export function HubAccessSettings({ value, onChange }) {
           </ul>
         )}
       </div>
+      <Field
+        label="Access Cookie Name"
+        name="hub_access_cookie_name"
+        error={cookieProblem ?? undefined}
+        hint="Staging and production on the same parent domain need different names. Every application that reads the shared session uses the same one: its line is made for it."
+      >
+        <TextInput
+          aria-label="Access Cookie Name"
+          value={cookieName}
+          maxLength={40}
+          invalid={Boolean(cookieProblem)}
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(event) => onChange({ ...value, hub_access_cookie_name: event.target.value.replace(/[^A-Za-z0-9_-]/g, "") })}
+        />
+      </Field>
     </div>
   );
 }

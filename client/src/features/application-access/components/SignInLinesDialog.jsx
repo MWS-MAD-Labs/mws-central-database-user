@@ -3,7 +3,7 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { copyText } from "../utils/copyText.js";
 import { signInEnvLines } from "../utils/hubSettings.js";
 
-// Shows the three sign-in lines before they are copied, so it is clear what goes into the Hub's .env.
+// Shows the sign-in lines before they are copied, so it is clear what goes into the Hub's .env.
 export function SignInLinesDialog({ applicationId, settings, onClose }) {
   const lines = signInEnvLines(applicationId, settings);
   async function copy() {
@@ -11,7 +11,7 @@ export function SignInLinesDialog({ applicationId, settings, onClose }) {
     onClose();
   }
   return (
-    <CrudDialog title="Sign-in Lines" description="Put these three lines in the Hub's .env, then restart the Hub." onClose={onClose}>
+    <CrudDialog title="Sign-in Lines" description="Put these lines in the Hub's .env, then restart the Hub." onClose={onClose}>
       <div className="space-y-4">
         <pre className="overflow-x-auto rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3 font-mono text-xs break-all whitespace-pre-wrap text-(--mws-charcoal)">
           {lines}

@@ -963,6 +963,19 @@ describe("AppSetupPage", () => {
         screen.getByLabelText("Add an emergency admin email"),
         "Boss{Enter}",
       );
+      // The cookie of the shared session: the usual name until it is changed, and only sound names go on.
+      const cookie = screen.getByLabelText("Access Cookie Name");
+      expect(cookie).toHaveValue("hub_at");
+      await user.clear(cookie);
+      expect(screen.getByRole("button", { name: "Save and Continue" })).toBeDisabled();
+      await user.type(cookie, "hub_rt");
+      expect(await screen.findByText("hub_rt is already used for another Hub cookie.")).toBeVisible();
+      expect(screen.getByRole("button", { name: "Save and Continue" })).toBeDisabled();
+      await user.clear(cookie);
+      await user.type(cookie, "hub at stg!");
+      expect(cookie).toHaveValue("hubatstg");
+      await user.clear(cookie);
+      await user.type(cookie, "hub_at_stg");
       await user.click(
         screen.getByRole("button", { name: "Save and Continue" }),
       );
@@ -972,6 +985,7 @@ describe("AppSetupPage", () => {
           {
             hub_access_mode: "enforce",
             hub_bypass_emails: ["me@millennia21.id", "boss@millennia21.id"],
+            hub_access_cookie_name: "hub_at_stg",
           },
         ]),
       );
@@ -1188,7 +1202,45 @@ describe("AppSetupPage", () => {
       });
     });
 
-    it("shows the three sign-in lines first and copies them from the dialog", async () => {
+    it("shows the cookie name of the shared session and the applications that need the same one", async () => {
+      renderPage([
+        setupRoute(
+          makeSetup({
+            is_hub: true,
+            env_settings: { ...hubSettings, hub_access_cookie_name: "hub_at_stg" },
+            shared_apps: [
+              { application_id: "learnspace", name: "Learnspace" },
+              { application_id: "daily-checkin", name: "Daily Check-in" },
+            ],
+          }),
+        ),
+      ]);
+      await screen.findByText("Hub Sign-in");
+      expect(screen.getByText("hub_at_stg")).toBeVisible();
+      expect(screen.getByText(/need the same cookie name in their .env/)).toBeVisible();
+      expect(screen.getByText("Learnspace, Daily Check-in")).toBeVisible();
+    });
+
+    it("tells an application that reads the shared session to keep the cookie line when the Hub does not use hub_at", async () => {
+      const waiting = (cookie) =>
+        makeSetup({
+          environment: "staging",
+          application: { ...APP, session_mode: "shared" },
+          hub_access_cookie_name: cookie,
+          connection: { client_id: "c1", created: true, last_used_at: null },
+        });
+      const { unmount } = renderPage([setupRoute(waiting("hub_at_stg"))]);
+      expect(await screen.findByText("Do This Next")).toBeVisible();
+      expect(screen.getByText(/This Hub uses the cookie/)).toBeVisible();
+      expect(screen.getByText(/Without it the application looks for/)).toBeVisible();
+      unmount();
+
+      renderPage([setupRoute(waiting("hub_at"))]);
+      expect(await screen.findByText("Do This Next")).toBeVisible();
+      expect(screen.queryByText(/This Hub uses the cookie/)).not.toBeInTheDocument();
+    });
+
+    it("shows the sign-in lines first and copies them from the dialog", async () => {
       const { user } = renderPage([
         setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings })),
       ]);
@@ -1200,7 +1252,7 @@ describe("AppSetupPage", () => {
         name: "Sign-in Lines",
       });
       const lines =
-        '# How the Hub checks who may sign in. Changes in the Hub setup wizard.\nHUB_CENTRAL_ACCESS_MODE="warn"\nHUB_CENTRAL_ACCESS_APP_ID="demo"\nHUB_CENTRAL_ACCESS_BYPASS_EMAILS="me@millennia21.id"';
+        '# How the Hub checks who may sign in. Changes in the Hub setup wizard.\nHUB_CENTRAL_ACCESS_MODE="warn"\nHUB_CENTRAL_ACCESS_APP_ID="demo"\nHUB_CENTRAL_ACCESS_BYPASS_EMAILS="me@millennia21.id"\n\n# The cookie that carries the shared session. Every application that reads it must use the same name. Changes in the Hub setup wizard.\nHUB_ACCESS_COOKIE_NAME="hub_at"';
       expect(
         within(dialog).getByText(/HUB_CENTRAL_ACCESS_MODE="warn"/),
       ).toBeVisible();

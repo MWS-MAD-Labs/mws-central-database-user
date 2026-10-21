@@ -7,7 +7,7 @@ import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { cn } from "../../../lib/cn.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { cleanPastedSecret, emailsProblem, existingSecretProblem } from "../utils/hubSettings.js";
+import { cleanPastedSecret, cookieNameProblem, emailsProblem, existingSecretProblem } from "../utils/hubSettings.js";
 import { HubAccessSettings } from "./HubAccessSettings.jsx";
 import { HubSecretTest } from "./HubSecretTest.jsx";
 import { HubAddressField } from "./HubAddressField.jsx";
@@ -53,7 +53,7 @@ function ReviewRow({ label, children }) {
   );
 }
 
-const DEFAULT_SETTINGS = { hub_access_mode: "warn", hub_bypass_emails: [] };
+const DEFAULT_SETTINGS = { hub_access_mode: "warn", hub_bypass_emails: [], hub_access_cookie_name: "hub_at" };
 
 // The pieces of the Hub that depend on each other, one after the other. While the Hub is being added the choices are
 // handed up to the form (`onChange`) and sent with Add Application. On a Hub that exists each step saves as it goes.
@@ -173,7 +173,7 @@ export function HubSetupWizard({
     : keyReady &&
       (secretChoice === "new" ||
         (existingValue.trim() !== "" && !existingSecretProblem(existingValue) && secretVerified));
-  const signInProblem = emailsProblem(signIn.hub_bypass_emails);
+  const signInProblem = emailsProblem(signIn.hub_bypass_emails) ?? cookieNameProblem(signIn.hub_access_cookie_name);
   const addressChanged = managing && address !== (hub?.base_url ?? "");
   const signInChanged =
     managing && JSON.stringify(signIn) !== JSON.stringify(settings);
