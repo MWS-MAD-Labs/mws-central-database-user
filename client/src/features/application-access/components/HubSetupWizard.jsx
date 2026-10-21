@@ -298,6 +298,7 @@ export function HubSetupWizard({
             value={address}
             suggestedAddress={suggestedAddress}
             keyMadeHere={keyChoice === "made"}
+            cookieName={signIn.hub_access_cookie_name}
             onChange={(next, bad) => {
               setAddress(next);
               setAddressBad(Boolean(bad));

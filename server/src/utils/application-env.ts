@@ -58,7 +58,7 @@ const HEADINGS = {
     "From the Hub. This application reads the Hub's session, so it needs only the Hub's address and no secret. Changes only if the Hub's address changes.",
   hubOwnCentral: "The Hub's own connection to Central. Changes when the Hub's token is rotated.",
   appCookie:
-    "From the Hub. The name of the cookie this application reads the shared session from. Pass it to createHubSession as cookieName. Changes if the name is changed in the Hub setup wizard.",
+    "From the Hub. The name of the cookie this application reads the shared session from. With mws-central-auth 0.10 or newer the package reads it from here or asks the Hub; older versions need it passed to createHubSession as cookieName. Changes if the name is changed in the Hub setup wizard.",
   hubCookie:
     "The cookie that carries the shared session. Every application that reads it must use the same name. Changes in the Hub setup wizard.",
   hubSignIn: "How the Hub checks who may sign in. Changes in the Hub setup wizard.",

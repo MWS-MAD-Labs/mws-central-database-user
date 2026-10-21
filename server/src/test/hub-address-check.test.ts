@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { checkApplicationAddress, checkHubAddress, checkHubSecret } from "../service/hub-address-check";
+import { checkApplicationAddress, checkHubAddress, checkHubAddressDetailed, checkHubSecret } from "../service/hub-address-check";
 import { AdminUserTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const ACCESS = "/api/admin/application-access";
@@ -24,6 +24,34 @@ describe("hub address check", () => {
 
   it("says ok for an address that publishes sign-in keys", async () => {
     expect(await checkHubAddress(base())).toBe("ok");
+  });
+
+  it("reads the cookie name a Hub reports, and nothing unsafe", async () => {
+    const hubWith = (config: unknown) =>
+      Bun.serve({
+        port: 0,
+        fetch(request) {
+          const path = new URL(request.url).pathname;
+          if (path === "/.well-known/jwks.json") return Response.json({ keys: [{ kty: "RSA", kid: "k1" }] });
+          if (path === "/.well-known/hub-config") return Response.json(config);
+          return new Response("not found", { status: 404 });
+        },
+      });
+    const reporting = hubWith({ version: 1, access_cookie_name: "hub_at_stg" });
+    const reserved = hubWith({ access_cookie_name: "hub_rt" });
+    const odd = hubWith({ access_cookie_name: "a b;c" });
+    try {
+      expect((await checkHubAddressDetailed(`http://127.0.0.1:${reporting.port}`)).cookieName).toBe("hub_at_stg");
+      expect((await checkHubAddressDetailed(`http://127.0.0.1:${reserved.port}`)).cookieName).toBeNull();
+      expect((await checkHubAddressDetailed(`http://127.0.0.1:${odd.port}`)).cookieName).toBeNull();
+      // A Hub without the endpoint yet is still a Hub.
+      const old = await checkHubAddressDetailed(base());
+      expect(old).toMatchObject({ verdict: "ok", cookieName: null });
+    } finally {
+      reporting.stop(true);
+      reserved.stop(true);
+      odd.stop(true);
+    }
   });
 
   it("says it is not a Hub when something else answers", async () => {
@@ -107,11 +135,11 @@ describe("hub address check", () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const ask = async (url: string) =>
         (await (await TestRequest.get(`${ACCESS}/hub-address-check?url=${encodeURIComponent(url)}`, accessToken)).json()).data;
-      expect(await ask(base())).toEqual({ verdict: "ok", key: "unknown" });
+      expect(await ask(base())).toEqual({ verdict: "ok", key: "unknown", cookie_name: null });
       // A path is not part of an address, and a public name over http is not kept, so neither is asked.
-      expect(await ask(`${base()}/x`)).toEqual({ verdict: "refused", key: "unknown" });
-      expect(await ask("http://hub.example.com")).toEqual({ verdict: "refused", key: "unknown" });
-      expect(await ask("")).toEqual({ verdict: "refused", key: "unknown" });
+      expect(await ask(`${base()}/x`)).toEqual({ verdict: "refused", key: "unknown", cookie_name: null });
+      expect(await ask("http://hub.example.com")).toEqual({ verdict: "refused", key: "unknown", cookie_name: null });
+      expect(await ask("")).toEqual({ verdict: "refused", key: "unknown", cookie_name: null });
 
       const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
       expect((await TestRequest.get(`${ACCESS}/hub-address-check?url=${encodeURIComponent(base())}`, other)).status).toBe(403);

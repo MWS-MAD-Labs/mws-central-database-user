@@ -3,6 +3,7 @@
 // any other server. A Hub that is running but has no signing key answers that path with an error, so its /health
 // is asked next: that tells "this is the Hub, it has no key yet" from "this is not the Hub". Only the verdict
 // leaves here, never what the address said.
+import { accessCookieNameProblem } from "../utils/application-env";
 import { thumbprintOf } from "../utils/hub-signing-key";
 
 export type HubAddressVerdict = "ok" | "unreachable" | "not_hub" | "no_keys" | "refused";
@@ -35,12 +36,34 @@ async function answersLikeHub(url: URL): Promise<boolean> {
   }
 }
 
-export type HubAddressResult = { verdict: HubAddressVerdict; thumbprints: string[] };
+// The cookie name the running Hub says it uses (/.well-known/hub-config), or null for a Hub that does not report it
+// yet or does not answer well. Only the name leaves here, and only if it is a safe one.
+async function readHubCookieName(url: URL): Promise<string | null> {
+  try {
+    const response = await fetch(new URL("/.well-known/hub-config", url.origin), {
+      redirect: "manual",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: { Accept: "application/json" },
+    });
+    if (response.status !== 200) return null;
+    const text = (await response.text()).slice(0, MAX_BYTES);
+    const name = (JSON.parse(text) as { access_cookie_name?: unknown }).access_cookie_name;
+    return typeof name === "string" && accessCookieNameProblem(name) === null ? name : null;
+  } catch {
+    return null;
+  }
+}
+
+export type HubAddressResult = { verdict: HubAddressVerdict; thumbprints: string[]; cookieName: string | null };
 
 // The verdict, and the thumbprints of the public keys the Hub publishes, so a caller can tell whether it is the key
 // Central made. Only the thumbprints leave here, never the keys.
 export async function checkHubAddressDetailed(address: string): Promise<HubAddressResult> {
-  const result = (verdict: HubAddressVerdict, thumbprints: string[] = []): HubAddressResult => ({ verdict, thumbprints });
+  const result = (verdict: HubAddressVerdict, thumbprints: string[] = [], cookieName: string | null = null): HubAddressResult => ({
+    verdict,
+    thumbprints,
+    cookieName,
+  });
   let url: URL;
   try {
     url = new URL(address);
@@ -77,7 +100,7 @@ export async function checkHubAddressDetailed(address: string): Promise<HubAddre
       const print = key && typeof key === "object" ? thumbprintOf(key as Record<string, unknown>) : null;
       return print ? [print] : [];
     });
-    return result("ok", thumbprints);
+    return result("ok", thumbprints, await readHubCookieName(url));
   } catch (error) {
     // Nothing answered, or it timed out. A parse error means something answered with no JSON, so it is not a Hub.
     return result(error instanceof SyntaxError ? "not_hub" : "unreachable");

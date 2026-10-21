@@ -6,6 +6,7 @@ import { ENVIRONMENTS, environmentOfScheme, hubAddressProblem, joinAddress, read
 import { useAddressCheck } from "../hooks/useAddressCheck.js";
 import { AddressCheckStatus } from "./AddressCheckStatus.jsx";
 import { AddressInput } from "./AddressInput.jsx";
+import { HubCookieNote } from "./HubCookieNote.jsx";
 import { startGuideHref } from "../utils/startGuide.js";
 
 const HINT = "Where people open the Hub. Every application gets it in its .env.";
@@ -33,7 +34,7 @@ const TEXTS = {
 
 // The public address of the Hub. `value` is the whole address or nothing. `onChange(address, notReady)` says what is typed and
 // whether it may be used: it has to be well formed and a Hub has to answer there, unless it was kept as it was or is used anyway.
-export function HubAddressField({ value, suggestedAddress = "", keyMadeHere = false, onChange, showError = false }) {
+export function HubAddressField({ value, suggestedAddress = "", keyMadeHere = false, cookieName, onChange, showError = false }) {
   const start = splitAddress(value);
   const suggested = splitAddress(suggestedAddress);
   const [environment, setEnvironment] = useState(value ? start.environment : "production");
@@ -91,6 +92,7 @@ export function HubAddressField({ value, suggestedAddress = "", keyMadeHere = fa
           onBlur={() => setRest((current) => current.trim())}
         />
         <AddressCheckStatus state={state} texts={{ ...TEXTS, found: keyKnown === "match" ? TEXTS.foundMatch : TEXTS.found }} />
+        {verdict === "ok" && cookieName && detail ? <HubCookieNote reported={detail.cookieName ?? null} expected={cookieName} /> : null}
         {verdict === "ok" && keyKnown === "mismatch" ? (
           <p role="note" className="text-xs text-[#8a5a12]">
             {TEXTS.keyMismatch}

@@ -169,12 +169,21 @@ Aplikasi yang membaca sesi Hub (`session_mode` SHARED) mencari cookie access tok
 
 Staging dan production yang berbagi domain induk tidak boleh memakai nama yang sama, karena cookie yang satu menimpa yang lain. Beri Hub staging nama lain (misalnya `hub_at_stg`) di Central staging, lalu salin env yang baru.
 
-Kode aplikasi harus meneruskan nilainya, karena paket `mws-central-auth` tidak membaca env itu sendiri:
+Dari `mws-central-auth` 0.10, paket menentukan nama cookie sendiri, dengan urutan ini:
+
+1. `cookieName` di opsi `createHubSession`, bila diberikan.
+2. `HUB_ACCESS_COOKIE_NAME` dari env (baris yang dibuat Central).
+3. Jawaban Hub di `GET /.well-known/hub-config` (`access_cookie_name`), ditanya pada request pertama dan diingat 10 menit. Hub yang tidak menjawab dicoba lagi semenit kemudian.
+4. `hub_at`.
+
+Jadi aplikasi starter yang menyalin `.env` dari Central otomatis benar, dan aplikasi tanpa baris itu mengikuti Hub. Yang diambil dari Hub hanya nama cookie. Audience dan issuer tetap ditentukan aplikasi (`mws-apps`, `mws-hub`), karena itu aturan siapa yang dipercaya. Di production discovery hanya lewat https. `readCookie` bersifat sinkron dan memakai nama yang sudah diketahui, jadi aplikasi yang bergantung pada jawaban Hub bisa memanggil `await hub.ready()` saat start. `createHubSession` dibuat satu kali dan dipakai ulang, supaya jawaban Hub diingat.
+
+Versi paket sebelum 0.10 tidak membaca env itu. Aplikasi seperti itu harus meneruskannya sendiri, atau naik versi:
 
 ```ts
 createHubSession({ hubBaseUrl: process.env.HUB_BASE_URL!, cookieName: process.env.HUB_ACCESS_COOKIE_NAME });
 ```
 
-Tanpa baris itu Hub dan aplikasi sama-sama memakai `hub_at`, dan itu benar selama Hub juga memakai `hub_at`. Bahayanya hanya bila nama di Hub diganti sementara ada aplikasi yang belum menyalin barisnya: aplikasi terus mencari `hub_at`, tidak menemukan sesi, dan mengirim orang kembali ke Hub. Karena itu halaman setup aplikasi sesi bersama memberi catatan bila Hub tidak memakai `hub_at`, dan kartu setelan Hub menyebut aplikasi sesi bersama yang harus mendapat baris barunya. Central tidak bisa melihat env aplikasi yang sedang berjalan, jadi pemeriksaan otomatis belum ada.
+Bahayanya hanya bila nama di Hub diganti sementara ada aplikasi yang belum menerimanya (versi lama tanpa baris env): aplikasi terus mencari `hub_at`, tidak menemukan sesi, dan mengirim orang kembali ke Hub. Halaman setup aplikasi sesi bersama memberi catatan bila Hub tidak memakai `hub_at`. Di langkah alamat Hub dan di kartu setelan Hub (Check Hub), Central bertanya ke Hub yang sedang berjalan dan memberi peringatan bila nama yang dilaporkan Hub berbeda dari setelan di Central. Hub tanpa endpoint itu (versi lama) tidak dianggap salah, hanya dicatat belum melaporkan namanya. Central tetap tidak bisa melihat env aplikasi yang berjalan.
 
-Jalan sementara ini sah, tetapi yang lebih baik adalah discovery: Hub menyediakan `/.well-known/hub-config` (`access_cookie_name`, `audience`, `issuer`), `mws-central-auth` membacanya sekali, dan aplikasi tidak perlu env cookie lagi, sehingga ketidakcocokan tidak mungkin terjadi. Itu perlu perubahan di `mws-hub` dan `mws-central-auth` serta kenaikan versi paket di tiap aplikasi. Alternatif lain: staging di domain terdaftar sendiri, sehingga nama bawaan cukup. Saat discovery ada, baris env ini bisa dihapus.
+Alternatif lain untuk staging: domain terdaftar sendiri, sehingga nama bawaan cukup.

@@ -347,9 +347,10 @@ export function AppSetupPage() {
                   {setup.application.session_mode === "shared" && setup.hub_access_cookie_name && setup.hub_access_cookie_name !== "hub_at" ? (
                     <li>
                       This Hub uses the cookie <span className="font-mono">{setup.hub_access_cookie_name}</span>. Keep the{" "}
-                      <span className="font-mono">HUB_ACCESS_COOKIE_NAME</span> line and pass it to{" "}
-                      <span className="font-mono">createHubSession</span> as <span className="font-mono">cookieName</span>. Without it the
-                      application looks for <span className="font-mono">hub_at</span> and will not find the sign-in.
+                      <span className="font-mono">HUB_ACCESS_COOKIE_NAME</span> line. mws-central-auth 0.10 or newer reads it, or asks the Hub
+                      for the name. With an older version pass it to <span className="font-mono">createHubSession</span> as{" "}
+                      <span className="font-mono">cookieName</span>, or the application looks for <span className="font-mono">hub_at</span> and
+                      will not find the sign-in.
                     </li>
                   ) : null}
                   {githubEnvironment ? (

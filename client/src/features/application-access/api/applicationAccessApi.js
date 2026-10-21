@@ -102,10 +102,11 @@ export const applicationAccessApi = {
   },
 
   // Whether a Hub answers at an address: 'ok', 'unreachable', 'not_hub', 'no_keys' or 'refused', and whether the key it
-  // publishes is the one Central made: 'match', 'mismatch' or 'unknown'.
+  // publishes is the one Central made: 'match', 'mismatch' or 'unknown'. cookieName is what the running Hub says its
+  // shared session cookie is called, or null when it does not say.
   async checkHubAddress(url) {
     const response = await apiRequest(`${ACCESS}/hub-address-check?url=${encodeURIComponent(url)}`)
-    return { verdict: response.data.verdict, key: response.data.key ?? 'unknown' }
+    return { verdict: response.data.verdict, key: response.data.key ?? 'unknown', cookieName: response.data.cookie_name ?? null }
   },
 
   // Makes the Hub's signing key. The private key is in this answer only. Replacing one that was kept needs the confirm.

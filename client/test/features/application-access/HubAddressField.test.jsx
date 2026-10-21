@@ -7,8 +7,8 @@ import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 
 const CHECK = /\/api\/admin\/application-access\/hub-address-check/
 
-function renderField(verdict, props = {}, key = undefined) {
-  globalThis.fetch = createFetchRouter([{ path: CHECK, response: () => jsonResponse({ data: { verdict, key } }) }])
+function renderField(verdict, props = {}, key = undefined, cookieName = undefined) {
+  globalThis.fetch = createFetchRouter([{ path: CHECK, response: () => jsonResponse({ data: { verdict, key, cookie_name: cookieName } }) }])
   const onChange = mock()
   return { onChange, ...renderWithProviders(
       <ConfirmProvider>
@@ -36,6 +36,23 @@ describe('HubAddressField', () => {
     expect(await screen.findByText('Found the Hub.')).toBeVisible()
     expect(screen.getByText(/runs with another key than the one made here/)).toBeVisible()
     expect(other.onChange).toHaveBeenLastCalledWith('https://app.mws.web.id', false)
+  })
+
+  it('compares the cookie name the running Hub reports with the one set in Central', async () => {
+    const same = renderField('ok', { cookieName: 'hub_at' }, undefined, 'hub_at')
+    await same.user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText('The running Hub uses the same cookie name.')).toBeVisible()
+    same.unmount()
+
+    const other = renderField('ok', { cookieName: 'hub_at' }, undefined, 'hub_at_stg')
+    await other.user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText(/The running Hub reports/)).toHaveTextContent('hub_at_stg')
+    expect(screen.getByText(/The running Hub reports/)).toHaveTextContent('the setting here is hub_at')
+    other.unmount()
+
+    const old = renderField('ok', { cookieName: 'hub_at' })
+    await old.user.type(screen.getByLabelText('Hub Address'), 'app.mws.web.id')
+    expect(await screen.findByText('This Hub does not report its cookie name yet.')).toBeVisible()
   })
 
   it('lets a Hub without the key go on only when the key is made in the wizard', async () => {

@@ -1232,7 +1232,7 @@ describe("AppSetupPage", () => {
       const { unmount } = renderPage([setupRoute(waiting("hub_at_stg"))]);
       expect(await screen.findByText("Do This Next")).toBeVisible();
       expect(screen.getByText(/This Hub uses the cookie/)).toBeVisible();
-      expect(screen.getByText(/Without it the application looks for/)).toBeVisible();
+      expect(screen.getByText(/or the application looks for/)).toBeVisible();
       unmount();
 
       renderPage([setupRoute(waiting("hub_at"))]);
