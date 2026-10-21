@@ -137,15 +137,15 @@ describe("hub address check with the key Central made", () => {
 
   it("says match, mismatch or unknown", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    expect(await ask(accessToken)).toEqual({ verdict: "ok", key: "unknown" });
-    expect(await ask(accessToken, key.thumbprint)).toEqual({ verdict: "ok", key: "match" });
-    expect(await ask(accessToken, makeHubSigningKey().thumbprint)).toEqual({ verdict: "ok", key: "mismatch" });
+    expect(await ask(accessToken)).toEqual({ verdict: "ok", key: "unknown", cookie_name: null });
+    expect(await ask(accessToken, key.thumbprint)).toEqual({ verdict: "ok", key: "match", cookie_name: null });
+    expect(await ask(accessToken, makeHubSigningKey().thumbprint)).toEqual({ verdict: "ok", key: "mismatch", cookie_name: null });
 
     // Once the Hub has a kept thumbprint, no query is needed.
     await prismaClient.application.create({ data: { application_id: hubId, name: "HUB", hub_signing_thumbprint: key.thumbprint } });
-    expect(await ask(accessToken)).toEqual({ verdict: "ok", key: "match" });
+    expect(await ask(accessToken)).toEqual({ verdict: "ok", key: "match", cookie_name: null });
     await prismaClient.application.update({ where: { application_id: hubId }, data: { hub_signing_thumbprint: makeHubSigningKey().thumbprint } });
-    expect(await ask(accessToken)).toEqual({ verdict: "ok", key: "mismatch" });
+    expect(await ask(accessToken)).toEqual({ verdict: "ok", key: "mismatch", cookie_name: null });
   });
 });
 
