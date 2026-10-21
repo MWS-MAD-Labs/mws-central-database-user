@@ -135,16 +135,6 @@ export function AppShell() {
           children: [
             { to: "/master-data?tab=units", label: "Units", icon: Building2 },
             {
-              to: "/master-data?tab=job-positions",
-              label: "Job Positions",
-              icon: BriefcaseBusiness,
-            },
-            {
-              to: "/master-data?tab=job-levels",
-              label: "Job Levels",
-              icon: Layers3,
-            },
-            {
               to: "/master-data?tab=buildings",
               label: "Buildings",
               icon: MapPinned,
@@ -155,9 +145,9 @@ export function AppShell() {
               icon: Puzzle,
             },
             {
-              to: "/master-data?tab=education",
-              label: "Education",
-              icon: GraduationCap,
+              to: "/master-data?tab=employment",
+              label: "Employment",
+              icon: BriefcaseBusiness,
             },
           ],
         },

@@ -4,6 +4,8 @@ Branch `release/employee-children`, cut from `main`. Staging carries Application
 
 ## What is in
 
+- Children allowance rule: a Super Admin sets the most children that count, the age limit, and which kinds of child count, under Master Data > Employment > Children Allowance. Changes are written to the audit log.
+- Master Data has a new Employment tab with sub tabs (Job Positions, Job Levels, Education, Children Allowance). The old `?tab=job-positions`, `?tab=job-levels` and `?tab=education` links still open the right sub tab.
 - Employee children: the table, the rules, the sensitive handling (written with employee PII access, released on reveal), the form block with birth dates or typed numbers, the detail page, and the export columns.
 - The newest UI: shared components (tabs, sensitive toggle, filter toolbar, number and date fields, text and icon buttons, list popovers), the toolbar layout on every list page, Title Case labels, and the Employees, Interns, Students, Academic, Master Data, Workspace, Dashboard, Access and Change Requests pages.
 - The small server parts those pages need: input limits (`constants/limits.ts` and the validations that use it), the unit filter on job levels and positions, the capacity scope filter on positions, `enrolled_academic_year_id` on the student list, and the candidate filter when assigning class teachers.
@@ -14,16 +16,17 @@ Everything of Application Access and the Hub: the application pages and routes, 
 
 ## Database
 
-Two migrations run on production, nothing else:
+Three migrations run on production, nothing else:
 
 1. `20261028090000_employee_children` creates the `ChildRelation` enum and the `employee_children` table.
 2. `20261029090000_employee_children_counts` adds four nullable columns to `employees`.
+3. `20261104090000_children_allowance_rule` creates the `children_allowance_rules` table. It starts empty, and the default rule (3 children, age 23, every kind of child) applies until a Super Admin saves one.
 
-Both only add. Take a backup first, then `bunx prisma migrate deploy`.
+All three only add. Take a backup first, then `bunx prisma migrate deploy`.
 
 ## Checked before it was handed over
 
-- `prisma migrate deploy` on a database holding exactly the production migrations applied only the two above.
+- `prisma migrate deploy` on a database holding exactly the production migrations applied only the three above.
 - Server and client type check and lint, client production build.
 - Server tests and client tests, run file by file (see the hand-over message for the numbers).
 
