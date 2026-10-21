@@ -9,6 +9,8 @@ import {
   PersonType,
   Prisma,
   type AdminUser,
+  type ChildRelation,
+  type MaritalStatus,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import type { AuditRequestContext } from "../model/audit-log-model";
@@ -65,6 +67,14 @@ import { assertJobPositionCapacity } from "../utils/job-position-capacity";
 import { lockJobPositionCapacityConfig } from "../utils/job-position-capacity";
 import { assertAcademicUnitIds } from "../utils/academic-units";
 import { maskSensitiveValue } from "../utils/sensitive-data";
+import {
+  findChildrenProblems,
+  findCountsProblems,
+  summarizeChildren,
+  summarizeCounts,
+  type ChildrenCounts,
+} from "../utils/employee-children-rules";
+import { toDeclaredCounts } from "../model/employee-model";
 import {
   assertCanViewEmployeeData,
   canViewEmployeeDisciplinaryData,
@@ -288,7 +298,75 @@ const IDENTITY_FIELD_LABELS: Record<string, string> = {
   bpjs_number: "BPJS Kesehatan number",
   bpjs_employment_number: "BPJS Ketenagakerjaan number",
   kpj_number: "KPJ number",
+  children: "Children",
+  children_counts: "Children",
 };
+
+// The children of an employee must make sense with the employee's marital status and birth date. Someone who may not
+// see the family data is told only that the change does not fit it, never what the data is.
+function throwChildrenProblems(
+  admin: Pick<AdminUser, "role" | "can_view_employee_pii">,
+  problems: string[],
+): void {
+  if (problems.length === 0) return;
+  const mayRead = admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii;
+  throw new ResponseError(
+    400,
+    mayRead
+      ? problems.join(". ")
+      : "This change does not fit the employee's recorded sensitive family data. Ask someone with employee PII access to review it",
+  );
+}
+
+function assertChildrenValid(
+  admin: Pick<AdminUser, "role" | "can_view_employee_pii">,
+  input: {
+    marital_status: MaritalStatus;
+    parent_birth_date: Date;
+    children: { birth_date: Date; relation: ChildRelation }[];
+  },
+  now: Date,
+): void {
+  throwChildrenProblems(admin, findChildrenProblems({ ...input, today: now }));
+}
+
+function assertCountsValid(
+  admin: Pick<AdminUser, "role" | "can_view_employee_pii">,
+  input: { marital_status: MaritalStatus; parent_birth_date: Date; counts: ChildrenCounts },
+  now: Date,
+): void {
+  throwChildrenProblems(admin, findCountsProblems({ ...input, today: now }));
+}
+
+// Typed numbers that add up to nothing are the same as not recording any children.
+const meaningfulCounts = (counts: ChildrenCounts | null | undefined): ChildrenCounts | null =>
+  counts && counts.under_23 + counts.age_23_plus > 0 ? counts : null;
+
+const countsColumns = (counts: ChildrenCounts | null, declaredAt: Date) => ({
+  children_declared_under_23: counts ? counts.under_23 : null,
+  children_declared_23_plus: counts ? counts.age_23_plus : null,
+  children_declared_adopted: counts ? counts.adopted : null,
+  children_declared_at: counts ? declaredAt : null,
+});
+
+// Birth dates and typed numbers are two ways to record the same thing, never both at once.
+function assertOneChildrenWay(request: {
+  children?: unknown[];
+  children_counts?: ChildrenCounts | null;
+}): void {
+  if ((request.children?.length ?? 0) > 0 && meaningfulCounts(request.children_counts)) {
+    throw new ResponseError(
+      400,
+      "Record children either with birth dates or as numbers, not both",
+    );
+  }
+}
+
+const toChildDrafts = (children: { birth_date: string; relation: ChildRelation }[]) =>
+  children.map((child) => ({
+    birth_date: new Date(`${child.birth_date}T00:00:00.000Z`),
+    relation: child.relation,
+  }));
 
 // Optional identifiers require employee PII permission to write.
 async function assertCanWriteEmployeePii(
@@ -308,7 +386,7 @@ async function assertCanWriteEmployeePii(
   await recordUnauthorizedEmployeeAction(admin, "set employee PII", context);
   throw new ResponseError(
     403,
-    "Forbidden: You don't have permission to set employee PII (NIK/NPWP/bank account/BPJS)",
+    "Forbidden: You don't have permission to set employee PII (NIK/NPWP/bank account/BPJS/children)",
   );
 }
 
@@ -630,6 +708,32 @@ export class EmployeeService {
     );
     assertMinAgeAtJoin(createRequest.birth_date, createRequest.join_date);
 
+    assertOneChildrenWay(createRequest);
+    const newChildren = createRequest.children ? toChildDrafts(createRequest.children) : [];
+    const newCounts = meaningfulCounts(createRequest.children_counts);
+    if (newCounts) {
+      assertCountsValid(
+        admin,
+        {
+          marital_status: createRequest.marital_status,
+          parent_birth_date: new Date(createRequest.birth_date),
+          counts: newCounts,
+        },
+        now,
+      );
+    }
+    if (newChildren.length > 0) {
+      assertChildrenValid(
+        admin,
+        {
+          marital_status: createRequest.marital_status,
+          parent_birth_date: new Date(createRequest.birth_date),
+          children: newChildren,
+        },
+        now,
+      );
+    }
+
     await assertUnitJobLevelCompatibleByIds(
       createRequest.unit_id,
       createRequest.job_level_id,
@@ -752,6 +856,22 @@ export class EmployeeService {
           );
         }
 
+        if (newChildren.length > 0) {
+          await tx.employeeChild.createMany({
+            data: newChildren.map((child) => ({
+              employee_id: personForAudit.employee!.id,
+              birth_date: child.birth_date,
+              relation: child.relation,
+            })),
+          });
+        }
+        if (newCounts) {
+          await tx.employee.update({
+            where: { id: personForAudit.employee.id },
+            data: countsColumns(newCounts, now),
+          });
+        }
+
         await AuditService.record(
           {
             action: AuditAction.CREATE_EMPLOYEE,
@@ -763,6 +883,11 @@ export class EmployeeService {
               personForAudit,
               personForAudit.employee,
               createRequest.pc_mentor_unit_ids ?? [],
+              newCounts
+                ? summarizeCounts(newCounts)
+                : newChildren.length > 0
+                  ? summarizeChildren(newChildren, now)
+                  : undefined,
             ),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
@@ -901,10 +1026,21 @@ export class EmployeeService {
         select: { unit_id: true },
       })
     ).map((row) => row.unit_id);
+    const existingChildren = await prismaClient.employeeChild.findMany({
+      where: { employee_id: existingEmployee.id },
+    });
+    const existingCounts = toDeclaredCounts(existingEmployee);
+    const childrenTouched =
+      updateRequest.children !== undefined || updateRequest.children_counts !== undefined;
     const oldSnapshot = toEmployeeAuditSnapshot(
       existingEmployee.person,
       existingEmployee,
       existingPcMentorUnitIds,
+      childrenTouched
+        ? existingCounts
+          ? summarizeCounts(existingCounts)
+          : summarizeChildren(existingChildren, now)
+        : undefined,
     );
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
@@ -1002,6 +1138,35 @@ export class EmployeeService {
         updateRequest.birth_date ??
         existingEmployee.person.birth_date.toISOString();
       assertMinAgeAtJoin(nextBirthDateIso, nextJoinDate.toISOString());
+    }
+
+    // The children must still make sense after anything that changes the picture: the children themselves, the
+    // marital status, or the employee's birth date.
+    assertOneChildrenWay(updateRequest);
+    const newCounts = meaningfulCounts(updateRequest.children_counts);
+    // Typed numbers replace the rows; rows or a clear replace the typed numbers.
+    const nextCounts = newCounts ?? (childrenTouched ? null : existingCounts);
+    const nextChildren = newCounts
+      ? []
+      : updateRequest.children !== undefined
+        ? toChildDrafts(updateRequest.children)
+        : existingChildren;
+    const familyChanged =
+      childrenTouched ||
+      updateRequest.marital_status !== undefined ||
+      updateRequest.birth_date !== undefined;
+    if (familyChanged) {
+      const family = {
+        marital_status: updateRequest.marital_status ?? existingEmployee.marital_status,
+        parent_birth_date: updateRequest.birth_date
+          ? new Date(updateRequest.birth_date)
+          : existingEmployee.person.birth_date,
+      };
+      if (nextCounts) {
+        assertCountsValid(admin, { ...family, counts: nextCounts }, now);
+      } else if (nextChildren.length > 0) {
+        assertChildrenValid(admin, { ...family, children: nextChildren }, now);
+      }
     }
 
     // Mutation effective dates may be backdated, but never future-dated.
@@ -1331,6 +1496,26 @@ export class EmployeeService {
           );
         }
 
+        if (childrenTouched) {
+          // Confirming the typed numbers again counts as a fresh declaration, so the date moves with them.
+          await tx.employee.update({
+            where: { id: fetched.employee.id },
+            data: countsColumns(newCounts, now),
+          });
+        }
+        if (updateRequest.children !== undefined || newCounts) {
+          await tx.employeeChild.deleteMany({ where: { employee_id: fetched.employee.id } });
+          if (!newCounts && updateRequest.children && updateRequest.children.length > 0) {
+            await tx.employeeChild.createMany({
+              data: toChildDrafts(updateRequest.children).map((child) => ({
+                employee_id: fetched.employee!.id,
+                birth_date: child.birth_date,
+                relation: child.relation,
+              })),
+            });
+          }
+        }
+
         if (updateRequest.pc_mentor_unit_ids !== undefined) {
           await assertAcademicUnitIds(
             tx,
@@ -1362,6 +1547,11 @@ export class EmployeeService {
               fetched,
               fetched.employee,
               updateRequest.pc_mentor_unit_ids ?? existingPcMentorUnitIds,
+              childrenTouched
+                ? nextCounts
+                  ? summarizeCounts(nextCounts)
+                  : summarizeChildren(nextChildren, now)
+                : undefined,
             ),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
@@ -1660,6 +1850,7 @@ export class EmployeeService {
             job_level: true,
             building: true,
             pc_mentor_units: { include: { unit: true } },
+            children: true,
           },
         },
       },
@@ -1712,6 +1903,7 @@ export class EmployeeService {
             job_position: true,
             job_level: true,
             building: true,
+            children: true,
           },
         },
       },
@@ -2031,6 +2223,10 @@ export class EmployeeService {
         bpjs_number: true,
         bpjs_employment_number: true,
         kpj_number: true,
+        children_declared_under_23: true,
+        children_declared_23_plus: true,
+        children_declared_adopted: true,
+        children_declared_at: true,
       },
     });
 
@@ -2046,6 +2242,10 @@ export class EmployeeService {
 
     const deletedAt = new Date();
     await prismaClient.$transaction(async (tx) => {
+      // Like the identifiers, the children are released on archive. Only the counts stay, in the audit log.
+      const childrenAtArchive = await tx.employeeChild.findMany({ where: { employee_id: request.id } });
+      const countsAtArchive = toDeclaredCounts(targetEmployee);
+      await tx.employeeChild.deleteMany({ where: { employee_id: request.id } });
       await tx.employee.update({
         where: {
           id: request.id,
@@ -2066,6 +2266,7 @@ export class EmployeeService {
           bpjs_number_set_at: null,
           bpjs_employment_number_set_at: null,
           kpj_number_set_at: null,
+          ...countsColumns(null, deletedAt),
         },
       });
 
@@ -2089,6 +2290,9 @@ export class EmployeeService {
               targetEmployee.bpjs_employment_number,
             ),
             kpj_number: maskSensitiveValue(targetEmployee.kpj_number),
+            ...(countsAtArchive
+              ? { children: { ...summarizeCounts(countsAtArchive) } }
+              : childrenAtArchive.length > 0 && { children: { ...summarizeChildren(childrenAtArchive, deletedAt) } }),
           },
           new_values: {
             status: EmployeeStatus.ARCHIVED,

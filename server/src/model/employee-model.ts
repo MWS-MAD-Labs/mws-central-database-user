@@ -3,6 +3,8 @@ import {
   type Person,
   type Employee,
   type EmployeePcMentorUnit,
+  type EmployeeChild,
+  type ChildRelation,
   type MasterUnit,
   type MasterJobPosition,
   type MasterJobLevel,
@@ -18,6 +20,13 @@ import {
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 import { maskSensitiveValue } from "../utils/sensitive-data";
+import {
+  countsNeedReview,
+  summarizeChildren,
+  summarizeCounts,
+  type ChildrenCounts,
+  type ChildrenSummary,
+} from "../utils/employee-children-rules";
 import type { BulkActionResponse, BulkIdsRequest } from "./bulk-action-model";
 import {
   isBirthDateNotFuture,
@@ -68,6 +77,9 @@ export type CreateEmployeeRequest = {
   pc_mentor_unit_ids?: string[];
 
   marital_status: MaritalStatus;
+  // Replaces the whole list when given. Needs the employee PII permission.
+  children?: { birth_date: string; relation: ChildRelation }[];
+  children_counts?: ChildrenCounts | null;
   mobile_phone?: string;
   residential_address?: string;
   nik?: string;
@@ -113,6 +125,9 @@ export type UpdateEmployeeRequest = {
   pc_mentor_unit_ids?: string[];
 
   marital_status?: MaritalStatus;
+  // Replaces the whole list when given (an empty list clears it). Needs the employee PII permission.
+  children?: { birth_date: string; relation: ChildRelation }[];
+  children_counts?: ChildrenCounts | null;
   mobile_phone?: string;
   residential_address?: string;
   nik?: string;
@@ -270,6 +285,75 @@ export type EmployeeResponse = {
   } | null;
 };
 
+export type EmployeeChildrenResponse = {
+  // How the children were recorded: with birth dates, as typed numbers, or not at all.
+  mode: "NONE" | "BIRTH_DATES" | "COUNTS";
+  summary: ChildrenSummary;
+  items: { id: string; birth_date: string; relation: ChildRelation }[];
+  // Typed numbers only. The oldest of them is reviewed after a year.
+  counts: ChildrenCounts | null;
+  declared_at: string | null;
+  needs_review: boolean;
+};
+
+type ChildrenDeclared = Pick<
+  Employee,
+  | "children_declared_under_23"
+  | "children_declared_23_plus"
+  | "children_declared_adopted"
+  | "children_declared_at"
+>;
+
+// The typed numbers of an employee, or null when the children are not recorded that way.
+export function toDeclaredCounts(employee: Partial<ChildrenDeclared>): ChildrenCounts | null {
+  if (
+    employee.children_declared_under_23 == null ||
+    employee.children_declared_23_plus == null ||
+    employee.children_declared_adopted == null
+  ) {
+    return null;
+  }
+  return {
+    under_23: employee.children_declared_under_23,
+    age_23_plus: employee.children_declared_23_plus,
+    adopted: employee.children_declared_adopted,
+  };
+}
+
+export function toEmployeeChildrenResponse(
+  rows: Pick<EmployeeChild, "id" | "birth_date" | "relation">[],
+  employee: Partial<ChildrenDeclared> = {},
+  today: Date = new Date(),
+): EmployeeChildrenResponse {
+  const counts = toDeclaredCounts(employee);
+  if (counts) {
+    const declaredAt = employee.children_declared_at ?? null;
+    return {
+      mode: "COUNTS",
+      summary: summarizeCounts(counts),
+      items: [],
+      counts,
+      declared_at: declaredAt ? declaredAt.toISOString() : null,
+      needs_review: declaredAt ? countsNeedReview(declaredAt, today) : true,
+    };
+  }
+  const items = [...rows]
+    .sort((a, b) => a.birth_date.getTime() - b.birth_date.getTime())
+    .map((row) => ({
+      id: row.id,
+      birth_date: row.birth_date.toISOString().slice(0, 10),
+      relation: row.relation,
+    }));
+  return {
+    mode: rows.length > 0 ? "BIRTH_DATES" : "NONE",
+    summary: summarizeChildren(rows, today),
+    items,
+    counts: null,
+    declared_at: null,
+    needs_review: false,
+  };
+}
+
 export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
   identity: EmployeeResponse["identity"] & {
     gender: Gender;
@@ -279,6 +363,8 @@ export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
     birth_date: string;
     photo_url: string | null;
     marital_status: MaritalStatus;
+    // Sensitive family data: released with the other personal identifiers, never in the plain detail.
+    children: EmployeeChildrenResponse;
     nik: string | null;
     npwp: string | null;
     bank_account_number: string | null;
@@ -310,6 +396,7 @@ export const EMPLOYEE_REVEALED_IDENTITY_FIELDS = [
   "birth_place",
   "birth_date",
   "marital_status",
+  "children",
   "nik",
   "npwp",
   "bank_account_number",
@@ -363,6 +450,8 @@ export type PersonWithEmployee = Person & {
         // (detail/create/update responses). List/search responses omit it
         // and toEmployeeResponse falls back to an empty array.
         pc_mentor_units?: (EmployeePcMentorUnit & { unit: MasterUnit })[];
+        // Only populated where the sensitive fields are released.
+        children?: EmployeeChild[];
       })
     | null;
 };
@@ -446,6 +535,7 @@ export const toEmployeeDetailResponse = (
       birth_date: person.birth_date.toISOString(),
       photo_url: person.photo_url,
       marital_status: employee.marital_status,
+      children: toEmployeeChildrenResponse(employee.children ?? [], employee),
       nik: employee.nik,
       npwp: employee.npwp,
       bank_account_number: employee.bank_account_number,
@@ -505,6 +595,9 @@ export type EmployeeExportRow = {
   birth_place: string | null;
   birth_date: string | null;
   marital_status: MaritalStatus | null;
+  children_total: number | null;
+  children_under_23: number | null;
+  children_23_plus: number | null;
   nik: string | null;
   npwp: string | null;
   bank_account_number: string | null;
@@ -541,6 +634,9 @@ export function toEmployeeExportRow(
     last_working_date: response.offboarding.last_working_date?.slice(0, 10) ?? null,
     created_at: response.created_at,
     marital_status: detail?.marital_status ?? null,
+    children_total: detail?.children?.summary.total ?? null,
+    children_under_23: detail?.children?.summary.under_23 ?? null,
+    children_23_plus: detail?.children?.summary.age_23_plus ?? null,
     gender: detail?.gender ?? null,
     religion: detail?.religion ?? null,
     religion_other: detail?.religion_other ?? null,
@@ -564,6 +660,7 @@ export function toEmployeeAuditSnapshot(
   person: Person,
   employee: Employee,
   pcMentorUnitIds: string[] = [],
+  childrenSummary?: ChildrenSummary,
 ): AuditValue {
   return {
     employee_id: employee.employee_id,
@@ -587,6 +684,8 @@ export function toEmployeeAuditSnapshot(
     is_pc_mentor_eligible: employee.is_pc_mentor_eligible,
     pc_mentor_unit_ids: pcMentorUnitIds,
     marital_status: employee.marital_status,
+    // Counts only: a child's birth date is never written to the audit log.
+    ...(childrenSummary && { children: { ...childrenSummary } }),
     mobile_phone: employee.mobile_phone,
     residential_address: employee.residential_address,
     // Audit snapshots expose only masked identifiers.
