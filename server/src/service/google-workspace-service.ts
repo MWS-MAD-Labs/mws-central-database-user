@@ -369,8 +369,21 @@ export class GoogleWorkspaceService {
     if (!domain || !email.endsWith(`@${domain}`)) {
       return answer("INVALID", false, `Email must end with @${domain}`);
     }
-    if (await prismaClient.person.findFirst({ where: { email }, select: { id: true } })) {
-      return answer("IN_CENTRAL", false, "This email is already used in Central");
+    const holder = await prismaClient.person.findFirst({
+      where: { email },
+      select: {
+        deleted_at: true,
+        employee: { select: { status: true, deleted_at: true } },
+        intern: { select: { deleted_at: true } },
+        student: { select: { status: true, deleted_at: true } },
+      },
+    });
+    if (holder) {
+      const archived =
+        Boolean(holder.deleted_at || holder.employee?.deleted_at || holder.intern?.deleted_at || holder.student?.deleted_at) ||
+        holder.employee?.status === EmployeeStatus.ARCHIVED ||
+        holder.student?.status === StudentStatus.ARCHIVED;
+      return answer("IN_CENTRAL", false, archived ? "Used by an archived person. Restore them instead" : "This email is already used in Central");
     }
     // A protected admin is made an employee like anyone, but Central never makes or touches their Google account.
     if (isProtectedSuperAdminEmail(email)) {

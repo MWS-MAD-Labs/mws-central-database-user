@@ -595,6 +595,22 @@ describe("google workspace accounts", () => {
     expect(result.message).not.toContain("something of ours broke");
   });
 
+  it("tells an archived person's email from an active one when it is checked", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+    const person = await EmployeeTest.create({
+      email: "test_google_arsip@millennia21.id",
+      unitId: master.unit.id,
+      jobPositionId: master.position.id,
+      jobLevelId: master.level.id,
+      buildingId: master.building.id,
+    });
+    const check = async () =>
+      (await (await TestRequest.get("/api/admin/google/email-availability?email=test_google_arsip@millennia21.id", accessToken)).json()).data;
+    expect(await check()).toMatchObject({ available: false, reason: "IN_CENTRAL", message: "This email is already used in Central" });
+    await prismaClient.employee.update({ where: { id: person.employee!.id }, data: { status: EmployeeStatus.ARCHIVED } });
+    expect(await check()).toMatchObject({ available: false, reason: "IN_CENTRAL", message: "Used by an archived person. Restore them instead" });
+  });
+
   it("does not create a person whose email already has a Google account", async () => {
     google.users.set("existing", {
       id: "existing", primaryEmail: "test_google_taken@millennia21.id", givenName: "A", familyName: "B",
