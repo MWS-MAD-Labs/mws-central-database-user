@@ -2,19 +2,32 @@ import { useEffect, useState } from 'react'
 
 const nowMs = () => Date.now()
 
-// Seconds left until an ISO time, counting down while the page is open. 0 when there is none or it has passed.
-export function useWaitSeconds(until) {
-  // Only the timer changes this, to draw the page again each second; the time itself is read when drawing.
-  const [, tick] = useState(0)
-  const left = until ? Math.max(0, Math.ceil((Date.parse(until) - nowMs()) / 1000)) : 0
+// A wait that ends at an ISO time. It is worked out in milliseconds, so the button turns on at the moment the time is
+// up, not up to a second later, and the ring that draws it (CooldownRing) uses the same end. `total` is how long the
+// whole wait is, in seconds. `seconds` is for the label and rounds up; the page is drawn again each second for it, and
+// once more right when the wait ends.
+export function useCooldown(until, total) {
+  const [, redraw] = useState(0)
+  const endMs = until ? Date.parse(until) : 0
+  const remainingMs = Math.max(0, endMs - nowMs())
 
   useEffect(() => {
-    if (!until || Date.parse(until) <= nowMs()) return undefined
-    const timer = setInterval(() => tick((count) => count + 1), 1000)
-    return () => clearInterval(timer)
-  }, [until])
+    const left = endMs - nowMs()
+    if (!endMs || left <= 0) return undefined
+    const end = setTimeout(() => redraw((count) => count + 1), left + 2)
+    const label = setInterval(() => redraw((count) => count + 1), 1000)
+    return () => {
+      clearTimeout(end)
+      clearInterval(label)
+    }
+  }, [endMs])
 
-  return left
+  return {
+    waiting: remainingMs > 0,
+    seconds: Math.ceil(remainingMs / 1000),
+    until,
+    total,
+  }
 }
 
 // "1:45"
