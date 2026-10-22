@@ -11,7 +11,25 @@ import { googleAccountApi } from "../api/googleAccountApi.js";
 import { recoveryEmailProblem, recoveryHint } from "../utils/instructions.js";
 import { GoogleInstructionsDialog } from "./GoogleInstructionsDialog.jsx";
 import { GoogleShareDialog } from "./GoogleShareDialog.jsx";
-import { formatWait, useWaitSeconds } from "../hooks/useWait.js";
+import { CooldownButton } from "./CooldownButton.jsx";
+
+// What the last Check found, in a sentence. Nothing is claimed that Google did not say.
+function checkMessage(check) {
+  if (check.outcome === "simulated") return "Google is simulated here, so there is nothing to check.";
+  if (check.outcome === "unreachable") return "Google could not be reached. The last answer is kept. Try again.";
+  if (check.outcome === "skipped") return "This account cannot be checked right now.";
+  return check.changes.length ? `Checked. ${check.changes.join(". ")}.` : "Checked. Nothing changed.";
+}
+
+// The line under the account after Check: when, and what it found.
+function checkLine(check) {
+  const time = clock(check.at);
+  if (check.outcome === "checked") return check.changes.length ? `Checked ${time}. ${check.changes.join(". ")}.` : `Checked ${time}. Nothing changed.`;
+  if (check.outcome === "simulated") return `Pressed ${time}. Google is simulated here, so nothing was asked.`;
+  return `Tried ${time}. ${checkMessage(check)}`;
+}
+
+const clock = (value) => new Date(value).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
 const BADGES = {
   ACTIVE: { tone: "green", label: "Linked" },
@@ -83,13 +101,26 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
   const domain = (email || "").split("@")[1] || "";
   const statusQuery = useQuery({ queryKey, queryFn: () => googleAccountApi.status(resource, id) });
   const status = statusQuery.data;
-  // A new password ends the one just given out, so it waits a few minutes after the last one.
-  const passwordWait = useWaitSeconds(status?.password_available_at);
+  const cd = status?.cooldowns ?? {};
+  // What the last press of Check found, so it does not look as if nothing happened.
+  const [lastCheck, setLastCheck] = useState(null);
 
   const refresh = useMutation({
     mutationFn: () => googleAccountApi.status(resource, id, { refresh: true }),
-    onSuccess: (result) => queryClient.setQueryData(queryKey, result),
-    onError: (error) => showErrorToast(error, "Could not check Google."),
+    onSuccess: (result) => {
+      queryClient.setQueryData(queryKey, result);
+      const check = result.check;
+      if (!check) return;
+      setLastCheck({ ...check, at: new Date() });
+      const message = checkMessage(check);
+      if (check.outcome === "checked") showSuccessToast(message);
+      else showErrorToast(new Error(message), "Google was not checked.");
+    },
+    onError: (error) => {
+      // A wait the page did not know about: ask again so the ring shows it.
+      queryClient.invalidateQueries({ queryKey });
+      showErrorToast(error, "Could not check Google.");
+    },
   });
 
   const provision = useMutation({
@@ -239,6 +270,13 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
             {note.text}
           </span>
         ) : null}
+        {status.linked && (lastCheck || status.checked_at) ? (
+          <span className="w-full text-xs" data-testid="google-check-note">
+            {lastCheck
+              ? `${checkLine(lastCheck)} Looked at the account state, the password and the last sign-in.`
+              : `Last checked ${clock(status.checked_at)}.`}
+          </span>
+        ) : null}
       </div>
       {can.create || can.manage || can.takeover ? (
         <div className="flex gap-1">
@@ -260,17 +298,20 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
             </Button>
           ) : null}
           {can.manage && status.status === "ACTIVE" ? (
-            <Button type="button" variant="ghost" size="icon" aria-label="Suspend Google account" title="Suspend Google account" onClick={() => setDialog("suspend")}>
+            <CooldownButton until={status.suspend_available_at} total={cd.suspend} waitText="to suspend" type="button" variant="ghost" size="icon" aria-label="Suspend Google account" title="Suspend Google account" onClick={() => setDialog("suspend")}>
               <Pause size={15} />
-            </Button>
+            </CooldownButton>
           ) : null}
           {can.manage && status.status === "SUSPENDED" && !locked ? (
-            <Button type="button" variant="ghost" size="icon" aria-label="Unsuspend Google account" title="Unsuspend Google account" onClick={() => setDialog("unsuspend")}>
+            <CooldownButton until={status.suspend_available_at} total={cd.suspend} waitText="to unsuspend" type="button" variant="ghost" size="icon" aria-label="Unsuspend Google account" title="Unsuspend Google account" onClick={() => setDialog("unsuspend")}>
               <Play size={15} />
-            </Button>
+            </CooldownButton>
           ) : null}
           {can.manage && status.linked ? (
-            <Button
+            <CooldownButton
+              until={status.check_available_at}
+              total={cd.check}
+              waitText="to check again"
               type="button"
               variant="ghost"
               size="icon"
@@ -279,11 +320,14 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
               disabled={refresh.isPending}
               onClick={() => refresh.mutate()}
             >
-              <RefreshCw size={15} />
-            </Button>
+              <RefreshCw size={15} className={refresh.isPending ? "animate-spin motion-reduce:animate-none" : undefined} />
+            </CooldownButton>
           ) : null}
           {(can.takeover || (can.create && noRecovery)) && status.linked && !locked ? (
-            <Button
+            <CooldownButton
+              until={status.recovery_available_at}
+              total={cd.recovery}
+              waitText="to change it again"
               type="button"
               variant="ghost"
               size="icon"
@@ -296,20 +340,23 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
               }}
             >
               <Mail size={15} />
-            </Button>
+            </CooldownButton>
           ) : null}
           {can.takeover && status.linked && !locked ? (
-            <Button
+            <CooldownButton
+              until={status.password_available_at}
+              total={cd.password}
+              waitText="to make another"
               type="button"
               variant="ghost"
               size="icon"
               aria-label="Make temporary password"
-              title={gone ? "Restore the account first." : passwordWait > 0 ? `Wait ${formatWait(passwordWait)} to make another.` : "Make temporary password"}
-              disabled={gone || passwordWait > 0}
+              title={gone ? "Restore the account first." : "Make temporary password"}
+              disabled={gone}
               onClick={() => setDialog("confirm")}
             >
               <KeyRound size={15} />
-            </Button>
+            </CooldownButton>
           ) : null}
           {can.create && !status.linked ? (
             <Button

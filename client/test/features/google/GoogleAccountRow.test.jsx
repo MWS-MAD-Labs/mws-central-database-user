@@ -312,6 +312,69 @@ describe('GoogleAccountRow', () => {
     expect(button.getAttribute('title')).toMatch(/^Wait 1:(3\d|40) to make another\.$/)
   })
 
+  describe('Check Google says what it found', () => {
+    const route = (check, over = {}) => ({
+      path: '/api/admin/employees/e1/google',
+      response: () => jsonResponse({ data: status({ checked_at: '2026-10-22T07:32:00.000Z', cooldowns: { check: 10, suspend: 30, recovery: 60, password: 120, email: 120 }, ...over, ...(check ? { check } : {}) }) }),
+    })
+    const press = async (check) => {
+      globalThis.fetch = createFetchRouter([{
+        path: /\/employees\/e1\/google(\?refresh=true)?$/,
+        response: ({ url }) => jsonResponse({ data: status({ checked_at: '2026-10-22T07:32:00.000Z', cooldowns: { check: 10, suspend: 30, recovery: 60, password: 120, email: 120 }, ...(String(url).includes('refresh=true') ? { check } : {}) }) }),
+      }])
+      const view = renderWithProviders(<ConfirmProvider><GoogleAccountRow resource="employees" id="e1" email="ari@millennia21.id" name="Ari" /></ConfirmProvider>)
+      await view.user.click(await screen.findByRole('button', { name: 'Check Google again' }))
+      return view
+    }
+
+    it('says nothing changed, and when it checked', async () => {
+      await press({ outcome: 'checked', changes: [], checked_at: '2026-10-22T07:40:00.000Z' })
+      expect(await screen.findByText(/Nothing changed\./)).toBeVisible()
+      expect(screen.getByTestId('google-check-note')).toHaveTextContent(/^Checked \d\d:\d\d\. Nothing changed\. Looked at the account state, the password and the last sign-in\.$/)
+    })
+
+    it('says what changed', async () => {
+      await press({ outcome: 'checked', changes: ['Status changed from Linked to Suspended'], checked_at: '2026-10-22T07:40:00.000Z' })
+      expect(await screen.findByTestId('google-check-note')).toHaveTextContent('Status changed from Linked to Suspended')
+    })
+
+    it('does not pretend when Google is only simulated or cannot be reached', async () => {
+      const simulated = await press({ outcome: 'simulated', changes: [], checked_at: '2026-10-22T07:40:00.000Z' })
+      expect(await screen.findByText(/Google is simulated here, so nothing was asked/)).toBeVisible()
+      simulated.unmount()
+
+      await press({ outcome: 'unreachable', changes: [], checked_at: '2026-10-22T07:32:00.000Z' })
+      expect(await screen.findByText(/Google could not be reached/)).toBeVisible()
+      expect(screen.getByTestId('google-check-note')).toHaveTextContent(/^Tried \d\d:\d\d\./)
+    })
+
+    it('shows when it was last checked before anything is pressed', async () => {
+      globalThis.fetch = createFetchRouter([route(null)])
+      renderWithProviders(<ConfirmProvider><GoogleAccountRow resource="employees" id="e1" email="ari@millennia21.id" /></ConfirmProvider>)
+      expect(await screen.findByTestId('google-check-note')).toHaveTextContent(/^Last checked \d\d:\d\d\.$/)
+    })
+  })
+
+  it('draws the burgundy ring on the buttons that are waiting, each for its own time', async () => {
+    const later = (seconds) => new Date(Date.now() + seconds * 1000).toISOString()
+    setup(status({
+      cooldowns: { check: 10, suspend: 30, recovery: 60, password: 120, email: 120 },
+      check_available_at: later(5),
+      suspend_available_at: later(15),
+      recovery_available_at: null,
+      password_available_at: later(60),
+    }))
+    const check = await screen.findByRole('button', { name: 'Check Google again' })
+    expect(check).toBeDisabled()
+    expect(check.getAttribute('title')).toMatch(/^Wait 0:0\d to check again\.$/)
+    const arc = (button) => button.closest('[data-cooldown]')?.querySelector('[data-testid="cooldown-arc"]')
+    expect(arc(check)).not.toBeNull()
+    expect(arc(screen.getByRole('button', { name: 'Suspend Google account' }))).not.toBeNull()
+    expect(arc(screen.getByRole('button', { name: 'Make temporary password' }))).not.toBeNull()
+    // Nothing is waiting here, so no ring.
+    expect(arc(screen.getByRole('button', { name: 'Change recovery email' })) ?? null).toBeNull()
+  })
+
   it('lets whoever may make the account add a recovery email when there is none, and only then', async () => {
     const create = { create: true, manage: false, takeover: false }
     const none = setup(status({ can: create }), [{ path: '/api/admin/employees/e1/google/recovery-hint', response: jsonResponse({ data: { hint: null } }) }])

@@ -9,7 +9,7 @@ import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { emailProblem, sanitizeEmail } from "../../../lib/form.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { googleAccountApi } from "../api/googleAccountApi.js";
-import { formatWait, useWaitSeconds } from "../hooks/useWait.js";
+import { CooldownButton } from "./CooldownButton.jsx";
 import { INSTRUCTION_LANGUAGES, recoveryEmailProblem, signInMessage } from "../utils/instructions.js";
 
 const MASK = "•".repeat(16);
@@ -33,8 +33,6 @@ export function GoogleShareDialog({ resource, id, name, email, password, title =
   const hintKey = ["google-recovery-hint", resource, id];
   const hintQuery = useQuery({ queryKey: hintKey, queryFn: () => googleAccountApi.recoveryHint(resource, id), retry: false, staleTime: 0 });
   const emailEnabled = statusQuery.data?.email_enabled !== false;
-  // The same few minutes apply to every mail for this person, so a second one waits.
-  const wait = useWaitSeconds(statusQuery.data?.email_available_at);
   const hint = hintQuery.data?.hint ?? null;
   const hasRecovery = Boolean(hint);
   const sendTo = target ?? (hasRecovery ? "recovery" : "other");
@@ -98,7 +96,7 @@ export function GoogleShareDialog({ resource, id, name, email, password, title =
     onClose();
   }
 
-  const sendDisabled = !emailEnabled || wait > 0 || (sendTo === "recovery" ? !hasRecovery : !typed.trim() || Boolean(typedProblem));
+  const sendDisabled = !emailEnabled || (sendTo === "recovery" ? !hasRecovery : !typed.trim() || Boolean(typedProblem));
 
   return (
     <CrudDialog
@@ -175,16 +173,19 @@ export function GoogleShareDialog({ resource, id, name, email, password, title =
           )}
           {!adding ? (
             <div className="flex justify-end">
-              <Button
+              <CooldownButton
+                until={statusQuery.data?.email_available_at}
+                total={statusQuery.data?.cooldowns?.email}
+                waitText="to send again"
                 type="button"
                 variant="secondary"
                 loading={send.isPending}
                 disabled={sendDisabled}
-                title={!emailEnabled ? "Email is not set up on this server." : wait > 0 ? `Wait ${formatWait(wait)} to send again.` : undefined}
+                title={emailEnabled ? undefined : "Email is not set up on this server."}
                 onClick={() => send.mutate()}
               >
                 Send Email
-              </Button>
+              </CooldownButton>
             </div>
           ) : null}
         </div>

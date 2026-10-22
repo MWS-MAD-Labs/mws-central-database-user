@@ -31,33 +31,111 @@ const STATUS_FRESH_MS = 5 * 60 * 1000;
 
 export { passwordStateOf, PASSWORD_PENDING_WARN_DAYS };
 
-// Making a temporary password and mailing the details go together: a new password ends the one that was just given
-// out, and mail sent over and over is how a person is flooded. So both wait the same few minutes for the same person.
-export const SIGNIN_COOLDOWN_MINUTES = 2;
-const SIGNIN_COOLDOWN_MS = SIGNIN_COOLDOWN_MINUTES * 60 * 1000;
+// How long the same person waits between two of the same action, so a button pressed over and over does no harm.
+// Making a temporary password and mailing the details go together: a new password ends the one just given out, and mail
+// sent over and over is how a person is flooded, so both wait the same. Checking Google is short (it only spares the
+// quota), suspending is a little longer, and changing the recovery email, which can take an account over, longer still.
+export const GOOGLE_COOLDOWN_SECONDS = { check: 10, suspend: 30, recovery: 60, password: 120, email: 120 } as const;
+type CooldownAction = keyof typeof GOOGLE_COOLDOWN_SECONDS;
 
 const waitMessage = (leftMs: number): string => {
   const seconds = Math.ceil(leftMs / 1000);
   return seconds > 90 ? `${Math.ceil(seconds / 60)} more minutes` : `${seconds} more ${seconds === 1 ? "second" : "seconds"}`;
 };
 
-// When the next password or mail is allowed for this person, from the last one: the password made or reset, and the
-// last mail (read from the audit log, so a restart of the server does not forget it).
-async function nextSignInAllowedAt(person: { id: string; person_type: PersonType; google_password_issued_at: Date | null }): Promise<{
-  password: Date | null;
-  email: Date | null;
-}> {
-  const lastMail = await prismaClient.auditLog.findFirst({
-    where: { action: "GOOGLE_SIGNIN_EMAILED", entity_id: person.id, entity_type: entityTypeOf(person) },
-    orderBy: { created_at: "desc" },
-    select: { created_at: true },
+type CooldownPerson = {
+  id: string;
+  person_type: PersonType;
+  google_password_issued_at: Date | null;
+  google_checked_at?: Date | null;
+};
+
+// When each action is next allowed for this person (null: now), from the last time it was done. The password and the
+// check come from the person, the rest from the audit log, so a restart of the server does not forget them.
+async function nextActionAllowedAt(person: CooldownPerson): Promise<Record<CooldownAction, Date | null>> {
+  const entity = { entity_id: person.id, entity_type: entityTypeOf(person) };
+  const [lastMail, lastSuspend, updates] = await Promise.all([
+    prismaClient.auditLog.findFirst({ where: { action: "GOOGLE_SIGNIN_EMAILED", ...entity }, orderBy: { created_at: "desc" }, select: { created_at: true } }),
+    prismaClient.auditLog.findFirst({
+      where: { action: { in: ["GOOGLE_ACCOUNT_SUSPEND", "GOOGLE_ACCOUNT_UNSUSPEND"] }, ...entity },
+      orderBy: { created_at: "desc" },
+      select: { created_at: true },
+    }),
+    prismaClient.auditLog.findMany({
+      where: { action: "GOOGLE_ACCOUNT_UPDATE", ...entity },
+      orderBy: { created_at: "desc" },
+      take: 10,
+      select: { created_at: true, new_values: true },
+    }),
+  ]);
+  const lastRecovery = updates.find((entry) => {
+    const values = (entry.new_values ?? {}) as Record<string, unknown>;
+    return values.recovery_email_changed === true || values.recovery_email_set === true;
   });
-  const after = (since: Date | null | undefined): Date | null => {
+  const after = (since: Date | null | undefined, action: CooldownAction): Date | null => {
     if (!since) return null;
-    const at = new Date(since.getTime() + SIGNIN_COOLDOWN_MS);
+    const at = new Date(since.getTime() + GOOGLE_COOLDOWN_SECONDS[action] * 1000);
     return at.getTime() > Date.now() ? at : null;
   };
-  return { password: after(person.google_password_issued_at), email: after(lastMail?.created_at) };
+  return {
+    check: after(person.google_checked_at, "check"),
+    suspend: after(lastSuspend?.created_at, "suspend"),
+    recovery: after(lastRecovery?.created_at, "recovery"),
+    password: after(person.google_password_issued_at, "password"),
+    email: after(lastMail?.created_at, "email"),
+  };
+}
+
+// The fields the cooldowns read, for a person loaded with the short list `load` gives.
+async function cooldownPerson(person: { id: string; person_type: PersonType }): Promise<CooldownPerson> {
+  const row = await prismaClient.person.findUnique({
+    where: { id: person.id },
+    select: { google_password_issued_at: true, google_checked_at: true },
+  });
+  return { id: person.id, person_type: person.person_type, ...row, google_password_issued_at: row?.google_password_issued_at ?? null };
+}
+
+export type CheckOutcome = "checked" | "simulated" | "unreachable" | "skipped";
+export type CheckResult = { outcome: CheckOutcome; changes: string[]; checked_at: string | null };
+
+const STATUS_LABELS: Record<string, string> = {
+  NONE: "Not created",
+  PENDING: "Being made",
+  ACTIVE: "Linked",
+  SUSPENDED: "Suspended",
+  MISSING: "Not found in Google",
+  FAILED: "Failed",
+};
+const PASSWORD_LABELS: Record<string, string> = {
+  PENDING: "waiting for the first sign-in",
+  OVERDUE: "not set after a week",
+  SET: "set by the person",
+};
+
+type Reading = Pick<
+  Person,
+  "google_sync_status" | "google_password_pending" | "google_password_issued_at" | "google_last_login_at" | "google_deleted_at"
+>;
+
+// What differs between two readings of the same account, in plain words. Empty means nothing changed.
+function changesBetween(before: Reading, after: Reading): string[] {
+  const changes: string[] = [];
+  if (before.google_sync_status !== after.google_sync_status) {
+    changes.push(`Status changed from ${STATUS_LABELS[before.google_sync_status] ?? before.google_sync_status} to ${STATUS_LABELS[after.google_sync_status] ?? after.google_sync_status}`);
+  }
+  const was = passwordStateOf(before);
+  const now = passwordStateOf(after);
+  if (was !== now) changes.push(`Password is now ${now ? PASSWORD_LABELS[now] : "unknown"}`);
+  if (before.google_last_login_at?.getTime() !== after.google_last_login_at?.getTime() && after.google_last_login_at) {
+    changes.push("A new sign-in was recorded");
+  }
+  return changes;
+}
+
+// Refuses with 429, saying for how long, when the action is still waiting.
+async function assertNotWaiting(person: CooldownPerson, action: CooldownAction, message: (wait: string) => string): Promise<void> {
+  const at = (await nextActionAllowedAt(person))[action];
+  if (at) throw new ResponseError(429, message(waitMessage(at.getTime() - Date.now())));
 }
 
 // How long after it was issued a first password may still be mailed, and how many mails one admin may send an hour.
@@ -446,13 +524,11 @@ export class GoogleWorkspaceService {
     await this.assertNotLocked(personId);
     const issuedAt = (await prismaClient.person.findUnique({ where: { id: personId }, select: { google_password_issued_at: true } }))
       ?.google_password_issued_at ?? null;
-    const wait = (await nextSignInAllowedAt({ id: person.id, person_type: person.person_type, google_password_issued_at: issuedAt })).password;
-    if (wait) {
-      throw new ResponseError(
-        429,
-        `A password was made a moment ago and may not have reached the person yet. Wait ${waitMessage(wait.getTime() - Date.now())} to make another`,
-      );
-    }
+    await assertNotWaiting(
+      { id: person.id, person_type: person.person_type, google_password_issued_at: issuedAt },
+      "password",
+      (wait) => `A password was made a moment ago and may not have reached the person yet. Wait ${wait} to make another`,
+    );
     const client = getDirectoryClient();
     const password = generateTemporaryPassword();
 
@@ -475,15 +551,19 @@ export class GoogleWorkspaceService {
     return { password };
   }
 
-  // When a new password and a new mail are next allowed (ISO), or null when they are allowed now. The page uses it to
-  // keep the buttons off and say for how long.
-  private static async signInAvailability(person: {
-    id: string;
-    person_type: PersonType;
-    google_password_issued_at: Date | null;
-  }): Promise<{ password_available_at: string | null; email_available_at: string | null }> {
-    const next = await nextSignInAllowedAt(person);
-    return { password_available_at: next.password?.toISOString() ?? null, email_available_at: next.email?.toISOString() ?? null };
+  // When each action is next allowed (ISO), or null when it is allowed now, and how long each waits. The page uses it
+  // to keep the buttons off, draw the countdown ring and say for how long.
+  private static async cooldownsOf(person: CooldownPerson) {
+    const next = await nextActionAllowedAt(person);
+    const iso = (at: Date | null) => at?.toISOString() ?? null;
+    return {
+      check_available_at: iso(next.check),
+      suspend_available_at: iso(next.suspend),
+      recovery_available_at: iso(next.recovery),
+      password_available_at: iso(next.password),
+      email_available_at: iso(next.email),
+      cooldowns: GOOGLE_COOLDOWN_SECONDS,
+    };
   }
 
   // Emails the first sign-in details. The password is the one the admin was just shown: Central does not keep it, so it
@@ -524,10 +604,7 @@ export class GoogleWorkspaceService {
     if (!person.google_password_pending || !issued || Date.now() - issued.getTime() > SIGNIN_EMAIL_WINDOW_MS) {
       throw new ResponseError(409, "The first sign-in details can only be sent for a new account that has not signed in yet");
     }
-    const mailWait = (await nextSignInAllowedAt(person)).email;
-    if (mailWait) {
-      throw new ResponseError(429, `The details were mailed a moment ago. Wait ${waitMessage(mailWait.getTime() - Date.now())} to send them again`);
-    }
+    await assertNotWaiting(person, "email", (wait) => `The details were mailed a moment ago. Wait ${wait} to send them again`);
     takeSignInEmailSlot(admin.id);
 
     const { subject, text } = signInEmail(input.language, { name: person.full_name, email: person.email, password: input.password });
@@ -694,6 +771,7 @@ export class GoogleWorkspaceService {
     this.assertRecoveryIsNotOwn(recoveryEmail, person.email);
     this.assertNotMissing(person);
     await this.assertNotLocked(personId);
+    await assertNotWaiting(await cooldownPerson(person), "recovery", (wait) => `The recovery email was changed a moment ago. Wait ${wait} to change it again`);
     const client = getDirectoryClient();
     try {
       const current = await client.findUser(person.google_user_id);
@@ -760,6 +838,7 @@ export class GoogleWorkspaceService {
     if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet");
     this.assertNotMissing(person);
     if (!suspended) await this.assertNotLocked(personId);
+    await assertNotWaiting(await cooldownPerson(person), "suspend", (wait) => `The account was suspended or unsuspended a moment ago. Wait ${wait} to change it again`);
     const client = getDirectoryClient();
     try {
       const current = await client.findUser(person.google_user_id);
@@ -799,16 +878,20 @@ export class GoogleWorkspaceService {
 
   // Ask Google how a linked account is doing and keep the answer. It only reads: nothing in Google is changed, and
   // nothing in Central is blocked by the result. A Google that cannot be reached leaves the last answer as it was.
-  static async refreshStatus(personId: string): Promise<void> {
+  static async refreshStatus(personId: string): Promise<CheckOutcome> {
     const person = await load(personId);
-    if (!person.google_user_id || person.google_sync_status === GoogleSyncStatus.PENDING) return;
+    if (!person.google_user_id || person.google_sync_status === GoogleSyncStatus.PENDING) return "skipped";
     const client = getDirectoryClient();
     // The simulated Google forgets its users when the process restarts, so it cannot say who is missing.
-    if (client.mode === "simulated") return;
+    if (client.mode === "simulated") {
+      // Nothing is asked, but the press counts as a check: it starts the wait and shows when it was done.
+      await prismaClient.person.update({ where: { id: person.id }, data: { google_checked_at: new Date() } });
+      return "simulated";
+    }
     try {
       assertAllowedTarget(person.email);
     } catch {
-      return;
+      return "skipped";
     }
 
     try {
@@ -820,7 +903,7 @@ export class GoogleWorkspaceService {
           error: suspended ? "Suspended in Google" : null,
         });
         await this.syncAccess(person.id);
-        return;
+        return "checked";
       }
       const deleted = await client.findDeletedUser(person.email, person.google_user_id);
       await markStatus(person.id, GoogleSyncStatus.MISSING, {
@@ -831,8 +914,10 @@ export class GoogleWorkspaceService {
         where: { id: person.id },
         data: { google_checked_at: new Date(), google_password_pending: null },
       });
+      return "checked";
     } catch (error) {
       logger.error(`Google status check failed for person ${person.id}`, error);
+      return "unreachable";
     }
   }
 
@@ -1064,9 +1149,22 @@ export class GoogleWorkspaceService {
       person = (await read()) ?? person;
     }
     const stale = !person.google_checked_at || Date.now() - person.google_checked_at.getTime() > STATUS_FRESH_MS;
+    let check: CheckResult | undefined;
+    if (person.google_user_id && options.refresh) {
+      await assertNotWaiting(person, "check", (wait) => `Google was checked a moment ago. Wait ${wait} to check again`);
+    }
     if (person.google_user_id && (options.refresh || stale)) {
-      await this.refreshStatus(personId);
+      const before = person;
+      const outcome = await this.refreshStatus(personId);
       person = (await read()) ?? person;
+      // What a pressed Check found, so the page can say so instead of looking as if nothing happened.
+      if (options.refresh) {
+        check = {
+          outcome,
+          changes: changesBetween(before, person),
+          checked_at: person.google_checked_at ? person.google_checked_at.toISOString() : null,
+        };
+      }
     }
     const lock = person.google_user_id ? await this.lockState(personId) : null;
     // Someone made before the Google accounts, whose email is already there: not linked, but not missing either.
@@ -1091,7 +1189,8 @@ export class GoogleWorkspaceService {
           : null,
       mode: getDirectoryClient().mode,
       email_enabled: getMailer().enabled,
-      ...(person.google_user_id ? await this.signInAvailability(person) : {}),
+      ...(person.google_user_id ? await this.cooldownsOf(person) : {}),
+      ...(check ? { check } : {}),
     };
   }
 }

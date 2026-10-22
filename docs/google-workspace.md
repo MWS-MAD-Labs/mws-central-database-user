@@ -108,7 +108,23 @@ With `GOOGLE_SUSPEND_ON_OFFBOARD=true` (off by default), Central suspends the Go
 
 A new account is made with a temporary password (16 characters). The dialog that opens right after, **Share Sign-in Details**, shows it once (hidden until Show) with a message ready to paste into WhatsApp: "Halo {name}, ..." in Bahasa Indonesia or English, editable before Copy Message. While the password is hidden it is hidden in the message too (dots, read-only); Show reveals both and lets the admin edit the message. Copy Message always copies the real text. **Send Email** mails the same details, by default to the account's recovery email: the server reads it from Google and sends there, the browser only sees it hidden (`b***@gmail.com`). The admin can choose another address instead. An account with no recovery email says so and offers Add Recovery Email. Make Temporary Password opens the same dialog. Closing it without copying or sending asks first, because the password cannot be shown again.
 
-The server only mails for an account that still waits for its first password and was issued in the last 48 hours, to an address that is not the account's own, and at most 20 mails an hour per admin. Making a new password and mailing the details go together, because a new password ends the one just given out, so both wait the same **2 minutes** for the same person (`SIGNIN_COOLDOWN_MINUTES`): a new temporary password is refused for 2 minutes after the last one was made (by creating the account or by Make Temporary Password), and a second mail for 2 minutes after the last (read from the audit log, so a restart does not forget it). The answer says how long to wait, and the page keeps the buttons off with a countdown (`password_available_at` and `email_available_at` in the status).
+The server only mails for an account that still waits for its first password and was issued in the last 48 hours, to an address that is not the account's own, and at most 20 mails an hour per admin. Making a new password and mailing the details go together, because a new password ends the one just given out, so both wait the same **2 minutes** for the same person: a new temporary password is refused for 2 minutes after the last one was made (by creating the account or by Make Temporary Password), and a second mail for 2 minutes after the last.
+
+The other actions on a Google account wait too, per person, in `GOOGLE_COOLDOWN_SECONDS` (`google-workspace-service.ts`):
+
+| Action | Waits | Read from |
+|---|---|---|
+| Check Google | 10 seconds | `google_checked_at` (the automatic look at Google counts too) |
+| Suspend, Unsuspend | 30 seconds | the last suspend or unsuspend in the audit log |
+| Add or Change Recovery Email | 1 minute | the last recovery email entry in the audit log |
+| Make Temporary Password | 2 minutes | `google_password_issued_at` |
+| Send Email | 2 minutes | the last `GOOGLE_SIGNIN_EMAILED` in the audit log |
+
+An action inside its wait is refused with 429 and the time left. Those read from the audit log survive a restart of the server. The status carries `check_available_at`, `suspend_available_at`, `recovery_available_at`, `password_available_at`, `email_available_at` and `cooldowns` (the seconds above), and the page keeps the button off with a burgundy ring around it that shortens as the wait runs out (`CooldownRing`).
+
+### What Check says
+
+Check Google answers with `check: { outcome, changes, checked_at }`. `outcome` is `checked`, `simulated` (this environment does not talk to the real Google, so nothing was asked), `unreachable` (Google did not answer; the last answer is kept) or `skipped`. `changes` lists what differs from before: the status of the account, the password state and a new sign-in. The page shows a message, and under the account "Checked 14:32. Nothing changed." or the changes, and "Last checked 14:32" before anything is pressed.
 
 Email needs an SMTP server, which is a mailbox's login for sending, not something Central makes. Use the same block as MTSS or Exima: copy their `SMTP_*` lines from Komodo (MTSS already sends from `no-reply@millennia21.id`). Without these variables Send Email is off and says so.
 

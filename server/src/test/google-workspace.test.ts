@@ -174,10 +174,9 @@ describe("google workspace accounts", () => {
     const person = await personOf(employeeId);
     const earlier = new Date(Date.now() - 10 * 60_000);
     await prismaClient.person.update({ where: { id: person.id }, data: { google_password_issued_at: earlier } });
-    await prismaClient.auditLog.updateMany({
-      where: { action: AuditAction.GOOGLE_SIGNIN_EMAILED, entity_id: person.id },
-      data: { created_at: earlier },
-    });
+    // Checked a minute ago: past the wait, and still fresh enough that the page does not look at Google again by itself.
+    await prismaClient.person.update({ where: { id: person.id }, data: { google_checked_at: new Date(Date.now() - 60_000) } });
+    await prismaClient.auditLog.updateMany({ where: { entity_id: person.id }, data: { created_at: earlier } });
   };
 
   describe("the helpers", () => {
@@ -229,6 +228,94 @@ describe("google workspace accounts", () => {
     const data = (await response.json()).data;
     expect(data.outcome).toBe("linked");
     expect(data.temporary_password).toBeUndefined();
+  });
+
+  describe("the wait between the same action for the same person", () => {
+    const post = (id: string, path: string, token: string, body: Record<string, unknown> = {}) =>
+      TestRequest.post(`/api/admin/employees/${id}/google/${path}`, body, token);
+    const statusUrl = (id: string) => `/api/admin/employees/${id}/google`;
+    const made = async (token: string) => {
+      const { json } = await create(token);
+      await letTimePass(json.data.id);
+      return json.data.id as string;
+    };
+
+    it("makes Check wait ten seconds, says what it found, and tells the page when it may be pressed again", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await made(accessToken);
+
+      const first = (await (await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken)).json()).data;
+      expect(first.check).toMatchObject({ outcome: "checked", changes: [] });
+      expect(Date.parse(first.check_available_at)).toBeGreaterThan(Date.now());
+      expect(first.cooldowns).toEqual({ check: 10, suspend: 30, recovery: 60, password: 120, email: 120 });
+
+      const again = await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken);
+      expect(again.status).toBe(429);
+      expect((await again.json()).errors).toMatch(/Google was checked a moment ago. Wait \d+ more seconds? to check again/);
+
+      // Someone suspended it in Google: the next Check says so.
+      const person = await personOf(id);
+      google.users.set(person.google_user_id!, { ...google.users.get(person.google_user_id!)!, suspended: true });
+      await letTimePass(id);
+      const found = (await (await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken)).json()).data;
+      expect(found.check.changes).toEqual(["Status changed from Linked to Suspended"]);
+    });
+
+    it("says honestly when Google is only simulated or cannot be reached", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await made(accessToken);
+      const person = await personOf(id);
+
+      setDirectoryClientForTests(new SimulatedDirectoryClient());
+      const simulated = (await (await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken)).json()).data;
+      expect(simulated.check.outcome).toBe("simulated");
+      expect(simulated.checked_at).not.toBeNull();
+      expect(simulated.check_available_at).not.toBeNull();
+
+      setDirectoryClientForTests(google);
+      await letTimePass(id);
+      google.findUser = async () => {
+        throw new Error("network down");
+      };
+      const down = (await (await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken)).json()).data;
+      expect(down.check.outcome).toBe("unreachable");
+      expect(down.status).toBe(person.google_sync_status);
+    });
+
+    it("makes Suspend and Unsuspend wait thirty seconds", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await made(accessToken);
+      expect((await post(id, "suspend", accessToken)).status).toBe(200);
+      const quick = await post(id, "unsuspend", accessToken);
+      expect(quick.status).toBe(429);
+      expect((await quick.json()).errors).toMatch(/suspended or unsuspended a moment ago. Wait \d+ more seconds?/);
+      expect(Date.parse((await (await TestRequest.get(statusUrl(id), accessToken)).json()).data.suspend_available_at)).toBeGreaterThan(Date.now());
+
+      await letTimePass(id);
+      expect((await post(id, "unsuspend", accessToken)).status).toBe(200);
+    });
+
+    it("makes changing the recovery email wait a minute, and only counts that, not other updates", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await made(accessToken);
+      expect((await post(id, "recovery-email", accessToken, { recovery_email: "satu@gmail.com" })).status).toBe(200);
+      const quick = await post(id, "recovery-email", accessToken, { recovery_email: "dua@gmail.com" });
+      expect(quick.status).toBe(429);
+      expect((await quick.json()).errors).toMatch(/recovery email was changed a moment ago. Wait \d+ more seconds?/);
+      expect(google.users.get((await personOf(id)).google_user_id!)!.recoveryEmail).toBe("satu@gmail.com");
+
+      await letTimePass(id);
+      expect((await post(id, "recovery-email", accessToken, { recovery_email: "dua@gmail.com" })).status).toBe(200);
+    });
+
+    it("remembers the wait after a restart, because it is read from the audit log", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await made(accessToken);
+      expect((await post(id, "suspend", accessToken)).status).toBe(200);
+      // A new process has no memory; the audit entry is what is left.
+      expect(await prismaClient.auditLog.count({ where: { action: AuditAction.GOOGLE_ACCOUNT_SUSPEND, entity_id: (await personOf(id)).id } })).toBe(1);
+      expect((await post(id, "unsuspend", accessToken)).status).toBe(429);
+    });
   });
 
   describe("a protected admin as an employee", () => {
@@ -682,6 +769,7 @@ describe("google workspace accounts", () => {
       const user = google.users.get(person.google_user_id!)!;
       google.users.delete(user.id);
       google.deleted.set(user.id, { ...user, deletionTime: new Date() });
+      await letTimePass(json.data.id);
       await TestRequest.get(`/api/admin/employees/${json.data.id}/google?refresh=true`, token);
       return { id: json.data.id as string, person, user };
     };
@@ -956,6 +1044,7 @@ describe("google workspace accounts", () => {
       expect((await TestRequest.post(`${base}/recovery-email`, { recovery_email: "a@gmail.com" }, plain.accessToken)).status).toBe(403);
       // The rest of the account work stays with any Super Admin.
       expect((await TestRequest.post(`${base}/suspend`, {}, plain.accessToken)).status).toBe(200);
+      await letTimePass(json.data.id);
       expect((await TestRequest.post(`${base}/unsuspend`, {}, plain.accessToken)).status).toBe(200);
 
       await AdminUserTest.delete();
@@ -1032,8 +1121,11 @@ describe("google workspace accounts", () => {
       const { json } = await create(token);
       return { id: json.data.id as string, person: await personOf(json.data.id) };
     };
-    const statusOf = async (token: string, id: string, refresh = false) =>
-      (await (await TestRequest.get(`/api/admin/employees/${id}/google${refresh ? "?refresh=true" : ""}`, token)).json()).data;
+    const statusOf = async (token: string, id: string, refresh = false) => {
+      // Pressing Check waits a few seconds for the same person; these tests press it as often as they like.
+      if (refresh) await letTimePass(id);
+      return (await (await TestRequest.get(`/api/admin/employees/${id}/google${refresh ? "?refresh=true" : ""}`, token)).json()).data;
+    };
 
     it("holds an email back whose Google account was deleted less than 20 days ago", async () => {
       google.deleted.set("old", gone("old", "test_google_deleted@millennia21.id"));
@@ -1156,10 +1248,12 @@ describe("google workspace accounts", () => {
       expect(google.users.get(user.id)!.suspended).toBe(true);
       expect(await statusOf(accessToken, id)).toMatchObject({ status: GoogleSyncStatus.SUSPENDED });
 
+      await letTimePass(id);
       expect((await TestRequest.post(`/api/admin/employees/${id}/google/unsuspend`, {}, accessToken)).status).toBe(200);
       expect(google.users.get(user.id)!.suspended).toBe(false);
       expect(await statusOf(accessToken, id)).toMatchObject({ status: GoogleSyncStatus.ACTIVE });
 
+      await letTimePass(id);
       google.users.set(user.id, { ...google.users.get(user.id)!, isAdmin: true });
       expect((await TestRequest.post(`/api/admin/employees/${id}/google/suspend`, {}, accessToken)).status).toBe(400);
     });
@@ -1440,11 +1534,13 @@ describe("google workspace accounts", () => {
         expect(JSON.stringify(entries)).not.toContain("baru.pribadi");
 
         // Now there is one: replacing it is for the protected Super Admins only.
+        await letTimePass(none.id);
         const second = await TestRequest.post(url, { recovery_email: "lain@gmail.com" }, dbAdmin.accessToken);
         expect(second.status).toBe(403);
         expect(google.users.get(none.googleId)!.recoveryEmail).toBe("baru.pribadi@gmail.com");
         await AdminUserTest.delete();
         const protectedAdmin = await AdminUserTest.createSuperAdmin(master.unit.id);
+        await letTimePass(none.id);
         expect((await TestRequest.post(url, { recovery_email: "lain@gmail.com" }, protectedAdmin.accessToken)).status).toBe(200);
         expect(google.users.get(none.googleId)!.recoveryEmail).toBe("lain@gmail.com");
       });
