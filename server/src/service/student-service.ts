@@ -998,6 +998,14 @@ export class StudentService {
           message: error instanceof ResponseError ? error.message : "The Google account was not made",
         };
       });
+      // The first password goes to the parent by email at once; the admin only sees it if the mail could not be sent.
+      google = await GoogleWorkspaceService.deliverFirstPassword(
+        google,
+        newPerson.id,
+        { to: createRequest.parent.email, parentName: createRequest.parent.full_name },
+        admin,
+        context,
+      );
     }
 
     return { ...toStudentResponse(newPerson), ...(google && { google }) };

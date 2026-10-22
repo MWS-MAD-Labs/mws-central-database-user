@@ -36,10 +36,12 @@ export function InternCreatePage() {
           new Error(google.message),
           'Intern saved, but the Google account was not made. Try again from the Google account row.',
         )
+      } else if (google?.delivered_to) {
+        showSuccessToast(`Intern created. Sign-in details sent to ${google.delivered_to}.`)
       } else {
         showSuccessToast('Intern created.')
       }
-      if (google && google.outcome !== 'failed') {
+      if (google && google.outcome !== 'failed' && !google.delivered_to) {
         setReady({ id: intern.id, name: intern.identity?.full_name, email: intern.identity?.email, recovery: payload.recovery_email, password: google.temporary_password })
         return
       }

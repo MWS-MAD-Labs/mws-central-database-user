@@ -112,6 +112,18 @@ describe('Student create and edit pages', () => {
     )).toBe(true)
   })
 
+  it('goes to the student page without a dialog when the server mailed the first password', async () => {
+    await createStudentThrough({
+      postData: {
+        id: 'student-new',
+        identity: { full_name: 'Ari Student', email: 'ari.student@millennia21.id' },
+        google: { status: 'ACTIVE', outcome: 'created', google_user_id: 'g-1', delivered_to: 's***@gmail.com' },
+      },
+    })
+    expect(await screen.findByText('Student destination')).toBeVisible()
+    expect(screen.queryByRole('dialog', { name: 'Share Sign-in Details' })).not.toBeInTheDocument()
+  })
+
   it('shows the first sign-in details when the account was made with the student', async () => {
     await createStudentThrough({
       postData: {

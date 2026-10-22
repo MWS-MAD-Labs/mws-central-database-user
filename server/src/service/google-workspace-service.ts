@@ -203,6 +203,8 @@ export type GoogleSyncResult = {
   // Only when the account was just made: the password the person signs in with the first time. Returned once, to the
   // admin who made it, and never stored, logged or put in the audit entry.
   temporary_password?: string;
+  // Set instead of `temporary_password` when the server mailed the details itself, to this hidden address.
+  delivered_to?: string;
 };
 
 type GooglePerson = Pick<Person, "id" | "email" | "full_name" | "person_type" | "google_user_id" | "google_sync_status">;
@@ -521,6 +523,55 @@ export class GoogleWorkspaceService {
     }
   }
 
+  // Mails a fresh password straight away so the admin never has to see it. Returns the hidden address when it was sent,
+  // and null when it was not (email off, nobody to send to, a limit reached or the mail failed): the caller then falls
+  // back to showing the password. Never throws.
+  static async deliverPassword(
+    personId: string,
+    input: { to?: string; password: string; parentName?: string; reset?: boolean; language?: SignInLanguage },
+    admin: Pick<AdminUser, "id">,
+    context: AuditRequestContext = {},
+  ): Promise<{ delivered_to: string } | null> {
+    try {
+      if (!getMailer().enabled) return null;
+      const person = await prismaClient.person.findFirst({ where: { id: personId }, select: { google_user_id: true } });
+      const to = input.to ?? (person?.google_user_id ? await this.recoveryEmailInGoogle(person.google_user_id, personId) : null);
+      if (!to) return null;
+      await this.sendSignInEmail(
+        personId,
+        {
+          to,
+          language: input.language ?? "id",
+          password: input.password,
+          ...(input.parentName ? { parentName: input.parentName } : {}),
+          ...(input.reset ? { reset: true } : {}),
+        },
+        admin,
+        context,
+      );
+      return { delivered_to: maskEmail(to) ?? "" };
+    } catch (error) {
+      logger.warn(`The password for person ${personId} was not mailed, so it is shown instead`, error);
+      return null;
+    }
+  }
+
+  // For a result of `provision` that holds a first password: mail it, and when that worked drop the password from the
+  // result and say where it went. Otherwise the result is returned as it is and the form shows the password.
+  static async deliverFirstPassword(
+    result: GoogleSyncResult,
+    personId: string,
+    input: { to: string; parentName?: string },
+    admin: Pick<AdminUser, "id">,
+    context: AuditRequestContext = {},
+  ): Promise<GoogleSyncResult> {
+    if (!result.temporary_password) return result;
+    const sent = await this.deliverPassword(personId, { ...input, password: result.temporary_password }, admin, context);
+    if (!sent) return result;
+    const { temporary_password: _password, ...rest } = result;
+    return { ...rest, delivered_to: sent.delivered_to };
+  }
+
   // The person is saved and waits: the existing Google account is linked when its owner signs in to Central.
   static async markPendingClaim(
     personId: string,
@@ -826,7 +877,7 @@ export class GoogleWorkspaceService {
   static async sendSignInEmail(
     personId: string,
     // `parentName` is set for a student: the mail is written to that parent or guardian, and `to` is theirs.
-    input: { to?: string; language: SignInLanguage; password: string; parentName?: string },
+    input: { to?: string; language: SignInLanguage; password: string; parentName?: string; reset?: boolean },
     admin: Pick<AdminUser, "id">,
     context: AuditRequestContext = {},
   ): Promise<{ sent: true }> {
@@ -862,12 +913,15 @@ export class GoogleWorkspaceService {
     await assertNotWaiting(person, "email", (wait) => `The details were mailed a moment ago. Wait ${wait} to send them again`);
     takeSignInEmailSlot(admin.id);
 
-    const { subject, text } = signInEmail(input.language, {
-      name: person.full_name,
-      email: person.email,
-      password: input.password,
-      ...(input.parentName ? { parentName: input.parentName } : {}),
-    });
+    const { subject, text } =
+      input.reset && !input.parentName
+        ? resetPasswordEmail(input.language, { name: person.full_name, email: person.email, password: input.password })
+        : signInEmail(input.language, {
+            name: person.full_name,
+            email: person.email,
+            password: input.password,
+            ...(input.parentName ? { parentName: input.parentName } : {}),
+          });
     try {
       await mailer.send({ to, subject, text });
     } catch (error) {

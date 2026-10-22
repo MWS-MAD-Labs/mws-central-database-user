@@ -60,6 +60,16 @@ describe("the Google account of a student", () => {
   // A student is made through the API with a parent, like the form. The form also makes the Google account at once;
   // unless `keepGoogle`, that is undone here so each test starts from a student with no account.
   const makeStudent = async (token: string, over: Record<string, unknown> = {}, keepGoogle = false) => {
+    // Email off while the student is made, so nothing is mailed and the tests mail by hand.
+    const mailWas = mailer.enabled;
+    mailer.enabled = false;
+    try {
+      return await makeStudentNow(token, over, keepGoogle);
+    } finally {
+      mailer.enabled = mailWas;
+    }
+  };
+  const makeStudentNow = async (token: string, over: Record<string, unknown> = {}, keepGoogle = false) => {
     seq += 1;
     const response = await TestRequest.post(
       "/api/admin/students",
@@ -288,6 +298,7 @@ describe("the Google account of a student", () => {
   describe("the account made with the student", () => {
     it("is made at once with the parent's email as recovery email, and the first password comes back once", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      mailer.enabled = false;
       seq += 1;
       const response = await TestRequest.post(
         "/api/admin/students",
@@ -306,6 +317,28 @@ describe("the Google account of a student", () => {
       expect(google.created[0]).toMatchObject({ recoveryEmail: "siti.aminah@gmail.com", password: data.google.temporary_password });
       expect((await personOf(data.id)).google_sync_status).toBe(GoogleSyncStatus.ACTIVE);
       expect(JSON.stringify(await prismaClient.auditLog.findMany())).not.toContain(data.google.temporary_password);
+    });
+
+    it("sends the first password to the parent by email and does not give it to the admin", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      seq += 1;
+      const response = await TestRequest.post(
+        "/api/admin/students",
+        {
+          full_name: "Ari Putra", nick_name: "Ari", email: `test_google_mail${seq}@millennia21.id`, gender: Gender.MALE,
+          religion: Religion.ISLAM, birth_place: "Jakarta", birth_date: new Date("2012-01-01").toISOString(), nis: `92${String(seq).padStart(5, "0")}`,
+          entry_type: "PSB", current_grade_id: gradeId, join_academic_year_id: academicYearId, join_grade_id: gradeId,
+          parent: { type: "MOTHER", full_name: "Siti Aminah", email: "siti.aminah@gmail.com" },
+        },
+        accessToken,
+      );
+      const data = (await response.json()).data;
+      expect(data.google).toMatchObject({ status: "ACTIVE", delivered_to: "s***@gmail.com" });
+      expect(data.google.temporary_password).toBeUndefined();
+      expect(mailer.outbox).toHaveLength(1);
+      expect(mailer.outbox[0].to).toBe("siti.aminah@gmail.com");
+      expect(mailer.outbox[0].text).toContain("Yth. Bapak/Ibu Siti Aminah");
+      expect(mailer.outbox[0].text).toContain(google.created[0].password);
     });
 
     it("is not made for a legacy student, and a failed Google leaves the student saved to try again", async () => {

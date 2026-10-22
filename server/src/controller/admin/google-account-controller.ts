@@ -216,11 +216,33 @@ export class GoogleAccountController {
   static resetPassword(kind: Kind) {
     return async (c: Context<{ Variables: AdminVariables }>) => {
       assertProtectedSuperAdmin(c, "reset a Google password");
-      const personId = await personIdOf(kind, c.req.param("id"), c.var.admin);
-      const { password } = await GoogleWorkspaceService.resetPassword(personId, c.var.admin, getAuditRequestContext(c));
+      const target = await targetOf(kind, c.req.param("id"), c.var.admin);
+      const personId = target.personId;
+      const context = getAuditRequestContext(c);
+      const body = await c.req.json().catch(() => ({}));
+      // A student's new password goes to the parent or guardian chosen from the student's own, the default being the
+      // primary one with an email. Anyone else's goes to the recovery email Google holds.
+      let guardian: Awaited<ReturnType<typeof guardianOf>> | null = null;
+      if (target.studentId) {
+        guardian = await guardianOf(target.studentId, Validation.validate(STUDENT_PROVISION, body).parent_id).catch(() => null);
+      }
+      const { password } = await GoogleWorkspaceService.resetPassword(personId, c.var.admin, context);
       // Never cached: it is a password.
       c.header("Cache-Control", "no-store");
-      return c.json({ data: { password } });
+      // Mailed at once, so the admin does not see it. Shown only when it could not be sent: it has changed already.
+      const sent = await GoogleWorkspaceService.deliverPassword(
+        personId,
+        {
+          password,
+          reset: true,
+          ...(guardian ? { to: guardian.email, parentName: guardian.full_name } : {}),
+          // A student with nobody to send to is not sent to Google's recovery email either.
+          ...(target.studentId && !guardian ? { to: "" } : {}),
+        },
+        c.var.admin,
+        context,
+      );
+      return c.json({ data: sent ? { sent_to: sent.delivered_to } : { password } });
     };
   }
 

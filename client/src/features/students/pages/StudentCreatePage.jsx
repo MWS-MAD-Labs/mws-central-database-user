@@ -54,6 +54,8 @@ export function StudentCreatePage() {
           new Error(google.message),
           'Student saved, but the Google account was not made. Try again from the Google account row.',
         )
+      } else if (google?.delivered_to) {
+        showSuccessToast(`Student created. Sign-in details sent to ${google.delivered_to}.`)
       } else {
         showSuccessToast('Student created.')
       }

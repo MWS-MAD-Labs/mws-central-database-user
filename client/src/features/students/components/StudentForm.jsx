@@ -804,7 +804,7 @@ export function StudentForm({
             <p className="mb-4 text-sm text-(--mws-muted)">
               {values.is_legacy
                 ? "One is needed to give the student a Google account later: the first password goes to their email. More can be added later."
-                : "A Google account is made when you create the student, and the first password goes to this email. More can be added later."}
+                : "A Google account is made when you create the student, and the first password is emailed to this address. More can be added later."}
             </p>
             <div className="grid min-w-0 gap-4 md:grid-cols-2">
               <Field label="Relation" name="parent_type" error={errors.parent_type} required>

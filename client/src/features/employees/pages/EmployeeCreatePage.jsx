@@ -46,10 +46,12 @@ export function EmployeeCreatePage() {
           new Error(google.message),
           'Employee saved, but the Google account was not made. Try again from the Google account row.',
         )
+      } else if (google?.delivered_to) {
+        showSuccessToast(`Employee created. Sign-in details sent to ${google.delivered_to}.`)
       } else {
         showSuccessToast('Employee created.')
       }
-      if (google && google.outcome !== 'failed') {
+      if (google && google.outcome !== 'failed' && !google.delivered_to) {
         setReady({ id: employee.id, name: employee.identity?.full_name, email: employee.identity?.email, recovery: variables.payload.recovery_email, password: google.temporary_password })
         return
       }

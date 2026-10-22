@@ -16,8 +16,9 @@ export const googleAccountApi = {
     const response = await apiRequest(`/api/admin/${resource}/${id}/google/provision`, { method: 'POST', body: payload })
     return response.data
   },
-  async resetPassword(resource, id) {
-    const response = await apiRequest(`/api/admin/${resource}/${id}/google/reset-password`, { method: 'POST' })
+  // The server mails the new password at once ({ sent_to }) and returns it ({ password }) only when it could not.
+  async resetPassword(resource, id, payload = {}) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/reset-password`, { method: 'POST', body: payload })
     return response.data
   },
   // For an account that waits for its owner: the server resets it and mails the password, nothing comes back to show.

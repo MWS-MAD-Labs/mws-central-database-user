@@ -284,6 +284,19 @@ describe('GoogleAccountRow', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
+  it('says where the new password was mailed and shows no password when the server sent it', async () => {
+    const { user } = setup(status(), [
+      { path: '/api/admin/employees/e1/google/reset-password', method: 'POST', response: jsonResponse({ data: { sent_to: 'p***@gmail.com' } }) },
+    ])
+    await user.click(await screen.findByRole('button', { name: 'Make temporary password' }))
+    const confirmDialog = await screen.findByRole('dialog', { name: 'Make Temporary Password' })
+    expect(within(confirmDialog).getByText(/recovery email Google holds/)).toBeVisible()
+    await user.click(within(confirmDialog).getByRole('button', { name: 'Make' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.queryByRole('dialog', { name: 'Share Sign-in Details' })).not.toBeInTheDocument()
+  })
+
   it('asks first, shows the new password once, and forgets it when closed', async () => {
     const { user } = setup(status(), [
       { path: '/api/admin/employees/e1/google/reset-password', method: 'POST', response: jsonResponse({ data: { password: 'Abcd1234Efgh5678' } }) },

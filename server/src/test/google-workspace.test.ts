@@ -53,6 +53,10 @@ describe("google workspace accounts", () => {
     setDirectoryClientForTests(google);
     // The fake says it is Google, so outside production the test prefix applies, like for a real one.
     process.env.GOOGLE_WORKSPACE_TEST_PREFIX = "test_google";
+    // With email on, a new password is mailed at once and not shown. Most tests read it, so email starts off here.
+    const noMail = new MemoryMailer();
+    noMail.enabled = false;
+    setMailerForTests(noMail);
   });
   afterEach(async () => {
     delete process.env.GOOGLE_WORKSPACE_TEST_PREFIX;
@@ -372,6 +376,61 @@ describe("google workspace accounts", () => {
     });
   });
 
+  describe("the password is mailed at once", () => {
+    let mailer: MemoryMailer;
+    beforeEach(() => {
+      mailer = new MemoryMailer();
+      setMailerForTests(mailer);
+      resetSignInEmailLimitForTests();
+      resetCheckCooldownForTests();
+    });
+    afterEach(() => setMailerForTests(null));
+
+    it("sends a new employee's first password to the recovery email and does not give it to the admin", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { response, json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      expect(response.status).toBe(200);
+      expect(json.data.google).toMatchObject({ status: "ACTIVE", outcome: "created", delivered_to: "r***@gmail.com" });
+      expect(json.data.google.temporary_password).toBeUndefined();
+      expect(mailer.outbox).toHaveLength(1);
+      expect(mailer.outbox[0].to).toBe("rizqi.pribadi@gmail.com");
+      expect(mailer.outbox[0].text).toContain(google.created[0].password);
+      expect(JSON.stringify(await prismaClient.auditLog.findMany())).not.toContain(google.created[0].password);
+    });
+
+    it("shows the password to the admin instead when the mail cannot be sent", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      mailer.send = async () => {
+        throw new Error("smtp down");
+      };
+      const { json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      expect(json.data.google).toMatchObject({ status: "ACTIVE", outcome: "created" });
+      expect(json.data.google.temporary_password).toBe(google.created[0].password);
+      expect(json.data.google.delivered_to).toBeUndefined();
+    });
+
+    it("mails a reset password to the recovery email Google holds, and shows it only when it cannot", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      mailer.enabled = false;
+      const { json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      mailer.enabled = true;
+      await letTimePass(json.data.id);
+
+      const sent = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/reset-password`, {}, accessToken);
+      expect(sent.status).toBe(200);
+      expect((await sent.json()).data).toEqual({ sent_to: "r***@gmail.com" });
+      expect(mailer.outbox).toHaveLength(1);
+      expect(mailer.outbox[0].to).toBe("rizqi.pribadi@gmail.com");
+      expect(mailer.outbox[0].subject).toContain("direset");
+      expect(mailer.outbox[0].text).toContain(google.passwords[0].password);
+
+      await letTimePass(json.data.id);
+      mailer.enabled = false;
+      const shown = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/reset-password`, {}, accessToken);
+      expect((await shown.json()).data).toEqual({ password: google.passwords[1].password });
+    });
+  });
+
   describe("mailing the first sign-in details", () => {
     let mailer: MemoryMailer;
     beforeEach(() => {
@@ -382,7 +441,10 @@ describe("google workspace accounts", () => {
     afterEach(() => setMailerForTests(null));
 
     const made = async (token: string) => {
+      // Made with email off, so the password comes back to be sent by hand in these tests.
+      mailer.enabled = false;
       const { json } = await create(token, { recovery_email: "pribadi.owner@gmail.com" });
+      mailer.enabled = true;
       return { id: json.data.id as string, email: json.data.identity.email as string, password: json.data.google.temporary_password as string };
     };
     const send = (id: string, token: string, over: Record<string, unknown> = {}) =>

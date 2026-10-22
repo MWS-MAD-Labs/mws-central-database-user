@@ -150,11 +150,16 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
   });
 
   const reset = useMutation({
-    mutationFn: () => googleAccountApi.resetPassword(resource, id),
+    mutationFn: () => googleAccountApi.resetPassword(resource, id, isStudent && chosenGuardian ? { parent_id: chosenGuardian.id } : {}),
     onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey });
+      if (result.sent_to) {
+        setDialog(null);
+        showSuccessToast(`New password sent to ${result.sent_to}.`);
+        return;
+      }
       setIssued({ password: result.password, guardianId: chosenGuardian?.id });
       setDialog("share");
-      queryClient.invalidateQueries({ queryKey });
     },
     onError: (error) => {
       queryClient.invalidateQueries({ queryKey });
@@ -633,7 +638,11 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
       {dialog === "confirm" ? (
         <CrudDialog
           title="Make Temporary Password"
-          description="A temporary password is made and shown once. The person must change it at their next sign in."
+          description={
+            isStudent
+              ? "A temporary password is made and emailed to the parent or guardian. The student must change it at their next sign in."
+              : "A temporary password is made and emailed to the recovery email Google holds for this account. The person must change it at their next sign in."
+          }
           panelClassName="max-w-lg"
           onClose={() => setDialog(null)}
           footer={
@@ -647,7 +656,10 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
             </>
           }
         >
-          <p className="text-sm text-(--mws-muted)">The current password stops working straight away.</p>
+          <p className="text-sm text-(--mws-muted)">
+            The current password stops working straight away.
+            {isStudent && chosenGuardian ? ` It goes to ${chosenGuardian.full_name} (${chosenGuardian.email_hint}).` : ""} It is shown here only if the email cannot be sent.
+          </p>
         </CrudDialog>
       ) : null}
 
