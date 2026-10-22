@@ -15,9 +15,17 @@ import { INSTRUCTION_LANGUAGES, recoveryEmailProblem, signInMessage } from "../u
 
 const MASK = "•".repeat(16);
 
+// Why the server did not mail the password itself, as the server names it.
+const NOT_SENT_TEXT = {
+  EMAIL_OFF: "Email is not set up on this server.",
+  NO_RECIPIENT: "There is nobody to send it to.",
+  LIMIT: "Too many emails were sent just now. Wait a little.",
+  FAILED: "The email could not be sent.",
+};
+
 // The first sign-in details of a new account: the temporary password, shown once, and a message ready to paste into
 // WhatsApp (editable first) or to be mailed by the server. The password is not kept anywhere once this closes.
-export function GoogleShareDialog({ resource, id, name, email, password, guardians, guardianId, title = "Share Sign-in Details", onClose }) {
+export function GoogleShareDialog({ resource, id, name, email, password, guardians, guardianId, notSent, title = "Share Sign-in Details", onClose }) {
   // For a student the details go to a parent or guardian chosen from the student's own, never to a typed address.
   const forStudent = Array.isArray(guardians);
   const reachable = (guardians ?? []).filter((guardian) => guardian.email_hint);
@@ -130,6 +138,11 @@ export function GoogleShareDialog({ resource, id, name, email, password, guardia
       }
     >
       <div className="space-y-4">
+        {notSent ? (
+          <p className="rounded-xl bg-(--mws-soft) px-4 py-3 text-sm text-(--mws-charcoal)" role="status">
+            The password was not emailed. {NOT_SENT_TEXT[notSent] ?? NOT_SENT_TEXT.FAILED} Share the details yourself.
+          </p>
+        ) : null}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-(--mws-soft) px-4 py-3 text-sm">
           <div className="min-w-0">
             <p className="text-(--mws-muted)">Temporary password</p>

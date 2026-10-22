@@ -158,7 +158,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
         showSuccessToast(`New password sent to ${result.sent_to}.`);
         return;
       }
-      setIssued({ password: result.password, guardianId: chosenGuardian?.id });
+      setIssued({ password: result.password, guardianId: chosenGuardian?.id, notSent: result.not_sent });
       setDialog("share");
     },
     onError: (error) => {
@@ -695,6 +695,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
           password={issued.password}
           guardians={isStudent ? guardians : undefined}
           guardianId={issued.guardianId}
+          notSent={issued.notSent}
           title="Share Sign-in Details"
           onClose={closeShare}
         />

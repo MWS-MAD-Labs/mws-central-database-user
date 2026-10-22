@@ -205,7 +205,11 @@ export type GoogleSyncResult = {
   temporary_password?: string;
   // Set instead of `temporary_password` when the server mailed the details itself, to this hidden address.
   delivered_to?: string;
+  // Why the server did not mail the password, so the form can say so while it shows the password instead.
+  not_sent?: NotSentReason;
 };
+
+export type NotSentReason = "EMAIL_OFF" | "NO_RECIPIENT" | "LIMIT" | "FAILED";
 
 type GooglePerson = Pick<Person, "id" | "email" | "full_name" | "person_type" | "google_user_id" | "google_sync_status">;
 
@@ -531,12 +535,12 @@ export class GoogleWorkspaceService {
     input: { to?: string; password: string; parentName?: string; reset?: boolean; language?: SignInLanguage },
     admin: Pick<AdminUser, "id">,
     context: AuditRequestContext = {},
-  ): Promise<{ delivered_to: string } | null> {
+  ): Promise<{ delivered_to: string } | { not_sent: NotSentReason }> {
     try {
-      if (!getMailer().enabled) return null;
+      if (!getMailer().enabled) return { not_sent: "EMAIL_OFF" };
       const person = await prismaClient.person.findFirst({ where: { id: personId }, select: { google_user_id: true } });
       const to = input.to ?? (person?.google_user_id ? await this.recoveryEmailInGoogle(person.google_user_id, personId) : null);
-      if (!to) return null;
+      if (!to) return { not_sent: "NO_RECIPIENT" };
       await this.sendSignInEmail(
         personId,
         {
@@ -551,8 +555,10 @@ export class GoogleWorkspaceService {
       );
       return { delivered_to: maskEmail(to) ?? "" };
     } catch (error) {
-      logger.warn(`The password for person ${personId} was not mailed, so it is shown instead`, error);
-      return null;
+      const reason: NotSentReason =
+        error instanceof ResponseError && error.status === 429 ? "LIMIT" : error instanceof ResponseError && error.status === 409 ? "NO_RECIPIENT" : "FAILED";
+      logger.warn(`The password for person ${personId} was not mailed (${reason}), so it is shown instead`, error);
+      return { not_sent: reason };
     }
   }
 
@@ -567,7 +573,7 @@ export class GoogleWorkspaceService {
   ): Promise<GoogleSyncResult> {
     if (!result.temporary_password) return result;
     const sent = await this.deliverPassword(personId, { ...input, password: result.temporary_password }, admin, context);
-    if (!sent) return result;
+    if ("not_sent" in sent) return { ...result, not_sent: sent.not_sent };
     const { temporary_password: _password, ...rest } = result;
     return { ...rest, delivered_to: sent.delivered_to };
   }

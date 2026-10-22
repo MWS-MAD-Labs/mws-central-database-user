@@ -52,7 +52,7 @@ export function EmployeeCreatePage() {
         showSuccessToast('Employee created.')
       }
       if (google && google.outcome !== 'failed' && !google.delivered_to) {
-        setReady({ id: employee.id, name: employee.identity?.full_name, email: employee.identity?.email, recovery: variables.payload.recovery_email, password: google.temporary_password })
+        setReady({ id: employee.id, name: employee.identity?.full_name, email: employee.identity?.email, recovery: variables.payload.recovery_email, password: google.temporary_password, notSent: google.not_sent })
         return
       }
       navigate(`/employees/${employee.id}`)
@@ -94,6 +94,7 @@ export function EmployeeCreatePage() {
             name={ready.name}
             email={ready.email}
             password={ready.password}
+            notSent={ready.notSent}
             onClose={() => navigate(`/employees/${ready.id}`)}
           />
         ) : (

@@ -42,7 +42,7 @@ export function InternCreatePage() {
         showSuccessToast('Intern created.')
       }
       if (google && google.outcome !== 'failed' && !google.delivered_to) {
-        setReady({ id: intern.id, name: intern.identity?.full_name, email: intern.identity?.email, recovery: payload.recovery_email, password: google.temporary_password })
+        setReady({ id: intern.id, name: intern.identity?.full_name, email: intern.identity?.email, recovery: payload.recovery_email, password: google.temporary_password, notSent: google.not_sent })
         return
       }
       navigate(`/interns/${intern.id}`)
@@ -84,6 +84,7 @@ export function InternCreatePage() {
             name={ready.name}
             email={ready.email}
             password={ready.password}
+            notSent={ready.notSent}
             onClose={() => navigate(`/interns/${ready.id}`)}
           />
         ) : (

@@ -60,7 +60,7 @@ export function StudentCreatePage() {
         showSuccessToast('Student created.')
       }
       if (google?.temporary_password) {
-        setReady({ id: student.id, name: student.identity?.full_name, email: student.identity?.email, password: google.temporary_password, guardians })
+        setReady({ id: student.id, name: student.identity?.full_name, email: student.identity?.email, password: google.temporary_password, guardians, notSent: google.not_sent })
         return
       }
       navigate(`/students/${student.id}`)
@@ -102,6 +102,7 @@ export function StudentCreatePage() {
           email={ready.email}
           password={ready.password}
           guardians={ready.guardians}
+          notSent={ready.notSent}
           onClose={() => navigate(`/students/${ready.id}`)}
         />
       ) : null}

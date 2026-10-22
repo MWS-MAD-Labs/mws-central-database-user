@@ -173,4 +173,17 @@ describe('GoogleShareDialog', () => {
       expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/recovery-hint'))).toBe(false)
     })
   })
+
+  it('says why the password was not emailed by the server', async () => {
+    globalThis.fetch = createFetchRouter([
+      { path: BASE, response: jsonResponse({ data: { email_enabled: false, can: { create: true } } }) },
+      { path: `${BASE}/recovery-hint`, response: jsonResponse({ data: { hint: null } }) },
+    ])
+    renderWithProviders(
+      <ConfirmProvider>
+        <GoogleShareDialog resource="employees" id="e1" name="Ari Putra" email="ari@millennia21.id" password={PASSWORD} notSent="EMAIL_OFF" onClose={mock()} />
+      </ConfirmProvider>,
+    )
+    expect(await screen.findByText(/The password was not emailed. Email is not set up on this server./)).toBeVisible()
+  })
 })

@@ -242,7 +242,7 @@ export class GoogleAccountController {
         c.var.admin,
         context,
       );
-      return c.json({ data: sent ? { sent_to: sent.delivered_to } : { password } });
+      return c.json({ data: "delivered_to" in sent ? { sent_to: sent.delivered_to } : { password, not_sent: sent.not_sent } });
     };
   }
 

@@ -409,6 +409,41 @@ describe("google workspace accounts", () => {
       expect(json.data.google.delivered_to).toBeUndefined();
     });
 
+    it("says why the password is shown instead: email off, nobody to send to, a limit, or a failed mail", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const notSent = async () => (await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" })).json.data.google.not_sent;
+
+      mailer.enabled = false;
+      expect(await notSent()).toBe("EMAIL_OFF");
+      mailer.enabled = true;
+
+      const send = mailer.send.bind(mailer);
+      mailer.send = async () => {
+        throw new Error("smtp down");
+      };
+      expect(await notSent()).toBe("FAILED");
+      mailer.send = send;
+
+      // A second mail for the same person right after the first waits, which is the same answer as the hourly limit.
+      const { json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      expect(json.data.google.delivered_to).toBe("r***@gmail.com");
+      const admin = await prismaClient.adminUser.findFirstOrThrow({ where: { email: "test_superadmin@millennia21.id" } });
+      const again = await GoogleWorkspaceService.deliverPassword(json.data.id ? (await personOf(json.data.id)).id : "", { to: "rizqi.pribadi@gmail.com", password: "Abcdefgh12345678" }, admin);
+      expect(again).toEqual({ not_sent: "LIMIT" });
+    });
+
+    it("says there is nobody to send a reset to when Google holds no recovery email", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      mailer.enabled = false;
+      const { json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      mailer.enabled = true;
+      const person = await personOf(json.data.id);
+      google.users.set(person.google_user_id!, { ...google.users.get(person.google_user_id!)!, recoveryEmail: null });
+      await letTimePass(json.data.id);
+      const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/reset-password`, {}, accessToken);
+      expect((await response.json()).data).toMatchObject({ not_sent: "NO_RECIPIENT" });
+    });
+
     it("mails a reset password to the recovery email Google holds, and shows it only when it cannot", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       mailer.enabled = false;
@@ -427,7 +462,7 @@ describe("google workspace accounts", () => {
       await letTimePass(json.data.id);
       mailer.enabled = false;
       const shown = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/reset-password`, {}, accessToken);
-      expect((await shown.json()).data).toEqual({ password: google.passwords[1].password });
+      expect((await shown.json()).data).toEqual({ password: google.passwords[1].password, not_sent: "EMAIL_OFF" });
     });
   });
 
