@@ -70,7 +70,7 @@ export function ConfirmProvider({ children }) {
               <label className="mt-4 flex cursor-pointer items-start gap-2 text-sm text-(--mws-charcoal)">
                 <input
                   type="checkbox"
-                  className="mt-1"
+                  className="mt-1 accent-(--mws-burgundy)"
                   checked={ticked}
                   onChange={(event) => setTicked(event.target.checked)}
                 />

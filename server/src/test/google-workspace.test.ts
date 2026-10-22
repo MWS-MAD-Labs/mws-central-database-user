@@ -444,6 +444,20 @@ describe("google workspace accounts", () => {
       expect((await response.json()).data).toMatchObject({ not_sent: "NO_RECIPIENT" });
     });
 
+    it("tells the page whether the first details were ever mailed", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const sentStatus = async (id: string) =>
+        (await (await TestRequest.get(`/api/admin/employees/${id}/google`, accessToken)).json()).data.details_sent;
+
+      const mailed = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      expect(await sentStatus(mailed.json.data.id)).toBe(true);
+
+      mailer.enabled = false;
+      const notMailed = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      mailer.enabled = true;
+      expect(await sentStatus(notMailed.json.data.id)).toBe(false);
+    });
+
     it("mails a reset password to the recovery email Google holds, and shows it only when it cannot", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       mailer.enabled = false;

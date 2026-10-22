@@ -124,7 +124,7 @@ export function GoogleShareDialog({ resource, id, name, email, password, guardia
     <CrudDialog
       title={title}
       description="The password is shown once and is not kept. The person must change it at their first sign in."
-      panelClassName="max-w-xl"
+      panelClassName="max-w-2xl"
       onClose={done}
       footer={
         <>
@@ -137,13 +137,13 @@ export function GoogleShareDialog({ resource, id, name, email, password, guardia
         </>
       }
     >
-      <div className="space-y-4">
+      <div className="space-y-6">
         {notSent ? (
-          <p className="rounded-xl bg-(--mws-soft) px-4 py-3 text-sm text-(--mws-charcoal)" role="status">
+          <p className="rounded-xl border border-(--mws-burgundy) bg-(--mws-soft) px-5 py-4 text-sm font-medium text-(--mws-burgundy)" role="status">
             The password was not emailed. {NOT_SENT_TEXT[notSent] ?? NOT_SENT_TEXT.FAILED} Share the details yourself.
           </p>
         ) : null}
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-(--mws-soft) px-4 py-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-(--mws-soft) px-5 py-4 text-sm">
           <div className="min-w-0">
             <p className="text-(--mws-muted)">Temporary password</p>
             <code className="block select-all break-all text-base font-semibold tracking-wider text-(--mws-charcoal)" data-testid="google-temporary-password">
@@ -157,16 +157,16 @@ export function GoogleShareDialog({ resource, id, name, email, password, guardia
           <TextAreaInput aria-label="Message" rows={13} value={shown} readOnly={!revealed} onChange={(event) => setMessage(event.target.value)} />
         </Field>
 
-        <div className="space-y-2 rounded-xl border border-(--mws-line) px-4 py-3 text-sm">
+        <div className="space-y-3 rounded-xl border border-(--mws-line) px-5 py-4 text-sm">
           <p className="font-semibold text-(--mws-charcoal)">Send By Email</p>
           {forStudent ? (
-            <div className="space-y-2" role="radiogroup" aria-label="Send to parent or guardian">
+            <div className="space-y-3" role="radiogroup" aria-label="Send to parent or guardian">
               {reachable.length === 0 ? (
                 <p className="text-(--mws-muted)">This student has no parent or guardian with an email.</p>
               ) : (
                 reachable.map((guardian) => (
-                  <label key={guardian.id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-(--mws-line) px-3 py-2">
-                    <input type="radio" name="send-to-guardian" checked={parentId === guardian.id} onChange={() => changeParent(guardian.id)} />
+                  <label key={guardian.id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-(--mws-line) px-4 py-3">
+                    <input className="accent-(--mws-burgundy)" type="radio" name="send-to-guardian" checked={parentId === guardian.id} onChange={() => changeParent(guardian.id)} />
                     <span className="min-w-0">
                       <span className="font-semibold text-(--mws-charcoal)">{guardian.full_name}</span>{" "}
                       <span className="text-(--mws-muted)">

@@ -1,6 +1,7 @@
 import { randomInt } from "node:crypto";
 import {
   AdminRole,
+  AuditAction,
   AuditSource,
   EmployeeStatus,
   GoogleSyncStatus,
@@ -1512,6 +1513,12 @@ export class GoogleWorkspaceService {
     const lookup = person.google_user_id ? null : await this.lookupInGoogle(person.email);
     return {
       linked: Boolean(person.google_user_id),
+      // Whether the first sign-in details were ever mailed since the last password was made.
+      details_sent: person.google_password_issued_at
+        ? (await prismaClient.auditLog.count({
+            where: { action: AuditAction.GOOGLE_SIGNIN_EMAILED, entity_id: person.id, created_at: { gte: person.google_password_issued_at } },
+          })) > 0
+        : false,
       lookup,
       in_google: lookup?.state === "found",
       locked: Boolean(lock?.locked),

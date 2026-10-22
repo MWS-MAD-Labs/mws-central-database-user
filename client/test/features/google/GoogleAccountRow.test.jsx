@@ -284,6 +284,17 @@ describe('GoogleAccountRow', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
+  it('says the first details were not emailed while the password is still waiting', async () => {
+    setup(status({ password_state: 'PENDING', details_sent: false }))
+    expect(await screen.findByText(/The first sign-in details were not emailed/)).toBeVisible()
+  })
+
+  it('does not say so once the details were emailed', async () => {
+    setup(status({ password_state: 'PENDING', details_sent: true }))
+    expect(await screen.findByText('Waiting for the first sign-in')).toBeVisible()
+    expect(screen.queryByText(/were not emailed/)).not.toBeInTheDocument()
+  })
+
   it('says where the new password was mailed and shows no password when the server sent it', async () => {
     const { user } = setup(status(), [
       { path: '/api/admin/employees/e1/google/reset-password', method: 'POST', response: jsonResponse({ data: { sent_to: 'p***@gmail.com' } }) },

@@ -86,7 +86,13 @@ function passwordNote(status) {
   if (status.password_state === "OVERDUE") {
     return { text: "Password not set yet. Send the sign-in instructions again, or reset the password.", tone: "warn" };
   }
-  if (status.password_state === "PENDING") return { text: "Waiting for the first sign-in", tone: "muted" };
+  if (status.password_state === "PENDING") {
+    // The details never went out by email: the password is gone from view, so it takes a new one to send again.
+    if (status.details_sent === false) {
+      return { text: "The first sign-in details were not emailed. Use Make temporary password to send them again.", tone: "warn" };
+    }
+    return { text: "Waiting for the first sign-in", tone: "muted" };
+  }
   return null;
 }
 
@@ -382,7 +388,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
               variant="ghost"
               size="icon"
               aria-label="Make temporary password"
-              title={gone ? "Restore the account first." : "Make temporary password"}
+              title={gone ? "Restore the account first." : "Make temporary password and email it"}
               disabled={gone}
               onClick={() => setDialog("confirm")}
             >
@@ -473,6 +479,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
                 {reachable.map((guardian) => (
                   <label key={guardian.id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-(--mws-line) px-3 py-2 text-sm">
                     <input
+                      className="accent-(--mws-burgundy)"
                       type="radio"
                       name="guardian"
                       checked={chosenGuardian?.id === guardian.id}
