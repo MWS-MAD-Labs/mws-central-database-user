@@ -280,6 +280,43 @@ describe("google workspace accounts", () => {
       expect(admin.person_id).toBe((await personOf(json.data.id)).id);
     });
 
+    it("links the Google account of the admin who makes their own record, without changing it", async () => {
+      // Outside production only addresses with the test prefix reach Google, like for everyone.
+      process.env.GOOGLE_WORKSPACE_TEST_PREFIX = "test_super";
+      google.users.set("own-1", {
+        id: "own-1", primaryEmail: PROTECTED_EMAIL, givenName: "Super", familyName: "Admin",
+        suspended: false, isAdmin: true, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { response, json } = await create(accessToken, { email: PROTECTED_EMAIL });
+      expect(response.status).toBe(200);
+      expect(json.data.google).toMatchObject({ status: "ACTIVE", outcome: "linked" });
+      expect(await personOf(json.data.id)).toMatchObject({ google_user_id: "own-1", google_keeps_name: true });
+      expect(google.created).toHaveLength(0);
+      expect(google.updated).toHaveLength(0);
+      expect(google.passwords).toHaveLength(0);
+    });
+
+    it("does not link it when somebody else makes the record", async () => {
+      google.users.set("own-1", {
+        id: "own-1", primaryEmail: PROTECTED_EMAIL, givenName: "Super", familyName: "Admin",
+        suspended: false, isAdmin: true, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const other = await prismaClient.adminUser.findFirstOrThrow({ where: { email: PROTECTED_EMAIL } });
+      await prismaClient.adminUser.update({ where: { id: other.id }, data: { email: "test_other_admin@millennia21.id" } });
+      const before = process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+      process.env.PROTECTED_SUPER_ADMIN_EMAILS = `${before ?? ""},${PROTECTED_EMAIL}`;
+      try {
+        const { response, json } = await create(accessToken, { email: PROTECTED_EMAIL });
+        expect(response.status).toBe(200);
+        expect(json.data.google).toBeUndefined();
+        expect((await personOf(json.data.id)).google_user_id).toBeNull();
+      } finally {
+        process.env.PROTECTED_SUPER_ADMIN_EMAILS = before;
+      }
+    });
+
     it("does not make a Google account even when a recovery email is sent for it", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const { response, json } = await create(accessToken, { email: PROTECTED_EMAIL, recovery_email: "rizqi.pribadi@gmail.com" });

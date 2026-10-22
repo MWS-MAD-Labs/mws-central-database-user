@@ -223,6 +223,7 @@ export function EmployeeForm({
       initialEmail: !isCreate && initialValues.email_local ? `${initialValues.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
       allowClaim: isCreate && user?.role === "SUPER_ADMIN",
       claimExisting,
+      ownEmail: user?.email ?? "",
     },
   );
   const claiming = emailCheck.state === "claimable" && claimExisting;
@@ -230,7 +231,7 @@ export function EmployeeForm({
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [lastWorkingDateIncomplete, setLastWorkingDateIncomplete] =
     useState(false);
-  // A protected admin address becomes an employee without a Google account, so there is no recovery email to ask for.
+  // A protected admin address becomes an employee without a new Google account, so there is no recovery email to ask for.
   const noGoogle = emailCheck.state === "protected" || claiming;
   const allErrors = useMemo(
     () =>

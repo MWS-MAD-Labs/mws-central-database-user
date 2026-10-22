@@ -9,7 +9,7 @@ import { googleAccountApi } from '../api/googleAccountApi.js'
 // be asked, or is only simulated, passes with its note; a request that failed does not. An address Google already has
 // stays blocked, unless `allowClaim` (a Super Admin on the employee form): then it can pass once `claimExisting` is
 // ticked, and the person is linked when they sign in.
-export function useEmailCheck(email, { initialEmail = '', allowClaim = false, claimExisting = false } = {}) {
+export function useEmailCheck(email, { initialEmail = '', allowClaim = false, claimExisting = false, ownEmail = '' } = {}) {
   const [result, setResult] = useState(null)
   const mutation = useMutation({
     mutationFn: (value) => googleAccountApi.emailAvailability(value),
@@ -36,7 +36,14 @@ export function useEmailCheck(email, { initialEmail = '', allowClaim = false, cl
   }
   if (!answer.data.available) return { ...none, state: 'taken', blocked: true, message: answer.data.message }
   if (answer.data.reason === 'FREE') return { ...none, state: 'free', message: answer.data.message }
-  // A protected admin address: saved as an employee, never given a Google account.
-  if (answer.data.reason === 'PROTECTED') return { ...none, state: 'protected', message: answer.data.message }
+  // A protected admin address: saved as an employee, never changed in Google. The admin's own is linked.
+  if (answer.data.reason === 'PROTECTED') {
+    const own = ownEmail && ownEmail.toLowerCase() === email.toLowerCase()
+    return {
+      ...none,
+      state: 'protected',
+      message: own ? 'This is your own address. Your Google account is linked and Central does not change it' : answer.data.message,
+    }
+  }
   return { ...none, state: answer.data.reason === 'CHECK_FAILED' ? 'failed-google' : 'unchecked', message: answer.data.message }
 }

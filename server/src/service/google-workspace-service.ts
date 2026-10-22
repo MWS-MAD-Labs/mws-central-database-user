@@ -229,12 +229,12 @@ function organizationalUnitFor(person: Pick<Person, "person_type">): string | un
 // Only people held in Central, on the organization's domain, and never an admin account. Outside production, a client
 // that talks to the real Google only takes addresses that start with GOOGLE_WORKSPACE_TEST_PREFIX, because staging and
 // development share the production Workspace.
-export function assertAllowedTarget(email: string): void {
+export function assertAllowedTarget(email: string, options: { allowProtected?: boolean } = {}): void {
   const domain = process.env.ALLOWED_DOMAIN?.trim().toLowerCase();
   if (!domain || !email.toLowerCase().endsWith(`@${domain}`)) {
     throw new ResponseError(400, "Google accounts are only made for the organization's own domain");
   }
-  if (isProtectedSuperAdminEmail(email)) {
+  if (!options.allowProtected && isProtectedSuperAdminEmail(email)) {
     throw new ResponseError(400, "A protected admin account is not managed from here");
   }
   const client = getDirectoryClient();
@@ -374,7 +374,7 @@ export class GoogleWorkspaceService {
     }
     // A protected admin is made an employee like anyone, but Central never makes or touches their Google account.
     if (isProtectedSuperAdminEmail(email)) {
-      return answer("PROTECTED", true, "This is a protected admin address. The employee is saved without a Google account");
+      return answer("PROTECTED", true, "This is a protected admin address. It is saved without a link to Google, and Central never changes that account");
     }
     try {
       assertAllowedTarget(email);
@@ -525,6 +525,37 @@ export class GoogleWorkspaceService {
       outcome: "waiting",
       message: "The existing Google account is linked when this person signs in to Central",
     };
+  }
+
+  // A protected admin who makes their own employee record: they are signed in with that Google account, so it is theirs.
+  // It is only linked, read and never changed, and Central still refuses every action on it afterwards. Returns nothing
+  // when Google cannot be asked or has no such account, and never throws.
+  static async linkOwn(
+    personId: string,
+    options: { admin: Pick<AdminUser, "id">; context?: AuditRequestContext },
+  ): Promise<GoogleSyncResult | undefined> {
+    try {
+      const person = await load(personId);
+      if (!isProtectedSuperAdminEmail(person.email)) return undefined;
+      assertAllowedTarget(person.email, { allowProtected: true });
+      const client = getDirectoryClient();
+      if (client.mode === "simulated") return undefined;
+      const user = await client.findUser(person.email);
+      if (!user) return undefined;
+      await assertNotLinkedElsewhere(user.id, person.id);
+      const status = user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE;
+      await markStatus(person.id, status, { google_user_id: user.id, user });
+      await prismaClient.person.update({ where: { id: person.id }, data: { google_keeps_name: true } });
+      await record("GOOGLE_ACCOUNT_PROVISION", person, options.admin, options.context ?? {}, {
+        outcome: "linked",
+        mode: client.mode,
+        recovery_email_set: false,
+      });
+      return { status, google_user_id: user.id, outcome: "linked" };
+    } catch (error) {
+      logger.error("Linking the own Google account of a protected admin failed", error);
+      return undefined;
+    }
   }
 
   // For an account that waits for its owner: resets its password and mails it to the recovery email Google holds, in one

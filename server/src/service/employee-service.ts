@@ -1014,7 +1014,9 @@ export class EmployeeService {
     await linkAdminToEmployee(createRequest.email).catch((error) => logger.error("Linking the admin to the new employee failed", error));
 
     let google: GoogleSyncResult | undefined;
-    if (claiming) {
+    if (withoutGoogle && admin.email.trim().toLowerCase() === createRequest.email.trim().toLowerCase()) {
+      google = await GoogleWorkspaceService.linkOwn(createdPersonId, { admin, context });
+    } else if (claiming) {
       google = await GoogleWorkspaceService.markPendingClaim(createdPersonId, { admin, context });
     } else if (createRequest.recovery_email && !withoutGoogle) {
       google = await GoogleWorkspaceService.provision(createdPersonId, {
