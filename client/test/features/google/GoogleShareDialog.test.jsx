@@ -125,4 +125,52 @@ describe('GoogleShareDialog', () => {
     await waitFor(() => expect(within(view).getByRole('button', { name: 'Send Email' })).toBeDisabled())
     expect(within(view).getByRole('button', { name: 'Send Email' }).getAttribute('title')).toMatch(/^Wait 1:(2\d|30) to send again\.$/)
   })
+
+  describe('for a student', () => {
+    const guardians = [
+      { id: 'p1', type: 'FATHER', full_name: 'Budi Santoso', is_primary: true, email_hint: 'b***@gmail.com', phone: '6281234567890' },
+      { id: 'p2', type: 'MOTHER', full_name: 'Siti Aminah', is_primary: false, email_hint: 's***@gmail.com', phone: null },
+    ]
+    const renderStudent = (extra = []) => {
+      const onClose = mock()
+      const fetchMock = createFetchRouter([
+        { path: '/api/admin/students/s1/google', response: jsonResponse({ data: { email_enabled: true, can: { create: true } } }) },
+        ...extra,
+      ])
+      globalThis.fetch = fetchMock
+      const view = renderWithProviders(
+        <ConfirmProvider>
+          <GoogleShareDialog resource="students" id="s1" name="Ari Putra" email="ari@millennia21.id" password={PASSWORD} guardians={guardians} guardianId="p1" onClose={onClose} />
+        </ConfirmProvider>,
+      )
+      return { ...view, fetchMock }
+    }
+
+    it('writes to the chosen parent about the student, and shows who and the number for WhatsApp', async () => {
+      const { user } = renderStudent()
+      const view = await dialog()
+      await user.click(within(view).getByRole('button', { name: 'Show' }))
+      const message = within(view).getByLabelText('Message')
+      expect(message.value).toContain('Yth. Bapak/Ibu Budi Santoso,')
+      expect(message.value).toContain('untuk Ari Putra')
+      expect(within(view).getByTestId('guardian-phone')).toHaveTextContent('6281234567890')
+
+      await user.click(within(view).getAllByRole('radio')[1])
+      expect(message.value).toContain('Yth. Bapak/Ibu Siti Aminah,')
+      expect(within(view).queryByTestId('guardian-phone')).not.toBeInTheDocument()
+    })
+
+    it('mails the chosen parent by id, with no address typed, and offers no other address', async () => {
+      const { user, fetchMock } = renderStudent([
+        { path: '/api/admin/students/s1/google/send-sign-in', method: 'POST', response: jsonResponse({ data: { sent: true } }) },
+      ])
+      const view = await dialog()
+      expect(within(view).queryByRole('button', { name: 'Use Another Address' })).not.toBeInTheDocument()
+      expect(within(view).queryByLabelText('Send to')).not.toBeInTheDocument()
+      await user.click(within(view).getAllByRole('radio')[1])
+      await user.click(within(view).getByRole('button', { name: 'Send Email' }))
+      await waitFor(() => expect(bodyOf(fetchMock, '/send-sign-in')).toEqual({ parent_id: 'p2', language: 'id', password: PASSWORD }))
+      expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/recovery-hint'))).toBe(false)
+    })
+  })
 })

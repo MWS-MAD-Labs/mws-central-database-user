@@ -120,9 +120,45 @@ const MESSAGE_COPY = {
   ],
 }
 
+// The same, for a student: written to the parent or guardian, about the student.
+const PARENT_MESSAGE_COPY = {
+  id: (parentName, name, email, password) => [
+    `Yth. Bapak/Ibu ${parentName},`,
+    '',
+    `Akun Google Millennia untuk ${name} sudah dibuat.`,
+    '',
+    `Email: ${email}`,
+    `Password sementara: ${password}`,
+    '',
+    'Cara masuk:',
+    '1. Buka accounts.google.com, lalu masuk dengan email dan password sementara di atas.',
+    '2. Google meminta password baru. Pakai minimal 8 karakter dan jangan dipakai di akun lain.',
+    '3. Setelah itu email ini dipakai untuk masuk ke aplikasi sekolah.',
+    '',
+    'Mohon password ini dijaga, hanya untuk Bapak/Ibu dan putra/putri Anda.',
+  ],
+  en: (parentName, name, email, password) => [
+    `Dear ${parentName},`,
+    '',
+    `The Millennia Google account of ${name} has been made.`,
+    '',
+    `Email: ${email}`,
+    `Temporary password: ${password}`,
+    '',
+    'How to sign in:',
+    '1. Open accounts.google.com and sign in with the email and the temporary password above.',
+    '2. Google asks for a new password. Choose at least 8 characters, not used on another account.',
+    '3. After that, the email is used to sign in to the school apps.',
+    '',
+    'Please keep this password to yourself and the student.',
+  ],
+}
+
 // The message for WhatsApp (or anything you paste into): greeting, email, temporary password and the first steps. The
-// mail the server sends says the same; the admin can edit this one before copying it.
-export function signInMessage({ name, email, password, language = 'id' }) {
+// mail the server sends says the same; the admin can edit this one before copying it. With `parentName` it is the one
+// for a student's parent or guardian.
+export function signInMessage({ name, email, password, language = 'id', parentName }) {
+  if (parentName) return (PARENT_MESSAGE_COPY[language] || PARENT_MESSAGE_COPY.id)(parentName, name || '', email, password).join('\n')
   return (MESSAGE_COPY[language] || MESSAGE_COPY.id)(name || '', email, password).join('\n')
 }
 

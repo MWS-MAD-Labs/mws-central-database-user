@@ -6,6 +6,7 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { emailProblem, sanitizeEmail, textLength } from "../../../lib/form.js";
+import { formatStatus } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { googleAccountApi } from "../api/googleAccountApi.js";
 import { recoveryEmailProblem, recoveryHint } from "../utils/instructions.js";
@@ -92,6 +93,8 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState(null);
   const [recoveryEmail, setRecoveryEmail] = useState("");
+  // For a student the account is made for one of the parents or guardians, chosen here, never typed.
+  const [guardianId, setGuardianId] = useState("");
   // The password of an account just made or reset, held only while its dialog is open.
   const [issued, setIssued] = useState(null);
   const queryKey = ["google-account", resource, id];
@@ -102,6 +105,10 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
   const domain = (email || "").split("@")[1] || "";
   const statusQuery = useQuery({ queryKey, queryFn: () => googleAccountApi.status(resource, id) });
   const status = statusQuery.data;
+  const isStudent = resource === "students";
+  const guardians = status?.guardians ?? [];
+  const reachable = guardians.filter((guardian) => guardian.email_hint);
+  const chosenGuardian = reachable.find((guardian) => guardian.id === guardianId) ?? reachable[0] ?? null;
   const cd = status?.cooldowns ?? {};
   // What the last press of Check found, so it does not look as if nothing happened.
   const [lastCheck, setLastCheck] = useState(null);
@@ -130,7 +137,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
       queryClient.invalidateQueries({ queryKey });
       setDialog(null);
       if (result.temporary_password) {
-        setIssued({ password: result.temporary_password });
+        setIssued({ password: result.temporary_password, guardianId: chosenGuardian?.id });
         setDialog("share");
       }
       setRecoveryEmail("");
@@ -143,7 +150,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
   const reset = useMutation({
     mutationFn: () => googleAccountApi.resetPassword(resource, id),
     onSuccess: (result) => {
-      setIssued({ password: result.password });
+      setIssued({ password: result.password, guardianId: chosenGuardian?.id });
       setDialog("share");
       queryClient.invalidateQueries({ queryKey });
     },
@@ -166,7 +173,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
   const hintQuery = useQuery({
     queryKey: ["google-recovery-hint", resource, id],
     queryFn: () => googleAccountApi.recoveryHint(resource, id),
-    enabled: Boolean(status?.can?.create) && Boolean(status?.linked) && status?.status === "ACTIVE" && !status?.locked,
+    enabled: !isStudent && Boolean(status?.can?.create) && Boolean(status?.linked) && status?.status === "ACTIVE" && !status?.locked,
     staleTime: 0,
   });
   const noRecovery = hintQuery.isSuccess && hintQuery.data.hint === null;
@@ -279,7 +286,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
       </div>
       {can.create || can.manage || can.takeover ? (
         <div className="flex gap-1">
-          {can.create && status.linked && email && !locked ? (
+          {can.create && status.linked && email && !locked && !isStudent ? (
             <Button
               type="button"
               variant="ghost"
@@ -322,7 +329,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
               <RefreshCw size={15} className={refresh.isPending ? "animate-spin motion-reduce:animate-none" : undefined} />
             </CooldownButton>
           ) : null}
-          {(can.takeover || (can.create && noRecovery)) && status.linked && !locked ? (
+          {!isStudent && (can.takeover || (can.create && noRecovery)) && status.linked && !locked ? (
             <CooldownButton
               until={status.recovery_available_at}
               total={cd.recovery}
@@ -381,8 +388,14 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
               variant="ghost"
               size="icon"
               aria-label="Create Google account"
-              title={lookupState === "blocked" ? (lookup.message ?? "Not available here") : "Create Google account"}
-              disabled={lookupState === "blocked"}
+              title={
+                lookupState === "blocked"
+                  ? (lookup.message ?? "Not available here")
+                  : isStudent && reachable.length === 0
+                    ? "Add a parent or guardian with an email first."
+                    : "Create Google account"
+              }
+              disabled={lookupState === "blocked" || (isStudent && reachable.length === 0)}
               onClick={() => setDialog("create")}
             >
               <UserPlus size={15} />
@@ -394,7 +407,11 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
       {dialog === "create" ? (
         <CrudDialog
           title="Create Google Account"
-          description="The account uses the email of this person. A temporary password is made and shown once, to pass on. The recovery email is only needed to make a new account, not to look for one."
+          description={
+            isStudent
+              ? "The account uses the email of this student. A temporary password is made and shown once. The parent or guardian chosen here is who the details go to, and their email is the account's recovery email."
+              : "The account uses the email of this person. A temporary password is made and shown once, to pass on. The recovery email is only needed to make a new account, not to look for one."
+          }
           panelClassName="max-w-lg"
           onClose={() => setDialog(null)}
           footer={
@@ -405,30 +422,54 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
               <Button
                 type="button"
                 loading={provision.isPending}
-                disabled={Boolean(recoveryProblem)}
-                onClick={() => provision.mutate({ recovery_email: recoveryEmail.trim() })}
+                disabled={isStudent ? !chosenGuardian : Boolean(recoveryProblem)}
+                onClick={() => provision.mutate(isStudent ? { parent_id: chosenGuardian.id } : { recovery_email: recoveryEmail.trim() })}
               >
                 Create
               </Button>
             </>
           }
         >
-          <Field
-            label="Recovery Email"
-            required
-            counter={{ value: recoveryEmail, max: 100, count: textLength }}
-            error={recoveryEmail.trim() ? recoveryProblem || undefined : undefined}
-            hint={recoveryHint(recoveryEmail, recoveryProblem, domain)}
-          >
-            <TextInput
-              type="email"
-              maxLength={100}
-              value={recoveryEmail}
-              invalid={Boolean(recoveryEmail.trim() && recoveryProblem)}
-              placeholder="name@gmail.com"
-              onChange={(event) => setRecoveryEmail(sanitizeEmail(event.target.value))}
-            />
-          </Field>
+          {isStudent ? (
+            <Field label="Parent Or Guardian" required hint="Their email gets the first password and any reset code.">
+              <div role="radiogroup" aria-label="Parent or guardian" className="space-y-2">
+                {reachable.map((guardian) => (
+                  <label key={guardian.id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-(--mws-line) px-3 py-2 text-sm">
+                    <input
+                      type="radio"
+                      name="guardian"
+                      checked={chosenGuardian?.id === guardian.id}
+                      onChange={() => setGuardianId(guardian.id)}
+                    />
+                    <span className="min-w-0">
+                      <span className="font-semibold text-(--mws-charcoal)">{guardian.full_name}</span>{" "}
+                      <span className="text-(--mws-muted)">
+                        {formatStatus(guardian.type)}, {guardian.email_hint}
+                        {guardian.is_primary ? ", Primary" : ""}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </Field>
+          ) : (
+            <Field
+              label="Recovery Email"
+              required
+              counter={{ value: recoveryEmail, max: 100, count: textLength }}
+              error={recoveryEmail.trim() ? recoveryProblem || undefined : undefined}
+              hint={recoveryHint(recoveryEmail, recoveryProblem, domain)}
+            >
+              <TextInput
+                type="email"
+                maxLength={100}
+                value={recoveryEmail}
+                invalid={Boolean(recoveryEmail.trim() && recoveryProblem)}
+                placeholder="name@gmail.com"
+                onChange={(event) => setRecoveryEmail(sanitizeEmail(event.target.value))}
+              />
+            </Field>
+          )}
         </CrudDialog>
       ) : null}
 
@@ -581,6 +622,8 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
           name={name}
           email={email}
           password={issued.password}
+          guardians={isStudent ? guardians : undefined}
+          guardianId={issued.guardianId}
           title="Share Sign-in Details"
           onClose={closeShare}
         />

@@ -376,6 +376,59 @@ describe('GoogleAccountRow', () => {
     expect(arc(screen.getByRole('button', { name: 'Change recovery email' })) ?? null).toBeNull()
   })
 
+  describe('a student, whose account is made for a parent or guardian', () => {
+    const guardians = [
+      { id: 'p1', type: 'FATHER', full_name: 'Budi Santoso', is_primary: true, email_hint: 'b***@gmail.com', phone: '6281234567890' },
+      { id: 'p2', type: 'MOTHER', full_name: 'Siti Aminah', is_primary: false, email_hint: 's***@gmail.com', phone: null },
+      { id: 'p3', type: 'GUARDIAN', full_name: 'No Email', is_primary: false, email_hint: null, phone: null },
+    ]
+    const unlinkedStudent = (list) => status({ linked: false, status: 'NONE', lookup: { state: 'absent', message: null }, guardians: list })
+    const renderStudent = (data, extra = []) => {
+      globalThis.fetch = createFetchRouter([
+        { path: '/api/admin/students/s1/google', response: jsonResponse({ data }) },
+        ...extra,
+      ])
+      const view = renderWithProviders(<ConfirmProvider><GoogleAccountRow resource="students" id="s1" email="ari@millennia21.id" name="Ari Putra" /></ConfirmProvider>)
+      return { ...view, fetchMock: globalThis.fetch }
+    }
+
+    it('keeps Create off, with the reason, until there is a parent or guardian with an email', async () => {
+      renderStudent(unlinkedStudent([guardians[2]]))
+      const create = await screen.findByRole('button', { name: 'Create Google account' })
+      expect(create).toBeDisabled()
+      expect(create.getAttribute('title')).toBe('Add a parent or guardian with an email first.')
+    })
+
+    it('lets the admin choose which parent the account is made for, and sends only that choice', async () => {
+      const { user, fetchMock } = renderStudent(unlinkedStudent(guardians), [
+        { path: '/api/admin/students/s1/google/provision', method: 'POST', response: jsonResponse({ data: { status: 'ACTIVE', outcome: 'created', temporary_password: 'Abcd1234Efgh5678' } }) },
+      ])
+      await user.click(await screen.findByRole('button', { name: 'Create Google account' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Create Google Account' })
+      const options = within(dialog).getAllByRole('radio')
+      // Only the two parents with an email are offered; the primary one is chosen.
+      expect(options).toHaveLength(2)
+      expect(options[0]).toBeChecked()
+      await user.click(options[1])
+      await user.click(within(dialog).getByRole('button', { name: 'Create' }))
+      await waitFor(() => {
+        const call = fetchMock.mock.calls.find(([url]) => url.endsWith('/google/provision'))
+        expect(JSON.parse(call[1].body)).toEqual({ parent_id: 'p2' })
+      })
+      // The sign-in details are then for that parent.
+      const share = await screen.findByRole('dialog', { name: 'Share Sign-in Details' })
+      await user.click(within(share).getByRole('button', { name: 'Show' }))
+      expect(within(share).getByLabelText('Message').value).toContain('Yth. Bapak/Ibu Siti Aminah,')
+    })
+
+    it('has no recovery email or sign-in instructions buttons, which are for the people who type their own', async () => {
+      renderStudent(status({ guardians, can: { create: true, manage: true, takeover: true } }))
+      await screen.findByText('Linked')
+      expect(screen.queryByRole('button', { name: /recovery email/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Sign-in instructions' })).not.toBeInTheDocument()
+    })
+  })
+
   it('lets whoever may make the account add a recovery email when there is none, and only then', async () => {
     const create = { create: true, manage: false, takeover: false }
     const none = setup(status({ can: create }), [{ path: '/api/admin/employees/e1/google/recovery-hint', response: jsonResponse({ data: { hint: null } }) }])

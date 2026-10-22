@@ -7,6 +7,7 @@ import { Tabs } from "../../../components/ui/Tabs.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { emailProblem, sanitizeEmail } from "../../../lib/form.js";
+import { formatStatus } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { googleAccountApi } from "../api/googleAccountApi.js";
 import { CooldownButton } from "./CooldownButton.jsx";
@@ -16,11 +17,16 @@ const MASK = "•".repeat(16);
 
 // The first sign-in details of a new account: the temporary password, shown once, and a message ready to paste into
 // WhatsApp (editable first) or to be mailed by the server. The password is not kept anywhere once this closes.
-export function GoogleShareDialog({ resource, id, name, email, password, title = "Share Sign-in Details", onClose }) {
+export function GoogleShareDialog({ resource, id, name, email, password, guardians, guardianId, title = "Share Sign-in Details", onClose }) {
+  // For a student the details go to a parent or guardian chosen from the student's own, never to a typed address.
+  const forStudent = Array.isArray(guardians);
+  const reachable = (guardians ?? []).filter((guardian) => guardian.email_hint);
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [language, setLanguage] = useState("id");
-  const [message, setMessage] = useState(() => signInMessage({ name, email, password, language: "id" }));
+  const [parentId, setParentId] = useState(() => (reachable.find((guardian) => guardian.id === guardianId) ?? reachable[0])?.id ?? "");
+  const parent = reachable.find((guardian) => guardian.id === parentId) ?? null;
+  const [message, setMessage] = useState(() => signInMessage({ name, email, password, language: "id", parentName: parent?.full_name }));
   const [revealed, setRevealed] = useState(false);
   // "recovery": the recovery email Google holds, which the server reads. "other": an address typed here.
   const [target, setTarget] = useState(null);
@@ -31,7 +37,7 @@ export function GoogleShareDialog({ resource, id, name, email, password, title =
   const statusKey = ["google-account", resource, id];
   const statusQuery = useQuery({ queryKey: statusKey, queryFn: () => googleAccountApi.status(resource, id) });
   const hintKey = ["google-recovery-hint", resource, id];
-  const hintQuery = useQuery({ queryKey: hintKey, queryFn: () => googleAccountApi.recoveryHint(resource, id), retry: false, staleTime: 0 });
+  const hintQuery = useQuery({ queryKey: hintKey, queryFn: () => googleAccountApi.recoveryHint(resource, id), retry: false, staleTime: 0, enabled: !forStudent });
   const emailEnabled = statusQuery.data?.email_enabled !== false;
   const hint = hintQuery.data?.hint ?? null;
   const hasRecovery = Boolean(hint);
@@ -41,11 +47,13 @@ export function GoogleShareDialog({ resource, id, name, email, password, title =
 
   const send = useMutation({
     mutationFn: () =>
-      googleAccountApi.sendSignIn(resource, id, {
-        language,
-        password,
-        ...(sendTo === "other" ? { to: typed.trim() } : {}),
-      }),
+      googleAccountApi.sendSignIn(
+        resource,
+        id,
+        forStudent
+          ? { parent_id: parentId, language, password }
+          : { language, password, ...(sendTo === "other" ? { to: typed.trim() } : {}) },
+      ),
     onSuccess: () => {
       setShared(true);
       queryClient.invalidateQueries({ queryKey: statusKey });
@@ -71,7 +79,13 @@ export function GoogleShareDialog({ resource, id, name, email, password, title =
 
   function changeLanguage(next) {
     setLanguage(next);
-    setMessage(signInMessage({ name, email, password, language: next }));
+    setMessage(signInMessage({ name, email, password, language: next, parentName: parent?.full_name }));
+  }
+
+  function changeParent(next) {
+    setParentId(next);
+    const chosen = reachable.find((guardian) => guardian.id === next);
+    setMessage(signInMessage({ name, email, password, language, parentName: chosen?.full_name }));
   }
 
   // While the password is hidden the message shows dots in its place and cannot be edited, so the password is not on
@@ -96,7 +110,7 @@ export function GoogleShareDialog({ resource, id, name, email, password, title =
     onClose();
   }
 
-  const sendDisabled = !emailEnabled || (sendTo === "recovery" ? !hasRecovery : !typed.trim() || Boolean(typedProblem));
+  const sendDisabled = !emailEnabled || (forStudent ? !parent : (sendTo === "recovery" ? !hasRecovery : !typed.trim() || Boolean(typedProblem)));
 
   return (
     <CrudDialog
@@ -132,7 +146,31 @@ export function GoogleShareDialog({ resource, id, name, email, password, title =
 
         <div className="space-y-2 rounded-xl border border-(--mws-line) px-4 py-3 text-sm">
           <p className="font-semibold text-(--mws-charcoal)">Send By Email</p>
-          {hintQuery.isPending ? (
+          {forStudent ? (
+            <div className="space-y-2" role="radiogroup" aria-label="Send to parent or guardian">
+              {reachable.length === 0 ? (
+                <p className="text-(--mws-muted)">This student has no parent or guardian with an email.</p>
+              ) : (
+                reachable.map((guardian) => (
+                  <label key={guardian.id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-(--mws-line) px-3 py-2">
+                    <input type="radio" name="send-to-guardian" checked={parentId === guardian.id} onChange={() => changeParent(guardian.id)} />
+                    <span className="min-w-0">
+                      <span className="font-semibold text-(--mws-charcoal)">{guardian.full_name}</span>{" "}
+                      <span className="text-(--mws-muted)">
+                        {formatStatus(guardian.type)}, {guardian.email_hint}
+                        {guardian.is_primary ? ", Primary" : ""}
+                      </span>
+                    </span>
+                  </label>
+                ))
+              )}
+              {parent?.phone ? (
+                <p className="text-xs text-(--mws-muted)" data-testid="guardian-phone">
+                  For WhatsApp: {parent.phone}
+                </p>
+              ) : null}
+            </div>
+          ) : hintQuery.isPending ? (
             <p className="text-(--mws-muted)">Reading the recovery email from Google...</p>
           ) : hasRecovery && sendTo === "recovery" ? (
             <p className="text-(--mws-charcoal)">

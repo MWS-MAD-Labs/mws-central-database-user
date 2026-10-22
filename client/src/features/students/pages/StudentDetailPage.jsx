@@ -30,6 +30,7 @@ import {
   terminalStudentStatuses,
 } from "../api/studentsApi.js";
 import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
+import { GoogleAccountRow } from "../../google/components/GoogleAccountRow.jsx";
 import {
   StudentConsentPanel,
   StudentHealthPanel,
@@ -673,6 +674,9 @@ export function StudentDetailPage() {
                   value={formatDate(student.created_at)}
                 />
               </dl>
+              <div className="border-t border-(--mws-line) px-5 py-3">
+                <GoogleAccountRow resource="students" id={studentId} email={student.identity.email} name={student.identity.full_name} />
+              </div>
             </section>
 
             {"gender" in student.identity || "pickup_drop_service" in student.academic ? (
