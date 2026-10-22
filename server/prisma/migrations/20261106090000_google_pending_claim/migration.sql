@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "GoogleSyncStatus" ADD VALUE IF NOT EXISTS 'PENDING_CLAIM';

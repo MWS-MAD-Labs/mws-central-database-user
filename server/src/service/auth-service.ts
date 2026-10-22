@@ -23,6 +23,7 @@ import {
 import { AuditService } from "./audit-service";
 import { cacheGoogleAvatar } from "./admin-avatar-service";
 import { findLinkablePersonId } from "../utils/admin-person-link";
+import { GoogleWorkspaceService } from "./google-workspace-service";
 import type { AuditRequestContext } from "../model/audit-log-model";
 
 const ACCESS_TOKEN_EXP = 60 * 15;
@@ -71,6 +72,9 @@ export class AuthService {
         "Access denied. Only MWS accounts are allowed.",
       );
     }
+
+    // Google just verified this mailbox: if a Google account waits for its owner, it is linked now.
+    await GoogleWorkspaceService.claimOnSignIn(googlePayload.email, context);
 
     const admin = await prismaClient.adminUser.findUnique({
       where: {

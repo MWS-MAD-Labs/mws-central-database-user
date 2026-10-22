@@ -192,7 +192,7 @@ export type GoogleSyncResult = {
   status: GoogleSyncStatus;
   google_user_id: string | null;
   // "created" a new account, "linked" one that was already there, or nothing done.
-  outcome: "created" | "linked" | "updated" | "unchanged" | "failed";
+  outcome: "created" | "linked" | "updated" | "unchanged" | "failed" | "waiting";
   message?: string;
   // Only when the account was just made: the password the person signs in with the first time. Returned once, to the
   // admin who made it, and never stored, logged or put in the audit entry.
@@ -401,8 +401,19 @@ export class GoogleWorkspaceService {
   }
 
   // For the form that creates a person: it is not written when Google already has the email or would not take it.
-  static async assertCanCreate(email: string, recoveryEmail?: string): Promise<void> {
+  // With `claimExisting` the email must already be a Google account (not a Workspace admin): it is linked later, when
+  // its owner signs in, so nothing is made and no recovery email is involved.
+  static async assertCanCreate(email: string, recoveryEmail?: string, options: { claimExisting?: boolean } = {}): Promise<void> {
     if (isProtectedSuperAdminEmail(email)) return;
+    if (options.claimExisting) {
+      const check = await this.checkEmailAvailable(email);
+      if (check.reason !== "IN_GOOGLE") {
+        throw new ResponseError(400, "Google has no account for this email to claim. Create the person the usual way");
+      }
+      const user = await getDirectoryClient().findUser(email.trim().toLowerCase());
+      if (user?.isAdmin) throw new ResponseError(400, "That email belongs to a Workspace admin, which is not managed from here");
+      return;
+    }
     this.assertRecoveryIsNotOwn(recoveryEmail, email);
     const check = await this.checkEmailAvailable(email);
     if (check.reason === "IN_GOOGLE" || check.reason === "DELETED_IN_GOOGLE" || check.reason === "NOT_ALLOWED") {
@@ -430,6 +441,9 @@ export class GoogleWorkspaceService {
     assertAllowedTarget(person.email);
     this.assertRecoveryIsNotOwn(options.recoveryEmail, person.email);
     await this.assertNotLocked(personId);
+    if (person.google_sync_status === GoogleSyncStatus.PENDING_CLAIM) {
+      throw new ResponseError(400, "This person has to sign in to Central first. The existing Google account is linked then");
+    }
     const client = getDirectoryClient();
     await markStatus(person.id, GoogleSyncStatus.PENDING);
 
@@ -485,6 +499,61 @@ export class GoogleWorkspaceService {
       const message = messageOf(error);
       await markStatus(person.id, GoogleSyncStatus.FAILED, { error: message });
       return { status: GoogleSyncStatus.FAILED, google_user_id: person.google_user_id, outcome: "failed", message };
+    }
+  }
+
+  // The person is saved and waits: the existing Google account is linked when its owner signs in to Central.
+  static async markPendingClaim(
+    personId: string,
+    options: { admin?: Pick<AdminUser, "id">; context?: AuditRequestContext } = {},
+  ): Promise<GoogleSyncResult> {
+    const person = await load(personId);
+    await markStatus(person.id, GoogleSyncStatus.PENDING_CLAIM);
+    await record("GOOGLE_ACCOUNT_PROVISION", person, options.admin, options.context ?? {}, {
+      outcome: "waiting",
+      mode: getDirectoryClient().mode,
+      recovery_email_set: false,
+    });
+    return {
+      status: GoogleSyncStatus.PENDING_CLAIM,
+      google_user_id: null,
+      outcome: "waiting",
+      message: "The existing Google account is linked when this person signs in to Central",
+    };
+  }
+
+  // Called after Google verified a sign-in: whoever just proved they own this mailbox claims the account that waits for
+  // them. Never throws, so a Google problem cannot stop the sign-in. Returns whether a link was made.
+  static async claimOnSignIn(email: string, context: AuditRequestContext = {}): Promise<boolean> {
+    try {
+      const waiting = await prismaClient.person.findFirst({
+        where: {
+          email: email.trim().toLowerCase(),
+          deleted_at: null,
+          google_user_id: null,
+          google_sync_status: GoogleSyncStatus.PENDING_CLAIM,
+        },
+        select: { id: true },
+      });
+      if (!waiting) return false;
+      const person = await load(waiting.id);
+      const client = getDirectoryClient();
+      const user = await client.findUser(person.email);
+      if (!user || user.isAdmin) return false;
+      await assertNotLinkedElsewhere(user.id, person.id);
+      await markStatus(person.id, user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE, {
+        google_user_id: user.id,
+        user,
+      });
+      await record("GOOGLE_ACCOUNT_PROVISION", person, undefined, context, {
+        outcome: "claimed",
+        mode: client.mode,
+        recovery_email_set: false,
+      });
+      return true;
+    } catch (error) {
+      logger.error("Claiming the Google account at sign-in failed", error);
+      return false;
     }
   }
 
@@ -1064,7 +1133,13 @@ export class GoogleWorkspaceService {
     await this.clearSimulatedLinks();
     const [people, users] = await Promise.all([
       prismaClient.person.findMany({
-        where: { deleted_at: null, google_user_id: null, person_type: { in: [PersonType.EMPLOYEE, PersonType.INTERN] } },
+        where: {
+          deleted_at: null,
+          google_user_id: null,
+          // Someone waiting to claim their account proves it by signing in, not by being on this list.
+          google_sync_status: { not: GoogleSyncStatus.PENDING_CLAIM },
+          person_type: { in: [PersonType.EMPLOYEE, PersonType.INTERN] },
+        },
         select: { id: true, email: true, full_name: true, person_type: true, google_sync_status: true },
         orderBy: { full_name: "asc" },
       }),

@@ -6,8 +6,10 @@ import { googleAccountApi } from '../api/googleAccountApi.js'
 // Asks the server whether an email can be used, once, when the person presses Check. The answer belongs to the
 // address that was checked, so typing anything else makes it stale and the button comes back. `blocked` is true while
 // a changed email has not passed. The email the form started with (edit) passes without asking. A Google that cannot
-// be asked, or is only simulated, passes with its note; a request that failed does not.
-export function useEmailCheck(email, { initialEmail = '' } = {}) {
+// be asked, or is only simulated, passes with its note; a request that failed does not. An address Google already has
+// stays blocked, unless `allowClaim` (a Super Admin on the employee form): then it can pass once `claimExisting` is
+// ticked, and the person is linked when they sign in.
+export function useEmailCheck(email, { initialEmail = '', allowClaim = false, claimExisting = false } = {}) {
   const [result, setResult] = useState(null)
   const mutation = useMutation({
     mutationFn: (value) => googleAccountApi.emailAvailability(value),
@@ -28,6 +30,9 @@ export function useEmailCheck(email, { initialEmail = '' } = {}) {
   }
   if (answer.failed) {
     return { ...none, state: 'failed', canCheck: true, blocked: true, message: 'Could not check the email, try again.', check }
+  }
+  if (!answer.data.available && allowClaim && answer.data.reason === 'IN_GOOGLE') {
+    return { ...none, state: 'claimable', blocked: !claimExisting, message: answer.data.message }
   }
   if (!answer.data.available) return { ...none, state: 'taken', blocked: true, message: answer.data.message }
   if (answer.data.reason === 'FREE') return { ...none, state: 'free', message: answer.data.message }

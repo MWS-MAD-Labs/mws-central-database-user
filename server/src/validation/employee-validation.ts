@@ -109,6 +109,7 @@ export class EmployeeValidation {
         .max(25, "Nick name is too long"),
       email: emailWithAllowedDomain(),
       recovery_email: recoveryEmail().optional(),
+      claim_existing_google: z.boolean().optional(),
 
       gender: z.enum(GENDER_VALUES, {
         message: "Gender is required and must be a valid format",

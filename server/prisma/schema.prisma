@@ -212,6 +212,8 @@ enum GoogleSyncStatus {
   SUSPENDED
   // Not in Google any more: deleted (restorable for about 20 days) or gone.
   MISSING
+  // The email already had a Google account. It is linked when its owner signs in to Central, never by an admin.
+  PENDING_CLAIM
 }
 
 enum AuditAction {

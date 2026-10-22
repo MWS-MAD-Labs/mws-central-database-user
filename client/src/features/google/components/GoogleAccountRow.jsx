@@ -41,6 +41,7 @@ const BADGES = {
   SUSPENDED: { tone: "amber", label: "Suspended" },
   MISSING: { tone: "red", label: "Not in Google" },
   IN_GOOGLE: { tone: "amber", label: "In Google" },
+  PENDING_CLAIM: { tone: "amber", label: "Waiting For Sign-in" },
 };
 
 // How the badge reads for a person with no link, by what the lookup in Google came back with.
@@ -231,7 +232,8 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
   const deleted = status.status === "MISSING" && Boolean(status.last_error?.startsWith("Deleted"));
   const can = status.can ?? {};
   // For a person with no link: what Central could find out about the email in Google. Not asking is not "not there".
-  const lookup = status.linked ? null : (status.lookup ?? { state: status.in_google ? "found" : "absent", message: null });
+  const waiting = status.status === "PENDING_CLAIM";
+  const lookup = status.linked || waiting ? null : (status.lookup ?? { state: status.in_google ? "found" : "absent", message: null });
   const lookupState = lookup?.state ?? null;
   // The account is deleted or gone in Google, so there is nothing to change until it is restored.
   const gone = status.status === "MISSING";
@@ -240,7 +242,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
     : lookupState && lookupState !== "absent"
       ? (LOOKUP_BADGES[lookupState] ?? BADGES.NONE)
       : (BADGES[status.status] ?? BADGES.NONE);
-  const lookupNote = lookupLine(lookup);
+  const lookupNote = waiting ? "Linked when this person signs in to Central with this Google account." : lookupLine(lookup);
   // These answers do not depend on asking again, so the button is off instead of doing nothing.
   const noNewAnswer = lookupState === "blocked" || lookupState === "simulated" || lookupState === "admin";
   const locked = Boolean(status.locked);

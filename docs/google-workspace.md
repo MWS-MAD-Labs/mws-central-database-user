@@ -54,6 +54,10 @@ Until the account is restored, Make temporary password, Change recovery email, S
 
 A new or changed email has to pass the **Check** button before Create or Save is enabled. Typing never asks Google. The answer belongs to the address that was checked, so changing the text asks for a new check. The server checks again by itself on create, and on an edit of someone who has a Google account, because that account is renamed with the email.
 
+## An email Google already has, for a new employee
+
+The form refuses it, since a typo could be someone else's mailbox. A Super Admin can tick "Wait for this person to sign in" instead (`claim_existing_google`). The person is saved with the status `PENDING_CLAIM`, nothing is made or changed in Google, and no recovery email is asked for. The account is linked when that mailbox's owner signs in to Central with Google, because the sign-in is what proves it is theirs. Until then provision, the bulk link and every other action on the account are refused. Someone who never signs in stays waiting.
+
 ## Accounts that were in Google before Central
 
 For a person with no link, the row says what Central could find out about the email, and "not asking" is never shown as "not there":

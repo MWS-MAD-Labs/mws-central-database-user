@@ -215,18 +215,23 @@ export function EmployeeForm({
 
   const isCreate = mode === "create";
   // A new or changed email has to pass the Check button before the form can be saved.
+  // A Super Admin can make the person for an email Google already has: it is linked when the owner signs in.
+  const [claimExisting, setClaimExisting] = useState(false);
   const emailCheck = useEmailCheck(
     values.email_local ? `${values.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
     {
       initialEmail: !isCreate && initialValues.email_local ? `${initialValues.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
+      allowClaim: isCreate && user?.role === "SUPER_ADMIN",
+      claimExisting,
     },
   );
+  const claiming = emailCheck.state === "claimable" && claimExisting;
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [lastWorkingDateIncomplete, setLastWorkingDateIncomplete] =
     useState(false);
   // A protected admin address becomes an employee without a Google account, so there is no recovery email to ask for.
-  const noGoogle = emailCheck.state === "protected";
+  const noGoogle = emailCheck.state === "protected" || claiming;
   const allErrors = useMemo(
     () =>
       computeEmployeeErrors(values, isCreate, { lastWorkingDateIncomplete, noGoogle }),
@@ -459,6 +464,7 @@ export function EmployeeForm({
         isCreate,
         initialChildren: initialValues.children,
         noGoogle,
+        claiming,
       }),
       pendingPhotoBlob,
     );
@@ -693,6 +699,15 @@ export function EmployeeForm({
               errors={errors}
               updateValue={updateValue}
             />
+            {emailCheck.state === "claimable" ? (
+              <CheckboxField
+                className="md:col-span-2"
+                label="Wait for this person to sign in"
+                description="Google already has this account. It is not changed. It is linked when its owner signs in to Central, which proves the mailbox is theirs."
+                checked={claimExisting}
+                onChange={(event) => setClaimExisting(event.target.checked)}
+              />
+            ) : null}
             {isCreate ? (
               <Field
                 label="Recovery Email"
@@ -700,7 +715,7 @@ export function EmployeeForm({
                 error={errors.recovery_email}
                 required={!noGoogle}
                 counter={{ value: values.recovery_email, max: 100, count: textLength }}
-                hint={noGoogle ? "Not needed: no Google account is made for this address." : recoveryHint(values.recovery_email, errors.recovery_email, ALLOWED_EMAIL_DOMAIN)}
+                hint={noGoogle ? (claiming ? "Not needed: the existing Google account is kept as it is." : "Not needed: no Google account is made for this address.") : recoveryHint(values.recovery_email, errors.recovery_email, ALLOWED_EMAIL_DOMAIN)}
               >
                 <TextInput
                   type="email"
@@ -1553,10 +1568,11 @@ const SENSITIVE_VALUE_KEYS = [
 
 function buildPayload(
   values,
-  { includeSensitive = true, isCreate = false, initialChildren, noGoogle = false } = {},
+  { includeSensitive = true, isCreate = false, initialChildren, noGoogle = false, claiming = false } = {},
 ) {
   const payload = buildFullPayload(values);
   if (noGoogle) delete payload.recovery_email;
+  if (claiming) payload.claim_existing_google = true;
   if (!includeSensitive) {
     // Never revealed means never loaded: leave those fields out so nothing is overwritten.
     for (const key of SENSITIVE_VALUE_KEYS) delete payload[key];

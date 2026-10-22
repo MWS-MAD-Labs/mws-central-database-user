@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import {
   AdminUserTest,
   AuditLogTest,
@@ -35,6 +35,7 @@ import {
 import { GoogleWorkspaceService, generateTemporaryPassword, resetCheckCooldownForTests, resetSignInEmailLimitForTests, splitName } from "../service/google-workspace-service";
 import { detectImageMimeType } from "../utils/image-processing";
 import sharp from "sharp";
+import { GoogleAuth } from "../utils/google-auth";
 
 describe("google workspace accounts", () => {
   let master: { unit: MasterUnit; position: MasterJobPosition; level: MasterJobLevel; building: MasterBuilding };
@@ -1551,6 +1552,70 @@ describe("google workspace accounts", () => {
       form.append("file", new File([await png()], "me.png", { type: "image/png" }));
       const response = await TestRequest.putMultipart("/api/auth/employee/me/photo", form, accessToken);
       expect(response.status).toBe(401);
+    });
+  });
+
+  describe("an email Google already has", () => {
+    const existing = (email: string) =>
+      google.users.set("old-1", {
+        id: "old-1", primaryEmail: email, givenName: "Lama", familyName: "Sekali",
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+
+    it("is refused for a new employee unless a Super Admin chooses to wait for the owner to sign in", async () => {
+      existing("test_google_lama@millennia21.id");
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const refused = await create(accessToken, { email: "test_google_lama@millennia21.id", recovery_email: "lama@gmail.com" });
+      expect(refused.response.status).toBe(400);
+
+      const { response, json } = await create(accessToken, { email: "test_google_lama@millennia21.id", claim_existing_google: true });
+      expect(response.status).toBe(200);
+      expect(json.data.google).toMatchObject({ status: "PENDING_CLAIM", outcome: "waiting" });
+      expect(google.created).toHaveLength(0);
+      const person = await personOf(json.data.id);
+      expect(person.google_sync_status).toBe(GoogleSyncStatus.PENDING_CLAIM);
+      expect(person.google_user_id).toBeNull();
+    });
+
+    it("is not claimable by a Database Admin, nor when Google has no such account", async () => {
+      existing("test_google_lama@millennia21.id");
+      const dba = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      const denied = await create(dba.accessToken, { email: "test_google_lama@millennia21.id", claim_existing_google: true });
+      expect(denied.response.status).toBe(403);
+
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const empty = await create(accessToken, { email: "test_google_nobody@millennia21.id", claim_existing_google: true });
+      expect(empty.response.status).toBe(400);
+    });
+
+    it("is linked only when its owner signs in, and no admin action can link it before that", async () => {
+      existing("test_google_lama@millennia21.id");
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken, { email: "test_google_lama@millennia21.id", claim_existing_google: true });
+      const id = json.data.id as string;
+      const person = await personOf(id);
+
+      // Not by the admin: the bulk link skips it and provision refuses it.
+      const linked = await GoogleWorkspaceService.linkExisting({ link: true });
+      expect(linked.matches.find((match) => match.person_id === person.id)).toBeUndefined();
+      expect((await TestRequest.post(`/api/admin/employees/${id}/google/provision`, {}, accessToken)).status).toBe(400);
+      expect((await personOf(id)).google_user_id).toBeNull();
+
+      // Someone else signing in does not claim it.
+      const spy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
+        google_id: "g-1", email: "test_google_lain@millennia21.id", name: "Lain", avatar_url: "",
+      });
+      await TestRequest.post("/api/auth/google", { code: "X" });
+      expect((await personOf(id)).google_sync_status).toBe(GoogleSyncStatus.PENDING_CLAIM);
+
+      // The owner does.
+      spy.mockResolvedValue({ google_id: "old-1", email: "test_google_lama@millennia21.id", name: "Lama", avatar_url: "" });
+      await TestRequest.post("/api/auth/google", { code: "X" });
+      spy.mockRestore();
+      const after = await personOf(id);
+      expect(after).toMatchObject({ google_sync_status: GoogleSyncStatus.ACTIVE, google_user_id: "old-1" });
+      expect(google.created).toHaveLength(0);
+      expect(google.passwords).toHaveLength(0);
     });
   });
 

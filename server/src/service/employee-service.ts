@@ -679,12 +679,16 @@ export class EmployeeService {
     );
     // A protected admin gets an employee record but never a Google account, so no recovery email is asked for.
     const withoutGoogle = isProtectedSuperAdminEmail(createRequest.email);
-    if (options.requireRecoveryEmail && !withoutGoogle && !createRequest.recovery_email) {
+    const claiming = Boolean(options.requireRecoveryEmail && !withoutGoogle && createRequest.claim_existing_google);
+    if (claiming && admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(403, "Forbidden: only a Super Admin can wait for an existing Google account to be claimed");
+    }
+    if (options.requireRecoveryEmail && !withoutGoogle && !claiming && !createRequest.recovery_email) {
       throw new ResponseError(400, "Recovery email is required: it is how the person sets the password of their new Google account");
     }
     // Before anything is written: a Google that already has the email, or would not take it, stops the create here.
     if (options.requireRecoveryEmail && !withoutGoogle) {
-      await GoogleWorkspaceService.assertCanCreate(createRequest.email, createRequest.recovery_email);
+      await GoogleWorkspaceService.assertCanCreate(createRequest.email, createRequest.recovery_email, { claimExisting: claiming });
     }
     await assertCanWriteEmployeePii(admin, createRequest, context);
 
@@ -1010,7 +1014,9 @@ export class EmployeeService {
     await linkAdminToEmployee(createRequest.email).catch((error) => logger.error("Linking the admin to the new employee failed", error));
 
     let google: GoogleSyncResult | undefined;
-    if (createRequest.recovery_email && !withoutGoogle) {
+    if (claiming) {
+      google = await GoogleWorkspaceService.markPendingClaim(createdPersonId, { admin, context });
+    } else if (createRequest.recovery_email && !withoutGoogle) {
       google = await GoogleWorkspaceService.provision(createdPersonId, {
         recoveryEmail: createRequest.recovery_email,
         admin,
