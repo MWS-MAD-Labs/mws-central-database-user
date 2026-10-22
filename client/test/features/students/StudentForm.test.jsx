@@ -163,8 +163,9 @@ describe('StudentForm', () => {
   it('keeps the second parent email off until the first one is filled in and valid', async () => {
     const { user } = renderStudentForm({ mode: 'create' })
     const again = field('parent_email_confirm').querySelector('input')
+    expect(screen.getByText('Confirm Parent Email')).toBeVisible()
     expect(again).toBeDisabled()
-    expect(screen.queryByText('Type the email again.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Type the parent email again.')).not.toBeInTheDocument()
     const first = field('parent_email').querySelector('input')
     await user.type(first, 'budi@')
     expect(again).toBeDisabled()

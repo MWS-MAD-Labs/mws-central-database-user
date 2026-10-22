@@ -231,6 +231,9 @@ describe('EmployeeForm', () => {
     const again = field('recovery_email_confirm').querySelector('input')
     expect(again).toBeDisabled()
     expect(screen.queryByText('Type the recovery email again.')).not.toBeInTheDocument()
+    // Grouped apart from the Millennia email, with a name that says whose it confirms.
+    expect(screen.getByText('Confirm Recovery Email')).toBeVisible()
+    expect(field('recovery_email_confirm').closest('div.rounded-xl')).toContainElement(field('recovery_email'))
 
     const recovery = field('recovery_email').querySelector('input')
     await user.type(recovery, 'a')

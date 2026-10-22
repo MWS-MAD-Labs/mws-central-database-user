@@ -371,6 +371,11 @@ export function InternForm({
               />
             ) : null}
             {isCreate ? (
+              <div className="grid min-w-0 gap-4 rounded-xl border border-(--mws-line) p-4 md:col-span-2 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <p className="font-display text-sm font-semibold text-(--mws-charcoal)">Recovery email</p>
+                  <p className="text-xs text-(--mws-muted)">Where the first password and the reset code go. Not a Millennia address.</p>
+                </div>
               <Field
                 label="Recovery Email"
                 name="recovery_email"
@@ -402,15 +407,17 @@ export function InternForm({
                   }
                 />
               </Field>
-            ) : null}
-            {isCreate && !noGoogle ? (
-              <ConfirmEmailField
-                name="recovery_email_confirm"
-                value={values.recovery_email_confirm}
-                disabled={recoveryNotReady}
-                error={errors.recovery_email_confirm}
-                onChange={(value) => updateValue("recovery_email_confirm", value)}
-              />
+              {!noGoogle ? (
+                <ConfirmEmailField
+                  label="Confirm Recovery Email"
+                  name="recovery_email_confirm"
+                  value={values.recovery_email_confirm}
+                  disabled={recoveryNotReady}
+                  error={errors.recovery_email_confirm}
+                  onChange={(value) => updateValue("recovery_email_confirm", value)}
+                />
+              ) : null}
+              </div>
             ) : null}
             {identityRevealed ? (
               <>

@@ -834,7 +834,7 @@ export function StudentForm({
                 updateValue={updateValue}
               />
               <Field
-                label="Email"
+                label="Parent Email"
                 name="parent_email"
                 error={errors.parent_email}
                 required
@@ -855,6 +855,7 @@ export function StudentForm({
                 />
               </Field>
               <ConfirmEmailField
+                label="Confirm Parent Email"
                 name="parent_email_confirm"
                 value={values.parent_email_confirm}
                 disabled={parentEmailNotReady}
@@ -1181,7 +1182,7 @@ function computeStudentErrors(values, isCreate) {
     if (values.parent_email) {
       const problem = emailProblem(values.parent_email, { external: true });
       if (problem) errors.parent_email = problem;
-      else if (!values.parent_email_confirm) errors.parent_email_confirm = "Type the email again.";
+      else if (!values.parent_email_confirm) errors.parent_email_confirm = "Type the parent email again.";
       else if (values.parent_email_confirm !== values.parent_email) errors.parent_email_confirm = "The two emails do not match.";
     }
     if (values.parent_phone && !/^(\+62|62|0)\d{8,13}$/.test(values.parent_phone)) {

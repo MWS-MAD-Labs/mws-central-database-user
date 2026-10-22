@@ -16,10 +16,10 @@ export function EmailSuggestion({ email, onUse }) {
 // The same email typed a second time, so a slip is caught before a password is mailed to it. Pasting is blocked on
 // purpose: pasting the first one in would check nothing.
 // Off until the email above is filled in and valid: there is nothing to repeat before that.
-export function ConfirmEmailField({ name, value, error, onChange, disabled = false }) {
+export function ConfirmEmailField({ name, value, error, onChange, disabled = false, label = 'Confirm Email' }) {
   return (
     <Field
-      label="Confirm Email"
+      label={label}
       name={name}
       error={disabled ? undefined : error}
       required={!disabled}
