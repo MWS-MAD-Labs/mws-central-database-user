@@ -47,6 +47,42 @@ export function signInEmail(language: SignInLanguage, { name, email, password, p
   };
 }
 
+// The mail for a password that was reset on an account that already existed. Sent to its recovery email.
+export function resetPasswordEmail(language: SignInLanguage, { name, email, password }: Omit<Details, "parentName">): { subject: string; text: string } {
+  if (language === "en") {
+    return {
+      subject: "The password of your Millennia Google account was reset",
+      text: [
+        `Hello ${name},`,
+        "",
+        "The password of your Millennia Google account was reset by an administrator.",
+        "",
+        `Email: ${email}`,
+        `Temporary password: ${password}`,
+        "",
+        "Sign in at accounts.google.com with the email and the temporary password above. Google asks you to make a new password.",
+        "",
+        "If you did not ask for this, tell your administrator. Do not share this password with anyone.",
+      ].join("\n"),
+    };
+  }
+  return {
+    subject: "Password akun Google Millennia kamu direset",
+    text: [
+      `Halo ${name},`,
+      "",
+      "Password akun Google Millennia kamu direset oleh administrator.",
+      "",
+      `Email: ${email}`,
+      `Password sementara: ${password}`,
+      "",
+      "Masuk di accounts.google.com dengan email dan password sementara di atas. Google akan meminta kamu membuat password baru.",
+      "",
+      "Kalau kamu tidak memintanya, beri tahu administrator. Jangan bagikan password ini kepada siapa pun.",
+    ].join("\n"),
+  };
+}
+
 function parentEmail(language: SignInLanguage, { parentName, name, email, password }: Required<Pick<Details, "parentName">> & Details) {
   if (language === "en") {
     return {

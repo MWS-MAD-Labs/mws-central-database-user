@@ -1619,6 +1619,88 @@ describe("google workspace accounts", () => {
     });
   });
 
+  describe("an account that waits for its owner", () => {
+    let mailer: MemoryMailer;
+    beforeEach(() => {
+      mailer = new MemoryMailer();
+      setMailerForTests(mailer);
+      resetSignInEmailLimitForTests();
+      resetCheckCooldownForTests();
+    });
+    afterEach(() => setMailerForTests(null));
+
+    const waiting = async (token: string, userOver: Record<string, unknown> = {}) => {
+      google.users.set("old-1", {
+        id: "old-1", primaryEmail: "test_google_lama@millennia21.id", givenName: "Rizqi Sabilla", familyName: "Putra",
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
+        recoveryEmail: "lama.pribadi@gmail.com", ...userOver,
+      } as DirectoryUser);
+      const { json } = await create(token, { email: "test_google_lama@millennia21.id", claim_existing_google: true });
+      return json.data.id as string;
+    };
+    const reset = (id: string, token: string) => TestRequest.post(`/api/admin/employees/${id}/google/reset-waiting`, { language: "id" }, token);
+
+    it("gets a new password mailed to the recovery email Google holds, never shown and never sent to its own mailbox", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await waiting(accessToken);
+      const response = await reset(id, accessToken);
+      expect(response.status).toBe(200);
+      const data = (await response.json()).data;
+      expect(data).toEqual({ sent_to: "l***@gmail.com" });
+      expect(google.passwords).toHaveLength(1);
+      expect(mailer.outbox).toHaveLength(1);
+      expect(mailer.outbox[0].to).toBe("lama.pribadi@gmail.com");
+      expect(mailer.outbox[0].text).toContain(google.passwords[0].password);
+      expect(JSON.stringify(await prismaClient.auditLog.findMany())).not.toContain(google.passwords[0].password);
+      // Still waiting: only signing in links it.
+      expect((await personOf(id)).google_sync_status).toBe(GoogleSyncStatus.PENDING_CLAIM);
+    });
+
+    it("is left alone when the name in Google is not the name here, has no recovery email, or email is off", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await waiting(accessToken, { givenName: "Orang", familyName: "Lain" });
+      expect((await reset(id, accessToken)).status).toBe(409);
+      google.users.set("old-1", { ...google.users.get("old-1")!, givenName: "Rizqi Sabilla", familyName: "Putra", recoveryEmail: null });
+      expect((await reset(id, accessToken)).status).toBe(409);
+      google.users.set("old-1", { ...google.users.get("old-1")!, recoveryEmail: "lama.pribadi@gmail.com" });
+      mailer.enabled = false;
+      expect((await reset(id, accessToken)).status).toBe(503);
+      expect(google.passwords).toHaveLength(0);
+      expect(mailer.outbox).toHaveLength(0);
+    });
+
+    it("is not reset by a Database Admin, by a second press in the wait, or when the account is not waiting", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await waiting(accessToken);
+      const dba = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      expect((await reset(id, dba.accessToken)).status).toBe(403);
+      expect((await reset(id, accessToken)).status).toBe(200);
+      expect((await reset(id, accessToken)).status).toBe(429);
+
+      const { json } = await create(accessToken, { recovery_email: "biasa@gmail.com" });
+      expect((await reset(json.data.id, accessToken)).status).toBe(400);
+    });
+
+    it("keeps the name Google has once claimed, while the email still follows Central", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await waiting(accessToken, { givenName: "Nama", familyName: "Lama" });
+      const spy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
+        google_id: "old-1", email: "test_google_lama@millennia21.id", name: "Nama Lama", avatar_url: "",
+      });
+      await TestRequest.post("/api/auth/google", { code: "X" });
+      spy.mockRestore();
+      expect((await personOf(id)).google_keeps_name).toBe(true);
+
+      await GoogleWorkspaceService.syncProfile((await personOf(id)).id);
+      expect(google.users.get("old-1")).toMatchObject({ givenName: "Nama", familyName: "Lama" });
+
+      // A person made the usual way still has the name Central holds.
+      const { json } = await create(accessToken, { recovery_email: "biasa@gmail.com" });
+      await GoogleWorkspaceService.syncProfile((await personOf(json.data.id)).id);
+      expect([...google.users.values()].find((user) => user.primaryEmail.startsWith("test_google_") && user.givenName === "Rizqi Sabilla")).toBeTruthy();
+    });
+  });
+
   it("detects the formats it accepts", async () => {
     expect(detectImageMimeType(await sharp({ create: { width: 2, height: 2, channels: 3, background: "#000" } }).png().toBuffer())).toBe("image/png");
   });

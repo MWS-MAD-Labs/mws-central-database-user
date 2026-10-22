@@ -15,7 +15,7 @@ import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 import { getDirectoryClient, testPrefix } from "../lib/google-workspace";
 import { getMailer } from "../lib/mailer";
-import { signInEmail, type SignInLanguage } from "../utils/signin-email";
+import { resetPasswordEmail, signInEmail, type SignInLanguage } from "../utils/signin-email";
 import { getIntegrationEnvironment } from "../utils/integration-environment";
 import { DirectoryError, type DirectoryUser } from "../lib/google-workspace/directory-client";
 import type { AuditRequestContext, EntityAuditAction } from "../model/audit-log-model";
@@ -170,6 +170,11 @@ function takeSignInEmailSlot(adminId: string): void {
 export const resetSignInEmailLimitForTests = () => sentByAdmin.clear();
 
 export const restorableUntil = (deletedAt: Date): Date => new Date(deletedAt.getTime() + RESTORE_WINDOW_DAYS * 86_400_000);
+
+// Names compared loosely: case, punctuation and word order do not count.
+function nameKey(value: string): string {
+  return value.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean).sort().join(" ");
+}
 
 function deletedMessage(deletedAt?: Date | null): string {
   const utcDay = (date: Date) => Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
@@ -522,6 +527,72 @@ export class GoogleWorkspaceService {
     };
   }
 
+  // For an account that waits for its owner: resets its password and mails it to the recovery email Google holds, in one
+  // step, so the password is never shown or sent to the mailbox itself. Only goes ahead when the name in Google is the
+  // name in Central, so a mailbox that belongs to somebody else is left alone.
+  static async resetWaiting(
+    personId: string,
+    admin: Pick<AdminUser, "id">,
+    input: { language: SignInLanguage },
+    context: AuditRequestContext = {},
+  ): Promise<{ sent_to: string }> {
+    const person = await load(personId);
+    if (person.google_sync_status !== GoogleSyncStatus.PENDING_CLAIM) {
+      throw new ResponseError(400, "This account is not waiting for its owner to sign in");
+    }
+    assertAllowedTarget(person.email);
+    await this.assertNotLocked(personId);
+    const mailer = getMailer();
+    if (!mailer.enabled) throw new ResponseError(503, "Email is not set up on this server");
+    const client = getDirectoryClient();
+    let user: DirectoryUser | null;
+    try {
+      user = await client.findUser(person.email);
+    } catch (error) {
+      logger.error(`Google lookup failed for person ${person.id}`, error);
+      throw new ResponseError(502, messageOf(error));
+    }
+    if (!user) throw new ResponseError(404, "Google has no account for this email any more");
+    if (user.isAdmin) throw new ResponseError(400, "That email belongs to a Workspace admin, which is not managed from here");
+    await assertNotLinkedElsewhere(user.id, person.id);
+    if (nameKey(`${user.givenName} ${user.familyName}`) !== nameKey(person.full_name)) {
+      throw new ResponseError(
+        409,
+        `The name in Google (${`${user.givenName} ${user.familyName}`.trim()}) is not the name here (${person.full_name}), so the password is not reset`,
+      );
+    }
+    const to = user.recoveryEmail?.trim();
+    if (!to) throw new ResponseError(409, "This Google account has no recovery email to send the password to");
+    this.assertRecoveryIsNotOwn(to, person.email);
+    const issuedAt = (await prismaClient.person.findUnique({ where: { id: personId }, select: { google_password_issued_at: true } }))
+      ?.google_password_issued_at ?? null;
+    await assertNotWaiting(
+      { id: person.id, person_type: person.person_type, google_password_issued_at: issuedAt },
+      "password",
+      (wait) => `A password was made a moment ago and may not have reached the person yet. Wait ${wait} to make another`,
+    );
+    takeSignInEmailSlot(admin.id);
+
+    const password = generateTemporaryPassword();
+    try {
+      await client.resetPassword(user.id, password);
+    } catch (error) {
+      logger.error(`Google password reset failed for person ${person.id}`, error);
+      throw new ResponseError(502, messageOf(error));
+    }
+    await prismaClient.person.update({ where: { id: person.id }, data: { google_password_issued_at: new Date() } });
+    await record("GOOGLE_PASSWORD_RESET", person, admin, context, { mode: client.mode, claim: true });
+    const { subject, text } = resetPasswordEmail(input.language, { name: person.full_name, email: person.email, password });
+    try {
+      await mailer.send({ to, subject, text });
+    } catch (error) {
+      logger.error(`Reset password email failed for person ${person.id}`, error);
+      throw new ResponseError(502, "The password was reset but the email could not be sent. Try again after the wait");
+    }
+    await record("GOOGLE_SIGNIN_EMAILED", person, admin, context, { to: maskEmail(to), language: input.language, claim: true });
+    return { sent_to: maskEmail(to) ?? "" };
+  }
+
   // Called after Google verified a sign-in: whoever just proved they own this mailbox claims the account that waits for
   // them. Never throws, so a Google problem cannot stop the sign-in. Returns whether a link was made.
   static async claimOnSignIn(email: string, context: AuditRequestContext = {}): Promise<boolean> {
@@ -545,6 +616,7 @@ export class GoogleWorkspaceService {
         google_user_id: user.id,
         user,
       });
+      await prismaClient.person.update({ where: { id: person.id }, data: { google_keeps_name: true } });
       await record("GOOGLE_ACCOUNT_PROVISION", person, undefined, context, {
         outcome: "claimed",
         mode: client.mode,
@@ -572,10 +644,14 @@ export class GoogleWorkspaceService {
     }
     assertAllowedTarget(person.email);
     const client = getDirectoryClient();
+    const keepsName = Boolean(
+      (await prismaClient.person.findUnique({ where: { id: person.id }, select: { google_keeps_name: true } }))?.google_keeps_name,
+    );
 
     try {
-      const { givenName, familyName } = splitName(person.full_name);
-      const user = await client.updateUser(person.google_user_id, { primaryEmail: person.email, givenName, familyName });
+      // A claimed account keeps the name it had in Google: only its email follows Central.
+      const names = keepsName ? {} : splitName(person.full_name);
+      const user = await client.updateUser(person.google_user_id, { primaryEmail: person.email, ...names });
       await assertNotLinkedElsewhere(user.id, person.id);
       const status = user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE;
       await markStatus(person.id, status, {

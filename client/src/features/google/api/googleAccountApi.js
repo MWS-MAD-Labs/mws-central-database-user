@@ -20,6 +20,11 @@ export const googleAccountApi = {
     const response = await apiRequest(`/api/admin/${resource}/${id}/google/reset-password`, { method: 'POST' })
     return response.data
   },
+  // For an account that waits for its owner: the server resets it and mails the password, nothing comes back to show.
+  async resetWaiting(resource, id, payload = { language: 'id' }) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/reset-waiting`, { method: 'POST', body: payload })
+    return response.data
+  },
   // Where the sign-in details would go, hidden ("b***@gmail.com"), or null when the account has no recovery email.
   async recoveryHint(resource, id) {
     const response = await apiRequest(`/api/admin/${resource}/${id}/google/recovery-hint`)

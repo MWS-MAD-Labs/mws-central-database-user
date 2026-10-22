@@ -717,6 +717,8 @@ model Person {
   google_last_error  String?
   // Last time Central asked Google how the account is doing.
   google_checked_at  DateTime?
+  // The account was claimed with its own name: Central never writes the name over it.
+  google_keeps_name  Boolean  @default(false)
   // True until the person sets their own password. null when Google has not been asked.
   google_password_pending   Boolean?
   // When the temporary or unknown password was issued (account created or password reset by an admin).

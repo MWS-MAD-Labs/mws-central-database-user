@@ -161,6 +161,16 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
     },
   });
 
+  const resetWaiting = useMutation({
+    mutationFn: () => googleAccountApi.resetWaiting(resource, id),
+    onSuccess: (result) => {
+      setDialog(null);
+      showSuccessToast(`Password sent to ${result.sent_to}.`);
+      queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (error) => showErrorToast(error, "Password was not reset."),
+  });
+
   // Read from Google only while one of the two dialogs that show it is open.
   const recoveryQuery = useQuery({
     queryKey: ["google-recovery-email", resource, id],
@@ -365,6 +375,18 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
             >
               <KeyRound size={15} />
             </CooldownButton>
+          ) : null}
+          {can.takeover && waiting && !locked ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Reset and email password"
+              title="Reset and email password"
+              onClick={() => setDialog("confirm-waiting")}
+            >
+              <KeyRound size={15} />
+            </Button>
           ) : null}
           {can.create && !status.linked ? (
             <Button
@@ -614,6 +636,29 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
           }
         >
           <p className="text-sm text-(--mws-muted)">The current password stops working straight away.</p>
+        </CrudDialog>
+      ) : null}
+
+      {dialog === "confirm-waiting" ? (
+        <CrudDialog
+          title="Reset And Email Password"
+          description="The account already exists in Google, so its password is reset and mailed to the recovery email Google holds for it."
+          panelClassName="max-w-lg"
+          onClose={() => setDialog(null)}
+          footer={
+            <>
+              <Button type="button" variant="secondary" onClick={() => setDialog(null)}>
+                Cancel
+              </Button>
+              <Button type="button" loading={resetWaiting.isPending} onClick={() => resetWaiting.mutate()}>
+                Reset And Send
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-(--mws-muted)">
+            It only goes ahead when the name in Google is the name here. The password is not shown, and the current one stops working straight away.
+          </p>
         </CrudDialog>
       ) : null}
 

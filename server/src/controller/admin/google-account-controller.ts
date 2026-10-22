@@ -17,6 +17,7 @@ type Kind = "employee" | "intern" | "student";
 
 const PROVISION = z.object({ recovery_email: recoveryEmail().optional() });
 const CHANGE_RECOVERY = z.object({ recovery_email: recoveryEmail() });
+const RESET_WAITING = z.object({ language: z.enum(["id", "en"]).default("id") });
 const SEND_SIGN_IN = z.object({
   to: recoveryEmail().optional(),
   language: z.enum(["id", "en"]),
@@ -208,6 +209,19 @@ export class GoogleAccountController {
       // Never cached: it is a password.
       c.header("Cache-Control", "no-store");
       return c.json({ data: { password } });
+    };
+  }
+
+  // The account waits for its owner: the password goes to the recovery email Google holds and is never returned here.
+  static resetWaiting(kind: Kind) {
+    return async (c: Context<{ Variables: AdminVariables }>) => {
+      assertProtectedSuperAdmin(c, "reset a Google password");
+      const personId = await personIdOf(kind, c.req.param("id"), c.var.admin);
+      const body = await c.req.json().catch(() => ({}));
+      const { language } = Validation.validate(RESET_WAITING, body);
+      const result = await GoogleWorkspaceService.resetWaiting(personId, c.var.admin, { language }, getAuditRequestContext(c));
+      c.header("Cache-Control", "no-store");
+      return c.json({ data: result });
     };
   }
 
