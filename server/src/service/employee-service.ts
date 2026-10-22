@@ -1038,7 +1038,7 @@ export class EmployeeService {
         };
       });
       // The first password is mailed at once, so the admin does not see it unless the mail could not be sent.
-      google = await GoogleWorkspaceService.deliverFirstPassword(google, createdPersonId, { to: createRequest.recovery_email }, admin, context);
+      google = await GoogleWorkspaceService.deliverFirstPassword(google, createdPersonId, { to: createRequest.recovery_email, language: createRequest.email_language }, admin, context);
     }
 
     return { ...toEmployeeResponse(personWithRelations, admin), ...(google && { google }) };

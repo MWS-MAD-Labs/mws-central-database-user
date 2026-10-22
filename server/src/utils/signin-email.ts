@@ -1,3 +1,4 @@
+import { signInAttachments } from "./mail-assets";
 import { renderSignInHtml } from "./signin-email-html";
 
 export type SignInLanguage = "id" | "en";
@@ -7,9 +8,9 @@ type Details = { name: string; email: string; password: string; parentName?: str
 
 // The mail the server sends for a new Google account. Written here, never taken from the browser, so the endpoint
 // cannot be used to send arbitrary text. The WhatsApp text is the same words, written in the client for editing.
-export function signInEmail(language: SignInLanguage, { name, email, password, parentName }: Details): { subject: string; text: string; html: string } {
+export function signInEmail(language: SignInLanguage, { name, email, password, parentName }: Details): { subject: string; text: string; html: string; attachments: ReturnType<typeof signInAttachments> } {
   const mail = signInEmailText(language, { name, email, password, parentName });
-  return { ...mail, html: renderSignInHtml({ kind: parentName ? "parent" : "new", language, name, email, password, parentName }) };
+  return { ...mail, html: renderSignInHtml({ kind: parentName ? "parent" : "new", language, name, email, password, parentName }), attachments: signInAttachments() };
 }
 
 function signInEmailText(language: SignInLanguage, { name, email, password, parentName }: Details): { subject: string; text: string } {
@@ -55,9 +56,9 @@ function signInEmailText(language: SignInLanguage, { name, email, password, pare
 }
 
 // The mail for a password that was reset on an account that already existed. Sent to its recovery email.
-export function resetPasswordEmail(language: SignInLanguage, details: Omit<Details, "parentName">): { subject: string; text: string; html: string } {
+export function resetPasswordEmail(language: SignInLanguage, details: Omit<Details, "parentName">): { subject: string; text: string; html: string; attachments: ReturnType<typeof signInAttachments> } {
   const mail = resetPasswordText(language, details);
-  return { ...mail, html: renderSignInHtml({ kind: "reset", language, ...details }) };
+  return { ...mail, html: renderSignInHtml({ kind: "reset", language, ...details }), attachments: signInAttachments() };
 }
 
 function resetPasswordText(language: SignInLanguage, { name, email, password }: Omit<Details, "parentName">): { subject: string; text: string } {

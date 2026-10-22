@@ -12,6 +12,7 @@ import { googleAccountApi } from "../api/googleAccountApi.js";
 import { recoveryEmailProblem, recoveryHint } from "../utils/instructions.js";
 import { GoogleInstructionsDialog } from "./GoogleInstructionsDialog.jsx";
 import { GoogleShareDialog } from "./GoogleShareDialog.jsx";
+import { EmailLanguageField } from "./EmailLanguageField.jsx";
 import { CooldownButton } from "./CooldownButton.jsx";
 
 // What the last Check found, in a sentence. Nothing is claimed that Google did not say.
@@ -100,6 +101,7 @@ function passwordNote(status) {
 export function GoogleAccountRow({ resource, id, email, name = "" }) {
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState(null);
+  const [resetLanguage, setResetLanguage] = useState("id");
   const [recoveryEmail, setRecoveryEmail] = useState("");
   // For a student the account is made for one of the parents or guardians, chosen here, never typed.
   const [guardianId, setGuardianId] = useState("");
@@ -156,7 +158,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
   });
 
   const reset = useMutation({
-    mutationFn: () => googleAccountApi.resetPassword(resource, id, isStudent && chosenGuardian ? { parent_id: chosenGuardian.id } : {}),
+    mutationFn: () => googleAccountApi.resetPassword(resource, id, { language: resetLanguage, ...(isStudent && chosenGuardian ? { parent_id: chosenGuardian.id } : {}) }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey });
       if (result.sent_to) {
@@ -663,10 +665,13 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
             </>
           }
         >
+          <div className="space-y-4">
+          <EmailLanguageField name="reset_email_language" value={resetLanguage} onChange={setResetLanguage} />
           <p className="text-sm text-(--mws-muted)">
             The current password stops working straight away.
             {isStudent && chosenGuardian ? ` It goes to ${chosenGuardian.full_name} (${chosenGuardian.email_hint}).` : ""} It is shown here only if the email cannot be sent.
           </p>
+          </div>
         </CrudDialog>
       ) : null}
 

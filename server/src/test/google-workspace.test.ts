@@ -458,6 +458,23 @@ describe("google workspace accounts", () => {
       expect(await sentStatus(notMailed.json.data.id)).toBe(false);
     });
 
+    it("writes the mail in the language chosen, Indonesian when none is", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const english = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com", email_language: "en" });
+      expect(english.json.data.google.delivered_to).toBe("r***@gmail.com");
+      expect(mailer.outbox[0].subject).toBe("Your Millennia Google account is ready");
+      expect(mailer.outbox[0].html).toContain("Sign in to Google");
+      expect(mailer.outbox[0].attachments?.[0].cid).toBe("millennia-logo");
+
+      await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      expect(mailer.outbox[1].subject).toBe("Akun Google Millennia kamu sudah siap");
+
+      await letTimePass(english.json.data.id);
+      const reset = await TestRequest.post(`/api/admin/employees/${english.json.data.id}/google/reset-password`, { language: "en" }, accessToken);
+      expect((await reset.json()).data).toEqual({ sent_to: "r***@gmail.com" });
+      expect(mailer.outbox[2].subject).toBe("The password of your Millennia Google account was reset");
+    });
+
     it("mails a reset password to the recovery email Google holds, and shows it only when it cannot", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       mailer.enabled = false;

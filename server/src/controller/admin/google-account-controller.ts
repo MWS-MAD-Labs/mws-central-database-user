@@ -25,6 +25,8 @@ const SEND_SIGN_IN = z.object({
 });
 // A student's details go to a parent or guardian Central already holds, chosen from the list, never typed.
 const STUDENT_PROVISION = z.object({ parent_id: z.string().min(1).optional() });
+// A new password is mailed at once: to a student's parent when there is one, in the language the admin chose.
+const RESET_PASSWORD = z.object({ parent_id: z.string().min(1).optional(), language: z.enum(["id", "en"]).default("id") });
 const STUDENT_SEND_SIGN_IN = z.object({
   parent_id: z.string().min(1),
   language: z.enum(["id", "en"]),
@@ -220,11 +222,12 @@ export class GoogleAccountController {
       const personId = target.personId;
       const context = getAuditRequestContext(c);
       const body = await c.req.json().catch(() => ({}));
+      const resetInput = Validation.validate(RESET_PASSWORD, body);
       // A student's new password goes to the parent or guardian chosen from the student's own, the default being the
       // primary one with an email. Anyone else's goes to the recovery email Google holds.
       let guardian: Awaited<ReturnType<typeof guardianOf>> | null = null;
       if (target.studentId) {
-        guardian = await guardianOf(target.studentId, Validation.validate(STUDENT_PROVISION, body).parent_id).catch(() => null);
+        guardian = await guardianOf(target.studentId, resetInput.parent_id).catch(() => null);
       }
       const { password } = await GoogleWorkspaceService.resetPassword(personId, c.var.admin, context);
       // Never cached: it is a password.
@@ -235,6 +238,7 @@ export class GoogleAccountController {
         {
           password,
           reset: true,
+          language: resetInput.language,
           ...(guardian ? { to: guardian.email, parentName: guardian.full_name } : {}),
           // A student with nobody to send to is not sent to Google's recovery email either.
           ...(target.studentId && !guardian ? { to: "" } : {}),

@@ -1006,7 +1006,7 @@ export class StudentService {
       google = await GoogleWorkspaceService.deliverFirstPassword(
         google,
         newPerson.id,
-        { to: createRequest.parent.email, parentName: createRequest.parent.full_name },
+        { to: createRequest.parent.email, parentName: createRequest.parent.full_name, language: createRequest.email_language },
         admin,
         context,
       );

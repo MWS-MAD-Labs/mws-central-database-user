@@ -63,6 +63,8 @@ export type CreateEmployeeRequest = {
   recovery_email?: string;
   // The email already has a Google account: link it when its owner signs in, instead of making one.
   claim_existing_google?: boolean;
+  // The language of the mail that carries the first password. Indonesian unless said otherwise.
+  email_language?: "id" | "en";
   gender: Gender;
   religion: Religion;
   // Only meaningful when religion is OTHER.

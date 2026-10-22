@@ -2,6 +2,7 @@ import { recoveryEmailProblem, recoveryHint } from "../../google/utils/instructi
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
 import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx";
 import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
+import { EmailLanguageField } from "../../google/components/EmailLanguageField.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
@@ -775,6 +776,9 @@ export function EmployeeForm({
                   onChange={(value) => updateValue("recovery_email_confirm", value)}
                 />
               ) : null}
+              {!noGoogle ? (
+                <EmailLanguageField className="md:col-span-2" value={values.email_language} onChange={(value) => updateValue("email_language", value)} />
+              ) : null}
               </div>
             ) : null}
             {!isCreate ? (
@@ -1546,6 +1550,7 @@ function getInitialValues(mode, employee, options) {
     email_local: emailLocalPart(identity.email),
     recovery_email: "",
     recovery_email_confirm: "",
+    email_language: "id",
     gender: identity.gender || "",
     religion: identity.religion || "",
     religion_other: identity.religion_other || "",
@@ -1623,6 +1628,7 @@ function buildPayload(
   if (claiming) payload.claim_existing_google = true;
   // An email is changed only by Change Email, never by saving the form.
   if (!isCreate) delete payload.email;
+  if (isCreate && !noGoogle) payload.email_language = values.email_language;
   if (!includeSensitive) {
     // Never revealed means never loaded: leave those fields out so nothing is overwritten.
     for (const key of SENSITIVE_VALUE_KEYS) delete payload[key];
@@ -1872,7 +1878,7 @@ const EMPLOYEE_FIELD_FORMATTERS = {
 // itself saved either, but it does decide whether kpj_number or
 // bpjs_employment_number gets sent, so it's kept (with a plain-language
 // label) rather than hidden.
-const EMPLOYEE_DIFF_EXCLUDED_KEYS = ["contract_duration_months", "recovery_email_confirm"];
+const EMPLOYEE_DIFF_EXCLUDED_KEYS = ["contract_duration_months", "recovery_email_confirm", "email_language"];
 
 const EMPLOYEE_DIFF_LABELS = {
   ...REQUIRED_FIELD_LABELS,

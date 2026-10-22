@@ -94,6 +94,9 @@ describe('EmployeeForm', () => {
   it('submits a valid normalized create payload', async () => {
     setSystemTime(new Date('2026-09-17T12:00:00.000Z'))
     const { user, onSubmit } = renderEmployeeForm({ mode: 'create' })
+    // The mail is Indonesian unless English is picked.
+    expect(screen.getByRole('radio', { name: 'Bahasa Indonesia' })).toBeChecked()
+    await user.click(screen.getByRole('radio', { name: 'English' }))
 
     await user.type(field('full_name').querySelector('input'), 'ari employee')
     await user.type(field('nick_name').querySelector('input'), 'ari')
@@ -134,6 +137,7 @@ describe('EmployeeForm', () => {
       nick_name: 'Ari',
       email: 'ari.employee@millennia21.id',
       recovery_email: 'ari+pribadi@gmail.com',
+      email_language: 'en',
       gender: 'MALE',
       religion: 'ISLAM',
       religion_other: null,

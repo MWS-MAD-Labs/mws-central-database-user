@@ -1,7 +1,8 @@
 import nodemailer, { type Transporter } from "nodemailer";
 
 // `html` is the designed version of the same mail; `text` always goes with it for the apps that show no page.
-export type OutgoingMail = { to: string; subject: string; text: string; html?: string };
+export type MailAttachment = { filename: string; content: Buffer; cid: string; contentType: string };
+export type OutgoingMail = { to: string; subject: string; text: string; html?: string; attachments?: MailAttachment[] };
 
 export interface Mailer {
   // False when no SMTP is set up, so the page can say so instead of failing.
@@ -27,7 +28,9 @@ class SmtpMailer implements Mailer {
   }
 
   async send(mail: OutgoingMail): Promise<void> {
-    await this.transport.sendMail({ from: this.from, to: mail.to, subject: mail.subject, text: mail.text, ...(mail.html ? { html: mail.html } : {}) });
+    await this.transport.sendMail({ from: this.from, to: mail.to, subject: mail.subject, text: mail.text, ...(mail.html ? { html: mail.html } : {}),
+      ...(mail.attachments?.length ? { attachments: mail.attachments } : {}),
+    });
   }
 }
 

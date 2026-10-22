@@ -92,6 +92,8 @@ export type CreateStudentRequest = {
   legacy_nis?: string;
   // The email already has a Google account: a Super Admin links it later, for a legacy student only.
   claim_existing_google?: boolean;
+  // The language of the mail that carries the first password. Indonesian unless said otherwise.
+  email_language?: "id" | "en";
   nisn?: string;
   // Preserve imported NISN values that do not match the current format.
   legacy_nisn?: string;

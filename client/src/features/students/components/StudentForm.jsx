@@ -6,6 +6,7 @@ import { Camera, UserRound } from "lucide-react";
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
 import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx";
 import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
+import { EmailLanguageField } from "../../google/components/EmailLanguageField.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { Button } from "../../../components/ui/Button.jsx";
 import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
@@ -876,7 +877,7 @@ export function StudentForm({
                 error={errors.parent_email_confirm}
                 onChange={(value) => updateValue("parent_email_confirm", value)}
               />
-              <Field label="Phone" name="parent_phone" error={errors.parent_phone} hint="Optional. Used to send the details on WhatsApp.">
+              <Field label="Phone" name="parent_phone" error={errors.parent_phone} hint="Optional. For sending the details on WhatsApp if the email does not arrive.">
                 <TextInput
                   type="tel"
                   maxLength={16}
@@ -886,6 +887,9 @@ export function StudentForm({
                   onChange={(event) => updateValue("parent_phone", phoneDigitsOnly(event.target.value))}
                 />
               </Field>
+              {!values.is_legacy && !claiming ? (
+                <EmailLanguageField className="md:col-span-2" value={values.email_language} onChange={(value) => updateValue("email_language", value)} />
+              ) : null}
             </div>
           </section>
         ) : null}
@@ -997,6 +1001,7 @@ function getInitialValues(mode, student, options) {
     parent_name: "",
     parent_email: "",
     parent_email_confirm: "",
+    email_language: "id",
     parent_phone: "",
   };
 }
@@ -1012,6 +1017,7 @@ function buildPayload(values, { includeBirth = true, isCreate = false, claiming 
   if (claiming) payload.claim_existing_google = true;
   // An email is changed only by Change Email, never by saving the form.
   if (!isCreate) delete payload.email;
+  if (isCreate) payload.email_language = values.email_language;
   if (isCreate) {
     payload.parent = cleanPayload({
       type: values.parent_type,
@@ -1145,7 +1151,7 @@ const STUDENT_FIELD_FORMATTERS = {
 // than relying on it happening to never change. is_legacy isn't saved
 // either, but it does decide whether legacy_nis/status get sent, so it's
 // kept with a plain-language label instead of hidden.
-const STUDENT_DIFF_EXCLUDED_KEYS = ["nis", "parent_email_confirm"];
+const STUDENT_DIFF_EXCLUDED_KEYS = ["nis", "parent_email_confirm", "email_language"];
 
 const STUDENT_DIFF_LABELS = {
   ...REQUIRED_FIELD_LABELS,

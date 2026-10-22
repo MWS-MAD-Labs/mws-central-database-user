@@ -2,6 +2,7 @@ import { recoveryEmailProblem, recoveryHint } from "../../google/utils/instructi
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
 import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx";
 import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
+import { EmailLanguageField } from "../../google/components/EmailLanguageField.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
@@ -250,7 +251,7 @@ export function InternForm({
         labels: INTERN_DIFF_LABELS,
         resolveValue,
         sections: INTERN_FIELD_SECTIONS,
-        excludeKeys: ["contract_duration_months", "recovery_email_confirm"],
+        excludeKeys: ["contract_duration_months", "recovery_email_confirm", "email_language"],
       });
       // The first password is emailed to the recovery email at once, so a slip there loses it or gives it to a stranger.
       const mailsPassword = !noGoogle && Boolean(values.recovery_email);
@@ -431,6 +432,9 @@ export function InternForm({
                   error={errors.recovery_email_confirm}
                   onChange={(value) => updateValue("recovery_email_confirm", value)}
                 />
+              ) : null}
+              {!noGoogle ? (
+                <EmailLanguageField className="md:col-span-2" value={values.email_language} onChange={(value) => updateValue("email_language", value)} />
               ) : null}
               </div>
             ) : null}
@@ -759,6 +763,7 @@ function getInitialValues(mode, intern, options) {
     email_local: emailLocalPart(identity.email),
     recovery_email: "",
     recovery_email_confirm: "",
+    email_language: "id",
     gender: identity.gender || "",
     religion: identity.religion || "",
     religion_other: identity.religion_other || "",
@@ -804,6 +809,7 @@ function buildPayload(values, canEditContactPii, { includeIdentity = true, noGoo
   const payload = buildFullPayload(values, canEditContactPii);
   // An email is changed only by Change Email, never by saving the form.
   if (!isCreate) delete payload.email;
+  if (isCreate && !noGoogle) payload.email_language = values.email_language;
   if (noGoogle) delete payload.recovery_email;
   if (claiming) payload.claim_existing_google = true;
   // Never revealed means never loaded: leave them out so nothing is overwritten.
