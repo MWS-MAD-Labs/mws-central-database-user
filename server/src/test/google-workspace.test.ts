@@ -31,7 +31,7 @@ import {
   type DirectoryUser,
   type UpdateDirectoryUser,
 } from "../lib/google-workspace/directory-client";
-import { GoogleWorkspaceService, generateTemporaryPassword, resetSignInEmailLimitForTests, splitName } from "../service/google-workspace-service";
+import { GoogleWorkspaceService, generateTemporaryPassword, resetCheckCooldownForTests, resetSignInEmailLimitForTests, splitName } from "../service/google-workspace-service";
 import { detectImageMimeType } from "../utils/image-processing";
 import sharp from "sharp";
 
@@ -172,6 +172,7 @@ describe("google workspace accounts", () => {
   // The few minutes a new password and a new mail wait for the same person, taken as passed.
   const letTimePass = async (employeeId: string) => {
     const person = await personOf(employeeId);
+    resetCheckCooldownForTests();
     const earlier = new Date(Date.now() - 10 * 60_000);
     await prismaClient.person.update({ where: { id: person.id }, data: { google_password_issued_at: earlier } });
     // Checked a minute ago: past the wait, and still fresh enough that the page does not look at Google again by itself.
@@ -239,6 +240,25 @@ describe("google workspace accounts", () => {
       await letTimePass(json.data.id);
       return json.data.id as string;
     };
+
+    it("does not start the wait when the page looks at Google by itself, only when Check is pressed", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await made(accessToken);
+      // The last look is old, so opening the page makes the server look again on its own.
+      const person = await personOf(id);
+      await prismaClient.person.update({ where: { id: person.id }, data: { google_checked_at: new Date(Date.now() - 10 * 60_000) } });
+      const opened = (await (await TestRequest.get(statusUrl(id), accessToken)).json()).data;
+      expect(opened.check).toBeUndefined();
+      expect(opened.check_available_at).toBeNull();
+      expect((await personOf(id)).google_checked_at!.getTime()).toBeGreaterThan(Date.now() - 5000);
+
+      // The first press goes through, the next one is held.
+      expect((await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken)).status).toBe(200);
+      expect((await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken)).status).toBe(429);
+      // Opening the page again does not extend or restart it.
+      const again = (await (await TestRequest.get(statusUrl(id), accessToken)).json()).data;
+      expect(Date.parse(again.check_available_at)).toBeGreaterThan(Date.now());
+    });
 
     it("makes Check wait ten seconds, says what it found, and tells the page when it may be pressed again", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);

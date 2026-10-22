@@ -114,7 +114,7 @@ The other actions on a Google account wait too, per person, in `GOOGLE_COOLDOWN_
 
 | Action | Waits | Read from |
 |---|---|---|
-| Check Google | 10 seconds | `google_checked_at` (the automatic look at Google counts too) |
+| Check Google | 10 seconds | the last press of Check, kept in the server's memory. The page looking at Google by itself when it opens does not count |
 | Suspend, Unsuspend | 30 seconds | the last suspend or unsuspend in the audit log |
 | Add or Change Recovery Email | 1 minute | the last recovery email entry in the audit log |
 | Make Temporary Password | 2 minutes | `google_password_issued_at` |

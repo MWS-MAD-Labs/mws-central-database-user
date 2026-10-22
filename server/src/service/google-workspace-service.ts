@@ -47,8 +47,22 @@ type CooldownPerson = {
   id: string;
   person_type: PersonType;
   google_password_issued_at: Date | null;
-  google_checked_at?: Date | null;
 };
+
+// When Check was last pressed, per person. Only a press counts: the page looking at Google by itself when it opens
+// does not, or the button would be waiting before anyone touched it. The wait is a few seconds, so keeping this in the
+// process is enough and a restart forgets nothing that matters.
+const checkPressedAt = new Map<string, number>();
+
+function markCheckPressed(personId: string): void {
+  const now = Date.now();
+  for (const [id, at] of checkPressedAt) {
+    if (now - at > GOOGLE_COOLDOWN_SECONDS.check * 1000) checkPressedAt.delete(id);
+  }
+  checkPressedAt.set(personId, now);
+}
+
+export const resetCheckCooldownForTests = () => checkPressedAt.clear();
 
 // When each action is next allowed for this person (null: now), from the last time it was done. The password and the
 // check come from the person, the rest from the audit log, so a restart of the server does not forget them.
@@ -78,7 +92,7 @@ async function nextActionAllowedAt(person: CooldownPerson): Promise<Record<Coold
     return at.getTime() > Date.now() ? at : null;
   };
   return {
-    check: after(person.google_checked_at, "check"),
+    check: after(checkPressedAt.has(person.id) ? new Date(checkPressedAt.get(person.id)!) : null, "check"),
     suspend: after(lastSuspend?.created_at, "suspend"),
     recovery: after(lastRecovery?.created_at, "recovery"),
     password: after(person.google_password_issued_at, "password"),
@@ -90,7 +104,7 @@ async function nextActionAllowedAt(person: CooldownPerson): Promise<Record<Coold
 async function cooldownPerson(person: { id: string; person_type: PersonType }): Promise<CooldownPerson> {
   const row = await prismaClient.person.findUnique({
     where: { id: person.id },
-    select: { google_password_issued_at: true, google_checked_at: true },
+    select: { google_password_issued_at: true },
   });
   return { id: person.id, person_type: person.person_type, ...row, google_password_issued_at: row?.google_password_issued_at ?? null };
 }
@@ -1152,6 +1166,7 @@ export class GoogleWorkspaceService {
     let check: CheckResult | undefined;
     if (person.google_user_id && options.refresh) {
       await assertNotWaiting(person, "check", (wait) => `Google was checked a moment ago. Wait ${wait} to check again`);
+      markCheckPressed(personId);
     }
     if (person.google_user_id && (options.refresh || stale)) {
       const before = person;
