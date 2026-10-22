@@ -112,3 +112,42 @@ describe("changing an email", () => {
     expect(JSON.stringify(await response.json())).toContain("also an admin");
   });
 });
+
+describe("checking an Employee ID before it is used", () => {
+  let master: Awaited<ReturnType<typeof MasterDataTest.create>>;
+
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    master = await MasterDataTest.create();
+  });
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  const ask = async (id: string, token: string) =>
+    (await TestRequest.get(`/api/admin/employees/id-availability?employee_id=${encodeURIComponent(id)}`, token));
+
+  it("says an ID is free, used, used by an archived employee, or not an ID at all", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+    const person = await EmployeeTest.create({
+      email: "test_idcheck@millennia21.id", unitId: master.unit.id, jobPositionId: master.position.id,
+      jobLevelId: master.level.id, buildingId: master.building.id, employeeId: "99.99.771",
+    });
+    expect((await (await ask("99.99.772", accessToken)).json()).data).toMatchObject({ available: true, reason: "FREE" });
+    expect((await (await ask("99.99.771", accessToken)).json()).data).toMatchObject({ available: false, reason: "IN_USE" });
+    await prismaClient.employee.update({ where: { id: person.employee!.id }, data: { status: "ARCHIVED" } });
+    expect((await (await ask("99.99.771", accessToken)).json()).data).toMatchObject({ available: false, reason: "ARCHIVED" });
+    expect((await (await ask("9999771", accessToken)).json()).data).toMatchObject({ available: false, reason: "INVALID" });
+  });
+
+  it("is for whoever may create employees only", async () => {
+    const viewer = await AdminUserTest.createViewer(master.unit.id);
+    expect((await ask("99.99.772", viewer.accessToken)).status).toBe(403);
+  });
+});

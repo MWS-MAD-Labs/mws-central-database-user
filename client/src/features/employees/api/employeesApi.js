@@ -60,6 +60,12 @@ export const employeesApi = {
   ...createCrudApi('/api/admin/employees'),
   ...createBulkCrudApi('/api/admin/employees'),
 
+  // Whether an Employee ID is free, asked once the whole ID is typed.
+  async idAvailability(employeeId) {
+    const response = await apiRequest(`/api/admin/employees/id-availability?employee_id=${encodeURIComponent(employeeId)}`)
+    return response.data
+  },
+
   async bulkUpdate(ids, payload) {
     const response = await apiRequest('/api/admin/employees/bulk/update', {
       method: 'PATCH',

@@ -27,6 +27,7 @@ function renderEmployeeForm({
   isSubmitting = false,
   myRequests = [],
   availability = { available: true, reason: 'FREE', message: 'Available' },
+  idAvailability = { available: true, reason: 'FREE', message: 'Available' },
 } = {}) {
   globalThis.fetch = mock(async (url) => {
     if (url.includes('/identifier-change-requests/mine')) {
@@ -34,6 +35,9 @@ function renderEmployeeForm({
     }
     if (url.includes('/email-availability')) {
       return jsonResponse(availability)
+    }
+    if (url.includes('/id-availability')) {
+      return jsonResponse(idAvailability)
     }
     if (url.includes('/education-suggestions')) {
       return jsonResponse({ institution_names: [], majors: [] })
@@ -262,6 +266,22 @@ describe('EmployeeForm', () => {
     expect(field('email_local').querySelector('input')).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Change email' })).not.toBeInTheDocument()
     expect(screen.getByText('Only a Super Admin can change an email.')).toBeVisible()
+  })
+
+  it('says right away that an Employee ID is used, and does not let the form pass with it', async () => {
+    const { user, onSubmit } = renderEmployeeForm({ mode: 'create', idAvailability: { available: false, reason: 'IN_USE', message: 'This Employee ID is already used' } })
+    await user.type(field('employee_id').querySelector('input'), '1111111')
+    expect(await screen.findByText('This Employee ID is already used')).toBeVisible()
+    fireEvent.submit(document.querySelector('form'))
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('does not ask about an Employee ID until the whole ID is typed', async () => {
+    const { user } = renderEmployeeForm({ mode: 'create' })
+    await user.type(field('employee_id').querySelector('input'), '11111')
+    expect(globalThis.fetch.mock.calls.some(([url]) => String(url).includes('id-availability'))).toBe(false)
+    await user.type(field('employee_id').querySelector('input'), '11')
+    expect(await screen.findByText('Available')).toBeVisible()
   })
 
   it('keeps the form from saving a new email until it is checked', async () => {

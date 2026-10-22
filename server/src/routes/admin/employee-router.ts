@@ -22,6 +22,7 @@ employeeRouter.get("/", EmployeeController.search);
 // Must come before /:id - otherwise Hono matches "export"/"import" as the :id param.
 employeeRouter.get("/export", (c) => ExportController.exportEmployees(c));
 employeeRouter.get("/count-total", (c) => EmployeeController.countTotal(c));
+employeeRouter.get("/id-availability", (c) => EmployeeController.idAvailability(c));
 employeeRouter.get("/version", (c) => EmployeeController.getVersion(c));
 employeeRouter.get("/education-suggestions", (c) =>
   EmployeeController.getEducationSuggestions(c),

@@ -4,6 +4,7 @@ import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx
 import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
 import { EmailLanguageField } from "../../google/components/EmailLanguageField.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
+import { useEmployeeIdCheck } from "../hooks/useEmployeeIdCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -230,6 +231,8 @@ export function EmployeeForm({
     },
   );
   const claiming = emailCheck.state === "claimable" && claimExisting;
+  // A taken Employee ID shows as soon as the whole ID is typed.
+  const idCheck = useEmployeeIdCheck(values.employee_id, { enabled: isCreate });
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [lastWorkingDateIncomplete, setLastWorkingDateIncomplete] =
@@ -322,6 +325,10 @@ export function EmployeeForm({
     event.preventDefault();
     if (emailCheck.blocked) {
       showErrorToast(emailCheck.message || "Check the email before saving.");
+      return;
+    }
+    if (idCheck.blocked) {
+      showErrorToast(idCheck.message);
       return;
     }
     setHasAttemptedSubmit(true);
@@ -912,7 +919,11 @@ export function EmployeeForm({
               name="employee_id"
               error={errors.employee_id}
               required
-              hint="Format: 11.11.111"
+              hint={
+                idCheck.message ? (
+                  <span className={idCheck.state === "free" ? "text-[#476b43]" : "font-medium text-[#a43c41]"}>{idCheck.message}</span>
+                ) : undefined
+              }
               counter={{ value: values.employee_id, max: 7 }}
             >
               <TextInput
@@ -1489,10 +1500,12 @@ export function EmployeeForm({
               isSubmitting ||
               missingRequiredCount > 0 ||
               emailCheck.blocked ||
+              idCheck.blocked ||
               (!isCreate && !isDirty)
             }
             title={
               (emailCheck.blocked ? emailCheck.message : undefined) ||
+              (idCheck.blocked ? idCheck.message : undefined) ||
               buildFixFieldsTooltip(allErrors) ||
               (!isCreate && !isDirty ? "No changes to save yet." : undefined)
             }

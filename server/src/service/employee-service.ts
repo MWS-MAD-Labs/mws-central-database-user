@@ -2211,6 +2211,29 @@ export class EmployeeService {
 
   // Deliberately unscoped by unit/role - dashboard summary card only, no
   // employee detail is exposed, just a headcount.
+  // Whether an Employee ID can be given to a new employee, before the form is saved. The create still checks again.
+  static async checkEmployeeId(
+    admin: AdminUser,
+    rawId: string,
+  ): Promise<{ available: boolean; reason: "FREE" | "IN_USE" | "ARCHIVED" | "INVALID"; message: string }> {
+    if (admin.role === AdminRole.VIEWER || (admin.role === AdminRole.DATABASE_ADMIN && !admin.can_write_employee_data)) {
+      throw new ResponseError(403, "Forbidden: You don't have permission to create employees");
+    }
+    const employeeId = rawId.trim();
+    if (!/^\d{2}\.\d{2}\.\d{3}$/.test(employeeId)) {
+      return { available: false, reason: "INVALID", message: "Use the format 11.11.111" };
+    }
+    const holder = await prismaClient.employee.findFirst({
+      where: { employee_id: employeeId },
+      select: { deleted_at: true, status: true },
+    });
+    if (!holder) return { available: true, reason: "FREE", message: "Available" };
+    const archived = Boolean(holder.deleted_at) || holder.status === EmployeeStatus.ARCHIVED;
+    return archived
+      ? { available: false, reason: "ARCHIVED", message: "Used by an archived employee. Restore them instead" }
+      : { available: false, reason: "IN_USE", message: "This Employee ID is already used" };
+  }
+
   static async countTotal(): Promise<number> {
     return prismaClient.person.count({
       where: {
