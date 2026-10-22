@@ -250,4 +250,20 @@ describe("the Google account of a student", () => {
     await letTimePass(id);
     expect((await TestRequest.post(url(id, "/reset-password"), {}, accessToken)).status).toBe(400);
   });
+
+  it("is not given to a new student whose email Google already has, and not to one renamed onto such an email", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+    google.users.set("taken", {
+      id: "taken", primaryEmail: "test_google_taken@millennia21.id", givenName: "A", familyName: "B",
+      suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
+    });
+    await expect(makeStudent(accessToken, { email: "test_google_taken@millennia21.id" })).rejects.toThrow();
+    expect(await prismaClient.person.count({ where: { email: "test_google_taken@millennia21.id" } })).toBe(0);
+
+    const id = await makeStudent(accessToken);
+    expect((await TestRequest.post(url(id, "/provision"), {}, accessToken)).status).toBe(200);
+    const renamed = await TestRequest.patch(`/api/admin/students/${id}`, { email: "test_google_taken@millennia21.id" }, accessToken);
+    expect(renamed.status).toBe(400);
+    expect((await personOf(id)).email).not.toBe("test_google_taken@millennia21.id");
+  });
 });

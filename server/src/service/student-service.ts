@@ -1,4 +1,5 @@
 import { ResponseError } from "../error/response-error";
+import { GoogleWorkspaceService } from "./google-workspace-service";
 import {
   AcademicYearStatus,
   AdminRole,
@@ -609,6 +610,10 @@ export class StudentService {
 
     if (options.requireParentContact && !createRequest.parent) {
       throw new ResponseError(400, "A parent or guardian with an email is required");
+    }
+    // Only the form sets this flag. A Google that already has the email, or would not take it, stops the create here.
+    if (options.requireParentContact) {
+      await GoogleWorkspaceService.assertCanCreate(createRequest.email);
     }
 
     const initialStatus = createRequest.status ?? StudentStatus.REGISTERED;
@@ -1476,6 +1481,9 @@ export class StudentService {
 
     const emailChanged =
       updateRequest.email && updateRequest.email !== existing.email;
+    if (emailChanged) {
+      await GoogleWorkspaceService.assertCanChangeEmail(existing.id, updateRequest.email!);
+    }
     const nisnChanged =
       updateRequest.nisn && updateRequest.nisn !== existing.student.nisn;
     const nisnOverwritten = nisnChanged && existing.student.nisn !== null;

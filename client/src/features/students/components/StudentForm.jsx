@@ -3,6 +3,8 @@ import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Camera, UserRound } from "lucide-react";
+import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
+import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { Button } from "../../../components/ui/Button.jsx";
 import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
 import { ChangeReviewTable } from "../../../components/ui/ChangeReviewTable.jsx";
@@ -133,6 +135,13 @@ export function StudentForm({
   );
 
   const isCreate = mode === "create";
+  // A new or changed email has to pass the Check button before the form can be saved.
+  const emailCheck = useEmailCheck(
+    values.email_local ? `${values.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
+    {
+      initialEmail: !isCreate && initialValues.email_local ? `${initialValues.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
+    },
+  );
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const allErrors = useMemo(
@@ -240,6 +249,10 @@ export function StudentForm({
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (emailCheck.blocked) {
+      showErrorToast(emailCheck.message || "Check the email before saving.");
+      return;
+    }
     setHasAttemptedSubmit(true);
 
     const computedErrors = computeStudentErrors(values, isCreate);
@@ -393,6 +406,7 @@ export function StudentForm({
               domain={ALLOWED_EMAIL_DOMAIN}
               max={EMAIL_LOCAL_MAX_LENGTH}
               sanitize={sanitizeEmailLocalPart}
+              note={<EmailCheckNote check={emailCheck} />}
               values={values}
               errors={errors}
               updateValue={updateValue}
@@ -849,9 +863,11 @@ export function StudentForm({
             disabled={
               isSubmitting ||
               missingRequiredCount > 0 ||
+              emailCheck.blocked ||
               (!isCreate && !isDirty)
             }
             title={
+              (emailCheck.blocked ? emailCheck.message : undefined) ||
               buildFixFieldsTooltip(allErrors) ||
               (!isCreate && !isDirty ? "No changes to save yet." : undefined)
             }
