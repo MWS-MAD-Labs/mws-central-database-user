@@ -580,7 +580,7 @@ export class GoogleWorkspaceService {
         personId,
         {
           to,
-          language: input.language ?? "id",
+          language: input.language ?? "en",
           password: input.password,
           ...(input.parentName ? { parentName: input.parentName } : {}),
           ...(input.reset ? { reset: true } : {}),

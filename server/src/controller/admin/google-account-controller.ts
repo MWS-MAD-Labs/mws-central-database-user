@@ -17,7 +17,7 @@ type Kind = "employee" | "intern" | "student";
 
 const PROVISION = z.object({ recovery_email: recoveryEmail().optional() });
 const CHANGE_RECOVERY = z.object({ recovery_email: recoveryEmail() });
-const RESET_WAITING = z.object({ language: z.enum(["id", "en"]).default("id") });
+const RESET_WAITING = z.object({ language: z.enum(["id", "en"]).default("en") });
 const SEND_SIGN_IN = z.object({
   to: recoveryEmail().optional(),
   language: z.enum(["id", "en"]),
@@ -26,7 +26,7 @@ const SEND_SIGN_IN = z.object({
 // A student's details go to a parent or guardian Central already holds, chosen from the list, never typed.
 const STUDENT_PROVISION = z.object({ parent_id: z.string().min(1).optional() });
 // A new password is mailed at once: to a student's parent when there is one, in the language the admin chose.
-const RESET_PASSWORD = z.object({ parent_id: z.string().min(1).optional(), language: z.enum(["id", "en"]).default("id") });
+const RESET_PASSWORD = z.object({ parent_id: z.string().min(1).optional(), language: z.enum(["id", "en"]).default("en") });
 const STUDENT_SEND_SIGN_IN = z.object({
   parent_id: z.string().min(1),
   language: z.enum(["id", "en"]),

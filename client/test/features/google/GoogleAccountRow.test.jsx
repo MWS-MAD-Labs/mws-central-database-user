@@ -301,12 +301,12 @@ describe('GoogleAccountRow', () => {
     ])
     await user.click(await screen.findByRole('button', { name: 'Make temporary password' }))
     const confirmDialog = await screen.findByRole('dialog', { name: 'Make Temporary Password' })
-    expect(within(confirmDialog).getByRole('radio', { name: 'Bahasa Indonesia' })).toBeChecked()
-    await user.click(within(confirmDialog).getByRole('radio', { name: 'English' }))
+    expect(within(confirmDialog).getByRole('radio', { name: 'English' })).toBeChecked()
+    await user.click(within(confirmDialog).getByRole('radio', { name: 'Bahasa Indonesia' }))
     await user.click(within(confirmDialog).getByRole('button', { name: 'Make' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/google/reset-password'))
-    expect(JSON.parse(call[1].body)).toMatchObject({ language: 'en' })
+    expect(JSON.parse(call[1].body)).toMatchObject({ language: 'id' })
   })
 
   it('says where the new password was mailed and shows no password when the server sent it', async () => {

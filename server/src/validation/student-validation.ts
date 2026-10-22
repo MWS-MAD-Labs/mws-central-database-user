@@ -105,7 +105,7 @@ export class StudentValidation {
     legacy_nis: z.string().max(50, "Legacy NIS is too long").optional(),
     // The email already has a Google account: a Super Admin links it later, for a legacy student only.
     claim_existing_google: z.boolean().optional(),
-    // The language of the mail that carries the first password. Indonesian unless said otherwise.
+    // The language of the mail that carries the first password. English unless said otherwise.
     email_language: z.enum(["id", "en"]).optional(),
     nisn: z
       .string()

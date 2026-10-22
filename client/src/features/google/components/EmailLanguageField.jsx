@@ -1,30 +1,39 @@
 import { Field } from '../../../components/ui/FormControls.jsx'
+import { cn } from '../../../lib/cn.js'
 
 const EMAIL_LANGUAGES = [
-  { id: 'id', label: 'Bahasa Indonesia' },
   { id: 'en', label: 'English' },
+  { id: 'id', label: 'Bahasa Indonesia' },
 ]
 
-// Which language the email that carries the first password is written in. Indonesian unless the admin picks English.
+// Which language the email that carries the first password is written in: a two-way toggle, English unless the admin
+// switches to Indonesian.
 export function EmailLanguageField({ value, onChange, name = 'email_language', className }) {
   return (
-    <Field label="Email Language" name={name} className={className} hint="The language of the email that carries the password.">
-      <div role="radiogroup" aria-label="Email language" className="flex flex-wrap gap-3">
-        {EMAIL_LANGUAGES.map((language) => (
-          <label
-            key={language.id}
-            className="flex cursor-pointer items-center gap-2 rounded-xl border border-(--mws-line) px-4 py-2.5 text-sm text-(--mws-charcoal)"
-          >
-            <input
-              type="radio"
-              name={`${name}-choice`}
-              className="accent-(--mws-burgundy)"
-              checked={value === language.id}
-              onChange={() => onChange(language.id)}
-            />
-            {language.label}
-          </label>
-        ))}
+    <Field label="Email Language" name={name} className={className}>
+      <div
+        role="radiogroup"
+        aria-label="Email language"
+        className="inline-flex rounded-xl border border-(--mws-line) bg-(--mws-soft) p-1"
+      >
+        {EMAIL_LANGUAGES.map((language) => {
+          const selected = value === language.id
+          return (
+            <button
+              key={language.id}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onChange(language.id)}
+              className={cn(
+                'cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold transition-colors',
+                selected ? 'bg-(--mws-burgundy) text-white shadow-sm' : 'text-(--mws-muted) hover:text-(--mws-charcoal)',
+              )}
+            >
+              {language.label}
+            </button>
+          )
+        })}
       </div>
     </Field>
   )

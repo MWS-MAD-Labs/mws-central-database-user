@@ -81,7 +81,9 @@ describe('checking an email with the button', () => {
     renderWithProviders(<Harness />)
     await userEvent.type(screen.getByLabelText('email'), 'ari@millennia21.id')
     await userEvent.click(screen.getByRole('button', { name: 'Check' }))
-    expect(await screen.findByText(/Not checked against Google/)).toBeVisible()
+    // A Google that is only simulated says nothing, and lets it through.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Check' })).not.toBeInTheDocument())
+    expect(screen.queryByText(/Not checked against Google/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled()
   })
 

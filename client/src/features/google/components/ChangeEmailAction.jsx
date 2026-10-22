@@ -10,8 +10,7 @@ export function ChangeEmailAction({ resource, id, currentEmail, name, canChange 
   }
   return (
     <>
-      <span className="flex w-full items-center justify-between gap-3">
-        <span className="text-xs text-(--mws-muted)">The email is locked. Changing it renames the Google account too.</span>
+      <span className="flex w-full items-center justify-end gap-3">
         <TextAction type="button" onClick={() => setOpen(true)}>
           Change email
         </TextAction>

@@ -84,7 +84,6 @@ export function ChangeEmailDialog({ resource, id, currentEmail, name, onClose })
           name="new_email_again"
           required
           error={mismatch ? 'The two emails do not match.' : undefined}
-          hint="Type it again."
         >
           <div className="flex min-w-0 items-stretch">
             <TextInput
@@ -101,7 +100,7 @@ export function ChangeEmailDialog({ resource, id, currentEmail, name, onClose })
             </span>
           </div>
         </Field>
-        <Field label="Reason" name="email_change_reason" required hint="Kept in the audit log. At least 5 characters.">
+        <Field label="Reason" name="email_change_reason" required>
           <TextAreaInput rows={3} value={reason} maxLength={200} onChange={(event) => setReason(event.target.value)} />
         </Field>
         <ul className="list-disc space-y-1 pl-5 text-sm text-(--mws-muted)">

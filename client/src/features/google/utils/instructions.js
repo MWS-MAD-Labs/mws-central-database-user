@@ -178,8 +178,6 @@ export function recoveryEmailProblem(recoveryEmail, accountEmail, emailProblem) 
 // are named as such.
 export function recoveryHint(recoveryEmail, problem, domain) {
   const value = (recoveryEmail || '').trim()
-  if (!value || problem) return 'Google sends the reset code here.'
-  return value.toLowerCase().endsWith(`@${domain}`)
-    ? 'An organization mailbox. Check the spelling.'
-    : 'Check the spelling. Nobody confirms it.'
+  if (!value || problem) return undefined
+  return value.toLowerCase().endsWith(`@${domain}`) ? 'An organization mailbox. Check the spelling.' : undefined
 }

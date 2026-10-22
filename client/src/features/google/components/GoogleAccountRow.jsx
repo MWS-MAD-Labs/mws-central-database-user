@@ -101,7 +101,7 @@ function passwordNote(status) {
 export function GoogleAccountRow({ resource, id, email, name = "" }) {
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState(null);
-  const [resetLanguage, setResetLanguage] = useState("id");
+  const [resetLanguage, setResetLanguage] = useState("en");
   const [recoveryEmail, setRecoveryEmail] = useState("");
   // For a student the account is made for one of the parents or guardians, chosen here, never typed.
   const [guardianId, setGuardianId] = useState("");

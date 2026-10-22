@@ -110,7 +110,7 @@ export class EmployeeValidation {
       email: emailWithAllowedDomain(),
       recovery_email: recoveryEmail().optional(),
       claim_existing_google: z.boolean().optional(),
-      // The language of the mail that carries the first password. Indonesian unless said otherwise.
+      // The language of the mail that carries the first password. English unless said otherwise.
       email_language: z.enum(["id", "en"]).optional(),
 
       gender: z.enum(GENDER_VALUES, {

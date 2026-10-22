@@ -458,21 +458,25 @@ describe("google workspace accounts", () => {
       expect(await sentStatus(notMailed.json.data.id)).toBe(false);
     });
 
-    it("writes the mail in the language chosen, Indonesian when none is", async () => {
+    it("writes the mail in the language chosen, English when none is", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
-      const english = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com", email_language: "en" });
-      expect(english.json.data.google.delivered_to).toBe("r***@gmail.com");
+      const plain = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      expect(plain.json.data.google.delivered_to).toBe("r***@gmail.com");
       expect(mailer.outbox[0].subject).toBe("Your Millennia Google account is ready");
       expect(mailer.outbox[0].html).toContain("Sign in to Google");
       expect(mailer.outbox[0].attachments?.[0].cid).toBe("millennia-logo");
 
-      await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com", email_language: "id" });
       expect(mailer.outbox[1].subject).toBe("Akun Google Millennia kamu sudah siap");
 
-      await letTimePass(english.json.data.id);
-      const reset = await TestRequest.post(`/api/admin/employees/${english.json.data.id}/google/reset-password`, { language: "en" }, accessToken);
+      await letTimePass(plain.json.data.id);
+      const reset = await TestRequest.post(`/api/admin/employees/${plain.json.data.id}/google/reset-password`, {}, accessToken);
       expect((await reset.json()).data).toEqual({ sent_to: "r***@gmail.com" });
       expect(mailer.outbox[2].subject).toBe("The password of your Millennia Google account was reset");
+
+      await letTimePass(plain.json.data.id);
+      await TestRequest.post(`/api/admin/employees/${plain.json.data.id}/google/reset-password`, { language: "id" }, accessToken);
+      expect(mailer.outbox[3].subject).toBe("Password akun Google Millennia kamu direset");
     });
 
     it("mails a reset password to the recovery email Google holds, and shows it only when it cannot", async () => {
@@ -487,7 +491,7 @@ describe("google workspace accounts", () => {
       expect((await sent.json()).data).toEqual({ sent_to: "r***@gmail.com" });
       expect(mailer.outbox).toHaveLength(1);
       expect(mailer.outbox[0].to).toBe("rizqi.pribadi@gmail.com");
-      expect(mailer.outbox[0].subject).toContain("direset");
+      expect(mailer.outbox[0].subject).toContain("was reset");
       expect(mailer.outbox[0].text).toContain(google.passwords[0].password);
 
       await letTimePass(json.data.id);

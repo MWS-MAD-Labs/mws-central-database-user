@@ -23,7 +23,6 @@ export function ConfirmEmailField({ name, value, error, onChange, disabled = fal
       name={name}
       error={disabled ? undefined : error}
       required={!disabled}
-      hint={disabled ? "Fill in the email above first." : "Type it again."}
     >
       <TextInput
         type="email"

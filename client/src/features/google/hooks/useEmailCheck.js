@@ -45,5 +45,7 @@ export function useEmailCheck(email, { initialEmail = '', allowClaim = false, cl
       message: own ? 'This is your own address. Your Google account is linked and Central does not change it' : answer.data.message,
     }
   }
+  // A Google that is only simulated here has nothing to say, so it says nothing.
+  if (answer.data.reason === 'NOT_CHECKED') return { ...none, state: 'unchecked', message: null }
   return { ...none, state: answer.data.reason === 'CHECK_FAILED' ? 'failed-google' : 'unchecked', message: answer.data.message }
 }

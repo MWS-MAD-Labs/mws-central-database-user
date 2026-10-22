@@ -821,12 +821,7 @@ export function StudentForm({
 
         {isCreate ? (
           <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-            <h2 className="mb-1 text-base font-semibold text-(--mws-charcoal)">Parent Or Guardian</h2>
-            <p className="mb-4 text-sm text-(--mws-muted)">
-              {values.is_legacy
-                ? "One is needed to give the student a Google account later: the first password goes to their email. More can be added later."
-                : "A Google account is made when you create the student, and the first password is sent to this address. More can be added later."}
-            </p>
+            <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">Parent Or Guardian</h2>
             <div className="grid min-w-0 gap-4 md:grid-cols-2">
               <Field label="Relation" name="parent_type" error={errors.parent_type} required>
                 <SearchableSelect
@@ -853,12 +848,7 @@ export function StudentForm({
                 name="parent_email"
                 error={errors.parent_email}
                 required
-                hint={
-                  <>
-                    Where the Google account&apos;s first password and the reset code go.
-                    <EmailSuggestion email={values.parent_email} onUse={(fixed) => updateValue("parent_email", fixed)} />
-                  </>
-                }
+                hint={<EmailSuggestion email={values.parent_email} onUse={(fixed) => updateValue("parent_email", fixed)} />}
               >
                 <TextInput
                   type="email"
@@ -877,7 +867,7 @@ export function StudentForm({
                 error={errors.parent_email_confirm}
                 onChange={(value) => updateValue("parent_email_confirm", value)}
               />
-              <Field label="Phone" name="parent_phone" error={errors.parent_phone} hint="Optional. For sending the details on WhatsApp if the email does not arrive.">
+              <Field label="Phone" name="parent_phone" error={errors.parent_phone}>
                 <TextInput
                   type="tel"
                   maxLength={16}
@@ -1001,7 +991,7 @@ function getInitialValues(mode, student, options) {
     parent_name: "",
     parent_email: "",
     parent_email_confirm: "",
-    email_language: "id",
+    email_language: "en",
     parent_phone: "",
   };
 }

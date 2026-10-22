@@ -390,7 +390,6 @@ export function InternForm({
               <div className="grid min-w-0 gap-4 rounded-xl border border-(--mws-line) p-4 md:col-span-2 md:grid-cols-2">
                 <div className="md:col-span-2">
                   <p className="font-display text-sm font-semibold text-(--mws-charcoal)">Recovery email</p>
-                  <p className="text-xs text-(--mws-muted)">Where the first password and the reset code go. Not a Millennia address.</p>
                 </div>
               <Field
                 label="Recovery Email"
@@ -763,7 +762,7 @@ function getInitialValues(mode, intern, options) {
     email_local: emailLocalPart(identity.email),
     recovery_email: "",
     recovery_email_confirm: "",
-    email_language: "id",
+    email_language: "en",
     gender: identity.gender || "",
     religion: identity.religion || "",
     religion_other: identity.religion_other || "",

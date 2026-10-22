@@ -337,7 +337,8 @@ describe("the Google account of a student", () => {
       expect(data.google.temporary_password).toBeUndefined();
       expect(mailer.outbox).toHaveLength(1);
       expect(mailer.outbox[0].to).toBe("siti.aminah@gmail.com");
-      expect(mailer.outbox[0].text).toContain("Yth. Bapak/Ibu Siti Aminah");
+      // English unless the admin picks Indonesian.
+      expect(mailer.outbox[0].text).toContain("Dear Siti Aminah");
       expect(mailer.outbox[0].text).toContain(google.created[0].password);
     });
 
