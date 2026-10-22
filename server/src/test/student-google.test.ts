@@ -14,6 +14,7 @@ import { setDirectoryClientForTests } from "../lib/google-workspace";
 import { MemoryMailer, setMailerForTests } from "../lib/mailer";
 import { resetCheckCooldownForTests, resetSignInEmailLimitForTests } from "../service/google-workspace-service";
 import { FakeDirectory } from "./fake-directory";
+import { DirectoryError } from "../lib/google-workspace/directory-client";
 
 describe("the Google account of a student", () => {
   let google: FakeDirectory;
@@ -56,8 +57,9 @@ describe("the Google account of a student", () => {
     await prismaClient.grade.deleteMany({ where: { name: { startsWith: "TEST_STU_GRADE" } } });
   });
 
-  // A student is made through the API with a parent, like the form. `parent: null` leaves it out.
-  const makeStudent = async (token: string, over: Record<string, unknown> = {}) => {
+  // A student is made through the API with a parent, like the form. The form also makes the Google account at once;
+  // unless `keepGoogle`, that is undone here so each test starts from a student with no account.
+  const makeStudent = async (token: string, over: Record<string, unknown> = {}, keepGoogle = false) => {
     seq += 1;
     const response = await TestRequest.post(
       "/api/admin/students",
@@ -80,7 +82,18 @@ describe("the Google account of a student", () => {
       token,
     );
     expect(response.status).toBe(200);
-    return (await response.json()).data.id as string;
+    const id = (await response.json()).data.id as string;
+    if (!keepGoogle) {
+      await prismaClient.person.updateMany({
+        where: { student: { id } },
+        data: { google_user_id: null, google_sync_status: GoogleSyncStatus.NONE, google_password_issued_at: null, google_password_pending: null },
+      });
+      google.users.clear();
+      google.created.length = 0;
+      google.passwords.length = 0;
+      resetCheckCooldownForTests();
+    }
+    return id;
   };
   const url = (id: string, path = "") => `/api/admin/students/${id}/google${path}`;
   const personOf = (studentId: string) => prismaClient.person.findFirstOrThrow({ where: { student: { id: studentId } } });
@@ -261,10 +274,51 @@ describe("the Google account of a student", () => {
     expect(await prismaClient.person.count({ where: { email: "test_google_taken@millennia21.id" } })).toBe(0);
 
     const id = await makeStudent(accessToken);
+    // The student's own account first, then Google gains the other one.
     expect((await TestRequest.post(url(id, "/provision"), {}, accessToken)).status).toBe(200);
+    google.users.set("taken", {
+      id: "taken", primaryEmail: "test_google_taken@millennia21.id", givenName: "A", familyName: "B",
+      suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
+    });
     const renamed = await TestRequest.patch(`/api/admin/students/${id}`, { email: "test_google_taken@millennia21.id" }, accessToken);
     expect(renamed.status).toBe(400);
     expect((await personOf(id)).email).not.toBe("test_google_taken@millennia21.id");
+  });
+
+  describe("the account made with the student", () => {
+    it("is made at once with the parent's email as recovery email, and the first password comes back once", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      seq += 1;
+      const response = await TestRequest.post(
+        "/api/admin/students",
+        {
+          full_name: "Ari Putra", nick_name: "Ari", email: `test_google_auto${seq}@millennia21.id`, gender: Gender.MALE,
+          religion: Religion.ISLAM, birth_place: "Jakarta", birth_date: new Date("2012-01-01").toISOString(), nis: `91${String(seq).padStart(5, "0")}`,
+          entry_type: "PSB", current_grade_id: gradeId, join_academic_year_id: academicYearId, join_grade_id: gradeId,
+          parent: { type: "MOTHER", full_name: "Siti Aminah", email: "siti.aminah@gmail.com" },
+        },
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+      const data = (await response.json()).data;
+      expect(data.google).toMatchObject({ status: "ACTIVE", outcome: "created" });
+      expect(data.google.temporary_password).toHaveLength(16);
+      expect(google.created[0]).toMatchObject({ recoveryEmail: "siti.aminah@gmail.com", password: data.google.temporary_password });
+      expect((await personOf(data.id)).google_sync_status).toBe(GoogleSyncStatus.ACTIVE);
+      expect(JSON.stringify(await prismaClient.auditLog.findMany())).not.toContain(data.google.temporary_password);
+    });
+
+    it("is not made for a legacy student, and a failed Google leaves the student saved to try again", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      const legacy = await makeStudent(accessToken, { legacy_nis: "OLD-77", nis: undefined }, true);
+      expect(google.created).toHaveLength(0);
+      expect((await personOf(legacy)).google_sync_status).toBe(GoogleSyncStatus.NONE);
+
+      google.failCreateWith = new DirectoryError("DENIED", "Google refused");
+      const failed = await makeStudent(accessToken, {}, true);
+      expect((await personOf(failed)).google_sync_status).toBe(GoogleSyncStatus.FAILED);
+      expect(await prismaClient.student.count({ where: { id: failed } })).toBe(1);
+    });
   });
 
   describe("an email Google already has", () => {
@@ -299,8 +353,8 @@ describe("the Google account of a student", () => {
 
     it("is refused for a Database Admin, for a student who is not legacy, and when the name is not the same", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
-      inGoogle(email, ["Orang", "Lain"]);
       const id = await makeStudent(accessToken, { email: "test_google_baru@millennia21.id" });
+      inGoogle(email, ["Orang", "Lain"]);
       // Not legacy: a flag from the form is refused too.
       const flagged = await TestRequest.post("/api/admin/students", { full_name: "Ari Putra", nick_name: "Ari", email, gender: Gender.MALE, religion: Religion.ISLAM, birth_place: "Jakarta", birth_date: new Date("2012-01-01").toISOString(), entry_type: "PSB", current_grade_id: gradeId, join_academic_year_id: academicYearId, join_grade_id: gradeId, claim_existing_google: true }, accessToken);
       expect(flagged.status).toBe(403);

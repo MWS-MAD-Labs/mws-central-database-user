@@ -1,11 +1,12 @@
 import { ResponseError } from "../error/response-error";
-import { GoogleWorkspaceService } from "./google-workspace-service";
+import { GoogleWorkspaceService, type GoogleSyncResult } from "./google-workspace-service";
 import {
   AcademicYearStatus,
   AdminRole,
   AuditAction,
   AuditSource,
   EnrollmentStatus,
+  GoogleSyncStatus,
   PersonType,
   Prisma,
   StudentMutationField,
@@ -585,7 +586,7 @@ export class StudentService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
     options: StudentCreateOptions = {},
-  ): Promise<StudentResponse> {
+  ): Promise<StudentResponse & { google?: GoogleSyncResult }> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedStudentAction(admin, "create", context);
       throw new ResponseError(403, "Forbidden: Viewer cannot create data");
@@ -978,11 +979,28 @@ export class StudentService {
     }
 
     // Waits for a Super Admin to link the account that Google already has. Nothing is made or changed in Google.
+    let google: GoogleSyncResult | undefined;
     if (claiming) {
-      await GoogleWorkspaceService.markPendingClaim(newPerson.id, { admin, context });
+      google = await GoogleWorkspaceService.markPendingClaim(newPerson.id, { admin, context });
+    } else if (options.requireParentContact && !legacyAtCreate && createRequest.parent) {
+      // The form makes the account at once. The student exists either way: a failure shows as a Google status that can
+      // be tried again from the student page. A legacy student is a historical record and gets no account by itself.
+      google = await GoogleWorkspaceService.provision(newPerson.id, {
+        recoveryEmail: createRequest.parent.email,
+        admin,
+        context,
+      }).catch((error): GoogleSyncResult => {
+        logger.error("Google account for the new student was not made", error);
+        return {
+          status: GoogleSyncStatus.FAILED,
+          google_user_id: null,
+          outcome: "failed",
+          message: error instanceof ResponseError ? error.message : "The Google account was not made",
+        };
+      });
     }
 
-    return toStudentResponse(newPerson);
+    return { ...toStudentResponse(newPerson), ...(google && { google }) };
   }
 
   static async reissueNis(

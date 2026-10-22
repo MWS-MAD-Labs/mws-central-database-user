@@ -152,7 +152,7 @@ Use a mailbox made for this, not an admin's own. In development run Mailpit (`do
 
 ## Students
 
-A student has a Google account too, made from the student's detail page (`/api/admin/students/:id/google`, the same set of actions as for employees). What is different is who gets the first password: a parent or guardian.
+A student has a Google account too. The form makes it at once when the student is created, with the parent's email as recovery email, and the first password comes back once in a Share dialog (it is not made for a legacy student or one saved to be linked, and a failure leaves the student saved with a Google status that can be retried). Later actions are on the student's detail page (`/api/admin/students/:id/google`, the same set as for employees). What is different is who gets the first password: a parent or guardian.
 
 - **The student form checks the email like the employee form.** Pressing Check asks Google, and the server repeats the check on create (only for the form, not the import) and when a student who already has an account is renamed.
 - **An email Google already has, for a legacy student.** Students do not sign in to Central, so nobody can claim the account by signing in. A Super Admin ticks "Link the existing Google account later" on the form (legacy students only) or opens the student page later, and links it from there. It goes ahead only when the name in Google is the name in Central (word order and case do not count), the student is a legacy one (a legacy NIS, or no valid NIS yet, or saved as waiting), and nothing is changed in Google. No password is made and the name in Google is never written over. For any other student, or any other admin, an email Google already has is refused. Once a valid NIS is issued the legacy NIS is cleared, so the student stops counting as legacy unless it was saved as waiting.
@@ -170,4 +170,4 @@ The recovery email lives only in Google, so "Forgot password" sends its code the
 
 ## Not done yet
 
-Students (their parents' emails exist only after the student is created, so the account is a separate step), suspending the Google account when someone leaves, a one-off report that compares every email in Central with Google, and a self-service photo for interns (they have no sign-in to Central).
+Bulk account creation per class, suspending the Google account when someone leaves, a one-off report that compares every email in Central with Google, and a self-service photo for interns (they have no sign-in to Central).

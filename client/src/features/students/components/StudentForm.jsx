@@ -802,7 +802,9 @@ export function StudentForm({
           <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
             <h2 className="mb-1 text-base font-semibold text-(--mws-charcoal)">Parent Or Guardian</h2>
             <p className="mb-4 text-sm text-(--mws-muted)">
-              One is needed to give the student a Google account: the first password goes to their email. More can be added later.
+              {values.is_legacy
+                ? "One is needed to give the student a Google account later: the first password goes to their email. More can be added later."
+                : "A Google account is made when you create the student, and the first password goes to this email. More can be added later."}
             </p>
             <div className="grid min-w-0 gap-4 md:grid-cols-2">
               <Field label="Relation" name="parent_type" error={errors.parent_type} required>

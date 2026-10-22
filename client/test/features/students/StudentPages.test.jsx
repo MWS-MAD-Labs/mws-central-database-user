@@ -51,9 +51,10 @@ describe('Student create and edit pages', () => {
     expect(await screen.findByText('Student form options are unavailable.')).toBeVisible()
   })
 
-  it('creates a student and navigates to its detail page', async () => {
+  async function createStudentThrough({ postData = { id: 'student-new' }, extraRoutes = [] } = {}) {
     const fetchMock = createFetchRouter([
       ...optionsRoutes(),
+      ...extraRoutes,
       {
         path: /^\/api\/admin\/google\/email-availability/,
         response: jsonResponse({ data: { available: true, reason: 'FREE', message: 'Available' } }),
@@ -61,7 +62,7 @@ describe('Student create and edit pages', () => {
       {
         path: '/api/admin/students',
         method: 'POST',
-        response: jsonResponse({ data: { id: 'student-new' } }),
+        response: jsonResponse({ data: postData }),
       },
     ])
     globalThis.fetch = fetchMock
@@ -100,10 +101,35 @@ describe('Student create and edit pages', () => {
     const createDialog = await screen.findByRole('dialog', { name: 'Review before creating' })
     await user.click(within(createDialog).getByRole('button', { name: 'Create student' }))
 
+    return fetchMock
+  }
+
+  it('creates a student and navigates to its detail page', async () => {
+    const fetchMock = await createStudentThrough()
     expect(await screen.findByText('Student destination')).toBeVisible()
     expect(fetchMock.mock.calls.some(([url, options]) =>
       url === '/api/admin/students' && options.method === 'POST',
     )).toBe(true)
+  })
+
+  it('shows the first sign-in details when the account was made with the student', async () => {
+    await createStudentThrough({
+      postData: {
+        id: 'student-new',
+        identity: { full_name: 'Ari Student', email: 'ari.student@millennia21.id' },
+        google: { status: 'ACTIVE', outcome: 'created', google_user_id: 'g-1', temporary_password: 'Abcdefgh12345678' },
+      },
+      extraRoutes: [
+        {
+          path: /^\/api\/admin\/students\/student-new\/google/,
+          response: jsonResponse({
+            data: { linked: true, status: 'ACTIVE', can: {}, guardians: [{ id: 'p1', type: 'MOTHER', full_name: 'Siti Aminah', email_hint: 's***@gmail.com', is_primary: true }] },
+          }),
+        },
+      ],
+    })
+    expect(await screen.findByRole('dialog', { name: 'Share Sign-in Details' })).toBeVisible()
+    expect(screen.queryByText('Student destination')).not.toBeInTheDocument()
   })
 
   it('loads and updates an existing student', async () => {
