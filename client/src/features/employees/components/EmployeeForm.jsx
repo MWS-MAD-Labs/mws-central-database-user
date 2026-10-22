@@ -1,5 +1,6 @@
 import { recoveryEmailProblem, recoveryHint } from "../../google/utils/instructions.js";
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
+import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
@@ -399,7 +400,13 @@ export function EmployeeForm({
           {lockWarning}
         </>
       ) : null;
-    const reviewFieldWarnings = { ...fieldWarnings, ...lockFieldWarnings };
+    // The first password is emailed to the recovery email at once, so a slip there loses it or gives it to a stranger.
+    const mailsPassword = isCreate && !noGoogle && Boolean(values.recovery_email);
+    const reviewFieldWarnings = {
+      ...fieldWarnings,
+      ...lockFieldWarnings,
+      ...(mailsPassword ? { recovery_email: "The password is sent here, so check it letter by letter." } : {}),
+    };
 
     const resolveValue = makeOptionAwareResolver(
       options,
@@ -429,6 +436,7 @@ export function EmployeeForm({
           : lockingFields.length > 0
             ? "Save anyway"
             : "Create employee",
+        ...(mailsPassword ? { requireCheckLabel: `The password is emailed to ${values.recovery_email}. It is the right address.` } : {}),
         wide: true,
       });
       if (!confirmed) return;
@@ -717,7 +725,12 @@ export function EmployeeForm({
                 error={errors.recovery_email}
                 required={!noGoogle}
                 counter={{ value: values.recovery_email, max: 100, count: textLength }}
-                hint={noGoogle ? (claiming ? "Not needed: the existing Google account is kept as it is." : "Not needed: no Google account is made for this address.") : recoveryHint(values.recovery_email, errors.recovery_email, ALLOWED_EMAIL_DOMAIN)}
+                hint={noGoogle ? (claiming ? "Not needed: the existing Google account is kept as it is." : "Not needed: no Google account is made for this address.") : (
+                  <>
+                    {recoveryHint(values.recovery_email, errors.recovery_email, ALLOWED_EMAIL_DOMAIN)}
+                    <EmailSuggestion email={values.recovery_email} onUse={(fixed) => updateValue("recovery_email", fixed)} />
+                  </>
+                )}
               >
                 <TextInput
                   type="email"
@@ -731,6 +744,14 @@ export function EmployeeForm({
                   }
                 />
               </Field>
+            ) : null}
+            {isCreate && !noGoogle ? (
+              <ConfirmEmailField
+                name="recovery_email_confirm"
+                value={values.recovery_email_confirm}
+                error={errors.recovery_email_confirm}
+                onChange={(value) => updateValue("recovery_email_confirm", value)}
+              />
             ) : null}
             {!isCreate ? (
               <Field
@@ -1500,6 +1521,7 @@ function getInitialValues(mode, employee, options) {
     nick_name: identity.nick_name || "",
     email_local: emailLocalPart(identity.email),
     recovery_email: "",
+    recovery_email_confirm: "",
     gender: identity.gender || "",
     religion: identity.religion || "",
     religion_other: identity.religion_other || "",
@@ -1824,7 +1846,7 @@ const EMPLOYEE_FIELD_FORMATTERS = {
 // itself saved either, but it does decide whether kpj_number or
 // bpjs_employment_number gets sent, so it's kept (with a plain-language
 // label) rather than hidden.
-const EMPLOYEE_DIFF_EXCLUDED_KEYS = ["contract_duration_months"];
+const EMPLOYEE_DIFF_EXCLUDED_KEYS = ["contract_duration_months", "recovery_email_confirm"];
 
 const EMPLOYEE_DIFF_LABELS = {
   ...REQUIRED_FIELD_LABELS,
@@ -1908,6 +1930,8 @@ function computeEmployeeErrors(
       emailProblem,
     );
     if (problem) errors.recovery_email = problem;
+    if (!values.recovery_email_confirm) errors.recovery_email_confirm = "Type the recovery email again.";
+    else if (values.recovery_email_confirm !== values.recovery_email) errors.recovery_email_confirm = "The two emails do not match.";
   }
   if (
     findProblemsFor(values.children, {

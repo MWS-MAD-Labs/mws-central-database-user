@@ -72,6 +72,7 @@ import { maskSensitiveValue } from "../utils/sensitive-data";
 import { GoogleWorkspaceService, type GoogleSyncResult } from "./google-workspace-service";
 import { logger } from "../lib/logger";
 import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
+import { assertDomainCanReceiveEmail } from "../utils/email-domain";
 import { linkAdminToEmployee } from "../utils/admin-person-link";
 import {
   findChildrenProblems,
@@ -686,7 +687,11 @@ export class EmployeeService {
     if (options.requireRecoveryEmail && !withoutGoogle && !claiming && !createRequest.recovery_email) {
       throw new ResponseError(400, "Recovery email is required: it is how the person sets the password of their new Google account");
     }
-    // Before anything is written: a Google that already has the email, or would not take it, stops the create here.
+    // Before anything is written: a recovery email whose domain cannot receive mail, a Google that already has the email, or
+    // one that would not take it, stops the create here.
+    if (options.requireRecoveryEmail && !withoutGoogle && !claiming && createRequest.recovery_email) {
+      await assertDomainCanReceiveEmail(createRequest.recovery_email);
+    }
     if (options.requireRecoveryEmail && !withoutGoogle) {
       await GoogleWorkspaceService.assertCanCreate(createRequest.email, createRequest.recovery_email, { claimExisting: claiming });
     }

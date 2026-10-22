@@ -1,5 +1,6 @@
 import { ResponseError } from "../error/response-error";
 import { GoogleWorkspaceService, type GoogleSyncResult } from "./google-workspace-service";
+import { assertDomainCanReceiveEmail } from "../utils/email-domain";
 import {
   AcademicYearStatus,
   AdminRole,
@@ -618,6 +619,9 @@ export class StudentService {
     const legacyAtCreate = Boolean(createRequest.legacy_nis);
     if (claiming && (admin.role !== AdminRole.SUPER_ADMIN || !legacyAtCreate)) {
       throw new ResponseError(403, "Forbidden: only a Super Admin can link an existing Google account, and only for a legacy student");
+    }
+    if (options.requireParentContact && createRequest.parent) {
+      await assertDomainCanReceiveEmail(createRequest.parent.email);
     }
     if (options.requireParentContact) {
       await GoogleWorkspaceService.assertCanCreate(createRequest.email, undefined, { claimExisting: claiming });

@@ -21,6 +21,7 @@ import { getIntegrationEnvironment } from "../utils/integration-environment";
 import { DirectoryError, type DirectoryUser } from "../lib/google-workspace/directory-client";
 import type { AuditRequestContext, EntityAuditAction } from "../model/audit-log-model";
 import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
+import { assertDomainCanReceiveEmail } from "../utils/email-domain";
 import { emailProblem } from "../validation/validation";
 import { passwordStateOf, PASSWORD_PENDING_WARN_DAYS, RESTORE_WINDOW_DAYS } from "../utils/google-hints";
 import { AuditService } from "./audit-service";
@@ -1098,6 +1099,7 @@ export class GoogleWorkspaceService {
     assertAllowedTarget(person.email);
     if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet");
     this.assertRecoveryIsNotOwn(recoveryEmail, person.email);
+    await assertDomainCanReceiveEmail(recoveryEmail);
     this.assertNotMissing(person);
     await this.assertNotLocked(personId);
     await assertNotWaiting(await cooldownPerson(person), "recovery", (wait) => `The recovery email was changed a moment ago. Wait ${wait} to change it again`);

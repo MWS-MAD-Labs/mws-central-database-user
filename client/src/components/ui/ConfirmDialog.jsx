@@ -6,11 +6,14 @@ import { ConfirmContext } from './confirmContext.js'
 export function ConfirmProvider({ children }) {
   const [request, setRequest] = useState(null)
   const [remainingSeconds, setRemainingSeconds] = useState(0)
+  // For a dialog that asks the person to tick a box (`requireCheckLabel`) before it can be confirmed.
+  const [ticked, setTicked] = useState(false)
   const titleId = useId()
 
   const confirm = useCallback((options) => {
     const opts = typeof options === 'string' ? { description: options } : options
     setRemainingSeconds(opts.delaySeconds || 0)
+    setTicked(false)
     return new Promise((resolve) => {
       setRequest({ ...opts, resolve })
     })
@@ -63,6 +66,17 @@ export function ConfirmProvider({ children }) {
                 </div>
               )
             ) : null}
+            {request.requireCheckLabel ? (
+              <label className="mt-4 flex cursor-pointer items-start gap-2 text-sm text-(--mws-charcoal)">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={ticked}
+                  onChange={(event) => setTicked(event.target.checked)}
+                />
+                <span>{request.requireCheckLabel}</span>
+              </label>
+            ) : null}
             <div className="mt-5 flex flex-wrap items-center justify-end gap-6 border-t border-(--mws-line) pt-4">
               <TextAction className="text-sm!" onClick={() => settle(false)}>
                 {request.cancelLabel || 'Cancel'}
@@ -74,7 +88,7 @@ export function ConfirmProvider({ children }) {
                     ? 'text-[#a43c41]! hover:text-[#7f2a2f]!'
                     : 'text-(--mws-burgundy)! hover:text-(--mws-burgundy-dark)!')
                 }
-                disabled={remainingSeconds > 0}
+                disabled={remainingSeconds > 0 || (Boolean(request.requireCheckLabel) && !ticked)}
                 onClick={() => settle(true)}
               >
                 {remainingSeconds > 0 ? (

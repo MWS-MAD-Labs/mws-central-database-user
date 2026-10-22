@@ -2,6 +2,7 @@ import { GoogleSyncStatus } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { GoogleWorkspaceService, type GoogleSyncResult } from "./google-workspace-service";
 import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
+import { assertDomainCanReceiveEmail } from "../utils/email-domain";
 import { ResponseError } from "../error/response-error";
 import {
   AdminRole,
@@ -372,6 +373,9 @@ export class InternService {
       throw new ResponseError(400, "Recovery email is required: it is how the person sets the password of their new Google account");
     }
     // Before anything is written: a Google that already has the email, or would not take it, stops the create here.
+    if (options.requireRecoveryEmail && !withoutGoogle && !claiming && createRequest.recovery_email) {
+      await assertDomainCanReceiveEmail(createRequest.recovery_email);
+    }
     if (options.requireRecoveryEmail && !withoutGoogle) {
       await GoogleWorkspaceService.assertCanCreate(createRequest.email, createRequest.recovery_email, { claimExisting: claiming });
     }

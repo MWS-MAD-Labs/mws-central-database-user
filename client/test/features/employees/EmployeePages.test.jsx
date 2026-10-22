@@ -83,6 +83,7 @@ describe('Employee create and edit pages', () => {
     await user.click(screen.getByRole('button', { name: 'Check' }))
     await screen.findByText('Available')
     await user.type(field('recovery_email').querySelector('input'), 'ari.pribadi@gmail.com')
+    await user.type(field('recovery_email_confirm').querySelector('input'), 'ari.pribadi@gmail.com')
     await user.click(screen.getByRole('button', { name: 'Select Gender' }))
     await user.click(screen.getByRole('option', { name: 'Male' }))
     await user.click(screen.getByRole('button', { name: 'Select Religion' }))
@@ -103,6 +104,7 @@ describe('Employee create and edit pages', () => {
     fireEvent.submit(document.querySelector('form'))
 
     const review = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(review).getByRole('checkbox'))
     await user.click(within(review).getByRole('button', { name: 'Create employee' }))
 
     expect(await screen.findByText('Employee destination')).toBeVisible()
@@ -131,6 +133,7 @@ describe('Employee create and edit pages', () => {
     await user.click(screen.getByRole('button', { name: 'Check' }))
     await screen.findByText('Available')
     await user.type(field('recovery_email').querySelector('input'), 'ari.pribadi@gmail.com')
+    await user.type(field('recovery_email_confirm').querySelector('input'), 'ari.pribadi@gmail.com')
     await user.click(screen.getByRole('button', { name: 'Select Gender' }))
     await user.click(screen.getByRole('option', { name: 'Male' }))
     await user.click(screen.getByRole('button', { name: 'Select Religion' }))
@@ -151,6 +154,7 @@ describe('Employee create and edit pages', () => {
     fireEvent.submit(document.querySelector('form'))
 
     const review = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(review).getByRole('checkbox'))
     await user.click(within(review).getByRole('button', { name: 'Create employee' }))
 
     // The new account comes with a temporary password, shown once with a message to pass on.
@@ -188,6 +192,7 @@ describe('Employee create and edit pages', () => {
     await user.click(screen.getByRole('button', { name: 'Check' }))
     await screen.findByText('Available')
     await user.type(field('recovery_email').querySelector('input'), 'ari.pribadi@gmail.com')
+    await user.type(field('recovery_email_confirm').querySelector('input'), 'ari.pribadi@gmail.com')
     await user.click(screen.getByRole('button', { name: 'Select Gender' }))
     await user.click(screen.getByRole('option', { name: 'Male' }))
     await user.click(screen.getByRole('button', { name: 'Select Religion' }))
@@ -208,6 +213,7 @@ describe('Employee create and edit pages', () => {
     fireEvent.submit(document.querySelector('form'))
 
     const review = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(review).getByRole('checkbox'))
     await user.click(within(review).getByRole('button', { name: 'Create employee' }))
 
     expect(await screen.findByText('Employee destination')).toBeVisible()

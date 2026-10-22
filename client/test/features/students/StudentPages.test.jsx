@@ -90,6 +90,7 @@ describe('Student create and edit pages', () => {
     await user.click(screen.getByRole('option', { name: 'Mother' }))
     await user.type(fields('parent_name').querySelector('input'), 'siti aminah')
     await user.type(fields('parent_email').querySelector('input'), 'siti.aminah@gmail.com')
+    await user.type(fields('parent_email_confirm').querySelector('input'), 'siti.aminah@gmail.com')
 
     const birthDate = fields('birth_date')
     await user.click(within(birthDate).getByRole('button', { name: 'Choose date' }))
@@ -99,6 +100,7 @@ describe('Student create and edit pages', () => {
 
     // Create goes through the review-before-creating dialog first.
     const createDialog = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(createDialog).getByRole('checkbox'))
     await user.click(within(createDialog).getByRole('button', { name: 'Create student' }))
 
     return fetchMock

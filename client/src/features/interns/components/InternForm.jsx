@@ -1,5 +1,6 @@
 import { recoveryEmailProblem, recoveryHint } from "../../google/utils/instructions.js";
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
+import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
@@ -246,8 +247,11 @@ export function InternForm({
         labels: INTERN_DIFF_LABELS,
         resolveValue,
         sections: INTERN_FIELD_SECTIONS,
-        excludeKeys: ["contract_duration_months"],
+        excludeKeys: ["contract_duration_months", "recovery_email_confirm"],
       });
+      // The first password is emailed to the recovery email at once, so a slip there loses it or gives it to a stranger.
+      const mailsPassword = !noGoogle && Boolean(values.recovery_email);
+      const createWarnings = { ...fieldWarnings, ...(mailsPassword ? { recovery_email: "The password is sent here, so check it letter by letter." } : {}) };
       const confirmed = await confirm({
         title: "Review before creating",
         description: (
@@ -255,12 +259,13 @@ export function InternForm({
             changes={fields}
             mode="create"
             warning={reviewWarning}
-            fieldWarnings={fieldWarnings}
+            fieldWarnings={createWarnings}
           />
         ),
         confirmLabel: internshipAlreadyEnded
           ? "Create as completed"
           : "Create intern",
+        ...(mailsPassword ? { requireCheckLabel: `The password is emailed to ${values.recovery_email}. It is the right address.` } : {}),
         wide: true,
       });
       if (!confirmed) return;
@@ -375,7 +380,12 @@ export function InternForm({
                     ? claiming
                       ? "Not needed: the existing Google account is kept as it is."
                       : "Not needed: no Google account is made for this address."
-                    : recoveryHint(values.recovery_email, errors.recovery_email, ALLOWED_EMAIL_DOMAIN)
+                    : (
+                      <>
+                        {recoveryHint(values.recovery_email, errors.recovery_email, ALLOWED_EMAIL_DOMAIN)}
+                        <EmailSuggestion email={values.recovery_email} onUse={(fixed) => updateValue("recovery_email", fixed)} />
+                      </>
+                    )
                 }
               >
                 <TextInput
@@ -390,6 +400,14 @@ export function InternForm({
                   }
                 />
               </Field>
+            ) : null}
+            {isCreate && !noGoogle ? (
+              <ConfirmEmailField
+                name="recovery_email_confirm"
+                value={values.recovery_email_confirm}
+                error={errors.recovery_email_confirm}
+                onChange={(value) => updateValue("recovery_email_confirm", value)}
+              />
             ) : null}
             {identityRevealed ? (
               <>
@@ -715,6 +733,7 @@ function getInitialValues(mode, intern, options) {
     nick_name: identity.nick_name || "",
     email_local: emailLocalPart(identity.email),
     recovery_email: "",
+    recovery_email_confirm: "",
     gender: identity.gender || "",
     religion: identity.religion || "",
     religion_other: identity.religion_other || "",
@@ -918,6 +937,8 @@ function computeInternErrors(values, isCreate, { noGoogle = false } = {}) {
       emailProblem,
     );
     if (problem) errors.recovery_email = problem;
+    if (!values.recovery_email_confirm) errors.recovery_email_confirm = "Type the recovery email again.";
+    else if (values.recovery_email_confirm !== values.recovery_email) errors.recovery_email_confirm = "The two emails do not match.";
   }
   if (
     values.join_date &&

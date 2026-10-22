@@ -103,6 +103,7 @@ describe('EmployeeForm', () => {
     await user.click(screen.getByRole('button', { name: 'Check' }))
     await screen.findByText('Available')
     await user.type(field('recovery_email').querySelector('input'), 'Ari+Pribadi@Gmail.com')
+    await user.type(field('recovery_email_confirm').querySelector('input'), 'ari+pribadi@gmail.com')
     expect(field('recovery_email').querySelector('input').value).toBe('ari+pribadi@gmail.com')
     expect(screen.getByText('Check the spelling. Nobody confirms it.')).toBeVisible()
     await chooseSelect(user, 'Select Gender', 'Male')
@@ -122,6 +123,9 @@ describe('EmployeeForm', () => {
     const review = await screen.findByRole('dialog', { name: 'Review before creating' })
     // The last look before saving shows the recovery email in full, so a typo can still be caught.
     expect(within(review).getByText('ari+pribadi@gmail.com')).toBeVisible()
+    // The create button waits for a tick that the address is the right one.
+    expect(within(review).getByRole('button', { name: 'Create employee' })).toBeDisabled()
+    await user.click(within(review).getByRole('checkbox'))
     await user.click(within(review).getByRole('button', { name: 'Create employee' }))
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
@@ -207,6 +211,19 @@ describe('EmployeeForm', () => {
     await user.click(within(review).getByRole('button', { name: 'Create employee' }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
     expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('recovery_email')
+  })
+
+  it('suggests the right domain for a misspelt recovery email and wants the email typed twice', async () => {
+    const { user } = renderEmployeeForm({ mode: 'create' })
+    const recovery = field('recovery_email').querySelector('input')
+    await user.type(recovery, 'ari@gmial.com')
+    await user.click(screen.getByRole('button', { name: 'Use it' }))
+    expect(recovery.value).toBe('ari@gmail.com')
+
+    const again = field('recovery_email_confirm').querySelector('input')
+    await user.type(again, 'ari@gmial.com')
+    fireEvent.submit(document.querySelector('form'))
+    expect(await screen.findByText('The two emails do not match.')).toBeVisible()
   })
 
   it('keeps the form from saving a new email until it is checked', async () => {

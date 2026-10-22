@@ -126,6 +126,7 @@ describe('StudentForm', () => {
     await chooseSelect(user, 'Select Relation', 'Father')
     await user.type(field('parent_name').querySelector('input'), 'budi santoso')
     await user.type(field('parent_email').querySelector('input'), 'budi.santoso@gmail.com')
+    await user.type(field('parent_email_confirm').querySelector('input'), 'budi.santoso@gmail.com')
     await user.type(field('parent_phone').querySelector('input'), '081234567890')
 
     const birthDate = field('birth_date')
@@ -135,6 +136,7 @@ describe('StudentForm', () => {
     await user.keyboard('{Escape}')
     fireEvent.submit(document.querySelector('form'))
     const review = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(review).getByRole('checkbox'))
     await user.click(within(review).getByRole('button', { name: 'Create student' }))
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))

@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Camera, UserRound } from "lucide-react";
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
+import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { Button } from "../../../components/ui/Button.jsx";
 import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
@@ -295,6 +296,8 @@ export function StudentForm({
         excludeKeys: STUDENT_DIFF_EXCLUDED_KEYS,
         sections: STUDENT_FIELD_SECTIONS,
       });
+      // A legacy student or one linked later gets no account now, so no password is mailed.
+      const mailsPassword = !values.is_legacy && !claiming && Boolean(values.parent_email);
       const confirmed = await confirm({
         title: "Review before creating",
         description: (
@@ -302,10 +305,11 @@ export function StudentForm({
             changes={fields}
             mode="create"
             warning={lockWarning}
-            fieldWarnings={lockFieldWarnings}
+            fieldWarnings={mailsPassword ? { ...lockFieldWarnings, parent_email: "The password is sent here, so check it letter by letter." } : lockFieldWarnings}
           />
         ),
         confirmLabel: nisnBeingSet ? "Create and lock NISN" : "Create student",
+        ...(mailsPassword ? { requireCheckLabel: `The password is emailed to ${values.parent_email}. It is the right address.` } : {}),
         wide: true,
       });
       if (!confirmed) return;
@@ -832,7 +836,12 @@ export function StudentForm({
                 name="parent_email"
                 error={errors.parent_email}
                 required
-                hint="Where the Google account's first password and the reset code go."
+                hint={
+                  <>
+                    Where the Google account&apos;s first password and the reset code go.
+                    <EmailSuggestion email={values.parent_email} onUse={(fixed) => updateValue("parent_email", fixed)} />
+                  </>
+                }
               >
                 <TextInput
                   type="email"
@@ -843,6 +852,12 @@ export function StudentForm({
                   onChange={(event) => updateValue("parent_email", sanitizeEmail(event.target.value))}
                 />
               </Field>
+              <ConfirmEmailField
+                name="parent_email_confirm"
+                value={values.parent_email_confirm}
+                error={errors.parent_email_confirm}
+                onChange={(value) => updateValue("parent_email_confirm", value)}
+              />
               <Field label="Phone" name="parent_phone" error={errors.parent_phone} hint="Optional. Used to send the details on WhatsApp.">
                 <TextInput
                   type="tel"
@@ -963,6 +978,7 @@ function getInitialValues(mode, student, options) {
     parent_type: "",
     parent_name: "",
     parent_email: "",
+    parent_email_confirm: "",
     parent_phone: "",
   };
 }
@@ -1109,7 +1125,7 @@ const STUDENT_FIELD_FORMATTERS = {
 // than relying on it happening to never change. is_legacy isn't saved
 // either, but it does decide whether legacy_nis/status get sent, so it's
 // kept with a plain-language label instead of hidden.
-const STUDENT_DIFF_EXCLUDED_KEYS = ["nis"];
+const STUDENT_DIFF_EXCLUDED_KEYS = ["nis", "parent_email_confirm"];
 
 const STUDENT_DIFF_LABELS = {
   ...REQUIRED_FIELD_LABELS,
@@ -1162,6 +1178,8 @@ function computeStudentErrors(values, isCreate) {
     if (values.parent_email) {
       const problem = emailProblem(values.parent_email, { external: true });
       if (problem) errors.parent_email = problem;
+      if (!values.parent_email_confirm) errors.parent_email_confirm = "Type the email again.";
+      else if (values.parent_email_confirm !== values.parent_email) errors.parent_email_confirm = "The two emails do not match.";
     }
     if (values.parent_phone && !/^(\+62|62|0)\d{8,13}$/.test(values.parent_phone)) {
       errors.parent_phone = "Enter an Indonesian phone number, for example 081234567890.";
