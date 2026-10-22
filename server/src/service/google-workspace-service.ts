@@ -532,11 +532,12 @@ export class GoogleWorkspaceService {
   // when Google cannot be asked or has no such account, and never throws.
   static async linkOwn(
     personId: string,
-    options: { admin: Pick<AdminUser, "id">; context?: AuditRequestContext },
+    options: { admin?: Pick<AdminUser, "id">; context?: AuditRequestContext } = {},
   ): Promise<GoogleSyncResult | undefined> {
     try {
       const person = await load(personId);
       if (!isProtectedSuperAdminEmail(person.email)) return undefined;
+      if (person.google_user_id) return undefined;
       assertAllowedTarget(person.email, { allowProtected: true });
       const client = getDirectoryClient();
       if (client.mode === "simulated") return undefined;
@@ -633,11 +634,15 @@ export class GoogleWorkspaceService {
           email: email.trim().toLowerCase(),
           deleted_at: null,
           google_user_id: null,
-          google_sync_status: GoogleSyncStatus.PENDING_CLAIM,
+          ...(isProtectedSuperAdminEmail(email) ? {} : { google_sync_status: GoogleSyncStatus.PENDING_CLAIM }),
         },
         select: { id: true },
       });
       if (!waiting) return false;
+      // A protected admin who signs in proves the account is theirs: it is linked, read only, whoever made the record.
+      if (isProtectedSuperAdminEmail(email)) {
+        return Boolean(await this.linkOwn(waiting.id, { context }));
+      }
       const person = await load(waiting.id);
       const client = getDirectoryClient();
       const user = await client.findUser(person.email);
@@ -1211,6 +1216,9 @@ export class GoogleWorkspaceService {
     const client = getDirectoryClient();
     if (client.mode === "simulated") {
       return { state: "simulated", message: "Google is only simulated in this environment, so it cannot say if the account exists" };
+    }
+    if (isProtectedSuperAdminEmail(email)) {
+      return { state: "blocked", message: "A protected admin account. It is linked when its owner signs in to Central" };
     }
     try {
       assertAllowedTarget(email);
