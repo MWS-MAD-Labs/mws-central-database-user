@@ -103,6 +103,8 @@ export class StudentValidation {
       .optional(),
     // Preserve legacy NIS values that do not match the current format.
     legacy_nis: z.string().max(50, "Legacy NIS is too long").optional(),
+    // The email already has a Google account: a Super Admin links it later, for a legacy student only.
+    claim_existing_google: z.boolean().optional(),
     nisn: z
       .string()
       .regex(NISN_REGEX, NISN_MESSAGE)

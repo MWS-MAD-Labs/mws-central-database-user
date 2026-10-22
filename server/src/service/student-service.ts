@@ -612,8 +612,14 @@ export class StudentService {
       throw new ResponseError(400, "A parent or guardian with an email is required");
     }
     // Only the form sets this flag. A Google that already has the email, or would not take it, stops the create here.
+    // A Super Admin can instead save a legacy student whose email Google already has, and link it afterwards.
+    const claiming = Boolean(options.requireParentContact && createRequest.claim_existing_google);
+    const legacyAtCreate = Boolean(createRequest.legacy_nis);
+    if (claiming && (admin.role !== AdminRole.SUPER_ADMIN || !legacyAtCreate)) {
+      throw new ResponseError(403, "Forbidden: only a Super Admin can link an existing Google account, and only for a legacy student");
+    }
     if (options.requireParentContact) {
-      await GoogleWorkspaceService.assertCanCreate(createRequest.email);
+      await GoogleWorkspaceService.assertCanCreate(createRequest.email, undefined, { claimExisting: claiming });
     }
 
     const initialStatus = createRequest.status ?? StudentStatus.REGISTERED;
@@ -969,6 +975,11 @@ export class StudentService {
         500,
         "Internal Server Error: Failed to retrieve created student data",
       );
+    }
+
+    // Waits for a Super Admin to link the account that Google already has. Nothing is made or changed in Google.
+    if (claiming) {
+      await GoogleWorkspaceService.markPendingClaim(newPerson.id, { admin, context });
     }
 
     return toStudentResponse(newPerson);

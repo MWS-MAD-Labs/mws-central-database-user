@@ -266,4 +266,58 @@ describe("the Google account of a student", () => {
     expect(renamed.status).toBe(400);
     expect((await personOf(id)).email).not.toBe("test_google_taken@millennia21.id");
   });
+
+  describe("an email Google already has", () => {
+    const inGoogle = (email: string, name = ["Ari", "Putra"]) =>
+      google.users.set("old-s", {
+        id: "old-s", primaryEmail: email, givenName: name[0], familyName: name[1],
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+    const email = "test_google_lama@millennia21.id";
+
+    it("is linked by a Super Admin to a legacy student whose name matches, and changes nothing in Google", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      inGoogle(email);
+      const refused = await TestRequest.post("/api/admin/students", { full_name: "Ari Putra", nick_name: "Ari", email, gender: Gender.MALE, religion: Religion.ISLAM, birth_place: "Jakarta", birth_date: new Date("2012-01-01").toISOString(), nis: "9100001", entry_type: "PSB", current_grade_id: gradeId, join_academic_year_id: academicYearId, join_grade_id: gradeId }, accessToken);
+      expect(refused.status).toBe(400);
+
+      const response = await TestRequest.post("/api/admin/students", { full_name: "Putra Ari", nick_name: "Ari", email, gender: Gender.MALE, religion: Religion.ISLAM, birth_place: "Jakarta", birth_date: new Date("2012-01-01").toISOString(), legacy_nis: "OLD-12", entry_type: "PSB", current_grade_id: gradeId, join_academic_year_id: academicYearId, join_grade_id: gradeId, claim_existing_google: true }, accessToken);
+      expect(response.status).toBe(200);
+      const id = (await response.json()).data.id as string;
+      expect((await personOf(id)).google_sync_status).toBe(GoogleSyncStatus.PENDING_CLAIM);
+
+      const status = await TestRequest.get(url(id), accessToken);
+      expect((await status.json()).data.can.link_existing).toBe(true);
+      const linked = await TestRequest.post(url(id, "/provision"), {}, accessToken);
+      expect(linked.status).toBe(200);
+      expect((await linked.json()).data).toMatchObject({ status: "ACTIVE", outcome: "linked" });
+      expect(await personOf(id)).toMatchObject({ google_user_id: "old-s", google_keeps_name: true });
+      expect(google.created).toHaveLength(0);
+      expect(google.passwords).toHaveLength(0);
+      expect(google.updated).toHaveLength(0);
+    });
+
+    it("is refused for a Database Admin, for a student who is not legacy, and when the name is not the same", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      inGoogle(email, ["Orang", "Lain"]);
+      const id = await makeStudent(accessToken, { email: "test_google_baru@millennia21.id" });
+      // Not legacy: a flag from the form is refused too.
+      const flagged = await TestRequest.post("/api/admin/students", { full_name: "Ari Putra", nick_name: "Ari", email, gender: Gender.MALE, religion: Religion.ISLAM, birth_place: "Jakarta", birth_date: new Date("2012-01-01").toISOString(), entry_type: "PSB", current_grade_id: gradeId, join_academic_year_id: academicYearId, join_grade_id: gradeId, claim_existing_google: true }, accessToken);
+      expect(flagged.status).toBe(403);
+
+      await prismaClient.person.update({ where: { id: (await personOf(id)).id }, data: { email } });
+      const notLegacy = await TestRequest.post(url(id, "/provision"), {}, accessToken);
+      expect(notLegacy.status).toBe(409);
+
+      await prismaClient.student.update({ where: { id }, data: { legacy_nis: "OLD-9" } });
+      const mismatch = await TestRequest.post(url(id, "/provision"), {}, accessToken);
+      expect(mismatch.status).toBe(409);
+      expect(JSON.stringify(await mismatch.json())).toContain("Orang Lain");
+
+      inGoogle(email, ["Ari", "Putra"]);
+      const dba = await AdminUserTest.createDatabaseAdmin(unitId);
+      expect((await TestRequest.post(url(id, "/provision"), {}, dba.accessToken)).status).toBe(403);
+      expect((await TestRequest.get(url(id), dba.accessToken).then((r) => r.json())).data.can.link_existing).toBe(false);
+    });
+  });
 });

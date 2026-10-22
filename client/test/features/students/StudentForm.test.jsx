@@ -18,7 +18,14 @@ function renderStudentForm({
   user = superAdminUser,
   onSubmit = mock(() => {}),
   isSubmitting = false,
+  availability = { available: true, reason: 'FREE', message: 'Available' },
 } = {}) {
+  globalThis.fetch = mock(async (url) =>
+    new Response(JSON.stringify({ data: url.includes('/email-availability') ? availability : [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  )
   const result = renderWithProviders(
     <AuthContext.Provider value={{ user }}>
       <ConfirmProvider>
@@ -105,6 +112,8 @@ describe('StudentForm', () => {
     await user.type(field('full_name').querySelector('input'), 'ari student')
     await user.type(field('nick_name').querySelector('input'), 'ari')
     await user.type(field('email_local').querySelector('input'), 'ari.student')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+    await screen.findByText('Available')
     await chooseSelect(user, 'Select Gender', 'Male')
     await chooseSelect(user, 'Select Religion', 'Islam')
     await user.type(field('birth_place').querySelector('input'), 'jakarta')

@@ -42,6 +42,7 @@ const BADGES = {
   MISSING: { tone: "red", label: "Not in Google" },
   IN_GOOGLE: { tone: "amber", label: "In Google" },
   PENDING_CLAIM: { tone: "amber", label: "Waiting For Sign-in" },
+  PENDING_LINK: { tone: "amber", label: "To Be Linked" },
 };
 
 // How the badge reads for a person with no link, by what the lookup in Google came back with.
@@ -243,6 +244,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
   const can = status.can ?? {};
   // For a person with no link: what Central could find out about the email in Google. Not asking is not "not there".
   const waiting = status.status === "PENDING_CLAIM";
+  const canLink = status?.can?.link_existing ?? status?.can?.create;
   const lookup = status.linked || waiting ? null : (status.lookup ?? { state: status.in_google ? "found" : "absent", message: null });
   const lookupState = lookup?.state ?? null;
   // The account is deleted or gone in Google, so there is nothing to change until it is restored.
@@ -251,8 +253,14 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
     ? { tone: "red", label: "Deleted in Google" }
     : lookupState && lookupState !== "absent"
       ? (LOOKUP_BADGES[lookupState] ?? BADGES.NONE)
-      : (BADGES[status.status] ?? BADGES.NONE);
-  const lookupNote = waiting ? "Linked when this person signs in to Central with this Google account." : lookupLine(lookup);
+      : waiting && isStudent
+        ? BADGES.PENDING_LINK
+        : (BADGES[status.status] ?? BADGES.NONE);
+  const lookupNote = waiting
+    ? isStudent
+      ? "Google already has this account. A Super Admin links it once the name matches."
+      : "Linked when this person signs in to Central with this Google account."
+    : lookupLine(lookup);
   // These answers do not depend on asking again, so the button is off instead of doing nothing.
   const noNewAnswer = lookupState === "blocked" || lookupState === "simulated" || lookupState === "admin";
   const locked = Boolean(status.locked);
@@ -376,7 +384,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
               <KeyRound size={15} />
             </CooldownButton>
           ) : null}
-          {can.takeover && waiting && !locked ? (
+          {can.takeover && waiting && !isStudent && !locked ? (
             <Button
               type="button"
               variant="ghost"
@@ -401,7 +409,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
               <RefreshCw size={15} />
             </Button>
           ) : null}
-          {can.create && !status.linked && !locked && lookupState === "found" ? (
+          {canLink && !status.linked && !locked && (lookupState === "found" || (isStudent && waiting)) ? (
             <Button type="button" variant="ghost" size="icon" aria-label="Link Google account" title="Link Google account" onClick={() => setDialog("link")}>
               <Link2 size={15} />
             </Button>
@@ -500,7 +508,11 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
       {dialog === "link" ? (
         <CrudDialog
           title="Link Google Account"
-          description="This email already has an account in Google. Linking connects it to this person and changes nothing in Google."
+          description={
+            isStudent
+              ? "This email already has an account in Google. Linking connects it to this student and changes nothing in Google. It only goes ahead when the name in Google is the name here."
+              : "This email already has an account in Google. Linking connects it to this person and changes nothing in Google."
+          }
           panelClassName="max-w-lg"
           onClose={() => setDialog(null)}
           footer={

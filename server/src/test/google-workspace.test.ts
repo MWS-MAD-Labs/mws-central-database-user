@@ -1093,15 +1093,15 @@ describe("google workspace accounts", () => {
       const { json } = await create(superToken);
       const read = async (token: string) =>
         (await (await TestRequest.get(`/api/admin/employees/${json.data.id}/google`, token)).json()).data.can;
-      expect(await read(superToken)).toEqual({ create: true, manage: true, takeover: true });
+      expect(await read(superToken)).toEqual({ create: true, link_existing: true, manage: true, takeover: true });
 
       await AdminUserTest.delete();
       const db = await AdminUserTest.createDatabaseAdmin(master.unit.id);
-      expect(await read(db.accessToken)).toEqual({ create: true, manage: false, takeover: false });
+      expect(await read(db.accessToken)).toEqual({ create: true, link_existing: true, manage: false, takeover: false });
 
       await AdminUserTest.delete();
       const plain = await AdminUserTest.createSuperAdmin(master.unit.id, { id: "plain-super-id", email: "test_plain_super@millennia21.id", plain: true });
-      expect(await read(plain.accessToken)).toEqual({ create: true, manage: true, takeover: false });
+      expect(await read(plain.accessToken)).toEqual({ create: true, link_existing: true, manage: true, takeover: false });
     });
   });
 

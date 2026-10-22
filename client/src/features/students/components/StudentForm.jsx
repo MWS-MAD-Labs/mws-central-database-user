@@ -136,12 +136,17 @@ export function StudentForm({
 
   const isCreate = mode === "create";
   // A new or changed email has to pass the Check button before the form can be saved.
+  // A Super Admin can save a legacy student whose email Google already has, and link the account afterwards.
+  const [claimExisting, setClaimExisting] = useState(false);
   const emailCheck = useEmailCheck(
     values.email_local ? `${values.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
     {
       initialEmail: !isCreate && initialValues.email_local ? `${initialValues.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
+      allowClaim: isCreate && user?.role === "SUPER_ADMIN" && Boolean(values.is_legacy),
+      claimExisting,
     },
   );
+  const claiming = emailCheck.state === "claimable" && claimExisting;
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const allErrors = useMemo(
@@ -329,7 +334,7 @@ export function StudentForm({
     }
 
     onSubmit(
-      buildPayload(values, { includeBirth: birthRevealed, isCreate }),
+      buildPayload(values, { includeBirth: birthRevealed, isCreate, claiming }),
       pendingPhotoBlob,
     );
   }
@@ -411,6 +416,15 @@ export function StudentForm({
               errors={errors}
               updateValue={updateValue}
             />
+            {emailCheck.state === "claimable" ? (
+              <CheckboxField
+                className="md:col-span-2"
+                label="Link the existing Google account later"
+                description="Google already has this account. It is not changed. A Super Admin links it from the student page once the name in Google is the name here."
+                checked={claimExisting}
+                onChange={(event) => setClaimExisting(event.target.checked)}
+              />
+            ) : null}
             <Field label="Gender" name="gender" error={errors.gender} required>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
@@ -957,8 +971,9 @@ const PARENT_TYPES = [
   { value: "GUARDIAN", label: "Guardian" },
 ];
 
-function buildPayload(values, { includeBirth = true, isCreate = false } = {}) {
+function buildPayload(values, { includeBirth = true, isCreate = false, claiming = false } = {}) {
   const payload = buildFullPayload(values);
+  if (claiming) payload.claim_existing_google = true;
   if (isCreate) {
     payload.parent = cleanPayload({
       type: values.parent_type,

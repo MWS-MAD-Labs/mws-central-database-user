@@ -1,5 +1,6 @@
 import { randomInt } from "node:crypto";
 import {
+  AdminRole,
   AuditSource,
   EmployeeStatus,
   GoogleSyncStatus,
@@ -538,6 +539,50 @@ export class GoogleWorkspaceService {
       outcome: "waiting",
       message: "The existing Google account is linked when this person signs in to Central",
     };
+  }
+
+  // A student whose email Google already has is linked by a Super Admin, not by sign-in (students do not sign in to
+  // Central). Allowed for a student saved as waiting, or a legacy one (a legacy NIS, or no valid NIS yet), and only when
+  // the name in Google is the name in Central. Returns null when Google has no such account, so the account is made the
+  // usual way. Nothing is changed in Google and no password is made.
+  static async linkStudent(
+    personId: string,
+    admin: Pick<AdminUser, "id" | "role">,
+    context: AuditRequestContext = {},
+  ): Promise<GoogleSyncResult | null> {
+    const person = await load(personId);
+    assertAllowedTarget(person.email);
+    await this.assertNotLocked(personId);
+    const client = getDirectoryClient();
+    let user: DirectoryUser | null;
+    try {
+      user = await client.findUser(person.email);
+    } catch (error) {
+      logger.error(`Google lookup failed for person ${person.id}`, error);
+      throw new ResponseError(502, messageOf(error));
+    }
+    if (!user) return null;
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(403, "Forbidden: only a Super Admin can link a Google account that already exists");
+    }
+    const student = await prismaClient.student.findFirst({ where: { person_id: personId }, select: { nis: true, legacy_nis: true } });
+    const legacy = person.google_sync_status === GoogleSyncStatus.PENDING_CLAIM || Boolean(student && (student.legacy_nis || !student.nis));
+    if (!legacy) {
+      throw new ResponseError(409, "Google already has this email. Only a legacy student can be linked to it. Use another email for this student");
+    }
+    if (user.isAdmin) throw new ResponseError(400, "That email belongs to a Workspace admin, which is not managed from here");
+    await assertNotLinkedElsewhere(user.id, person.id);
+    if (nameKey(`${user.givenName} ${user.familyName}`) !== nameKey(person.full_name)) {
+      throw new ResponseError(
+        409,
+        `The name in Google (${`${user.givenName} ${user.familyName}`.trim()}) is not the name here (${person.full_name}), so it is not linked`,
+      );
+    }
+    const status = user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE;
+    await markStatus(person.id, status, { google_user_id: user.id, user });
+    await prismaClient.person.update({ where: { id: person.id }, data: { google_keeps_name: true } });
+    await record("GOOGLE_ACCOUNT_PROVISION", person, admin, context, { outcome: "linked", mode: client.mode, recovery_email_set: false });
+    return { status, google_user_id: user.id, outcome: "linked" };
   }
 
   // A protected admin who makes their own employee record: they are signed in with that Google account, so it is theirs.

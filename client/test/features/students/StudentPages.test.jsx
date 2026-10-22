@@ -55,6 +55,10 @@ describe('Student create and edit pages', () => {
     const fetchMock = createFetchRouter([
       ...optionsRoutes(),
       {
+        path: /^\/api\/admin\/google\/email-availability/,
+        response: jsonResponse({ data: { available: true, reason: 'FREE', message: 'Available' } }),
+      },
+      {
         path: '/api/admin/students',
         method: 'POST',
         response: jsonResponse({ data: { id: 'student-new' } }),
@@ -68,6 +72,8 @@ describe('Student create and edit pages', () => {
     await user.type(fields('full_name').querySelector('input'), 'ari student')
     await user.type(fields('nick_name').querySelector('input'), 'ari')
     await user.type(fields('email_local').querySelector('input'), 'ari.student')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+    await screen.findByText('Available')
     await user.click(screen.getByRole('button', { name: 'Select Gender' }))
     await user.click(screen.getByRole('option', { name: 'Male' }))
     await user.click(screen.getByRole('button', { name: 'Select Religion' }))

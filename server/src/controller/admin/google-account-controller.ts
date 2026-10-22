@@ -147,10 +147,17 @@ export class GoogleAccountController {
       const status = await GoogleWorkspaceService.statusOf(target.personId, { refresh });
       // What this admin may do, so the page only shows those buttons.
       const guardians = target.studentId ? await guardiansOf(target.studentId, admin) : undefined;
+      // Linking an account Google already has: a student's is for a Super Admin and a legacy student only.
+      let linkExisting = canCreate(admin, target);
+      if (target.studentId) {
+        const student = await prismaClient.student.findFirst({ where: { id: target.studentId }, select: { nis: true, legacy_nis: true } });
+        const legacy = status.status === "PENDING_CLAIM" || Boolean(student && (student.legacy_nis || !student.nis));
+        linkExisting = isSuperAdmin(admin) && legacy;
+      }
       return c.json({
         data: {
           ...status,
-          can: { create: canCreate(admin, target), manage: isSuperAdmin(admin), takeover: isProtected(admin) },
+          can: { create: canCreate(admin, target), link_existing: linkExisting, manage: isSuperAdmin(admin), takeover: isProtected(admin) },
           ...(guardians ? { guardians } : {}),
         },
       });
@@ -163,6 +170,11 @@ export class GoogleAccountController {
       await assertCanCreate(c, target);
       const personId = target.personId;
       const body = await c.req.json().catch(() => ({}));
+      // A student whose email Google already has is linked, by a Super Admin and by name, instead of made.
+      if (target.studentId) {
+        const linked = await GoogleWorkspaceService.linkStudent(personId, c.var.admin, getAuditRequestContext(c));
+        if (linked) return c.json({ data: linked });
+      }
       // A student's recovery email is a parent's or guardian's, so the first password and "Forgot password" reach them.
       const recovery = target.studentId
         ? (await guardianOf(target.studentId, Validation.validate(STUDENT_PROVISION, body).parent_id)).email
