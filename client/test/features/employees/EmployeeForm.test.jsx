@@ -181,6 +181,34 @@ describe('EmployeeForm', () => {
     expect(screen.getByText('Not needed: no Google account is made for this address.')).toBeVisible()
   })
 
+  it('saves a protected admin address with every other field filled and no recovery email', async () => {
+    setSystemTime(new Date('2026-09-17T12:00:00.000Z'))
+    const message = 'This is a protected admin address. It is saved without a link to Google, and Central never changes that account'
+    const { user, onSubmit } = renderEmployeeForm({ mode: 'create', availability: { available: true, reason: 'PROTECTED', message } })
+    await user.type(field('full_name').querySelector('input'), 'rizqi')
+    await user.type(field('nick_name').querySelector('input'), 'rizqi')
+    await user.type(field('email_local').querySelector('input'), 'rizqi')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+    expect(await screen.findByText(message)).toBeVisible()
+    await chooseSelect(user, 'Select Gender', 'Male')
+    await chooseSelect(user, 'Select Religion', 'Islam')
+    await user.type(field('birth_place').querySelector('input'), 'jakarta')
+    await user.type(field('employee_id').querySelector('input'), '1111111')
+    await chooseSelect(user, 'Probation', 'Permanent')
+    await chooseSelect(user, 'Select unit', 'Elementary')
+    await chooseSelect(user, 'Select level', /Teacher/)
+    await chooseSelect(user, 'Select position', 'Classroom Teacher')
+    await chooseSelect(user, 'Select building', 'Main Building')
+    setDate('birth_date', '10/05/1990')
+    setDate('join_date', '01/07/2020')
+
+    fireEvent.submit(document.querySelector('form'))
+    const review = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(review).getByRole('button', { name: 'Create employee' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('recovery_email')
+  })
+
   it('keeps the form from saving a new email until it is checked', async () => {
     const { user, onSubmit } = renderEmployeeForm({ mode: 'create' })
     await user.type(field('email_local').querySelector('input'), 'ari.employee')
