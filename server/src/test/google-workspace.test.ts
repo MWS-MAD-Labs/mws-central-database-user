@@ -4,6 +4,7 @@ import {
   AuditLogTest,
   EmployeeTest,
   generateEmployeeAccessToken,
+  InternTest,
   MasterDataTest,
   TestRequest,
 } from "./test-utils";
@@ -1790,6 +1791,72 @@ describe("google workspace accounts", () => {
       const { json } = await create(accessToken, { recovery_email: "biasa@gmail.com" });
       await GoogleWorkspaceService.syncProfile((await personOf(json.data.id)).id);
       expect([...google.users.values()].find((user) => user.primaryEmail.startsWith("test_google_") && user.givenName === "Rizqi Sabilla")).toBeTruthy();
+    });
+  });
+
+  describe("an intern", () => {
+    const internBody = (over: Record<string, unknown> = {}) => ({
+      full_name: "Intan Magang",
+      nick_name: "Intan",
+      email: "test_google_test_intern_a@millennia21.id",
+      gender: Gender.FEMALE,
+      religion: Religion.ISLAM,
+      unit_id: master.unit.id,
+      job_position_id: master.position.id,
+      building_id: master.building.id,
+      join_date: new Date("2026-07-01").toISOString(),
+      end_date: new Date("2026-12-31").toISOString(),
+      ...over,
+    });
+    const make = (token: string, over: Record<string, unknown> = {}) =>
+      TestRequest.postRaw("/api/admin/interns", internBody(over), token);
+    const existing = (email: string) =>
+      google.users.set("old-i", {
+        id: "old-i", primaryEmail: email, givenName: "Intan", familyName: "Magang",
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+    afterEach(async () => {
+      await InternTest.delete();
+    });
+
+    it("waits for its owner when a Super Admin chooses so for an email Google already has, and is linked at sign-in", async () => {
+      existing("test_google_test_intern_a@millennia21.id");
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      expect((await make(accessToken, { recovery_email: "intan@gmail.com" })).status).toBe(400);
+
+      const dba = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      expect((await make(dba.accessToken, { claim_existing_google: true })).status).toBe(403);
+
+      const response = await make(accessToken, { claim_existing_google: true });
+      expect(response.status).toBe(200);
+      expect((await response.json()).data.google).toMatchObject({ status: "PENDING_CLAIM", outcome: "waiting" });
+      expect(google.created).toHaveLength(0);
+
+      const spy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
+        google_id: "old-i", email: "test_google_test_intern_a@millennia21.id", name: "Intan Magang", avatar_url: "",
+      });
+      await TestRequest.post("/api/auth/google", { code: "X" });
+      spy.mockRestore();
+      const person = await prismaClient.person.findFirstOrThrow({ where: { email: "test_google_test_intern_a@millennia21.id" } });
+      expect(person).toMatchObject({ google_sync_status: GoogleSyncStatus.ACTIVE, google_user_id: "old-i", google_keeps_name: true });
+    });
+
+    it("is saved with no recovery email for a protected address, and linked when the admin makes their own", async () => {
+      process.env.GOOGLE_WORKSPACE_TEST_PREFIX = "test_super";
+      google.users.set("own-1", {
+        id: "own-1", primaryEmail: "test_superadmin@millennia21.id", givenName: "Super", familyName: "Admin",
+        suspended: false, isAdmin: true, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const response = await make(accessToken, { email: "test_superadmin@millennia21.id" });
+      expect(response.status).toBe(200);
+      expect((await response.json()).data.google).toMatchObject({ status: "ACTIVE", outcome: "linked" });
+      expect(google.created).toHaveLength(0);
+      expect(google.passwords).toHaveLength(0);
+      const intern = await prismaClient.intern.findFirstOrThrow({ where: { person: { email: "test_superadmin@millennia21.id" } } });
+      await prismaClient.internMutationHistory.deleteMany({ where: { intern_id: intern.id } });
+      await prismaClient.intern.delete({ where: { id: intern.id } });
+      await prismaClient.person.delete({ where: { id: intern.person_id } });
     });
   });
 

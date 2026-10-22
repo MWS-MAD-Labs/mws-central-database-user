@@ -1,6 +1,7 @@
 import { GoogleSyncStatus } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { GoogleWorkspaceService, type GoogleSyncResult } from "./google-workspace-service";
+import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
 import { ResponseError } from "../error/response-error";
 import {
   AdminRole,
@@ -361,12 +362,18 @@ export class InternService {
     }
 
     const createRequest = Validation.validate(InternValidation.CREATE, request);
-    if (options.requireRecoveryEmail && !createRequest.recovery_email) {
+    // A protected admin gets an intern record but never a new Google account, so no recovery email is asked for.
+    const withoutGoogle = isProtectedSuperAdminEmail(createRequest.email);
+    const claiming = Boolean(options.requireRecoveryEmail && !withoutGoogle && createRequest.claim_existing_google);
+    if (claiming && admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(403, "Forbidden: only a Super Admin can wait for an existing Google account to be claimed");
+    }
+    if (options.requireRecoveryEmail && !withoutGoogle && !claiming && !createRequest.recovery_email) {
       throw new ResponseError(400, "Recovery email is required: it is how the person sets the password of their new Google account");
     }
     // Before anything is written: a Google that already has the email, or would not take it, stops the create here.
-    if (options.requireRecoveryEmail) {
-      await GoogleWorkspaceService.assertCanCreate(createRequest.email, createRequest.recovery_email);
+    if (options.requireRecoveryEmail && !withoutGoogle) {
+      await GoogleWorkspaceService.assertCanCreate(createRequest.email, createRequest.recovery_email, { claimExisting: claiming });
     }
     await assertCanWriteInternContactPii(admin, createRequest, context);
 
@@ -506,7 +513,11 @@ export class InternService {
 
     // The intern exists in Central either way. A failure here shows as a Google status they can retry.
     let google: GoogleSyncResult | undefined;
-    if (createRequest.recovery_email) {
+    if (withoutGoogle && admin.email.trim().toLowerCase() === createRequest.email.trim().toLowerCase()) {
+      google = await GoogleWorkspaceService.linkOwn(withRelations.person_id, { admin, context });
+    } else if (claiming) {
+      google = await GoogleWorkspaceService.markPendingClaim(withRelations.person_id, { admin, context });
+    } else if (createRequest.recovery_email && !withoutGoogle) {
       google = await GoogleWorkspaceService.provision(withRelations.person_id, {
         recoveryEmail: createRequest.recovery_email,
         admin,

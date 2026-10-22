@@ -54,9 +54,9 @@ Until the account is restored, Make temporary password, Change recovery email, S
 
 A new or changed email has to pass the **Check** button before Create or Save is enabled. Typing never asks Google. The answer belongs to the address that was checked, so changing the text asks for a new check. The server checks again by itself on create, and on an edit of someone who has a Google account, because that account is renamed with the email.
 
-## An email Google already has, for a new employee
+## An email Google already has, for a new employee or intern
 
-The form refuses it, since a typo could be someone else's mailbox. A Super Admin can tick "Wait for this person to sign in" instead (`claim_existing_google`). The person is saved with the status `PENDING_CLAIM`, nothing is made or changed in Google, and no recovery email is asked for. The account is linked when that mailbox's owner signs in to Central with Google, because the sign-in is what proves it is theirs. Until then provision, the bulk link and every other action on the account are refused. Someone who never signs in stays waiting.
+The form refuses it, since a typo could be someone else's mailbox. A Super Admin can tick "Wait for this person to sign in" instead (`claim_existing_google`). The person is saved with the status `PENDING_CLAIM`, nothing is made or changed in Google, and no recovery email is asked for. The account is linked when that mailbox's owner signs in to Central with Google, because the sign-in is what proves it is theirs. Until then provision, the bulk link and every other action on the account are refused. Someone who never signs in stays waiting. Interns work the same way, and so do protected admin addresses on the intern form.
 
 A claimed account keeps the name it has in Google: Central no longer writes its name over it (`google_keeps_name`), only the email follows. While it waits, a protected Super Admin can reset its password (`POST .../google/reset-waiting`). It goes ahead only when the name in Google is the name in Central, the password is mailed to the recovery email Google holds for the account, and it is never shown or sent to the mailbox itself. It needs SMTP, and an account with no recovery email cannot use it.
 
