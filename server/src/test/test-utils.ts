@@ -464,9 +464,17 @@ export class TestRequest {
       body !== null &&
       typeof body === "object" &&
       !("recovery_email" in (body as object));
+    // A new student comes with a parent or guardian too. A test about that sends `parent: undefined` to leave it out.
+    const needsParent =
+      path === "/api/admin/students" && body !== null && typeof body === "object" && !("parent" in (body as object));
+    const withDefaults = needsRecovery
+      ? { ...body, recovery_email: "test.person@gmail.com" }
+      : needsParent
+        ? { ...body, parent: { type: "MOTHER", full_name: "Test Parent", email: "test.parent@gmail.com" } }
+        : body;
     return this.postRaw(
       url,
-      needsRecovery ? { ...body, recovery_email: "test.person@gmail.com" } : body,
+      withDefaults,
       accessToken,
       customHeaders,
     );
@@ -963,6 +971,10 @@ export class StudentTest {
           { grade: { name: { startsWith: "TEST_" } } },
         ],
       },
+    });
+    // The parent a new student is created with.
+    await prismaClient.parentGuardian.deleteMany({
+      where: { student: { person: { email: { contains: "@millennia21.id" } } } },
     });
     await prismaClient.student.deleteMany({
       where: { person: { email: { contains: "@millennia21.id" } } },

@@ -48,6 +48,7 @@ import {
 import type { ResourceVersionResponse } from "../model/resource-version-model";
 import { toEnrollmentAuditSnapshot } from "../model/enrollment-model";
 import { AuditService } from "./audit-service";
+import { toParentGuardianAuditSnapshot } from "../model/parent-guardian-model";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { canApproveEntity } from "../utils/change-request-approver";
@@ -606,6 +607,10 @@ export class StudentService {
       request,
     );
 
+    if (options.requireParentContact && !createRequest.parent) {
+      throw new ResponseError(400, "A parent or guardian with an email is required");
+    }
+
     const initialStatus = createRequest.status ?? StudentStatus.REGISTERED;
     if (initialStatus === StudentStatus.ACTIVE) {
       throw new ResponseError(
@@ -864,6 +869,33 @@ export class StudentService {
             },
             tx,
           );
+
+          if (createRequest.parent) {
+            const contact = await tx.parentGuardian.create({
+              data: {
+                student_id: personForAudit.student.id,
+                type: createRequest.parent.type,
+                full_name: createRequest.parent.full_name,
+                email: createRequest.parent.email,
+                phone: createRequest.parent.phone,
+                address: createRequest.parent.address,
+                is_primary: true,
+              },
+            });
+            await AuditService.record(
+              {
+                action: AuditAction.CREATE_PARENT_GUARDIAN,
+                source: AuditSource.UI,
+                entity_type: "ParentGuardian",
+                entity_id: contact.id,
+                admin_id: admin.id,
+                new_values: toParentGuardianAuditSnapshot(contact),
+                ip_address: context.ip_address,
+                user_agent: context.user_agent,
+              },
+              tx,
+            );
+          }
 
           await recordStudentMutation(
             tx,

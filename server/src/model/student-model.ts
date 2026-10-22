@@ -3,6 +3,7 @@ import type {
   Class,
   ConsentStatus,
   Gender,
+  ParentType,
   Grade,
   HealthRecord,
   PCDay,
@@ -43,6 +44,9 @@ export type StudentSortField = (typeof STUDENT_SORT_FIELDS)[number];
 
 export interface StudentCreateOptions {
   disableAutoGenerateNis?: boolean;
+  // Set by the create endpoint only: a new student comes with one parent or guardian who has an email, so there is
+  // someone to give the Google account's first password to. Imports of older data are not asked for it.
+  requireParentContact?: boolean;
 }
 export function buildStudentOrderBy(
   sortBy: StudentSortField,
@@ -103,6 +107,15 @@ export type CreateStudentRequest = {
   graduation_grade?: string;
   leave_year?: string;
   sn?: boolean;
+
+  // The parent or guardian who is the first contact. Saved with the student, as the primary one.
+  parent?: {
+    type: ParentType;
+    full_name: string;
+    email: string;
+    phone?: string;
+    address?: string;
+  };
 
   // Super Admin override for a verified grade inconsistency.
   override_too_far_ahead_reason?: string;

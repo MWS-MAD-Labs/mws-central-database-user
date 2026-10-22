@@ -84,6 +84,20 @@ describe('StudentForm', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
+  it('asks for a parent or guardian with a name and an email before a student is created', async () => {
+    const { user, onSubmit } = renderStudentForm({ mode: 'create' })
+    await user.type(field('full_name').querySelector('input'), 'ari student')
+    fireEvent.submit(document.querySelector('form'))
+    expect(await screen.findByText('Relation is required.')).toBeVisible()
+    expect(screen.getByText('Parent or guardian name is required.')).toBeVisible()
+    expect(screen.getByText('Parent or guardian email is required.')).toBeVisible()
+
+    await user.type(field('parent_email').querySelector('input'), 'budi@')
+    await waitFor(() => expect(screen.queryByText('Parent or guardian email is required.')).not.toBeInTheDocument())
+    expect(field('parent_email').textContent).toMatch(/email/i)
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
   it('submits a valid create payload with normalized values and services', async () => {
     setSystemTime(new Date('2026-09-17T12:00:00.000Z'))
     const { user, onSubmit } = renderStudentForm({ mode: 'create' })
@@ -100,6 +114,10 @@ describe('StudentForm', () => {
     await chooseSelect(user, 'Select Join Grade', 'Grade 1')
     await user.click(screen.getByRole('checkbox', { name: 'Pickup/Drop' }))
     await user.click(screen.getByRole('checkbox', { name: 'PSB Guide' }))
+    await chooseSelect(user, 'Select Relation', 'Father')
+    await user.type(field('parent_name').querySelector('input'), 'budi santoso')
+    await user.type(field('parent_email').querySelector('input'), 'budi.santoso@gmail.com')
+    await user.type(field('parent_phone').querySelector('input'), '081234567890')
 
     const birthDate = field('birth_date')
     await user.click(within(birthDate).getByRole('button', { name: 'Choose date' }))
@@ -125,6 +143,7 @@ describe('StudentForm', () => {
       join_grade_id: 'grade-1',
       pickup_drop_service: true,
       catering_service: false,
+      parent: { type: 'FATHER', full_name: 'Budi Santoso', email: 'budi.santoso@gmail.com', phone: '081234567890' },
       psb_guide: true,
     })
     expect(onSubmit.mock.calls[0][1]).toBeNull()

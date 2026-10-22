@@ -31,6 +31,8 @@ import {
   trimmedOrUndefined,
   visibleErrors,
   emailProblem,
+  phoneDigitsOnly,
+  sanitizeEmail,
   sanitizeEmailLocalPart,
 } from "../../../lib/form.js";
 import {
@@ -314,7 +316,7 @@ export function StudentForm({
     }
 
     onSubmit(
-      buildPayload(values, { includeBirth: birthRevealed }),
+      buildPayload(values, { includeBirth: birthRevealed, isCreate }),
       pendingPhotoBlob,
     );
   }
@@ -768,6 +770,63 @@ export function StudentForm({
           </div>
         </section>
 
+        {isCreate ? (
+          <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <h2 className="mb-1 text-base font-semibold text-(--mws-charcoal)">Parent Or Guardian</h2>
+            <p className="mb-4 text-sm text-(--mws-muted)">
+              One is needed to give the student a Google account: the first password goes to their email. More can be added later.
+            </p>
+            <div className="grid min-w-0 gap-4 md:grid-cols-2">
+              <Field label="Relation" name="parent_type" error={errors.parent_type} required>
+                <SearchableSelect
+                  required={hasAttemptedSubmit}
+                  value={values.parent_type}
+                  onChange={(value) => updateValue("parent_type", value)}
+                  options={PARENT_TYPES}
+                  placeholder="Select Relation"
+                  searchPlaceholder="Search Relation"
+                />
+              </Field>
+              <LimitedField
+                label="Name"
+                field="parent_name"
+                max={100}
+                required
+                transform={capitalizeWords}
+                values={values}
+                errors={errors}
+                updateValue={updateValue}
+              />
+              <Field
+                label="Email"
+                name="parent_email"
+                error={errors.parent_email}
+                required
+                hint="Where the Google account's first password and the reset code go."
+              >
+                <TextInput
+                  type="email"
+                  maxLength={100}
+                  value={values.parent_email}
+                  invalid={Boolean(errors.parent_email)}
+                  placeholder="name@gmail.com"
+                  onChange={(event) => updateValue("parent_email", sanitizeEmail(event.target.value))}
+                />
+              </Field>
+              <Field label="Phone" name="parent_phone" error={errors.parent_phone} hint="Optional. Used to send the details on WhatsApp.">
+                <TextInput
+                  type="tel"
+                  maxLength={16}
+                  value={values.parent_phone}
+                  invalid={Boolean(errors.parent_phone)}
+                  placeholder="081234567890"
+                  onChange={(event) => updateValue("parent_phone", phoneDigitsOnly(event.target.value))}
+                />
+              </Field>
+            </div>
+          </section>
+        ) : null}
+
         <FormActionBar>
           {!isCreate && isDirty ? (
             <Button
@@ -868,11 +927,30 @@ function getInitialValues(mode, student, options) {
     pickup_drop_service: Boolean(academic.pickup_drop_service),
     catering_service: Boolean(academic.catering_service),
     psb_guide: Boolean(academic.psb_guide),
+    // The first parent or guardian, asked for when a student is created.
+    parent_type: "",
+    parent_name: "",
+    parent_email: "",
+    parent_phone: "",
   };
 }
 
-function buildPayload(values, { includeBirth = true } = {}) {
+const PARENT_TYPES = [
+  { value: "FATHER", label: "Father" },
+  { value: "MOTHER", label: "Mother" },
+  { value: "GUARDIAN", label: "Guardian" },
+];
+
+function buildPayload(values, { includeBirth = true, isCreate = false } = {}) {
   const payload = buildFullPayload(values);
+  if (isCreate) {
+    payload.parent = cleanPayload({
+      type: values.parent_type,
+      full_name: trimmedOrUndefined(values.parent_name),
+      email: trimmedOrUndefined(values.parent_email),
+      phone: trimmedOrUndefined(values.parent_phone),
+    });
+  }
   // Never revealed means never loaded: leave them out so nothing is overwritten.
   if (!includeBirth) {
     delete payload.birth_place;
@@ -958,6 +1036,13 @@ function buildEmail(localPart) {
   return trimmed ? `${trimmed}@${ALLOWED_EMAIL_DOMAIN}` : undefined;
 }
 
+// Asked for at create only: someone to give the Google account's first password to.
+const PARENT_REQUIRED_LABELS = {
+  parent_type: "Relation",
+  parent_name: "Parent or guardian name",
+  parent_email: "Parent or guardian email",
+};
+
 const REQUIRED_FIELD_LABELS = {
   full_name: "Full name",
   nick_name: "Nick name",
@@ -1026,15 +1111,27 @@ const STUDENT_FIELD_SECTIONS = {
   pickup_drop_service: "Services",
   catering_service: "Services",
   psb_guide: "Services",
+
+  parent_type: "Parent or guardian",
+  parent_name: "Parent or guardian",
+  parent_email: "Parent or guardian",
+  parent_phone: "Parent or guardian",
 };
 
 function computeStudentErrors(values, isCreate) {
   const errors = {};
   if (isCreate) {
-    for (const [field, label] of Object.entries(REQUIRED_FIELD_LABELS)) {
+    for (const [field, label] of Object.entries({ ...REQUIRED_FIELD_LABELS, ...PARENT_REQUIRED_LABELS })) {
       if (!values[field]) {
         errors[field] = `${label} is required.`;
       }
+    }
+    if (values.parent_email) {
+      const problem = emailProblem(values.parent_email, { external: true });
+      if (problem) errors.parent_email = problem;
+    }
+    if (values.parent_phone && !/^(\+62|62|0)\d{8,13}$/.test(values.parent_phone)) {
+      errors.parent_phone = "Enter an Indonesian phone number, for example 081234567890.";
     }
   }
   if (values.email_local) {

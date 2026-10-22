@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   ConsentStatus,
   Gender,
+  ParentType,
   PCDay,
   Religion,
   StudentEntryType,
@@ -9,9 +10,12 @@ import {
 } from "../generated/prisma/client";
 import { STUDENT_SORT_FIELDS } from "../model/student-model";
 import {
+  cleanEmail,
   emailWithAllowedDomain,
+  indonesianPhone,
   isBirthDateNotFuture,
   isBirthDateNotTooOld,
+  personName,
 } from "./validation";
 
 export const NIS_REGEX = /^\d{7}$/;
@@ -78,6 +82,19 @@ export class StudentValidation {
       "Birth date must be a valid ISO-8601 datetime string",
     ),
     photo_url: z.url("Photo must be a valid URL").max(500, "Photo URL is too long").optional(),
+
+    // The first parent or guardian. The create endpoint asks for it; imports do not.
+    parent: z
+      .object({
+        type: z.enum(Object.keys(ParentType) as [keyof typeof ParentType, ...(keyof typeof ParentType)[]], {
+          message: "Parent type must be a valid format",
+        }),
+        full_name: personName(),
+        email: cleanEmail(),
+        phone: indonesianPhone().optional(),
+        address: z.string().max(200, "Address is too long").optional(),
+      })
+      .optional(),
 
     // Only imports provide NIS directly; normal creates generate it.
     nis: z

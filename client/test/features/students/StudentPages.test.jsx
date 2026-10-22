@@ -79,6 +79,10 @@ describe('Student create and edit pages', () => {
     await user.click(screen.getByRole('option', { name: '2025/2026' }))
     await user.click(screen.getByRole('button', { name: 'Select Join Grade' }))
     await user.click(screen.getByRole('option', { name: 'Grade 1' }))
+    await user.click(screen.getByRole('button', { name: 'Select Relation' }))
+    await user.click(screen.getByRole('option', { name: 'Mother' }))
+    await user.type(fields('parent_name').querySelector('input'), 'siti aminah')
+    await user.type(fields('parent_email').querySelector('input'), 'siti.aminah@gmail.com')
 
     const birthDate = fields('birth_date')
     await user.click(within(birthDate).getByRole('button', { name: 'Choose date' }))
