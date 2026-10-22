@@ -731,9 +731,9 @@ export class GoogleWorkspaceService {
     }
     await prismaClient.person.update({ where: { id: person.id }, data: { google_password_issued_at: new Date() } });
     await record("GOOGLE_PASSWORD_RESET", person, admin, context, { mode: client.mode, claim: true });
-    const { subject, text } = resetPasswordEmail(input.language, { name: person.full_name, email: person.email, password });
+    const { subject, text, html } = resetPasswordEmail(input.language, { name: person.full_name, email: person.email, password });
     try {
-      await mailer.send({ to, subject, text });
+      await mailer.send({ to, subject, text, html });
     } catch (error) {
       logger.error(`Reset password email failed for person ${person.id}`, error);
       throw new ResponseError(502, "The password was reset but the email could not be sent. Try again after the wait");
@@ -921,7 +921,7 @@ export class GoogleWorkspaceService {
     await assertNotWaiting(person, "email", (wait) => `The details were mailed a moment ago. Wait ${wait} to send them again`);
     takeSignInEmailSlot(admin.id);
 
-    const { subject, text } =
+    const { subject, text, html } =
       input.reset && !input.parentName
         ? resetPasswordEmail(input.language, { name: person.full_name, email: person.email, password: input.password })
         : signInEmail(input.language, {
@@ -931,7 +931,7 @@ export class GoogleWorkspaceService {
             ...(input.parentName ? { parentName: input.parentName } : {}),
           });
     try {
-      await mailer.send({ to, subject, text });
+      await mailer.send({ to, subject, text, html });
     } catch (error) {
       logger.error(`Sign-in email failed for person ${person.id}`, error);
       throw new ResponseError(502, "The email could not be sent. Check the address and try again");

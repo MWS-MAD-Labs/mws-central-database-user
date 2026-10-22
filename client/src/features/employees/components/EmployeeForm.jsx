@@ -780,7 +780,7 @@ export function EmployeeForm({
             {!isCreate ? (
               <Field
                 label="Photo URL"
-                hint="Legacy field for a manually-linked photo (e.g. Google Drive). New photos should go through the upload/crop control on the detail page instead."
+                hint="Old links only. Upload new photos from the detail page."
               >
                 <TextInput
                   type="url"
