@@ -160,6 +160,18 @@ describe('StudentForm', () => {
     expect(onSubmit.mock.calls[0][1]).toBeNull()
   })
 
+  it('keeps the second parent email off until the first one is filled in and valid', async () => {
+    const { user } = renderStudentForm({ mode: 'create' })
+    const again = field('parent_email_confirm').querySelector('input')
+    expect(again).toBeDisabled()
+    expect(screen.queryByText('Type the email again.')).not.toBeInTheDocument()
+    const first = field('parent_email').querySelector('input')
+    await user.type(first, 'budi@')
+    expect(again).toBeDisabled()
+    await user.type(first, 'gmail.com')
+    expect(again).toBeEnabled()
+  })
+
   it('requires religion details when OTHER is selected', async () => {
     const { user, onSubmit } = renderStudentForm({ mode: 'create' })
     await user.click(screen.getByRole('button', { name: 'Select Religion' }))

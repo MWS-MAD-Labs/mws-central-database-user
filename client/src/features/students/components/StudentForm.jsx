@@ -154,6 +154,8 @@ export function StudentForm({
     () => computeStudentErrors(values, isCreate),
     [values, isCreate],
   );
+  // The email typed a second time only makes sense while the first one is filled in and valid.
+  const parentEmailNotReady = !values.parent_email || Boolean(allErrors.parent_email);
   // Drives the floating Save button's disabled/tooltip state - a field
   // with a value that fails a rule shows its error live (see
   // visibleErrors below), a blank required field still waits for a
@@ -855,6 +857,7 @@ export function StudentForm({
               <ConfirmEmailField
                 name="parent_email_confirm"
                 value={values.parent_email_confirm}
+                disabled={parentEmailNotReady}
                 error={errors.parent_email_confirm}
                 onChange={(value) => updateValue("parent_email_confirm", value)}
               />
@@ -1178,7 +1181,7 @@ function computeStudentErrors(values, isCreate) {
     if (values.parent_email) {
       const problem = emailProblem(values.parent_email, { external: true });
       if (problem) errors.parent_email = problem;
-      if (!values.parent_email_confirm) errors.parent_email_confirm = "Type the email again.";
+      else if (!values.parent_email_confirm) errors.parent_email_confirm = "Type the email again.";
       else if (values.parent_email_confirm !== values.parent_email) errors.parent_email_confirm = "The two emails do not match.";
     }
     if (values.parent_phone && !/^(\+62|62|0)\d{8,13}$/.test(values.parent_phone)) {

@@ -226,6 +226,26 @@ describe('EmployeeForm', () => {
     expect(await screen.findByText('The two emails do not match.')).toBeVisible()
   })
 
+  it('keeps the second recovery email off, and quiet, until the first one is filled in and valid', async () => {
+    const { user } = renderEmployeeForm({ mode: 'create' })
+    const again = field('recovery_email_confirm').querySelector('input')
+    expect(again).toBeDisabled()
+    expect(screen.queryByText('Type the recovery email again.')).not.toBeInTheDocument()
+
+    const recovery = field('recovery_email').querySelector('input')
+    await user.type(recovery, 'a')
+    expect(again).toBeDisabled()
+
+    await user.type(recovery, 'ri@gmail.com')
+    expect(again).toBeEnabled()
+    await user.type(again, 'ari@gmail.com')
+    expect(again.value).toBe('ari@gmail.com')
+
+    await user.clear(recovery)
+    expect(again).toBeDisabled()
+    expect(again.value).toBe('')
+  })
+
   it('keeps the form from saving a new email until it is checked', async () => {
     const { user, onSubmit } = renderEmployeeForm({ mode: 'create' })
     await user.type(field('email_local').querySelector('input'), 'ari.employee')

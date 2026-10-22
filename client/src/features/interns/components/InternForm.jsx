@@ -142,6 +142,8 @@ export function InternForm({
     () => computeInternErrors(values, isCreate, { noGoogle }),
     [values, isCreate, noGoogle],
   );
+  // The email typed a second time only makes sense while the first one is filled in and valid.
+  const recoveryNotReady = !values.recovery_email || Boolean(allErrors.recovery_email);
   // Drives the floating Save button's disabled/tooltip state - a field
   // with a value that fails a rule shows its error live (see
   // visibleErrors below), a blank required field still waits for a
@@ -405,6 +407,7 @@ export function InternForm({
               <ConfirmEmailField
                 name="recovery_email_confirm"
                 value={values.recovery_email_confirm}
+                disabled={recoveryNotReady}
                 error={errors.recovery_email_confirm}
                 onChange={(value) => updateValue("recovery_email_confirm", value)}
               />
@@ -937,8 +940,10 @@ function computeInternErrors(values, isCreate, { noGoogle = false } = {}) {
       emailProblem,
     );
     if (problem) errors.recovery_email = problem;
-    if (!values.recovery_email_confirm) errors.recovery_email_confirm = "Type the recovery email again.";
-    else if (values.recovery_email_confirm !== values.recovery_email) errors.recovery_email_confirm = "The two emails do not match.";
+    if (!problem) {
+      if (!values.recovery_email_confirm) errors.recovery_email_confirm = "Type the recovery email again.";
+      else if (values.recovery_email_confirm !== values.recovery_email) errors.recovery_email_confirm = "The two emails do not match.";
+    }
   }
   if (
     values.join_date &&
