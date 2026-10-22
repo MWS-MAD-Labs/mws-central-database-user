@@ -4,7 +4,7 @@ Central makes and keeps the Google Workspace account of every employee and inter
 
 ## What runs where
 
-Only a production Central with `GOOGLE_WORKSPACE_ENABLED=true` talks to the real Workspace, or any other one that also has `GOOGLE_WORKSPACE_TEST_PREFIX` set (then only addresses with that prefix go to Google). Staging and development share that Workspace, so otherwise they use a simulated client that only writes to the log ("would create ..."). The Employee and Intern detail pages show **Simulated** next to the Google account there.
+Only a production Central with `GOOGLE_WORKSPACE_ENABLED=true` talks to the real Workspace, or any other one that also has `GOOGLE_WORKSPACE_TEST_PREFIX` set (then only addresses with that prefix go to Google). Staging and development share that Workspace, so otherwise they use a simulated client that only writes to the log ("would create ..."). The Employee and Intern detail pages show **Simulated** next to the Google account there. The simulated client's ids carry a random part per run (`simulated-1a2b3c4d-1`), because the links it leaves in the database must not collide with the ids of the next run. Check does not refuse any email while Google is simulated: it answers that it did not look.
 
 ## Trying it for real from your own machine (or staging)
 
