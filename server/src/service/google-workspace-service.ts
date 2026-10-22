@@ -5,6 +5,7 @@ import {
   GoogleSyncStatus,
   InternStatus,
   IntegrationEnvironment,
+  StudentStatus,
   PersonType,
   type AdminUser,
   type Person,
@@ -585,7 +586,8 @@ export class GoogleWorkspaceService {
   // lately, so this cannot be used to mail out text for an account that is already in use.
   static async sendSignInEmail(
     personId: string,
-    input: { to?: string; language: SignInLanguage; password: string },
+    // `parentName` is set for a student: the mail is written to that parent or guardian, and `to` is theirs.
+    input: { to?: string; language: SignInLanguage; password: string; parentName?: string },
     admin: Pick<AdminUser, "id">,
     context: AuditRequestContext = {},
   ): Promise<{ sent: true }> {
@@ -621,14 +623,19 @@ export class GoogleWorkspaceService {
     await assertNotWaiting(person, "email", (wait) => `The details were mailed a moment ago. Wait ${wait} to send them again`);
     takeSignInEmailSlot(admin.id);
 
-    const { subject, text } = signInEmail(input.language, { name: person.full_name, email: person.email, password: input.password });
+    const { subject, text } = signInEmail(input.language, {
+      name: person.full_name,
+      email: person.email,
+      password: input.password,
+      ...(input.parentName ? { parentName: input.parentName } : {}),
+    });
     try {
       await mailer.send({ to, subject, text });
     } catch (error) {
       logger.error(`Sign-in email failed for person ${person.id}`, error);
       throw new ResponseError(502, "The email could not be sent. Check the address and try again");
     }
-    await record("GOOGLE_SIGNIN_EMAILED", person, admin, context, { to: maskEmail(to), language: input.language });
+    await record("GOOGLE_SIGNIN_EMAILED", person, admin, context, { to: maskEmail(to), language: input.language, ...(input.parentName ? { recipient: "parent" } : {}) });
     return { sent: true };
   }
 
@@ -641,10 +648,19 @@ export class GoogleWorkspaceService {
         deleted_at: true,
         employee: { select: { status: true, deleted_at: true } },
         intern: { select: { status: true, deleted_at: true } },
+        student: { select: { status: true, deleted_at: true } },
       },
     });
     if (!person) return null;
-    const { employee, intern } = person;
+    const { employee, intern, student } = person;
+    // A student who withdrew, transferred or was archived keeps no way in. A graduate keeps the account, for now.
+    if (student) {
+      if (student.deleted_at || student.status === StudentStatus.ARCHIVED) return { locked: true, reason: "ARCHIVED" };
+      if (student.status === StudentStatus.WITHDRAWN || student.status === StudentStatus.TRANSFERRED) {
+        return { locked: true, reason: student.status };
+      }
+      return { locked: false, reason: student.status };
+    }
     if (employee) {
       if (employee.deleted_at || employee.status === EmployeeStatus.ARCHIVED) return { locked: true, reason: "ARCHIVED" };
       if (employee.status === EmployeeStatus.RESIGNED) return { locked: true, reason: "RESIGNED" };
