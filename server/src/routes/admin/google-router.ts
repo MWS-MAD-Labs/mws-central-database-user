@@ -6,4 +6,5 @@ export const googleRouter = new Hono<{ Variables: AdminVariables }>();
 
 googleRouter.get("/email-availability", (c) => GoogleController.emailAvailability(c));
 googleRouter.get("/link-existing", (c) => GoogleController.linkPreview(c));
+googleRouter.get("/reconcile", (c) => GoogleController.reconcile(c));
 googleRouter.post("/link-existing", (c) => GoogleController.linkExisting(c));

@@ -175,7 +175,7 @@ export const resetSignInEmailLimitForTests = () => sentByAdmin.clear();
 export const restorableUntil = (deletedAt: Date): Date => new Date(deletedAt.getTime() + RESTORE_WINDOW_DAYS * 86_400_000);
 
 // Names compared loosely: case, punctuation and word order do not count.
-function nameKey(value: string): string {
+export function nameKey(value: string): string {
   return value.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean).sort().join(" ");
 }
 
@@ -358,6 +358,39 @@ export type EmailAvailability = {
   message: string;
   mode: "google" | "simulated";
 };
+
+type LockInput = {
+  deleted_at: Date | null;
+  employee: { status: EmployeeStatus; deleted_at: Date | null } | null;
+  intern: { status: InternStatus; deleted_at: Date | null } | null;
+  student: { status: StudentStatus; deleted_at: Date | null } | null;
+};
+
+// Whether a person has left, so their Google account stays locked, and why. Used for one person and for the report.
+export function lockOf(person: LockInput): { locked: boolean; reason: string } {
+  const { employee, intern, student } = person;
+  // A student who withdrew, transferred or was archived keeps no way in. A graduate keeps the account, for now.
+  if (student) {
+    if (student.deleted_at || student.status === StudentStatus.ARCHIVED) return { locked: true, reason: "ARCHIVED" };
+    if (student.status === StudentStatus.WITHDRAWN || student.status === StudentStatus.TRANSFERRED) {
+      return { locked: true, reason: student.status };
+    }
+    return { locked: false, reason: student.status };
+  }
+  if (employee) {
+    if (employee.deleted_at || employee.status === EmployeeStatus.ARCHIVED) return { locked: true, reason: "ARCHIVED" };
+    if (employee.status === EmployeeStatus.RESIGNED) return { locked: true, reason: "RESIGNED" };
+    return { locked: false, reason: employee.status };
+  }
+  if (intern) {
+    if (intern.deleted_at) return { locked: true, reason: "ARCHIVED" };
+    if (intern.status === InternStatus.COMPLETED || intern.status === InternStatus.TERMINATED) {
+      return { locked: true, reason: intern.status };
+    }
+    return { locked: false, reason: intern.status };
+  }
+  return person.deleted_at ? { locked: true, reason: "ARCHIVED" } : { locked: false, reason: "ACTIVE" };
+}
 
 export class GoogleWorkspaceService {
   // Whether this email can be given to a new person: clean, on our domain, not in Central, allowed to reach Google and
@@ -952,29 +985,7 @@ export class GoogleWorkspaceService {
         student: { select: { status: true, deleted_at: true } },
       },
     });
-    if (!person) return null;
-    const { employee, intern, student } = person;
-    // A student who withdrew, transferred or was archived keeps no way in. A graduate keeps the account, for now.
-    if (student) {
-      if (student.deleted_at || student.status === StudentStatus.ARCHIVED) return { locked: true, reason: "ARCHIVED" };
-      if (student.status === StudentStatus.WITHDRAWN || student.status === StudentStatus.TRANSFERRED) {
-        return { locked: true, reason: student.status };
-      }
-      return { locked: false, reason: student.status };
-    }
-    if (employee) {
-      if (employee.deleted_at || employee.status === EmployeeStatus.ARCHIVED) return { locked: true, reason: "ARCHIVED" };
-      if (employee.status === EmployeeStatus.RESIGNED) return { locked: true, reason: "RESIGNED" };
-      return { locked: false, reason: employee.status };
-    }
-    if (intern) {
-      if (intern.deleted_at) return { locked: true, reason: "ARCHIVED" };
-      if (intern.status === InternStatus.COMPLETED || intern.status === InternStatus.TERMINATED) {
-        return { locked: true, reason: intern.status };
-      }
-      return { locked: false, reason: intern.status };
-    }
-    return person.deleted_at ? { locked: true, reason: "ARCHIVED" } : { locked: false, reason: "ACTIVE" };
+    return person ? lockOf(person) : null;
   }
 
   // Nothing can be changed on an account that is deleted in Google until it is restored.

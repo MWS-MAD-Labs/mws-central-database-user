@@ -61,6 +61,11 @@ export const googleAccountApi = {
     const response = await apiRequest('/api/admin/google/link-existing')
     return response.data
   },
+  // Where Central and Google disagree, from a full read of both. Super Admin only; nothing is changed.
+  async reconcile() {
+    const response = await apiRequest('/api/admin/google/reconcile')
+    return response.data
+  },
   async linkExisting() {
     const response = await apiRequest('/api/admin/google/link-existing', { method: 'POST' })
     return response.data

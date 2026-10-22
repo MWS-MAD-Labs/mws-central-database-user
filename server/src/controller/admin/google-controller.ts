@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { AdminRole } from "../../generated/prisma/client";
 import { ResponseError } from "../../error/response-error";
+import { GoogleReconcileService } from "../../service/google-reconcile-service";
 import { GoogleWorkspaceService } from "../../service/google-workspace-service";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type { AdminVariables } from "../../type/hono-context";
@@ -23,6 +24,14 @@ export class GoogleController {
       throw new ResponseError(403, "Forbidden: only a Super Admin can link Google accounts");
     }
     return c.json({ data: await GoogleWorkspaceService.linkExisting({ link: false }) });
+  }
+
+  // Where Central and Google disagree. Reads only. Super Admins only.
+  static async reconcile(c: Context<{ Variables: AdminVariables }>) {
+    if (c.var.admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(403, "Forbidden: only a Super Admin can compare Central with Google");
+    }
+    return c.json({ data: await GoogleReconcileService.run() });
   }
 
   static async linkExisting(c: Context<{ Variables: AdminVariables }>) {
