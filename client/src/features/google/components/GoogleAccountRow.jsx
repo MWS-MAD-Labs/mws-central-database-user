@@ -21,12 +21,13 @@ function checkMessage(check) {
   return check.changes.length ? `Checked. ${check.changes.join(". ")}.` : "Checked. Nothing changed.";
 }
 
-// The line under the account after Check: when, and what it found.
+// The line under the account after Check: when, and what it found. Short; what was looked at is in its tooltip.
 function checkLine(check) {
   const time = clock(check.at);
   if (check.outcome === "checked") return check.changes.length ? `Checked ${time}. ${check.changes.join(". ")}.` : `Checked ${time}. Nothing changed.`;
-  if (check.outcome === "simulated") return `Pressed ${time}. Google is simulated here, so nothing was asked.`;
-  return `Tried ${time}. ${checkMessage(check)}`;
+  if (check.outcome === "simulated") return `Pressed ${time}. Google is simulated here.`;
+  if (check.outcome === "unreachable") return `Tried ${time}. Google could not be reached.`;
+  return `Tried ${time}. This account cannot be checked now.`;
 }
 
 const clock = (value) => new Date(value).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -271,10 +272,8 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
           </span>
         ) : null}
         {status.linked && (lastCheck || status.checked_at) ? (
-          <span className="w-full text-xs" data-testid="google-check-note">
-            {lastCheck
-              ? `${checkLine(lastCheck)} Looked at the account state, the password and the last sign-in.`
-              : `Last checked ${clock(status.checked_at)}.`}
+          <span className="w-full text-xs" data-testid="google-check-note" title="Looked at the account state, the password and the last sign-in.">
+            {lastCheck ? checkLine(lastCheck) : `Last checked ${clock(status.checked_at)}.`}
           </span>
         ) : null}
       </div>

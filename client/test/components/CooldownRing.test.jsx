@@ -18,6 +18,15 @@ describe('CooldownRing', () => {
     expect(Number(arc.getAttribute('stroke-dashoffset'))).toBe(75)
   })
 
+  it('stays on the edge of the button instead of growing past it', () => {
+    const { container } = render(<CooldownRing left={15} total={60}><button type="button">Go</button></CooldownRing>)
+    const classes = container.querySelector('svg').getAttribute('class')
+    expect(classes).toContain('inset-0')
+    expect(classes).toContain('h-full')
+    expect(classes).not.toContain('-inset')
+    expect(classes).not.toContain('calc(100%+')
+  })
+
   it('never goes past a whole ring', () => {
     render(<CooldownRing left={90} total={60}><button type="button">Go</button></CooldownRing>)
     expect(Number(screen.getByTestId('cooldown-arc').getAttribute('stroke-dashoffset'))).toBe(0)

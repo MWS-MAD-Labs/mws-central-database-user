@@ -330,7 +330,8 @@ describe('GoogleAccountRow', () => {
     it('says nothing changed, and when it checked', async () => {
       await press({ outcome: 'checked', changes: [], checked_at: '2026-10-22T07:40:00.000Z' })
       expect(await screen.findByText(/Nothing changed\./)).toBeVisible()
-      expect(screen.getByTestId('google-check-note')).toHaveTextContent(/^Checked \d\d:\d\d\. Nothing changed\. Looked at the account state, the password and the last sign-in\.$/)
+      expect(screen.getByTestId('google-check-note')).toHaveTextContent(/^Checked \d\d:\d\d\. Nothing changed\.$/)
+      expect(screen.getByTestId('google-check-note').getAttribute('title')).toBe('Looked at the account state, the password and the last sign-in.')
     })
 
     it('says what changed', async () => {
@@ -340,7 +341,7 @@ describe('GoogleAccountRow', () => {
 
     it('does not pretend when Google is only simulated or cannot be reached', async () => {
       const simulated = await press({ outcome: 'simulated', changes: [], checked_at: '2026-10-22T07:40:00.000Z' })
-      expect(await screen.findByText(/Google is simulated here, so nothing was asked/)).toBeVisible()
+      expect(await screen.findByText(/Pressed \d\d:\d\d\. Google is simulated here\./)).toBeVisible()
       simulated.unmount()
 
       await press({ outcome: 'unreachable', changes: [], checked_at: '2026-10-22T07:32:00.000Z' })
