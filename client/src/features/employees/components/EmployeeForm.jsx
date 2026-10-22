@@ -1,5 +1,6 @@
 import { recoveryEmailProblem, recoveryHint } from "../../google/utils/instructions.js";
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
+import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx";
 import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
@@ -407,7 +408,7 @@ export function EmployeeForm({
     const reviewFieldWarnings = {
       ...fieldWarnings,
       ...lockFieldWarnings,
-      ...(mailsPassword ? { recovery_email: "The password is sent here, so check it letter by letter." } : {}),
+      ...(mailsPassword ? { recovery_email: "The password is sent to this address, so check it letter by letter." } : {}),
     };
 
     const resolveValue = makeOptionAwareResolver(
@@ -438,7 +439,7 @@ export function EmployeeForm({
           : lockingFields.length > 0
             ? "Save anyway"
             : "Create employee",
-        ...(mailsPassword ? { requireCheckLabel: `The password is emailed to ${values.recovery_email}. It is the right address.` } : {}),
+        ...(mailsPassword ? { requireCheckLabel: `The password will be sent to ${values.recovery_email}. This is the right address.` } : {}),
         wide: true,
       });
       if (!confirmed) return;
@@ -703,7 +704,20 @@ export function EmployeeForm({
               updateValue={updateValue}
             />
             <EmailField
-              note={<EmailCheckNote check={emailCheck} />}
+              note={
+                isCreate ? (
+                  <EmailCheckNote check={emailCheck} />
+                ) : (
+                  <ChangeEmailAction
+                    resource="employees"
+                    id={employee?.id}
+                    currentEmail={`${initialValues.email_local}@${ALLOWED_EMAIL_DOMAIN}`}
+                    name={values.full_name}
+                    canChange={user?.role === "SUPER_ADMIN"}
+                  />
+                )
+              }
+              disabled={!isCreate}
               domain={ALLOWED_EMAIL_DOMAIN}
               max={EMAIL_LOCAL_MAX_LENGTH}
               sanitize={sanitizeEmailLocalPart}
@@ -1607,6 +1621,8 @@ function buildPayload(
   const payload = buildFullPayload(values);
   if (noGoogle) delete payload.recovery_email;
   if (claiming) payload.claim_existing_google = true;
+  // An email is changed only by Change Email, never by saving the form.
+  if (!isCreate) delete payload.email;
   if (!includeSensitive) {
     // Never revealed means never loaded: leave those fields out so nothing is overwritten.
     for (const key of SENSITIVE_VALUE_KEYS) delete payload[key];

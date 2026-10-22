@@ -546,6 +546,8 @@ export class InternService {
     admin: AdminUser,
     request: UpdateInternRequest,
     context: AuditRequestContext = {},
+    // Set only by Change Email (email-change-service.ts): an email is never changed by a plain edit.
+    allowEmailChange = false,
   ): Promise<InternResponse> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedInternAction(admin, "update", context, request.id);
@@ -624,6 +626,7 @@ export class InternService {
     }
 
     if (updateRequest.email && updateRequest.email !== existingIntern.email) {
+      if (!allowEmailChange) throw new ResponseError(400, "Use Change Email to change an email");
       await GoogleWorkspaceService.assertCanChangeEmail(existingIntern.person_id, updateRequest.email);
     }
 

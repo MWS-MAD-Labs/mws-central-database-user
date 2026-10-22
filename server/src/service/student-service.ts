@@ -1351,6 +1351,8 @@ export class StudentService {
     // Set only by an approved IdentifierChangeRequest to apply its one
     // field past the grace period (identifier-change-request-service.ts).
     bypassIdentifierLock = false,
+    // Set only by Change Email (email-change-service.ts): an email is never changed by a plain edit.
+    allowEmailChange = false,
   ): Promise<StudentResponse> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedStudentAction(
@@ -1522,6 +1524,7 @@ export class StudentService {
 
     const emailChanged =
       updateRequest.email && updateRequest.email !== existing.email;
+    if (emailChanged && !allowEmailChange) throw new ResponseError(400, "Use Change Email to change an email");
     if (emailChanged) {
       await GoogleWorkspaceService.assertCanChangeEmail(existing.id, updateRequest.email!);
     }

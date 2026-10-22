@@ -290,7 +290,7 @@ describe("the Google account of a student", () => {
       id: "taken", primaryEmail: "test_google_taken@millennia21.id", givenName: "A", familyName: "B",
       suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
     });
-    const renamed = await TestRequest.patch(`/api/admin/students/${id}`, { email: "test_google_taken@millennia21.id" }, accessToken);
+    const renamed = await TestRequest.post(`/api/admin/students/${id}/change-email`, { email: "test_google_taken@millennia21.id", reason: "Test change" }, accessToken);
     expect(renamed.status).toBe(400);
     expect((await personOf(id)).email).not.toBe("test_google_taken@millennia21.id");
   });

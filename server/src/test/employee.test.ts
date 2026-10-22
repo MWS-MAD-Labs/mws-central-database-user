@@ -3608,10 +3608,12 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     const updatePayload = {
       email: "test_emp_person_a@millennia21.id",
+      reason: "Spelling fixed",
     };
 
-    const response = await TestRequest.patch(
-      `/api/admin/employees/${employeeB.id}`,
+    // An email is changed through Change Email, not a plain edit.
+    const response = await TestRequest.post(
+      `/api/admin/employees/${employeeB.id}/change-email`,
       updatePayload,
       accessToken,
     );

@@ -1,5 +1,6 @@
 import { recoveryEmailProblem, recoveryHint } from "../../google/utils/instructions.js";
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
+import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx";
 import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
@@ -253,7 +254,7 @@ export function InternForm({
       });
       // The first password is emailed to the recovery email at once, so a slip there loses it or gives it to a stranger.
       const mailsPassword = !noGoogle && Boolean(values.recovery_email);
-      const createWarnings = { ...fieldWarnings, ...(mailsPassword ? { recovery_email: "The password is sent here, so check it letter by letter." } : {}) };
+      const createWarnings = { ...fieldWarnings, ...(mailsPassword ? { recovery_email: "The password is sent to this address, so check it letter by letter." } : {}) };
       const confirmed = await confirm({
         title: "Review before creating",
         description: (
@@ -267,7 +268,7 @@ export function InternForm({
         confirmLabel: internshipAlreadyEnded
           ? "Create as completed"
           : "Create intern",
-        ...(mailsPassword ? { requireCheckLabel: `The password is emailed to ${values.recovery_email}. It is the right address.` } : {}),
+        ...(mailsPassword ? { requireCheckLabel: `The password will be sent to ${values.recovery_email}. This is the right address.` } : {}),
         wide: true,
       });
       if (!confirmed) return;
@@ -302,6 +303,7 @@ export function InternForm({
         includeIdentity: identityRevealed,
         noGoogle,
         claiming,
+        isCreate,
       }),
     );
   }
@@ -353,7 +355,20 @@ export function InternForm({
               updateValue={updateValue}
             />
             <EmailField
-              note={<EmailCheckNote check={emailCheck} />}
+              note={
+                isCreate ? (
+                  <EmailCheckNote check={emailCheck} />
+                ) : (
+                  <ChangeEmailAction
+                    resource="interns"
+                    id={intern?.id}
+                    currentEmail={`${initialValues.email_local}@${ALLOWED_EMAIL_DOMAIN}`}
+                    name={values.full_name}
+                    canChange={user?.role === "SUPER_ADMIN"}
+                  />
+                )
+              }
+              disabled={!isCreate}
               domain={ALLOWED_EMAIL_DOMAIN}
               max={EMAIL_LOCAL_MAX_LENGTH}
               sanitize={sanitizeEmailLocalPart}
@@ -785,8 +800,10 @@ const SENSITIVE_VALUE_KEYS = [
   "birth_date",
 ];
 
-function buildPayload(values, canEditContactPii, { includeIdentity = true, noGoogle = false, claiming = false } = {}) {
+function buildPayload(values, canEditContactPii, { includeIdentity = true, noGoogle = false, claiming = false, isCreate = false } = {}) {
   const payload = buildFullPayload(values, canEditContactPii);
+  // An email is changed only by Change Email, never by saving the form.
+  if (!isCreate) delete payload.email;
   if (noGoogle) delete payload.recovery_email;
   if (claiming) payload.claim_existing_google = true;
   // Never revealed means never loaded: leave them out so nothing is overwritten.

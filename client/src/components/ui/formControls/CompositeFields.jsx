@@ -94,6 +94,7 @@ export function EmailField({
   field = "email_local",
   required = true,
   note,
+  disabled = false,
 }) {
   const value = values[field];
   const error = errors?.[field];
@@ -109,6 +110,7 @@ export function EmailField({
       <div className="flex min-w-0 items-stretch">
         <TextInput
           invalid={Boolean(error)}
+          disabled={disabled}
           className="rounded-r-none"
           value={value || ""}
           maxLength={max}

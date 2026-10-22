@@ -873,7 +873,7 @@ describe("google workspace accounts", () => {
 
   describe("changing the email of someone with a Google account", () => {
     const put = (token: string, id: string, email: string) =>
-      TestRequest.patch(`/api/admin/employees/${id}`, { email }, token);
+      TestRequest.post(`/api/admin/employees/${id}/change-email`, { email, reason: "Test change" }, token);
 
     it("refuses an email Google already has, and lets a free one through", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
@@ -941,7 +941,7 @@ describe("google workspace accounts", () => {
       const { id, person, user } = await deleteInGoogle(accessToken);
       const updatesBefore = google.updated.length;
 
-      const changed = await TestRequest.patch(`/api/admin/employees/${id}`, { email: "test_google_afterdelete@millennia21.id" }, accessToken);
+      const changed = await TestRequest.post(`/api/admin/employees/${id}/change-email`, { email: "test_google_afterdelete@millennia21.id", reason: "Test change" }, accessToken);
       expect(changed.status).toBe(200);
       expect(google.updated).toHaveLength(updatesBefore);
       expect((await personOf(id)).google_sync_status).toBe(GoogleSyncStatus.MISSING);

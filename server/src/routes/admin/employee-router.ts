@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { EmailChangeController } from "../../controller/admin/email-change-controller";
 import { EmployeeController } from "../../controller/admin/employee-controller";
 import { ExportController } from "../../controller/admin/export-controller";
 import { ImportController } from "../../controller/admin/import-controller";
@@ -56,6 +57,7 @@ employeeRouter.post("/photos/bulk-commit", bulkPhotoUploadBodyLimit, (c) =>
   EmployeePhotoController.bulkCommit(c),
 );
 employeeRouter.patch("/:id", (c) => EmployeeController.update(c));
+employeeRouter.post("/:id/change-email", EmailChangeController.change("employee"));
 employeeRouter.get("/:id", (c) => EmployeeController.get(c));
 employeeRouter.post("/:id/sensitive-fields/access", (c) =>
   EmployeeController.recordPiiAccess(c),

@@ -50,6 +50,10 @@ The page asks the server what the admin may do and shows only those buttons.
 
 Until the account is restored, Make temporary password, Change recovery email, Suspend and Unsuspend are off, in the page and on the server. The email of the person can still be changed in Central (it has to pass the check); the Google account is not touched, and Restore renames it to the email and name Central holds at that moment. A person who forgot their password and has no usable recovery email gets a temporary password from **Make temporary password**, shown once.
 
+## Changing the email of someone who exists
+
+The Email field of an edit form is locked, and saving a form never changes it (a plain edit that sends a different email is refused). The email is changed only by **Change Email** on the form, which is for a Super Admin (`POST /api/admin/{employees,interns,students}/:id/change-email`). The dialog shows the current email, checks the new one with the same Check button, wants it typed twice and a reason (kept in the audit log), and says what follows: the Google account is renamed (same account, same data), the person signs in with the new address, and apps that find people by email may need it. It is refused for a protected admin address, for a person who is also an admin (change the admin first), for an email already used in Central, and for one Google already has. A person with no Google account only changes in Central.
+
 ## Checking an email
 
 A new or changed email has to pass the **Check** button before Create or Save is enabled. Typing never asks Google. The answer belongs to the address that was checked, so changing the text asks for a new check. The server checks again by itself on create, and on an edit of someone who has a Google account, because that account is renamed with the email.

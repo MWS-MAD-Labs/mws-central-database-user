@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { EmailChangeController } from "../../controller/admin/email-change-controller";
 import { InternController } from "../../controller/admin/intern-controller";
 import { GoogleAccountController } from "../../controller/admin/google-account-controller";
 import type { AdminVariables } from "../../type/hono-context";
@@ -31,6 +32,7 @@ internRouter.post("/:id/sensitive-fields/access", (c) =>
   InternController.revealPii(c),
 );
 internRouter.patch("/:id", (c) => InternController.update(c));
+internRouter.post("/:id/change-email", EmailChangeController.change("intern"));
 internRouter.get("/:id", (c) => InternController.get(c));
 internRouter.patch("/delete/:id", (c) => InternController.remove(c));
 internRouter.patch("/restore/:id", (c) => InternController.restore(c));

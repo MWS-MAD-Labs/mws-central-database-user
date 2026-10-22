@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { EmailChangeController } from "../../controller/admin/email-change-controller";
 import { StudentController } from "../../controller/admin/student-controller";
 import { EnrollmentController } from "../../controller/admin/enrollment-controller";
 import { ParentGuardianController } from "../../controller/admin/parent-guardian-controller";
@@ -72,6 +73,7 @@ studentRouter.post("/photos/bulk-commit", bulkPhotoUploadBodyLimit, (c) =>
   StudentPhotoController.bulkCommit(c),
 );
 studentRouter.patch("/:id", (c) => StudentController.update(c));
+studentRouter.post("/:id/change-email", EmailChangeController.change("student"));
 studentRouter.get("/:id", (c) => StudentController.get(c));
 studentRouter.patch("/delete/:id", (c) => StudentController.remove(c));
 studentRouter.patch("/restore/:id", (c) => StudentController.restore(c));

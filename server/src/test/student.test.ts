@@ -3837,9 +3837,9 @@ describe("PATCH /api/admin/students/:id", () => {
       joinAcademicYearId: academicYearId,
     });
 
-    const response = await TestRequest.patch(
-      `/api/admin/students/${student.student!.id}`,
-      { email: "test_stu_upd_taken@millennia21.id" },
+    const response = await TestRequest.post(
+      `/api/admin/students/${student.student!.id}/change-email`,
+      { email: "test_stu_upd_taken@millennia21.id", reason: "Spelling fixed" },
       accessToken,
     );
     const body = await response.json();

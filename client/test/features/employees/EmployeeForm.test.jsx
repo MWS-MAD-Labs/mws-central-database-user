@@ -249,6 +249,18 @@ describe('EmployeeForm', () => {
     expect(again.value).toBe('')
   })
 
+  it('locks the email of someone who exists and offers Change Email to a Super Admin only', async () => {
+    const { unmount } = renderEmployeeForm({ mode: 'edit' })
+    expect(field('email_local').querySelector('input')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Change email' })).toBeVisible()
+    unmount()
+
+    renderEmployeeForm({ mode: 'edit', user: employeeDatabaseAdmin })
+    expect(field('email_local').querySelector('input')).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Change email' })).not.toBeInTheDocument()
+    expect(screen.getByText('Only a Super Admin can change an email.')).toBeVisible()
+  })
+
   it('keeps the form from saving a new email until it is checked', async () => {
     const { user, onSubmit } = renderEmployeeForm({ mode: 'create' })
     await user.type(field('email_local').querySelector('input'), 'ari.employee')

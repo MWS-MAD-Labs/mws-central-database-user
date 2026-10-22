@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Camera, UserRound } from "lucide-react";
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
+import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx";
 import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -307,11 +308,11 @@ export function StudentForm({
             changes={fields}
             mode="create"
             warning={lockWarning}
-            fieldWarnings={mailsPassword ? { ...lockFieldWarnings, parent_email: "The password is sent here, so check it letter by letter." } : lockFieldWarnings}
+            fieldWarnings={mailsPassword ? { ...lockFieldWarnings, parent_email: "The password is sent to this address, so check it letter by letter." } : lockFieldWarnings}
           />
         ),
         confirmLabel: nisnBeingSet ? "Create and lock NISN" : "Create student",
-        ...(mailsPassword ? { requireCheckLabel: `The password is emailed to ${values.parent_email}. It is the right address.` } : {}),
+        ...(mailsPassword ? { requireCheckLabel: `The password will be sent to ${values.parent_email}. This is the right address.` } : {}),
         wide: true,
       });
       if (!confirmed) return;
@@ -417,7 +418,20 @@ export function StudentForm({
               domain={ALLOWED_EMAIL_DOMAIN}
               max={EMAIL_LOCAL_MAX_LENGTH}
               sanitize={sanitizeEmailLocalPart}
-              note={<EmailCheckNote check={emailCheck} />}
+              note={
+                isCreate ? (
+                  <EmailCheckNote check={emailCheck} />
+                ) : (
+                  <ChangeEmailAction
+                    resource="students"
+                    id={student?.id}
+                    currentEmail={`${initialValues.email_local}@${ALLOWED_EMAIL_DOMAIN}`}
+                    name={values.full_name}
+                    canChange={user?.role === "SUPER_ADMIN"}
+                  />
+                )
+              }
+              disabled={!isCreate}
               values={values}
               errors={errors}
               updateValue={updateValue}
@@ -810,7 +824,7 @@ export function StudentForm({
             <p className="mb-4 text-sm text-(--mws-muted)">
               {values.is_legacy
                 ? "One is needed to give the student a Google account later: the first password goes to their email. More can be added later."
-                : "A Google account is made when you create the student, and the first password is emailed to this address. More can be added later."}
+                : "A Google account is made when you create the student, and the first password is sent to this address. More can be added later."}
             </p>
             <div className="grid min-w-0 gap-4 md:grid-cols-2">
               <Field label="Relation" name="parent_type" error={errors.parent_type} required>
@@ -996,6 +1010,8 @@ const PARENT_TYPES = [
 function buildPayload(values, { includeBirth = true, isCreate = false, claiming = false } = {}) {
   const payload = buildFullPayload(values);
   if (claiming) payload.claim_existing_google = true;
+  // An email is changed only by Change Email, never by saving the form.
+  if (!isCreate) delete payload.email;
   if (isCreate) {
     payload.parent = cleanPayload({
       type: values.parent_type,
