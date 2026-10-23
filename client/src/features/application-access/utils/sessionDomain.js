@@ -39,6 +39,16 @@ export function parentDomainOf(address) {
   return registrableDomain(hostOf(address))
 }
 
+// A host with no domain to share a cookie under: localhost, a single name or an IP address.
+export function isBareHost(address) {
+  const host = hostOf(address)
+  return Boolean(host) && (IPV4.test(host) || !host.includes('.'))
+}
+
+// The cookie is kept per host name, and the port does not count.
+export const BARE_HOST_ADVICE =
+  'A cookie is kept per host name, so open the Hub and the application through the same one, for example localhost for both. The port does not matter.'
+
 // The page people open, without the sign-in path the Hub sends them to.
 export function appHomeUrl(launchUrl) {
   if (!launchUrl) return ''
@@ -55,5 +65,8 @@ export function appHomeUrl(launchUrl) {
 
 // The same warning as words for a confirmation.
 export function differentDomainText(name, hubAddress, appAddress) {
+  if (isBareHost(hubAddress) || isBareHost(appAddress)) {
+    return `${name} is at ${parentDomainOf(appAddress)} and the Hub is at ${parentDomainOf(hubAddress)}. The Hub's session cookie does not reach it. ${BARE_HOST_ADVICE} Switch only if you know why.`
+  }
   return `${name} is under ${parentDomainOf(appAddress)} and the Hub is under ${parentDomainOf(hubAddress)}. The Hub's session cookie does not reach it, so people cannot sign in with the shared session and signing out of the Hub does not end its session. Switch only if you know why.`
 }
