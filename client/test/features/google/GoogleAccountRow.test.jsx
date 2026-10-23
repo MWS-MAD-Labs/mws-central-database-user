@@ -1,9 +1,13 @@
 import { describe, expect, it, setSystemTime } from "bun:test";
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import toast, { Toaster } from "react-hot-toast";
 import { GoogleAccountRow } from "../../../src/features/google/components/GoogleAccountRow.jsx";
 import { ConfirmProvider } from "../../../src/components/ui/ConfirmDialog.jsx";
 import { renderWithProviders } from "../../helpers/render.jsx";
 import { createFetchRouter, jsonResponse } from "../../helpers/http.js";
+
+// The toast host asks for the reduced-motion setting, which the test window does not have.
+globalThis.matchMedia ??= () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
 
 const everything = { create: true, manage: true, takeover: true };
 const status = (over = {}) => ({
@@ -769,7 +773,7 @@ describe("GoogleAccountRow", () => {
           }),
         }),
     });
-    const press = async (check) => {
+    const press = async (check, { toasts = false } = {}) => {
       globalThis.fetch = createFetchRouter([
         {
           path: /\/employees\/e1\/google(\?refresh=true)?$/,
@@ -791,6 +795,7 @@ describe("GoogleAccountRow", () => {
       ]);
       const view = renderWithProviders(
         <ConfirmProvider>
+          {toasts ? <Toaster /> : null}
           <GoogleAccountRow
             resource="employees"
             id="e1"
@@ -855,6 +860,17 @@ describe("GoogleAccountRow", () => {
       expect(screen.getByTestId("google-check-note")).toHaveTextContent(
         /^Tried \d\d:\d\d\./,
       );
+    });
+
+    it("tells a simulated Google in a neutral toast, and never stays silent without a result", async () => {
+      toast.remove();
+      await press({ outcome: "simulated", changes: [], checked_at: "2026-10-22T07:40:00.000Z" }, { toasts: true });
+      expect((await screen.findAllByText("Google is simulated here, so there is nothing to check."))[0]).toBeInTheDocument();
+      cleanup();
+      toast.remove();
+
+      await press(undefined, { toasts: true });
+      expect((await screen.findAllByText("Checked."))[0]).toBeInTheDocument();
     });
 
     it("shows when it was last checked before anything is pressed", async () => {

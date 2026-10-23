@@ -18,7 +18,7 @@ import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { emailProblem, sanitizeEmail, textLength } from "../../../lib/form.js";
 import { formatStatus } from "../../../lib/format.js";
-import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import { showErrorToast, showInfoToast, showSuccessToast } from "../../../lib/toast.js";
 import { googleAccountApi } from "../api/googleAccountApi.js";
 import { recoveryEmailProblem, recoveryHint } from "../utils/instructions.js";
 import { GoogleInstructionsDialog } from "./GoogleInstructionsDialog.jsx";
@@ -176,10 +176,13 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
     onSuccess: (result) => {
       queryClient.setQueryData(queryKey, result);
       const check = result.check;
-      if (!check) return;
+      // Never silent: an answer without a result still says the press went through.
+      if (!check) return showInfoToast("Checked.");
       setLastCheck({ ...check, at: new Date() });
       const message = checkMessage(check);
       if (check.outcome === "checked") showSuccessToast(message);
+      // A simulated Google has nothing to check, which is not a failure.
+      else if (check.outcome === "simulated") showInfoToast(message);
       else showErrorToast(new Error(message), "Google was not checked.");
     },
     onError: (error) => {
