@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArchiveRestore,
+  ImageDown,
   KeyRound,
   Link2,
   Mail,
@@ -327,6 +328,19 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
       showErrorToast(error, "Google account was not restored."),
   });
 
+  const pullPhoto = useMutation({
+    mutationFn: () => googleAccountApi.pullPhoto(resource, id),
+    onSuccess: (result) => {
+      if (result.pulled) {
+        queryClient.invalidateQueries();
+        showSuccessToast("Photo taken from Google.");
+      } else {
+        showSuccessToast("No photo taken. Central already has one, or Google has none.");
+      }
+    },
+    onError: (error) => showErrorToast(error, "Could not take the Google photo."),
+  });
+
   const suspend = useMutation({
     mutationFn: (suspended) =>
       googleAccountApi.setSuspended(resource, id, suspended),
@@ -478,6 +492,19 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
               onClick={() => setDialog("restore")}
             >
               <ArchiveRestore size={15} />
+            </Button>
+          ) : null}
+          {can.manage && status.status === "ACTIVE" && resource === "employees" ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Use Google photo"
+              title="Use Google photo"
+              disabled={pullPhoto.isPending}
+              onClick={() => pullPhoto.mutate()}
+            >
+              <ImageDown size={15} />
             </Button>
           ) : null}
           {can.manage && status.status === "ACTIVE" ? (

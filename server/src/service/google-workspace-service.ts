@@ -702,6 +702,7 @@ export class GoogleWorkspaceService {
         mode: client.mode,
         recovery_email_set: false,
       });
+      await this.tryPullPhoto(person.id);
       return { status, google_user_id: user.id, outcome: "linked" };
     } catch (error) {
       logger.error("Linking the own Google account of a protected admin failed", error);
@@ -808,6 +809,7 @@ export class GoogleWorkspaceService {
         mode: client.mode,
         recovery_email_set: false,
       });
+      await this.tryPullPhoto(person.id);
       return true;
     } catch (error) {
       logger.error("Claiming the Google account at sign-in failed", error);
@@ -1219,6 +1221,24 @@ export class GoogleWorkspaceService {
     }
   }
 
+  // The photo the linked account has in Google, or null. Nothing here changes Google or Central.
+  static async getPhoto(personId: string): Promise<{ data: Buffer; mimeType: string } | null> {
+    const person = await load(personId);
+    if (!person.google_user_id) return null;
+    return getDirectoryClient().getPhoto(person.google_user_id);
+  }
+
+  // Takes the Google photo when Central has none. A failure never reaches the caller: the next trigger tries again.
+  static async tryPullPhoto(personId: string): Promise<void> {
+    try {
+      // Loaded on demand: the photo service already imports this one.
+      const { EmployeePhotoService } = await import("./employee-photo-service");
+      await EmployeePhotoService.pullFromGoogle(personId);
+    } catch (error) {
+      logger.error(`Taking the Google photo failed for person ${personId}`, error);
+    }
+  }
+
   // Ask Google how a linked account is doing and keep the answer. It only reads: nothing in Google is changed, and
   // nothing in Central is blocked by the result. A Google that cannot be reached leaves the last answer as it was.
   static async refreshStatus(personId: string): Promise<CheckOutcome> {
@@ -1246,6 +1266,7 @@ export class GoogleWorkspaceService {
           error: suspended ? "Suspended in Google" : null,
         });
         await this.syncAccess(person.id);
+        if (!suspended) await this.tryPullPhoto(person.id);
         return "checked";
       }
       const deleted = await client.findDeletedUser(person.email, person.google_user_id);

@@ -65,4 +65,6 @@ export interface DirectoryClient {
   // Always asks for a new password at the next login.
   resetPassword(userKey: string, password: string): Promise<void>;
   setPhoto(userKey: string, photo: Buffer, mimeType: string): Promise<void>;
+  // The photo the user has in Google, or null when there is none.
+  getPhoto(userKey: string): Promise<{ data: Buffer; mimeType: string } | null>;
 }

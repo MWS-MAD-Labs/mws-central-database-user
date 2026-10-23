@@ -36,6 +36,11 @@ export const googleAccountApi = {
     const response = await apiRequest(`/api/admin/${resource}/${id}/google/send-sign-in`, { method: 'POST', body: payload })
     return response.data
   },
+  // Takes the Google photo when Central has none. Says whether one was taken.
+  async pullPhoto(resource, id) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/photo`, { method: 'POST' })
+    return response.data
+  },
   async restore(resource, id) {
     const response = await apiRequest(`/api/admin/${resource}/${id}/google/restore`, { method: 'POST' })
     return response.data

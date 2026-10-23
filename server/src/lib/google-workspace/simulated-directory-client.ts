@@ -101,4 +101,9 @@ export class SimulatedDirectoryClient implements DirectoryClient {
     if (!user) throw new DirectoryError("NOT_FOUND", "The user does not exist in Google Workspace");
     logger.info(`[google simulated] would set the photo of ${user.primaryEmail}`);
   }
+
+  // The simulation has no photos of its own.
+  async getPhoto(): Promise<{ data: Buffer; mimeType: string } | null> {
+    return null;
+  }
 }

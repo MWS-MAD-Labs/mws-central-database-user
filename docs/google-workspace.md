@@ -170,6 +170,10 @@ Use a mailbox made for this, not an admin's own. In development run Mailpit (`do
 
 `/profile` shows the signed-in person's own employee record, read only, in tabs: Overview (the account), Personal (contact, address, education, and the sensitive details), Employment, Family and, for admins, Access. An admin is made from an employee, so the record is theirs when `AdminUser.person_id` points to one (`GET /api/auth/me` returns `employee_id`); an admin with no link sees only Overview and Access. An employee who signs in reads it from `GET /api/auth/employee/me/detail`. Identifiers (NIK, NPWP, bank, BPJS, birth details, children) stay hidden until Show; the reveal is recorded as `ACCESS_EMPLOYEE_PII` with `self: true`. Nothing is edited there: a change goes through Request a Change (`/change-requests/mine`), and the photo can still be changed by the person.
 
+## Photos
+
+Central owns the photo. It is kept in MinIO and shown from there. An employee who changes their own photo on the Profile page sends it to their Google account too (an admin who uploads a photo does not). Nothing in Google overwrites a photo in Central: when Central has none, the photo of the linked Google account is taken once, when the account is claimed or linked, when a Super Admin checks the account, or with the Use Google photo button on the employee page (`POST /api/admin/employees/:id/google/photo`). A photo changed in Google afterwards is not read.
+
 ## Students
 
 A student has a Google account too. The form makes it at once when the student is created, with the parent's email as recovery email, and the first password comes back once in a Share dialog (it is not made for a legacy student or one saved to be linked, and a failure leaves the student saved with a Google status that can be retried). Later actions are on the student's detail page (`/api/admin/students/:id/google`, the same set as for employees). What is different is who gets the first password: a parent or guardian.

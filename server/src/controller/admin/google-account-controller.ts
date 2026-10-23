@@ -4,6 +4,7 @@ import { AdminRole } from "../../generated/prisma/client";
 import { ResponseError } from "../../error/response-error";
 import { prismaClient } from "../../lib/prisma";
 import { GoogleWorkspaceService } from "../../service/google-workspace-service";
+import { EmployeePhotoService } from "../../service/employee-photo-service";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type { AdminVariables } from "../../type/hono-context";
 import { assertCanViewStudentData, isUnitWritable, resolveStudentUnitScope } from "../../utils/admin-permissions";
@@ -269,6 +270,16 @@ export class GoogleAccountController {
       const personId = await personIdOf(kind, c.req.param("id"), c.var.admin);
       const result = await GoogleWorkspaceService.restore(personId, c.var.admin, getAuditRequestContext(c));
       return c.json({ data: result });
+    };
+  }
+
+  // Takes the Google photo for an employee who has none in Central. Says whether a photo was taken.
+  static pullPhoto(kind: Kind) {
+    return async (c: Context<{ Variables: AdminVariables }>) => {
+      assertSuperAdmin(c);
+      const personId = await personIdOf(kind, c.req.param("id"), c.var.admin);
+      const pulled = await EmployeePhotoService.pullFromGoogle(personId, getAuditRequestContext(c));
+      return c.json({ data: { pulled } });
     };
   }
 

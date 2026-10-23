@@ -1771,6 +1771,56 @@ describe("google workspace accounts", () => {
       expect(await prismaClient.auditLog.count({ where: { action: AuditAction.UPLOAD_OWN_PHOTO } })).toBe(1);
     });
 
+    describe("the photo Google already has", () => {
+      it("is taken when Central has none, and never sent back", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken);
+        const person = await personOf(json.data.id);
+        expect(person.photo_object_key).toBeNull();
+        google.googlePhotos.set(person.google_user_id!, await png());
+
+        const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/photo`, {}, accessToken);
+        expect(response.status).toBe(200);
+        expect((await response.json()).data.pulled).toBe(true);
+        expect((await personOf(json.data.id)).photo_object_key).toContain(`employee-photos/${json.data.id}/`);
+        expect(google.photos).toHaveLength(0);
+        const entry = await prismaClient.auditLog.findFirstOrThrow({ where: { action: AuditAction.UPLOAD_OWN_PHOTO } });
+        expect(JSON.stringify(entry.new_values)).toContain("google");
+      });
+
+      it("never replaces a photo Central already has", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken);
+        const person = await personOf(json.data.id);
+        await prismaClient.person.update({ where: { id: person.id }, data: { photo_object_key: "employee-photos/keep/own.avif" } });
+        google.googlePhotos.set(person.google_user_id!, await png());
+
+        const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/photo`, {}, accessToken);
+        expect((await response.json()).data.pulled).toBe(false);
+        expect((await personOf(json.data.id)).photo_object_key).toBe("employee-photos/keep/own.avif");
+      });
+
+      it("says no when Google has no photo either, and only a Super Admin may ask", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken);
+        const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/photo`, {}, accessToken);
+        expect((await response.json()).data.pulled).toBe(false);
+        const { accessToken: other } = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+        expect((await TestRequest.post(`/api/admin/employees/${json.data.id}/google/photo`, {}, other)).status).toBe(403);
+      });
+
+      it("is taken when Check finds the linked account, and a failure does not break the check", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken);
+        const person = await personOf(json.data.id);
+        google.googlePhotos.set(person.google_user_id!, await png());
+        resetCheckCooldownForTests();
+        const check = await TestRequest.get(`/api/admin/employees/${json.data.id}/google?refresh=true`, accessToken);
+        expect(check.status).toBe(200);
+        expect((await personOf(json.data.id)).photo_object_key).toContain(`employee-photos/${json.data.id}/`);
+      });
+    });
+
     it("is not open to an admin session", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const form = new FormData();

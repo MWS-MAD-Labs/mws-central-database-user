@@ -147,6 +147,7 @@ employeeRouter.post("/:id/google/reset-password", GoogleAccountController.resetP
 employeeRouter.post("/:id/google/reset-waiting", GoogleAccountController.resetWaiting("employee"));
 employeeRouter.post("/:id/google/send-sign-in", GoogleAccountController.sendSignIn("employee"));
 employeeRouter.get("/:id/google/recovery-hint", GoogleAccountController.recoveryHint("employee"));
+employeeRouter.post("/:id/google/photo", GoogleAccountController.pullPhoto("employee"));
 employeeRouter.post("/:id/google/restore", GoogleAccountController.restore("employee"));
 employeeRouter.post("/:id/google/suspend", GoogleAccountController.suspend("employee", true));
 employeeRouter.post("/:id/google/unsuspend", GoogleAccountController.suspend("employee", false));

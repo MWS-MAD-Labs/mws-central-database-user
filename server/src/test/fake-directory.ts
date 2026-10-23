@@ -85,4 +85,10 @@ export class FakeDirectory implements DirectoryClient {
   async setPhoto(userKey: string, photo: Buffer, mimeType: string) {
     this.photos.push({ userKey, mimeType, size: photo.length });
   }
+  // Photos a test puts in Google, by user key.
+  googlePhotos = new Map<string, Buffer>();
+  async getPhoto(userKey: string) {
+    const data = this.googlePhotos.get(userKey);
+    return data ? { data, mimeType: "image/jpeg" } : null;
+  }
 }
