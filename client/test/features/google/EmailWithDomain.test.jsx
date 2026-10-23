@@ -27,7 +27,7 @@ describe('EmailWithDomain', () => {
     const user = userEvent.setup()
     renderWithProviders(<Harness />)
     expect(screen.getByRole('button', { name: '@gmail.com' })).toBeVisible()
-    await user.type(screen.getByPlaceholderText('name'), 'Budi.Santoso')
+    await user.type(screen.getByPlaceholderText('Email'), 'Budi.Santoso')
     expect(value()).toBe('budi.santoso@gmail.com')
     await pick(user, '@gmail.com', '@yahoo.co.id')
     expect(value()).toBe('budi.santoso@yahoo.co.id')
@@ -37,7 +37,7 @@ describe('EmailWithDomain', () => {
     const user = userEvent.setup()
     renderWithProviders(<Harness />)
     await pick(user, '@gmail.com', '@outlook.com')
-    await user.type(screen.getByPlaceholderText('name'), 'ari')
+    await user.type(screen.getByPlaceholderText('Email'), 'ari')
     expect(value()).toBe('ari@outlook.com')
   })
 

@@ -32,7 +32,7 @@ export function ConfirmEmailField({ name, value, primary = '', error, onChange, 
             value={disabled ? '' : localOf(value)}
             disabled={disabled}
             invalid={invalid}
-            placeholder="name"
+            placeholder="Email"
             autoComplete="off"
             onPaste={(event) => event.preventDefault()}
             onChange={(event) => onChange(sanitizeEmailLocalPart(event.target.value, { external: true }))}
