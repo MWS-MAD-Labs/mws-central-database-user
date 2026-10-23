@@ -27,29 +27,29 @@
   },
   "dependencies": {
     "@googleapis/admin": "^37.0.2",
-    "@prisma/adapter-mariadb": "^7.2.0",
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@prisma/adapter-mariadb": "^7.10.1",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
     "@types/bcrypt": "^6.0.0",
     "bcrypt": "^6.0.0",
-    "csv-stringify": "^6.8.1",
+    "csv-stringify": "^6.9.0",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
-    "google-auth-library": "^10.5.0",
-    "hono": "^4.12.27",
+    "google-auth-library": "^10.9.1",
+    "hono": "^4.13.13",
     "ioredis": "^5.11.1",
     "minio": "^8.0.7",
-    "nodemailer": "^10.1.7",
-    "rate-limiter-flexible": "^11.2.0",
-    "sharp": "^0.35.3",
+    "nodemailer": "^10.2.1",
+    "rate-limiter-flexible": "^11.2.3",
+    "sharp": "^0.35.5",
     "winston": "^3.19.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.14",
-    "@types/node": "^26.0.1",
+    "@types/bun": "^1.4.4",
+    "@types/node": "^26.6.5",
     "@types/nodemailer": "^8.0.2",
-    "prisma": "^7.8.0",
+    "prisma": "^7.10.1",
     "typescript": "^7.0.2"
   }
 }
