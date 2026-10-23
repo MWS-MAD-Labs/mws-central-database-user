@@ -54,6 +54,10 @@ Until the account is restored, Make temporary password, Change recovery email, S
 
 The Email field of an edit form is locked, and saving a form never changes it (a plain edit that sends a different email is refused). The email is changed only by **Change Email** on the form, which is for a Super Admin (`POST /api/admin/{employees,interns,students}/:id/change-email`). The dialog shows the current email, checks the new one with the same Check button, wants it typed twice and a reason (kept in the audit log), and says what follows: the Google account is renamed (same account, same data), the person signs in with the new address, and apps that find people by email may need it. It is refused for a protected admin address, for a person who is also an admin (change the admin first), for an email already used in Central, and for one Google already has. A person with no Google account only changes in Central.
 
+## Import and emails
+
+An import never changes an email. A row that matches an existing student or employee updates the rest of the row, and when the email in the sheet differs from the stored one the preview warns ("Import does not change emails") and the row is still committed. An email is changed only by Change Email. The import dialog says it is for loading many people at once, and that one person goes through the form.
+
 ## Checking an Employee ID
 
 The Employee ID field of the create form asks `GET /api/admin/employees/id-availability?employee_id=` as soon as the whole ID is typed (11.11.111) and says Available, used, or used by an archived employee, and the form will not save a used one. The server still refuses a used ID when the employee is saved.

@@ -295,7 +295,6 @@ function matchesExistingStudent(
     return false;
   if (mapped.nick_name && !eq(mapped.nick_name, person.nick_name))
     return false;
-  if (mapped.email && !eq(mapped.email, person.email)) return false;
   if (mapped.gender && normalizeGender(mapped.gender) !== person.gender)
     return false;
   if (
@@ -932,6 +931,10 @@ async function resolveStagedRows(
             ? matchedStudent.person
             : undefined
         : undefined;
+      // An email is changed only by Change Email, never by an import.
+      if (action === "UPDATE" && mapped.email && matchedPerson && mapped.email.trim().toLowerCase() !== matchedPerson.email.toLowerCase()) {
+        warnings.push("Email in the sheet differs from the stored one. Import does not change emails. Use Change Email.");
+      }
       const noChanges =
         action === "UPDATE" &&
         matchedStudent &&
@@ -1881,7 +1884,6 @@ function buildUpdateRequest(
     id: row.matched_student_id!,
     full_name: mapped.full_name || undefined,
     nick_name: mapped.nick_name || undefined,
-    email: mapped.email || undefined,
     gender: mapped.gender
       ? (normalizeGender(mapped.gender) as UpdateStudentRequest["gender"])
       : undefined,
@@ -1937,7 +1939,6 @@ async function captureUpdateSnapshot(
   const snapshot: Record<string, string | number | boolean | null> = {};
   if (mapped.full_name) snapshot.full_name = student.person.full_name;
   if (mapped.nick_name) snapshot.nick_name = student.person.nick_name;
-  if (mapped.email) snapshot.email = student.person.email;
   if (mapped.gender) snapshot.gender = student.person.gender;
   if (mapped.religion) snapshot.religion = student.person.religion;
   if (mapped.birth_place) snapshot.birth_place = student.person.birth_place;
@@ -1965,7 +1966,6 @@ function buildRevertRequest(row: StagedStudentRow): UpdateStudentRequest {
     id: row.committed_student_id!,
     full_name: previous.full_name as string,
     nick_name: previous.nick_name as string,
-    email: previous.email as string,
     gender: previous.gender as UpdateStudentRequest["gender"],
     religion: previous.religion as UpdateStudentRequest["religion"],
     birth_place: previous.birth_place as string,
@@ -2118,7 +2118,6 @@ async function resolveEmployeeStagedRows(
     const currentValues: Partial<Record<ImportEmployeeFieldKey, string>> = {
       full_name: matchedEmployee.person.full_name,
       nick_name: matchedEmployee.person.nick_name,
-      email: matchedEmployee.person.email,
       gender: matchedEmployee.person.gender,
       religion: matchedEmployee.person.religion,
       religion_other: matchedEmployee.person.religion_other ?? "",
@@ -2267,6 +2266,10 @@ async function resolveEmployeeStagedRows(
           ? "UPDATE"
           : "CREATE";
 
+      // An email is changed only by Change Email, never by an import.
+      if (action === "UPDATE" && matchedEmployee && mapped.email && mapped.email.trim().toLowerCase() !== matchedEmployee.person.email.toLowerCase()) {
+        warnings.push("Email in the sheet differs from the stored one. Import does not change emails. Use Change Email.");
+      }
       if (action === "UPDATE" && matchedEmployee) {
         const changes = describeEmployeeChanges(mapped, matchedEmployee);
         if (changes.length === 0) {
@@ -2657,7 +2660,6 @@ function buildEmployeeUpdateRequest(
     id: row.matched_employee_id!,
     full_name: mapped.full_name || undefined,
     nick_name: mapped.nick_name || undefined,
-    email: mapped.email || undefined,
     gender: mapped.gender
       ? (normalizeGender(mapped.gender) as UpdateEmployeeRequest["gender"])
       : undefined,
@@ -2737,7 +2739,6 @@ async function captureEmployeeUpdateSnapshot(
   const snapshot: Record<string, string | number | boolean | null> = {};
   if (mapped.full_name) snapshot.full_name = employee.person.full_name;
   if (mapped.nick_name) snapshot.nick_name = employee.person.nick_name;
-  if (mapped.email) snapshot.email = employee.person.email;
   if (mapped.gender) snapshot.gender = employee.person.gender;
   if (mapped.religion) snapshot.religion = employee.person.religion;
   if (mapped.birth_place) snapshot.birth_place = employee.person.birth_place;
@@ -2796,7 +2797,6 @@ function buildEmployeeRevertRequest(
     id: row.committed_employee_id!,
     full_name: previous.full_name as string | undefined,
     nick_name: previous.nick_name as string | undefined,
-    email: previous.email as string | undefined,
     gender: previous.gender as UpdateEmployeeRequest["gender"],
     religion: previous.religion as UpdateEmployeeRequest["religion"],
     birth_place: previous.birth_place as string | undefined,
