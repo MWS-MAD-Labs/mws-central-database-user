@@ -23,7 +23,7 @@ export function ChangeReviewTable({ changes, mode = 'update', warning, fieldWarn
         {changes.length} field{changes.length === 1 ? '' : 's'}{' '}
         {isCreate ? 'will be set:' : 'will change:'}
       </p>
-      <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">
+      <div className={isCreate ? 'space-y-5' : 'max-h-[55vh] space-y-4 overflow-y-auto pr-1'}>
         {groups.map((group) => (
           <div key={group.title}>
             <h4 className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold tracking-wide text-(--mws-muted) uppercase">
@@ -31,7 +31,7 @@ export function ChangeReviewTable({ changes, mode = 'update', warning, fieldWarn
               {group.title}
             </h4>
             {isCreate ? (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {group.items.map((item) => (
                   <FieldCard
                     key={item.key}

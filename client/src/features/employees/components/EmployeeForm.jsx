@@ -2,7 +2,8 @@ import { recoveryEmailProblem, recoveryHint } from "../../google/utils/instructi
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
 import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx";
 import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
-import { EmailLanguageField } from "../../google/components/EmailLanguageField.jsx";
+import { EmailWithDomain } from "../../google/components/EmailWithDomain.jsx";
+import { ReviewEmailLanguage } from "../../google/components/ReviewEmailLanguage.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { useEmployeeIdCheck } from "../hooks/useEmployeeIdCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
@@ -55,7 +56,6 @@ import {
   visibleErrors,
   yearsBetweenDateInputs,
   emailProblem,
-  sanitizeEmail,
   sanitizeEmailLocalPart,
   textLength,
 } from "../../../lib/form.js";
@@ -321,8 +321,12 @@ export function EmployeeForm({
     educationSuggestionsQuery.data?.majors,
   );
 
+  // The language of the mail that carries the password is picked in the review, which only answers yes or no.
+  const emailLanguage = useRef("en");
+
   async function handleSubmit(event) {
     event.preventDefault();
+    emailLanguage.current = "en";
     if (emailCheck.blocked) {
       showErrorToast(emailCheck.message || "Check the email before saving.");
       return;
@@ -435,12 +439,15 @@ export function EmployeeForm({
       const confirmed = await confirm({
         title: "Review before creating",
         description: (
-          <ChangeReviewTable
-            changes={fields}
-            mode="create"
-            warning={reviewWarning}
-            fieldWarnings={reviewFieldWarnings}
-          />
+          <>
+            {mailsPassword ? <ReviewEmailLanguage onChange={(value) => { emailLanguage.current = value; }} /> : null}
+            <ChangeReviewTable
+              changes={fields}
+              mode="create"
+              warning={reviewWarning}
+              fieldWarnings={reviewFieldWarnings}
+            />
+          </>
         ),
         confirmLabel: isContractAlreadyExpired
           ? "Create and resign"
@@ -448,7 +455,7 @@ export function EmployeeForm({
             ? "Save anyway"
             : "Create employee",
         ...(mailsPassword ? { requireCheckLabel: `The password will be sent to ${values.recovery_email}. This is the right address.` } : {}),
-        wide: true,
+        size: "xl",
       });
       if (!confirmed) return;
     } else {
@@ -486,6 +493,7 @@ export function EmployeeForm({
         initialChildren: initialValues.children,
         noGoogle,
         claiming,
+        emailLanguage: emailLanguage.current,
       }),
       pendingPhotoBlob,
     );
@@ -743,10 +751,7 @@ export function EmployeeForm({
               />
             ) : null}
             {isCreate ? (
-              <div className="grid min-w-0 gap-4 rounded-xl border border-(--mws-line) p-4 md:col-span-2 md:grid-cols-2">
-                <div className="md:col-span-2">
-                  <p className="font-display text-sm font-semibold text-(--mws-charcoal)">Recovery email</p>
-                </div>
+              <div className="grid min-w-0 gap-4 md:col-span-2 md:grid-cols-2">
               <Field
                 label="Recovery Email"
                 name="recovery_email"
@@ -760,16 +765,11 @@ export function EmployeeForm({
                   </>
                 )}
               >
-                <TextInput
-                  type="email"
+                <EmailWithDomain
                   disabled={noGoogle}
                   invalid={Boolean(errors.recovery_email)}
                   value={values.recovery_email}
-                  maxLength={100}
-                  placeholder="name@gmail.com"
-                  onChange={(event) =>
-                    updateValue("recovery_email", sanitizeEmail(event.target.value))
-                  }
+                  onChange={(value) => updateValue("recovery_email", value)}
                 />
               </Field>
               {!noGoogle ? (
@@ -781,9 +781,6 @@ export function EmployeeForm({
                   error={errors.recovery_email_confirm}
                   onChange={(value) => updateValue("recovery_email_confirm", value)}
                 />
-              ) : null}
-              {!noGoogle ? (
-                <EmailLanguageField className="md:col-span-2" value={values.email_language} onChange={(value) => updateValue("email_language", value)} />
               ) : null}
               </div>
             ) : null}
@@ -974,7 +971,7 @@ export function EmployeeForm({
                 placeholder={
                   employee?.employment?.unit
                     ? `Keep current: ${employee.employment.unit}`
-                    : "Select unit"
+                    : "Select Unit"
                 }
                 searchPlaceholder="Search Units"
               />
@@ -1000,10 +997,10 @@ export function EmployeeForm({
                 options={jobLevelOptions(availableJobLevels)}
                 placeholder={
                   !selectedUnit
-                    ? "Select unit first"
+                    ? "Select Unit First"
                     : employee?.employment?.job_level
                       ? `Keep current: ${employee.employment.job_level}`
-                      : "Select level"
+                      : "Select Level"
                 }
                 searchPlaceholder="Search Levels"
               />
@@ -1023,10 +1020,10 @@ export function EmployeeForm({
                 options={namedOptions(availableJobPositions)}
                 placeholder={
                   !selectedJobLevel
-                    ? "Select job level first"
+                    ? "Select Job Level First"
                     : employee?.employment?.job_position
                       ? `Keep current: ${employee.employment.job_position}`
-                      : "Select position"
+                      : "Select Position"
                 }
                 searchPlaceholder="Search Positions"
               />
@@ -1045,7 +1042,7 @@ export function EmployeeForm({
                 placeholder={
                   employee?.employment?.building
                     ? `Keep current: ${employee.employment.building}`
-                    : "Select building"
+                    : "Select Building"
                 }
                 searchPlaceholder="Search Buildings"
               />
@@ -1083,7 +1080,7 @@ export function EmployeeForm({
                     value={values.contract_duration_months}
                     onChange={handleContractDurationChange}
                     options={CONTRACT_DURATION_OPTIONS}
-                    placeholder="Set end date manually"
+                    placeholder="Set End Date Manually"
                     searchPlaceholder="Search Durations"
                   />
                 </Field>
@@ -1562,7 +1559,6 @@ function getInitialValues(mode, employee, options) {
     email_local: emailLocalPart(identity.email),
     recovery_email: "",
     recovery_email_confirm: "",
-    email_language: "en",
     gender: identity.gender || "",
     religion: identity.religion || "",
     religion_other: identity.religion_other || "",
@@ -1633,14 +1629,14 @@ const SENSITIVE_VALUE_KEYS = [
 
 function buildPayload(
   values,
-  { includeSensitive = true, isCreate = false, initialChildren, noGoogle = false, claiming = false } = {},
+  { includeSensitive = true, isCreate = false, initialChildren, noGoogle = false, claiming = false, emailLanguage } = {},
 ) {
   const payload = buildFullPayload(values);
   if (noGoogle) delete payload.recovery_email;
   if (claiming) payload.claim_existing_google = true;
   // An email is changed only by Change Email, never by saving the form.
   if (!isCreate) delete payload.email;
-  if (isCreate && !noGoogle) payload.email_language = values.email_language;
+  if (isCreate && !noGoogle && emailLanguage) payload.email_language = emailLanguage;
   if (!includeSensitive) {
     // Never revealed means never loaded: leave those fields out so nothing is overwritten.
     for (const key of SENSITIVE_VALUE_KEYS) delete payload[key];
@@ -1890,7 +1886,7 @@ const EMPLOYEE_FIELD_FORMATTERS = {
 // itself saved either, but it does decide whether kpj_number or
 // bpjs_employment_number gets sent, so it's kept (with a plain-language
 // label) rather than hidden.
-const EMPLOYEE_DIFF_EXCLUDED_KEYS = ["contract_duration_months", "recovery_email_confirm", "email_language"];
+const EMPLOYEE_DIFF_EXCLUDED_KEYS = ["contract_duration_months", "recovery_email_confirm"];
 
 const EMPLOYEE_DIFF_LABELS = {
   ...REQUIRED_FIELD_LABELS,

@@ -98,10 +98,6 @@ describe('EmployeeForm', () => {
   it('submits a valid normalized create payload', async () => {
     setSystemTime(new Date('2026-09-17T12:00:00.000Z'))
     const { user, onSubmit } = renderEmployeeForm({ mode: 'create' })
-    // The mail is English unless the toggle is switched to Indonesian.
-    expect(screen.getByRole('radio', { name: 'English' })).toBeChecked()
-    await user.click(screen.getByRole('radio', { name: 'Bahasa Indonesia' }))
-
     await user.type(field('full_name').querySelector('input'), 'ari employee')
     await user.type(field('nick_name').querySelector('input'), 'ari')
     await user.type(field('email_local').querySelector('input'), 'ari.employee!')
@@ -109,18 +105,20 @@ describe('EmployeeForm', () => {
     expect(field('email_local').querySelector('input').value).toBe('ari.employee')
     await user.click(screen.getByRole('button', { name: 'Check' }))
     await screen.findByText('Available')
-    await user.type(field('recovery_email').querySelector('input'), 'Ari+Pribadi@Gmail.com')
+    await user.type(field('recovery_email').querySelector('input'), 'Ari+Pribadi')
     await user.type(field('recovery_email_confirm').querySelector('input'), 'ari+pribadi@gmail.com')
-    expect(field('recovery_email').querySelector('input').value).toBe('ari+pribadi@gmail.com')
+    // The name is typed, the domain is a pick (gmail.com first), and together they are the email.
+    expect(field('recovery_email').querySelector('input').value).toBe('ari+pribadi')
+    expect(screen.getByLabelText('Email domain').value).toBe('gmail.com')
     await chooseSelect(user, 'Select Gender', 'Male')
     await chooseSelect(user, 'Select Religion', 'Islam')
     await user.type(field('birth_place').querySelector('input'), 'jakarta')
     await user.type(field('employee_id').querySelector('input'), '1111111')
     await chooseSelect(user, 'Probation', 'Permanent')
-    await chooseSelect(user, 'Select unit', 'Elementary')
-    await chooseSelect(user, 'Select level', /Teacher/)
-    await chooseSelect(user, 'Select position', 'Classroom Teacher')
-    await chooseSelect(user, 'Select building', 'Main Building')
+    await chooseSelect(user, 'Select Unit', 'Elementary')
+    await chooseSelect(user, 'Select Level', /Teacher/)
+    await chooseSelect(user, 'Select Position', 'Classroom Teacher')
+    await chooseSelect(user, 'Select Building', 'Main Building')
     setDate('birth_date', '10/05/1990')
     setDate('join_date', '01/07/2020')
     await user.type(field('mobile_phone').querySelector('input'), '+62 812-3456')
@@ -129,6 +127,9 @@ describe('EmployeeForm', () => {
     const review = await screen.findByRole('dialog', { name: 'Review before creating' })
     // The last look before saving shows the recovery email in full, so a typo can still be caught.
     expect(within(review).getByText('ari+pribadi@gmail.com')).toBeVisible()
+    // The language of the mail is chosen here: English unless switched to Indonesian.
+    expect(within(review).getByRole('radio', { name: 'English' })).toBeChecked()
+    await user.click(within(review).getByRole('radio', { name: 'Bahasa Indonesia' }))
     // The create button waits for a tick that the address is the right one.
     expect(within(review).getByRole('button', { name: 'Create employee' })).toBeDisabled()
     await user.click(within(review).getByRole('checkbox'))
@@ -168,6 +169,7 @@ describe('EmployeeForm', () => {
     expect(await screen.findByText('Recovery email is required.')).toBeVisible()
 
     // Another mailbox of the organization is a fine place for the code to go.
+    await user.selectOptions(screen.getByLabelText('Email domain'), 'Another Domain')
     const recovery = field('recovery_email').querySelector('input')
     await user.type(recovery, 'colleague@millennia21.id')
     expect(await screen.findByText('An organization mailbox. Check the spelling.')).toBeVisible()
@@ -206,10 +208,10 @@ describe('EmployeeForm', () => {
     await user.type(field('birth_place').querySelector('input'), 'jakarta')
     await user.type(field('employee_id').querySelector('input'), '1111111')
     await chooseSelect(user, 'Probation', 'Permanent')
-    await chooseSelect(user, 'Select unit', 'Elementary')
-    await chooseSelect(user, 'Select level', /Teacher/)
-    await chooseSelect(user, 'Select position', 'Classroom Teacher')
-    await chooseSelect(user, 'Select building', 'Main Building')
+    await chooseSelect(user, 'Select Unit', 'Elementary')
+    await chooseSelect(user, 'Select Level', /Teacher/)
+    await chooseSelect(user, 'Select Position', 'Classroom Teacher')
+    await chooseSelect(user, 'Select Building', 'Main Building')
     setDate('birth_date', '10/05/1990')
     setDate('join_date', '01/07/2020')
 
@@ -222,6 +224,8 @@ describe('EmployeeForm', () => {
 
   it('suggests the right domain for a misspelt recovery email and wants the email typed twice', async () => {
     const { user } = renderEmployeeForm({ mode: 'create' })
+    // An address on another domain is typed whole, and a misspelt popular one gets a suggestion.
+    await user.selectOptions(screen.getByLabelText('Email domain'), 'Another Domain')
     const recovery = field('recovery_email').querySelector('input')
     await user.type(recovery, 'ari@gmial.com')
     await user.click(screen.getByRole('button', { name: 'Use it' }))
@@ -238,15 +242,13 @@ describe('EmployeeForm', () => {
     const again = field('recovery_email_confirm').querySelector('input')
     expect(again).toBeDisabled()
     expect(screen.queryByText('Type the recovery email again.')).not.toBeInTheDocument()
-    // Grouped apart from the Millennia email, with a name that says whose it confirms.
+    // Side by side, with a name that says whose it confirms.
     expect(screen.getByText('Confirm Recovery Email')).toBeVisible()
-    expect(field('recovery_email_confirm').closest('div.rounded-xl')).toContainElement(field('recovery_email'))
+    expect(field('recovery_email_confirm').parentElement).toBe(field('recovery_email').parentElement)
 
     const recovery = field('recovery_email').querySelector('input')
-    await user.type(recovery, 'a')
-    expect(again).toBeDisabled()
-
-    await user.type(recovery, 'ri@gmail.com')
+    await user.type(recovery, 'ari')
+    expect(recovery.value).toBe('ari')
     expect(again).toBeEnabled()
     await user.type(again, 'ari@gmail.com')
     expect(again.value).toBe('ari@gmail.com')
@@ -254,6 +256,13 @@ describe('EmployeeForm', () => {
     await user.clear(recovery)
     expect(again).toBeDisabled()
     expect(again.value).toBe('')
+
+    // The domain is a pick, gmail.com first, and it stays picked while the name is still empty.
+    const domain = screen.getByLabelText('Email domain')
+    expect(domain.value).toBe('gmail.com')
+    await user.selectOptions(domain, 'yahoo.com')
+    await user.type(recovery, 'budi')
+    expect(screen.getByLabelText('Email domain').value).toBe('yahoo.com')
   })
 
   it('locks the email of someone who exists and offers Change Email to a Super Admin only', async () => {
@@ -313,7 +322,7 @@ describe('EmployeeForm', () => {
   it('limits database admins to their unit and restricts PII editing', async () => {
     const { user } = renderEmployeeForm({ mode: 'create', user: employeeDatabaseAdmin })
 
-    await user.click(screen.getByRole('button', { name: 'Select unit' }))
+    await user.click(screen.getByRole('button', { name: 'Select Unit' }))
     expect(screen.getByRole('option', { name: 'Elementary' })).toBeVisible()
     expect(screen.queryByRole('option', { name: 'Secondary' })).not.toBeInTheDocument()
     await user.keyboard('{Escape}')

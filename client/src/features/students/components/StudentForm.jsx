@@ -1,12 +1,13 @@
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, UserRound } from "lucide-react";
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
 import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx";
 import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
-import { EmailLanguageField } from "../../google/components/EmailLanguageField.jsx";
+import { EmailWithDomain } from "../../google/components/EmailWithDomain.jsx";
+import { ReviewEmailLanguage } from "../../google/components/ReviewEmailLanguage.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { Button } from "../../../components/ui/Button.jsx";
 import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
@@ -37,7 +38,6 @@ import {
   visibleErrors,
   emailProblem,
   phoneDigitsOnly,
-  sanitizeEmail,
   sanitizeEmailLocalPart,
 } from "../../../lib/form.js";
 import {
@@ -152,6 +152,9 @@ export function StudentForm({
   const claiming = emailCheck.state === "claimable" && claimExisting;
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  // A new student joins the grade they are in, so while the current grade is untouched it follows the join grade, as long
+  // as the join year is the one running. Picking a current grade by hand ends that.
+  const [currentGradeTouched, setCurrentGradeTouched] = useState(false);
   const allErrors = useMemo(
     () => computeStudentErrors(values, isCreate),
     [values, isCreate],
@@ -257,8 +260,19 @@ export function StudentForm({
     setValues((current) => ({ ...current, [field]: checked }));
   }
 
+  // The language of the mail that carries the password is picked in the review, which only answers yes or no.
+  const emailLanguage = useRef("en");
+
+  function followJoinGrade(yearId, gradeId) {
+    if (!isCreate || currentGradeTouched || currentGradeLocked || !yearId || !gradeId) return;
+    const year = (options.academicYears || []).find((item) => item.id === yearId);
+    const allowed = (currentGradeOptionsForRole || []).some((grade) => grade.id === gradeId);
+    if (year?.status === "ACTIVE" && allowed) updateValue("current_grade_id", gradeId);
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
+    emailLanguage.current = "en";
     if (emailCheck.blocked) {
       showErrorToast(emailCheck.message || "Check the email before saving.");
       return;
@@ -305,16 +319,19 @@ export function StudentForm({
       const confirmed = await confirm({
         title: "Review before creating",
         description: (
-          <ChangeReviewTable
-            changes={fields}
-            mode="create"
-            warning={lockWarning}
-            fieldWarnings={mailsPassword ? { ...lockFieldWarnings, parent_email: "The password is sent to this address, so check it letter by letter." } : lockFieldWarnings}
-          />
+          <>
+            {mailsPassword ? <ReviewEmailLanguage onChange={(value) => { emailLanguage.current = value; }} /> : null}
+            <ChangeReviewTable
+              changes={fields}
+              mode="create"
+              warning={lockWarning}
+              fieldWarnings={mailsPassword ? { ...lockFieldWarnings, parent_email: "The password is sent to this address, so check it letter by letter." } : lockFieldWarnings}
+            />
+          </>
         ),
         confirmLabel: nisnBeingSet ? "Create and lock NISN" : "Create student",
         ...(mailsPassword ? { requireCheckLabel: `The password will be sent to ${values.parent_email}. This is the right address.` } : {}),
-        wide: true,
+        size: "xl",
       });
       if (!confirmed) return;
     } else {
@@ -342,7 +359,7 @@ export function StudentForm({
     }
 
     onSubmit(
-      buildPayload(values, { includeBirth: birthRevealed, isCreate, claiming }),
+      buildPayload(values, { includeBirth: birthRevealed, isCreate, claiming, emailLanguage: emailLanguage.current }),
       pendingPhotoBlob,
     );
   }
@@ -645,7 +662,10 @@ export function StudentForm({
                 required={isCreate && hasAttemptedSubmit}
                 disabled={currentGradeLocked}
                 value={values.current_grade_id}
-                onChange={(value) => updateValue("current_grade_id", value)}
+                onChange={(value) => {
+                  setCurrentGradeTouched(true);
+                  updateValue("current_grade_id", value);
+                }}
                 options={gradeOptions(currentGradeOptionsForRole)}
                 placeholder="Select Current Grade"
                 searchPlaceholder="Search Grades"
@@ -660,9 +680,10 @@ export function StudentForm({
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.join_academic_year_id}
-                onChange={(value) =>
-                  updateValue("join_academic_year_id", value)
-                }
+                onChange={(value) => {
+                  updateValue("join_academic_year_id", value);
+                  followJoinGrade(value, values.join_grade_id);
+                }}
                 options={academicYearOptions(options.academicYears)}
                 placeholder="Select Join Year"
                 searchPlaceholder="Search Years"
@@ -677,7 +698,10 @@ export function StudentForm({
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.join_grade_id}
-                onChange={(value) => updateValue("join_grade_id", value)}
+                onChange={(value) => {
+                  updateValue("join_grade_id", value);
+                  followJoinGrade(values.join_academic_year_id, value);
+                }}
                 options={gradeOptions(joinGradeOptions)}
                 placeholder="Select Join Grade"
                 searchPlaceholder="Search Grades"
@@ -850,13 +874,10 @@ export function StudentForm({
                 required
                 hint={<EmailSuggestion email={values.parent_email} onUse={(fixed) => updateValue("parent_email", fixed)} />}
               >
-                <TextInput
-                  type="email"
-                  maxLength={100}
-                  value={values.parent_email}
+                <EmailWithDomain
                   invalid={Boolean(errors.parent_email)}
-                  placeholder="name@gmail.com"
-                  onChange={(event) => updateValue("parent_email", sanitizeEmail(event.target.value))}
+                  value={values.parent_email}
+                  onChange={(value) => updateValue("parent_email", value)}
                 />
               </Field>
               <ConfirmEmailField
@@ -877,9 +898,6 @@ export function StudentForm({
                   onChange={(event) => updateValue("parent_phone", phoneDigitsOnly(event.target.value))}
                 />
               </Field>
-              {!values.is_legacy && !claiming ? (
-                <EmailLanguageField className="md:col-span-2" value={values.email_language} onChange={(value) => updateValue("email_language", value)} />
-              ) : null}
             </div>
           </section>
         ) : null}
@@ -991,7 +1009,6 @@ function getInitialValues(mode, student, options) {
     parent_name: "",
     parent_email: "",
     parent_email_confirm: "",
-    email_language: "en",
     parent_phone: "",
   };
 }
@@ -1002,12 +1019,12 @@ const PARENT_TYPES = [
   { value: "GUARDIAN", label: "Guardian" },
 ];
 
-function buildPayload(values, { includeBirth = true, isCreate = false, claiming = false } = {}) {
+function buildPayload(values, { includeBirth = true, isCreate = false, claiming = false, emailLanguage } = {}) {
   const payload = buildFullPayload(values);
   if (claiming) payload.claim_existing_google = true;
   // An email is changed only by Change Email, never by saving the form.
   if (!isCreate) delete payload.email;
-  if (isCreate) payload.email_language = values.email_language;
+  if (isCreate && emailLanguage) payload.email_language = emailLanguage;
   if (isCreate) {
     payload.parent = cleanPayload({
       type: values.parent_type,
@@ -1141,7 +1158,7 @@ const STUDENT_FIELD_FORMATTERS = {
 // than relying on it happening to never change. is_legacy isn't saved
 // either, but it does decide whether legacy_nis/status get sent, so it's
 // kept with a plain-language label instead of hidden.
-const STUDENT_DIFF_EXCLUDED_KEYS = ["nis", "parent_email_confirm", "email_language"];
+const STUDENT_DIFF_EXCLUDED_KEYS = ["nis", "parent_email_confirm"];
 
 const STUDENT_DIFF_LABELS = {
   ...REQUIRED_FIELD_LABELS,

@@ -2,12 +2,13 @@ import { recoveryEmailProblem, recoveryHint } from "../../google/utils/instructi
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
 import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx";
 import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
-import { EmailLanguageField } from "../../google/components/EmailLanguageField.jsx";
+import { EmailWithDomain } from "../../google/components/EmailWithDomain.jsx";
+import { ReviewEmailLanguage } from "../../google/components/ReviewEmailLanguage.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
 import { ChangeReviewTable } from "../../../components/ui/ChangeReviewTable.jsx";
@@ -41,7 +42,6 @@ import {
   visibleErrors,
   yearsBetweenDateInputs,
   emailProblem,
-  sanitizeEmail,
   sanitizeEmailLocalPart,
   textLength,
 } from "../../../lib/form.js";
@@ -208,8 +208,12 @@ export function InternForm({
     }));
   }
 
+  // The language of the mail that carries the password is picked in the review, which only answers yes or no.
+  const emailLanguage = useRef("en");
+
   async function handleSubmit(event) {
     event.preventDefault();
+    emailLanguage.current = "en";
     if (emailCheck.blocked) {
       showErrorToast(emailCheck.message || "Check the email before saving.");
       return;
@@ -251,7 +255,7 @@ export function InternForm({
         labels: INTERN_DIFF_LABELS,
         resolveValue,
         sections: INTERN_FIELD_SECTIONS,
-        excludeKeys: ["contract_duration_months", "recovery_email_confirm", "email_language"],
+        excludeKeys: ["contract_duration_months", "recovery_email_confirm"],
       });
       // The first password is emailed to the recovery email at once, so a slip there loses it or gives it to a stranger.
       const mailsPassword = !noGoogle && Boolean(values.recovery_email);
@@ -259,18 +263,21 @@ export function InternForm({
       const confirmed = await confirm({
         title: "Review before creating",
         description: (
-          <ChangeReviewTable
-            changes={fields}
-            mode="create"
-            warning={reviewWarning}
-            fieldWarnings={createWarnings}
-          />
+          <>
+            {mailsPassword ? <ReviewEmailLanguage onChange={(value) => { emailLanguage.current = value; }} /> : null}
+            <ChangeReviewTable
+              changes={fields}
+              mode="create"
+              warning={reviewWarning}
+              fieldWarnings={createWarnings}
+            />
+          </>
         ),
         confirmLabel: internshipAlreadyEnded
           ? "Create as completed"
           : "Create intern",
         ...(mailsPassword ? { requireCheckLabel: `The password will be sent to ${values.recovery_email}. This is the right address.` } : {}),
-        wide: true,
+        size: "xl",
       });
       if (!confirmed) return;
     } else {
@@ -305,6 +312,7 @@ export function InternForm({
         noGoogle,
         claiming,
         isCreate,
+        emailLanguage: emailLanguage.current,
       }),
     );
   }
@@ -387,10 +395,7 @@ export function InternForm({
               />
             ) : null}
             {isCreate ? (
-              <div className="grid min-w-0 gap-4 rounded-xl border border-(--mws-line) p-4 md:col-span-2 md:grid-cols-2">
-                <div className="md:col-span-2">
-                  <p className="font-display text-sm font-semibold text-(--mws-charcoal)">Recovery email</p>
-                </div>
+              <div className="grid min-w-0 gap-4 md:col-span-2 md:grid-cols-2">
               <Field
                 label="Recovery Email"
                 name="recovery_email"
@@ -410,16 +415,11 @@ export function InternForm({
                     )
                 }
               >
-                <TextInput
-                  type="email"
+                <EmailWithDomain
                   disabled={noGoogle}
                   invalid={Boolean(errors.recovery_email)}
                   value={values.recovery_email}
-                  maxLength={100}
-                  placeholder="name@gmail.com"
-                  onChange={(event) =>
-                    updateValue("recovery_email", sanitizeEmail(event.target.value))
-                  }
+                  onChange={(value) => updateValue("recovery_email", value)}
                 />
               </Field>
               {!noGoogle ? (
@@ -431,9 +431,6 @@ export function InternForm({
                   error={errors.recovery_email_confirm}
                   onChange={(value) => updateValue("recovery_email_confirm", value)}
                 />
-              ) : null}
-              {!noGoogle ? (
-                <EmailLanguageField className="md:col-span-2" value={values.email_language} onChange={(value) => updateValue("email_language", value)} />
               ) : null}
               </div>
             ) : null}
@@ -622,7 +619,7 @@ export function InternForm({
                 value={values.contract_duration_months}
                 onChange={handleDurationChange}
                 options={CONTRACT_DURATION_OPTIONS}
-                placeholder="Set end date manually"
+                placeholder="Set End Date Manually"
                 searchPlaceholder="Search Durations"
               />
             </Field>
@@ -690,7 +687,7 @@ export function InternForm({
                     event.target.value.replace(/\D/g, "").slice(0, 4),
                   )
                 }
-                placeholder="Expected or actual"
+                placeholder="Expected Or Actual"
               />
             </Field>
             <LimitedField
@@ -762,7 +759,6 @@ function getInitialValues(mode, intern, options) {
     email_local: emailLocalPart(identity.email),
     recovery_email: "",
     recovery_email_confirm: "",
-    email_language: "en",
     gender: identity.gender || "",
     religion: identity.religion || "",
     religion_other: identity.religion_other || "",
@@ -804,11 +800,11 @@ const SENSITIVE_VALUE_KEYS = [
   "birth_date",
 ];
 
-function buildPayload(values, canEditContactPii, { includeIdentity = true, noGoogle = false, claiming = false, isCreate = false } = {}) {
+function buildPayload(values, canEditContactPii, { includeIdentity = true, noGoogle = false, claiming = false, isCreate = false, emailLanguage } = {}) {
   const payload = buildFullPayload(values, canEditContactPii);
   // An email is changed only by Change Email, never by saving the form.
   if (!isCreate) delete payload.email;
-  if (isCreate && !noGoogle) payload.email_language = values.email_language;
+  if (isCreate && !noGoogle && emailLanguage) payload.email_language = emailLanguage;
   if (noGoogle) delete payload.recovery_email;
   if (claiming) payload.claim_existing_google = true;
   // Never revealed means never loaded: leave them out so nothing is overwritten.
