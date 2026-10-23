@@ -143,8 +143,10 @@ describe("group access for interns (API)", () => {
     // A blank birth place and date get the placeholders.
     expect(intern.person.birth_place).toBe("Unknown");
 
-    const updated = await TestRequest.patch(`/api/admin/interns/${id}`, { full_name: "Test Intern Renamed", email: "test_intern_renamed@millennia21.id" }, accessToken);
+    const updated = await TestRequest.patch(`/api/admin/interns/${id}`, { full_name: "Test Intern Renamed" }, accessToken);
     expect(updated.status).toBe(200);
+    const emailed = await TestRequest.post(`/api/admin/interns/${id}/change-email`, { email: "test_intern_renamed@millennia21.id", reason: "Spelling fixed" }, accessToken);
+    expect(emailed.status).toBe(200);
     const person = await prismaClient.person.findUniqueOrThrow({ where: { id: intern.person_id } });
     expect(person).toMatchObject({ full_name: "Test Intern Renamed", email: "test_intern_renamed@millennia21.id" });
   });

@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes } from "react-router";
 import { ConfirmProvider } from "../../../src/components/ui/ConfirmDialog.jsx";
 import { AuthContext } from "../../../src/features/auth/context/authContext.js";
-import { AppSettingsPage } from "../../../src/features/application-access/pages/AppSettingsPage.jsx";
+import { AppDetailPage } from "../../../src/features/application-access/pages/AppDetailPage.jsx";
 import { AppSetupPage } from "../../../src/features/application-access/pages/AppSetupPage.jsx";
 import { renderWithProviders } from "../../helpers/render.jsx";
 import { createFetchRouter, jsonResponse } from "../../helpers/http.js";
@@ -57,8 +57,8 @@ function renderPage(
             element={<AppSetupPage />}
           />
           <Route
-            path="/application-access/apps/:applicationId/settings"
-            element={<AppSettingsPage />}
+            path="/application-access/apps/:applicationId"
+            element={<AppDetailPage />}
           />
         </Routes>
       </ConfirmProvider>
@@ -242,7 +242,7 @@ describe("AppSetupPage", () => {
     const link = await screen.findByRole("link", { name: "Setup Guide" });
     expect(link).toHaveAttribute(
       "href",
-      "/application-access/apps/demo/guide?part=local",
+      "/application-access/guides?part=local&app=demo",
     );
     await user.click(screen.getByRole("button", { name: "More actions" }));
     expect(screen.getByRole("button", { name: "Setup Guide" })).toBeVisible();
@@ -296,6 +296,14 @@ describe("AppSetupPage", () => {
           }),
       },
       {
+        path: "/api/admin/application-access/apps/demo",
+        response: () => jsonResponse({ data: { application_id: "demo", organization_id: "org_demo_abcdefghijklmnopqrst", groups: [], other_count: 0 } }),
+      },
+      {
+        path: "/api/admin/application-roles",
+        response: () => jsonResponse({ data: [] }),
+      },
+      {
         path: /\/api\/admin\/application-access\/apps\/demo\/settings/,
         response: () =>
           jsonResponse({
@@ -337,9 +345,9 @@ describe("AppSetupPage", () => {
     await user.click(
       await screen.findByRole("button", { name: "Show In Hub" }),
     );
-    // Showing it in the Hub finishes the setup, so Settings takes over from here.
+    // Showing it in the Hub finishes the setup, so the application page takes over from here.
     expect(
-      await screen.findByRole("heading", { name: "Demo App Settings" }),
+      await screen.findByRole("heading", { name: "Demo App" }),
     ).toBeVisible();
     await user.click(await screen.findByRole("tab", { name: "Hub Card" }));
     await user.click(
@@ -485,6 +493,48 @@ describe("AppSetupPage", () => {
       "students:read",
     ]);
   });
+  it("rotates the Hub secret and then the token with Rotate Everything, and only offers it with a secret of its own", async () => {
+    const calls = [];
+    const connection = { client_id: "c1", created: true, created_at: new Date().toISOString(), last_used_at: new Date().toISOString() };
+    const view = renderPage([
+      setupRoute(makeSetup({ connection, permissions: { count: 1, synced_at: null }, hub_secret: { applies: true, mode: "shared" } })),
+    ]);
+    await screen.findByRole("button", { name: "Rotate Token" });
+    expect(screen.queryByRole("button", { name: "Rotate Everything" })).toBeNull();
+    view.unmount();
+
+    const { user } = renderPage([
+      setupRoute(makeSetup({ connection, permissions: { count: 1, synced_at: null }, hub_secret: { applies: true, mode: "own" } })),
+      {
+        path: "/api/admin/application-access/apps/demo/hub-app-secret",
+        method: "POST",
+        response: () => {
+          calls.push("secret");
+          return jsonResponse({ data: { secret: "s3cret", version: 2 } });
+        },
+      },
+      {
+        path: "/api/admin/application-access/apps/demo/rotate",
+        method: "POST",
+        response: () => {
+          calls.push("token");
+          return jsonResponse({
+            data: {
+              token: "mws_new.secret",
+              credentials: [],
+              env: [{ key: "HUB_INTERNAL_SECRET", value: "s3cret", secret: true, group: 0, line: 'HUB_INTERNAL_SECRET="s3cret"' }],
+            },
+          });
+        },
+      },
+    ]);
+    await user.click(await screen.findByRole("button", { name: "Rotate Everything" }));
+    await user.click(await screen.findByRole("button", { name: "Rotate" }));
+    await user.click(await screen.findByRole("button", { name: "Start Rotation" }));
+    expect(await screen.findByText("Rotated Credentials")).toBeVisible();
+    expect(calls).toEqual(["secret", "token"]);
+  });
+
   it("rotates the token of the connection from the setup page", async () => {
     const rotations = [];
     const { user } = renderPage([
@@ -576,7 +626,7 @@ describe("AppSetupPage", () => {
       screen.getByRole("link", { name: "Open the full steps" }),
     ).toHaveAttribute(
       "href",
-      "/application-access/apps/demo/guide?part=rotate",
+      "/application-access/guides?part=rotate&app=demo",
     );
   });
   it("offers Edit Details on the About step", async () => {
@@ -1200,6 +1250,39 @@ describe("AppSetupPage", () => {
           'HUB_INTERNAL_SECRET="abc123secret-0123456789-xyz"',
         );
       });
+    });
+
+    it("rotates the signing key of a Hub that exists, with a warning, and shows the key lines once", async () => {
+      const { user } = renderPage([
+        setupRoute(makeSetup({ is_hub: true, env_settings: hubSettings, hub: HUB })),
+        IMPACT,
+        HUB_OK,
+        SECRET_OK,
+        {
+          path: "/api/admin/application-access/hub-signing-key",
+          method: "POST",
+          response: () =>
+            jsonResponse({
+              data: {
+                kid: "k2",
+                thumbprint: "t2",
+                saved: true,
+                env: [
+                  { key: "HUB_SSO_PRIVATE_KEY", value: "pem", secret: true, group: 0, line: 'HUB_SSO_PRIVATE_KEY="pem"' },
+                  { key: "HUB_SSO_KEY_ID", value: "k2", secret: false, group: 0, line: 'HUB_SSO_KEY_ID="k2"' },
+                ],
+              },
+            }),
+        },
+      ]);
+      await wizard(user);
+      await user.click(screen.getByRole("button", { name: "Continue" }));
+      await user.click(screen.getByRole("button", { name: "Rotate Signing Key" }));
+      const confirm = await screen.findByRole("dialog", { name: "Rotate Signing Key" });
+      await user.click(within(confirm).getByRole("button", { name: "Rotate" }));
+      const dialog = await screen.findByRole("dialog", { name: "Rotated Hub Keys" });
+      expect(within(dialog).getByText("HUB_SSO_KEY_ID=\"k2\"")).toBeVisible();
+      expect(within(dialog).queryByText(/HUB_SSO_PRIVATE_KEY="pem"/)).toBeNull();
     });
 
     it("shows the cookie name of the shared session and the applications that need the same one", async () => {

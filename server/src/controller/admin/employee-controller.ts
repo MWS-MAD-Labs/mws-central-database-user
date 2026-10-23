@@ -159,6 +159,12 @@ export class EmployeeController {
     return c.json({ data: response });
   }
 
+  static async idAvailability(c: Context<{ Variables: AdminVariables }>) {
+    const employeeId = c.req.query("employee_id");
+    if (!employeeId) throw new ResponseError(400, "Employee ID is required");
+    return c.json({ data: await EmployeeService.checkEmployeeId(c.var.admin, employeeId) });
+  }
+
   static async countTotal(c: Context<{ Variables: AdminVariables }>) {
     const total = await EmployeeService.countTotal();
 

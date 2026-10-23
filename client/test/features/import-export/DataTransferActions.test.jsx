@@ -233,6 +233,9 @@ describe('DataTransferActions', () => {
 
     await user.click(screen.getByRole('button', { name: 'Import' }))
     expect(screen.getByRole('dialog', { name: 'Import students' })).toBeVisible()
+    // Import is for loading many people, never the way to change one email.
+    expect(screen.getByText(/Import is for loading many people at once. For one person, use the form./)).toBeVisible()
+    expect(screen.getByText(/An import never changes an email./)).toBeVisible()
     await user.click(within(screen.getByRole('dialog', { name: 'Import students' })).getByRole('button', { name: 'Close' }))
     expect(screen.queryByRole('dialog', { name: 'Import students' })).not.toBeInTheDocument()
   })

@@ -88,7 +88,7 @@ describe('HubAddressField', () => {
     await user.type(screen.getByLabelText('Hub Address'), 'app-stg.mws.web.id')
     expect(await screen.findByText(/A Hub answers here, but it has no sign-in key yet/)).toBeVisible()
     expect(screen.getByText(/signing key lines/)).toBeVisible()
-    expect(screen.getByRole('link', { name: 'How To Fix' })).toHaveAttribute('href', '/application-access/guide?part=hub')
+    expect(screen.getByRole('link', { name: 'How To Fix' })).toHaveAttribute('href', '/application-access/guides?part=hub')
     // The address is right, so there is no way around it either: the key has to be set.
     expect(screen.queryByRole('button', { name: 'Use It Anyway' })).toBeNull()
     expect(onChange).toHaveBeenLastCalledWith('https://app-stg.mws.web.id', true)

@@ -6,11 +6,14 @@ import { ConfirmContext } from './confirmContext.js'
 export function ConfirmProvider({ children }) {
   const [request, setRequest] = useState(null)
   const [remainingSeconds, setRemainingSeconds] = useState(0)
+  // For a dialog that asks the person to tick a box (`requireCheckLabel`) before it can be confirmed.
+  const [ticked, setTicked] = useState(false)
   const titleId = useId()
 
   const confirm = useCallback((options) => {
     const opts = typeof options === 'string' ? { description: options } : options
     setRemainingSeconds(opts.delaySeconds || 0)
+    setTicked(false)
     return new Promise((resolve) => {
       setRequest({ ...opts, resolve })
     })
@@ -45,25 +48,36 @@ export function ConfirmProvider({ children }) {
             aria-modal="true"
             aria-labelledby={titleId}
             className={
-              'flex max-h-[85vh] w-full flex-col overflow-y-auto rounded-3xl border border-(--mws-line) bg-white p-5 shadow-2xl ' +
-              (request.wide ? 'max-w-lg' : 'max-w-sm')
+              'flex max-h-[90vh] w-full flex-col overflow-hidden rounded-3xl border border-(--mws-line) bg-white p-6 shadow-2xl ' +
+              (request.size === 'xl' ? 'max-w-5xl' : request.wide ? 'max-w-lg' : 'max-w-sm')
             }
           >
-            <h2 id={titleId} className="font-display text-lg font-bold text-(--mws-charcoal)">
+            <h2 id={titleId} className="font-display shrink-0 text-lg font-bold text-(--mws-charcoal)">
               {request.title || 'Are you sure?'}
             </h2>
             {request.description ? (
               typeof request.description === 'string' ? (
-                <p className="mt-2 text-sm leading-6 text-(--mws-muted)">
+                <p className="mt-2 min-h-0 flex-1 overflow-y-auto text-sm leading-6 text-(--mws-muted)">
                   {request.description}
                 </p>
               ) : (
-                <div className="mt-2 text-sm leading-6 text-(--mws-muted)">
+                <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1 text-sm leading-6 text-(--mws-muted)">
                   {request.description}
                 </div>
               )
             ) : null}
-            <div className="mt-5 flex flex-wrap items-center justify-end gap-6 border-t border-(--mws-line) pt-4">
+            {request.requireCheckLabel ? (
+              <label className="mt-4 flex shrink-0 cursor-pointer items-start gap-2 text-sm text-(--mws-charcoal)">
+                <input
+                  type="checkbox"
+                  className="mt-1 accent-(--mws-burgundy)"
+                  checked={ticked}
+                  onChange={(event) => setTicked(event.target.checked)}
+                />
+                <span>{request.requireCheckLabel}</span>
+              </label>
+            ) : null}
+            <div className="mt-5 flex shrink-0 flex-wrap items-center justify-end gap-6 border-t border-(--mws-line) pt-4">
               <TextAction className="text-sm!" onClick={() => settle(false)}>
                 {request.cancelLabel || 'Cancel'}
               </TextAction>
@@ -74,7 +88,7 @@ export function ConfirmProvider({ children }) {
                     ? 'text-[#a43c41]! hover:text-[#7f2a2f]!'
                     : 'text-(--mws-burgundy)! hover:text-(--mws-burgundy-dark)!')
                 }
-                disabled={remainingSeconds > 0}
+                disabled={remainingSeconds > 0 || (Boolean(request.requireCheckLabel) && !ticked)}
                 onClick={() => settle(true)}
               >
                 {remainingSeconds > 0 ? (

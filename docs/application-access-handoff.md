@@ -150,7 +150,7 @@ Step 4 has a Staging | Production switch. It opens on the environment of the Cen
 
 ## The Setup Guide is a page
 
-The guide lives at `/application-access/apps/:id/guide` (links from the Connect step, More actions, the application page, and the dialogs that show a new token or secret). It has four parts: First setup, Staging and production with GitHub, When you rotate, and Troubleshooting.
+All guides live on one page, `/application-access/guides` (the book icon on Application Access, and every Setup Guide, Rotation Guide and Open The Guide link). Pick an application at the top to fill in its names and values, or leave it empty for general text. The old addresses (`/application-access/guide` and `/application-access/apps/:id/guide`) redirect there with `?app=` and `?part=` kept.
 
 Staging and production are kept apart with two GitHub **Environments** (Settings, Environments), each holding its own secrets and variables under the same names. The Repository secrets page is shared by every branch, so a token or Central address put there would be used by both. The guide shows one card per environment with what to add in it, and fills in values only for the Central you are looking at.
 
@@ -158,7 +158,7 @@ After a rotation the dialog that shows the new value lists what to do now (repla
 
 ## The guide goes one part at a time
 
-The Setup Guide shows six numbered parts, one per screen, with Back and Next and a list of the parts that stays in view: Before you start, On your machine, Send the permissions, Staging and production, When you rotate, Troubleshooting. The part is kept in the address (`?part=`), which is how the links from other pages land in the right place. Each part ends with what you should see before going on.
+The Guides page shows eleven numbered parts, one per screen, with Back and Next and a list that stays in view: How it fits, Add the Hub first, Add an application, Choose the sign-in way, On your machine, Send the permissions, Staging and production, Check it works, When you rotate, Retire or remove, When something fails. The part is kept in the address (`?part=`), which is how the links from other pages land in the right place. Staging and production covers five ways to deploy: GitHub Environments, repository secrets with a prefix, a message for the repository owner, Komodo (values in the stack, permissions sent from the container terminal) and curl (one PUT from any machine). Each part ends with what you should see before going on.
 
 On your machine comes first, since that is where everything is tried. Staging and production adapts to what you may change in GitHub: Environments (owner or admin), repository secrets named with a STAGING_ or PRODUCTION_ in front (no Environments menu), or a ready message for the repository owner when the settings are read only. The application keeps reading the plain names. Only GitHub sees the prefix.
 
@@ -203,6 +203,6 @@ Before this, Exima read `CENTRAL_DATA_API_BASE_URL` (no `/api/internal`) and `CE
 ## Roles in bulk, Settings, and the Hub card in Central
 
 - **Add Roles** (`/application-access/apps/:id/roles/bulk`, also `roles/new`) is a matrix: one column per new role, one row per permission, saved together. Role labels are plain words (letters, numbers, single spaces) and the key is made from the label.
-- **Settings** (`/application-access/apps/:id/settings`) is what a finished application opens instead of the setup steps: details, connection (token, Hub secret, data access), the Hub card, access shortcuts and removal, with the Setup Guide one click away. `Application.setup_completed_at` is set the first time the application is shown in the Hub and is not taken back by hiding it again. `/setup` redirects to Settings once it is set or every step is done.
+- **The application page** (`/application-access/apps/:id`) holds everything about one application in tabs: Access, Roles, Permissions, Overview, Connection (token, Hub secret, data access and every Rotate button, for the Hub too), Hub Sign-in (Hub only), Hub Card and Activity. It replaces the old Manage Access and Settings pages; `/application-access/apps/:id/settings` redirects here and keeps `?tab=`. An application that is not finished shows a Finish setup banner and only the access tabs, until its steps are done. The list menu has one entry, Open. `Application.setup_completed_at` is set the first time the application is shown in the Hub and is not taken back by hiding it again. `/setup` redirects to Settings once it is set or every step is done.
 - **Hub card**: `hub_status` (active, maintenance, coming_soon, new) and `hub_keywords` are set in Central on the form and in Settings and reach the Hub in `/api/internal/applications` as `status` and `keywords`. The Hub's own App Display page and table are gone.
 - Migrations to run on every Central: `20261017090000_application_setup_completed` and `20261018090000_application_hub_card`. Until they are applied, `/api/internal/applications` fails with a 500 because the new columns are missing, and the Hub shows no cards from Central. Run them before the Hub is pointed at this Central.

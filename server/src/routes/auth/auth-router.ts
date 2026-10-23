@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { photoUploadBodyLimit } from "../../middleware/upload-body-limit";
 import { AuthController } from "../../controller/admin/auth-controller";
 import { adminAuthMiddleware } from "../../middleware/admin-auth-middleware";
 import {
@@ -19,6 +20,12 @@ authRouter.post("/refresh", readLimiterMiddleware, (c) =>
 );
 
 authRouter.get("/me", adminAuthMiddleware, (c) => AuthController.me(c));
+authRouter.put("/me/photo", adminAuthMiddleware, photoUploadBodyLimit, (c) =>
+  AuthController.adminPhoto(c),
+);
+authRouter.get("/me/disciplinary-actions", adminAuthMiddleware, (c) =>
+  AuthController.adminDisciplinaryActions(c),
+);
 authRouter.post("/logout", adminAuthMiddleware, (c) =>
   AuthController.logout(c),
 );

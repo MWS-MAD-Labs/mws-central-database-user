@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { TextInput } from "../../../components/ui/FormControls.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { cn } from "../../../lib/cn.js";
@@ -10,6 +11,7 @@ import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { cleanPastedSecret, cookieNameProblem, emailsProblem, existingSecretProblem } from "../utils/hubSettings.js";
 import { HubAccessSettings } from "./HubAccessSettings.jsx";
 import { HubSecretTest } from "./HubSecretTest.jsx";
+import { ConnectDialog } from "./ConnectDialog.jsx";
 import { HubAddressField } from "./HubAddressField.jsx";
 import {
   HubSecretShownDialog,
@@ -70,6 +72,9 @@ export function HubSetupWizard({
 }) {
   const managing = mode === "manage";
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  // The new key (and secret) lines from a rotation in the Hub's setup. Shown once.
+  const [rotated, setRotated] = useState(null);
   const steps = managing ? STEPS : ADD_STEPS;
   const [step, setStep] = useState(0);
   const stepId = steps[step].id;
@@ -145,6 +150,31 @@ export function HubSetupWizard({
     },
     onError: (error) => showErrorToast(error, "Could not make the signing key."),
   });
+  const rotateKeyMutation = useMutation({
+    mutationFn: async (withSecret) => {
+      const key = await applicationAccessApi.makeHubSigningKey(true);
+      if (!withSecret) return { env: key.env };
+      const made = await applicationAccessApi.setHubSecret(applicationId);
+      const secretLine = { key: "HUB_INTERNAL_SECRET", value: made.secret, secret: true, group: 1, line: `HUB_INTERNAL_SECRET="${made.secret}"`, heading: "The secret the Hub shares with the applications." };
+      return { env: [...key.env, secretLine] };
+    },
+    onSuccess: (result) => {
+      refresh();
+      setRotated(result);
+    },
+    onError: (error) => showErrorToast(error, "Could not rotate."),
+  });
+  async function rotateKey(withSecret) {
+    const confirmed = await confirm({
+      title: withSecret ? "Rotate Signing Key And Secret" : "Rotate Signing Key",
+      description: withSecret
+        ? "Everybody is signed out until the Hub runs with the new key, and the Hub and every application need the new secret."
+        : "Everybody is signed out until the Hub runs with the new key.",
+      confirmLabel: "Rotate",
+      tone: "danger",
+    });
+    if (confirmed) rotateKeyMutation.mutate(withSecret);
+  }
   const secretMutation = useMutation({
     mutationFn: (secret) =>
       applicationAccessApi.setHubSecret(applicationId, secret),
@@ -352,6 +382,22 @@ export function HubSetupWizard({
                   </TextAction>
                 </div>
               )}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--mws-line) bg-(--mws-soft) px-4 py-3">
+                <span className="flex items-center gap-2 text-sm font-medium text-(--mws-charcoal)">
+                  <KeyRound size={16} className="text-(--mws-muted)" aria-hidden="true" />
+                  Signing Key
+                </span>
+                <span className="flex flex-wrap items-center gap-4">
+                  <TextAction disabled={rotateKeyMutation.isPending} onClick={() => rotateKey(false)}>
+                    Rotate Signing Key
+                  </TextAction>
+                  {secretSet ? (
+                    <TextAction disabled={rotateKeyMutation.isPending || !keyReady} onClick={() => rotateKey(true)}>
+                      Rotate Key And Secret
+                    </TextAction>
+                  ) : null}
+                </span>
+              </div>
               <ImpactList applicationId={applicationId} />
             </>
           ) : (
@@ -522,6 +568,15 @@ export function HubSetupWizard({
         ) : null}
       </div>
 
+      {rotated ? (
+        <ConnectDialog
+          connection={{ env: rotated.env }}
+          title="Rotated Hub Keys"
+          description="Put these lines in the .env of the Hub, then restart it."
+          onceLabel="Shown Once"
+          onClose={() => setRotated(null)}
+        />
+      ) : null}
       {shownSecret ? (
         <HubSecretShownDialog
           secret={shownSecret}

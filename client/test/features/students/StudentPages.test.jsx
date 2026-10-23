@@ -51,13 +51,18 @@ describe('Student create and edit pages', () => {
     expect(await screen.findByText('Student form options are unavailable.')).toBeVisible()
   })
 
-  it('creates a student and navigates to its detail page', async () => {
+  async function createStudentThrough({ postData = { id: 'student-new' }, extraRoutes = [] } = {}) {
     const fetchMock = createFetchRouter([
       ...optionsRoutes(),
+      ...extraRoutes,
+      {
+        path: /^\/api\/admin\/google\/email-availability/,
+        response: jsonResponse({ data: { available: true, reason: 'FREE', message: 'Available' } }),
+      },
       {
         path: '/api/admin/students',
         method: 'POST',
-        response: jsonResponse({ data: { id: 'student-new' } }),
+        response: jsonResponse({ data: postData }),
       },
     ])
     globalThis.fetch = fetchMock
@@ -68,17 +73,26 @@ describe('Student create and edit pages', () => {
     await user.type(fields('full_name').querySelector('input'), 'ari student')
     await user.type(fields('nick_name').querySelector('input'), 'ari')
     await user.type(fields('email_local').querySelector('input'), 'ari.student')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+    await screen.findByText('Available')
     await user.click(screen.getByRole('button', { name: 'Select Gender' }))
     await user.click(screen.getByRole('option', { name: 'Male' }))
     await user.click(screen.getByRole('button', { name: 'Select Religion' }))
     await user.click(screen.getByRole('option', { name: 'Islam' }))
     await user.type(fields('birth_place').querySelector('input'), 'jakarta')
-    await user.click(screen.getByRole('button', { name: 'Select Current Grade' }))
-    await user.click(screen.getByRole('option', { name: 'Grade 1' }))
+    // The admission goes step by step: entry type, join year, join grade, then the current grade.
+    await user.click(screen.getByRole('radio', { name: 'PSB' }))
     await user.click(screen.getByRole('button', { name: 'Select Join Year' }))
     await user.click(screen.getByRole('option', { name: '2025/2026' }))
     await user.click(screen.getByRole('button', { name: 'Select Join Grade' }))
     await user.click(screen.getByRole('option', { name: 'Grade 1' }))
+    await user.click(screen.getByRole('button', { name: 'Select Current Grade' }))
+    await user.click(screen.getByRole('option', { name: 'Grade 1' }))
+    await user.click(screen.getByRole('button', { name: 'Select Relation' }))
+    await user.click(screen.getByRole('option', { name: 'Mother' }))
+    await user.type(fields('parent_name').querySelector('input'), 'siti aminah')
+    await user.type(fields('parent_email').querySelector('input'), 'siti.aminah')
+    await user.type(fields('parent_email_confirm').querySelector('input'), 'siti.aminah')
 
     const birthDate = fields('birth_date')
     await user.click(within(birthDate).getByRole('button', { name: 'Choose date' }))
@@ -88,12 +102,50 @@ describe('Student create and edit pages', () => {
 
     // Create goes through the review-before-creating dialog first.
     const createDialog = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(createDialog).getByRole('checkbox'))
     await user.click(within(createDialog).getByRole('button', { name: 'Create student' }))
 
+    return fetchMock
+  }
+
+  it('creates a student and navigates to its detail page', async () => {
+    const fetchMock = await createStudentThrough()
     expect(await screen.findByText('Student destination')).toBeVisible()
     expect(fetchMock.mock.calls.some(([url, options]) =>
       url === '/api/admin/students' && options.method === 'POST',
     )).toBe(true)
+  })
+
+  it('goes to the student page without a dialog when the server mailed the first password', async () => {
+    await createStudentThrough({
+      postData: {
+        id: 'student-new',
+        identity: { full_name: 'Ari Student', email: 'ari.student@millennia21.id' },
+        google: { status: 'ACTIVE', outcome: 'created', google_user_id: 'g-1', delivered_to: 's***@gmail.com' },
+      },
+    })
+    expect(await screen.findByText('Student destination')).toBeVisible()
+    expect(screen.queryByRole('dialog', { name: 'Share Sign-in Details' })).not.toBeInTheDocument()
+  })
+
+  it('shows the first sign-in details when the account was made with the student', async () => {
+    await createStudentThrough({
+      postData: {
+        id: 'student-new',
+        identity: { full_name: 'Ari Student', email: 'ari.student@millennia21.id' },
+        google: { status: 'ACTIVE', outcome: 'created', google_user_id: 'g-1', temporary_password: 'Abcdefgh12345678' },
+      },
+      extraRoutes: [
+        {
+          path: /^\/api\/admin\/students\/student-new\/google/,
+          response: jsonResponse({
+            data: { linked: true, status: 'ACTIVE', can: {}, guardians: [{ id: 'p1', type: 'MOTHER', full_name: 'Siti Aminah', email_hint: 's***@gmail.com', is_primary: true }] },
+          }),
+        },
+      ],
+    })
+    expect(await screen.findByRole('dialog', { name: 'Share Sign-in Details' })).toBeVisible()
+    expect(screen.queryByText('Student destination')).not.toBeInTheDocument()
   })
 
   it('loads and updates an existing student', async () => {

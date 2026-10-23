@@ -1,10 +1,13 @@
 import { ResponseError } from "../error/response-error";
+import { GoogleWorkspaceService, type GoogleSyncResult } from "./google-workspace-service";
+import { assertDomainCanReceiveEmail } from "../utils/email-domain";
 import {
   AcademicYearStatus,
   AdminRole,
   AuditAction,
   AuditSource,
   EnrollmentStatus,
+  GoogleSyncStatus,
   PersonType,
   Prisma,
   StudentMutationField,
@@ -48,6 +51,7 @@ import {
 import type { ResourceVersionResponse } from "../model/resource-version-model";
 import { toEnrollmentAuditSnapshot } from "../model/enrollment-model";
 import { AuditService } from "./audit-service";
+import { toParentGuardianAuditSnapshot } from "../model/parent-guardian-model";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { canApproveEntity } from "../utils/change-request-approver";
@@ -583,7 +587,7 @@ export class StudentService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
     options: StudentCreateOptions = {},
-  ): Promise<StudentResponse> {
+  ): Promise<StudentResponse & { google?: GoogleSyncResult }> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedStudentAction(admin, "create", context);
       throw new ResponseError(403, "Forbidden: Viewer cannot create data");
@@ -605,6 +609,23 @@ export class StudentService {
       StudentValidation.CREATE,
       request,
     );
+
+    if (options.requireParentContact && !createRequest.parent) {
+      throw new ResponseError(400, "A parent or guardian with an email is required");
+    }
+    // Only the form sets this flag. A Google that already has the email, or would not take it, stops the create here.
+    // A Super Admin can instead save a legacy student whose email Google already has, and link it afterwards.
+    const claiming = Boolean(options.requireParentContact && createRequest.claim_existing_google);
+    const legacyAtCreate = Boolean(createRequest.legacy_nis);
+    if (claiming && (admin.role !== AdminRole.SUPER_ADMIN || !legacyAtCreate)) {
+      throw new ResponseError(403, "Forbidden: only a Super Admin can link an existing Google account, and only for a legacy student");
+    }
+    if (options.requireParentContact && createRequest.parent) {
+      await assertDomainCanReceiveEmail(createRequest.parent.email);
+    }
+    if (options.requireParentContact) {
+      await GoogleWorkspaceService.assertCanCreate(createRequest.email, undefined, { claimExisting: claiming });
+    }
 
     const initialStatus = createRequest.status ?? StudentStatus.REGISTERED;
     if (initialStatus === StudentStatus.ACTIVE) {
@@ -865,6 +886,33 @@ export class StudentService {
             tx,
           );
 
+          if (createRequest.parent) {
+            const contact = await tx.parentGuardian.create({
+              data: {
+                student_id: personForAudit.student.id,
+                type: createRequest.parent.type,
+                full_name: createRequest.parent.full_name,
+                email: createRequest.parent.email,
+                phone: createRequest.parent.phone,
+                address: createRequest.parent.address,
+                is_primary: true,
+              },
+            });
+            await AuditService.record(
+              {
+                action: AuditAction.CREATE_PARENT_GUARDIAN,
+                source: AuditSource.UI,
+                entity_type: "ParentGuardian",
+                entity_id: contact.id,
+                admin_id: admin.id,
+                new_values: toParentGuardianAuditSnapshot(contact),
+                ip_address: context.ip_address,
+                user_agent: context.user_agent,
+              },
+              tx,
+            );
+          }
+
           await recordStudentMutation(
             tx,
             personForAudit.student.id,
@@ -934,7 +982,37 @@ export class StudentService {
       );
     }
 
-    return toStudentResponse(newPerson);
+    // Waits for a Super Admin to link the account that Google already has. Nothing is made or changed in Google.
+    let google: GoogleSyncResult | undefined;
+    if (claiming) {
+      google = await GoogleWorkspaceService.markPendingClaim(newPerson.id, { admin, context });
+    } else if (options.requireParentContact && !legacyAtCreate && createRequest.parent) {
+      // The form makes the account at once. The student exists either way: a failure shows as a Google status that can
+      // be tried again from the student page. A legacy student is a historical record and gets no account by itself.
+      google = await GoogleWorkspaceService.provision(newPerson.id, {
+        recoveryEmail: createRequest.parent.email,
+        admin,
+        context,
+      }).catch((error): GoogleSyncResult => {
+        logger.error("Google account for the new student was not made", error);
+        return {
+          status: GoogleSyncStatus.FAILED,
+          google_user_id: null,
+          outcome: "failed",
+          message: error instanceof ResponseError ? error.message : "The Google account was not made",
+        };
+      });
+      // The first password goes to the parent by email at once; the admin only sees it if the mail could not be sent.
+      google = await GoogleWorkspaceService.deliverFirstPassword(
+        google,
+        newPerson.id,
+        { to: createRequest.parent.email, parentName: createRequest.parent.full_name, language: createRequest.email_language },
+        admin,
+        context,
+      );
+    }
+
+    return { ...toStudentResponse(newPerson), ...(google && { google }) };
   }
 
   static async reissueNis(
@@ -1273,6 +1351,8 @@ export class StudentService {
     // Set only by an approved IdentifierChangeRequest to apply its one
     // field past the grace period (identifier-change-request-service.ts).
     bypassIdentifierLock = false,
+    // Set only by Change Email (email-change-service.ts): an email is never changed by a plain edit.
+    allowEmailChange = false,
   ): Promise<StudentResponse> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedStudentAction(
@@ -1444,6 +1524,10 @@ export class StudentService {
 
     const emailChanged =
       updateRequest.email && updateRequest.email !== existing.email;
+    if (emailChanged && !allowEmailChange) throw new ResponseError(400, "Use Change Email to change an email");
+    if (emailChanged) {
+      await GoogleWorkspaceService.assertCanChangeEmail(existing.id, updateRequest.email!);
+    }
     const nisnChanged =
       updateRequest.nisn && updateRequest.nisn !== existing.student.nisn;
     const nisnOverwritten = nisnChanged && existing.student.nisn !== null;

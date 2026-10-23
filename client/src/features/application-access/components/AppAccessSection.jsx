@@ -1,60 +1,31 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Settings } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { PageHeader } from "../../../components/layout/PageHeader.jsx";
-import { Tabs } from "../../../components/ui/Tabs.jsx";
-import { Button } from "../../../components/ui/Button.jsx";
+import { useNavigate } from "react-router";
 import { DebouncedSearchInput, FilterSelect } from "../../../components/ui/FormControls.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
-import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
-import { AppPermissionsTab } from "../components/AppPermissionsTab.jsx";
-import { AppRolesTab } from "../components/AppRolesTab.jsx";
-import { CopyableId } from "../components/CopyableId.jsx";
-import { ExceptionsPanel } from "../components/ExceptionsPanel.jsx";
-import { GroupCard } from "../components/GroupCard.jsx";
-import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
-import { buildSteps, stepsDone } from "../utils/setupSteps.js";
 import { groupScopeSummary, groupTitle } from "../utils/groupSummary.js";
-import { canManageApplications } from "../utils/canManageApplications.js";
+import { CopyableId } from "./CopyableId.jsx";
+import { AppPermissionsTab } from "./AppPermissionsTab.jsx";
+import { AppRolesTab } from "./AppRolesTab.jsx";
+import { ExceptionsPanel } from "./ExceptionsPanel.jsx";
+import { GroupCard } from "./GroupCard.jsx";
 
-const BACK = "/application-access";
 const GROUP_PAGE_SIZE = 10;
-const tabs = [
-  { id: "access", label: "Access" },
-  { id: "roles", label: "Roles" },
-  { id: "permissions", label: "Permissions" },
-];
 
-export function AppAccessPage() {
-  const { user } = useAuth();
-  const { applicationId } = useParams();
+// The access, roles and permissions of one application, one tab at a time. The groups come from `detail`, the roles
+// from the page that already loaded them.
+export function AppAccessSection({ applicationId, detail, roles, tab }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
-  const [searchParams, setSearchParams] = useSearchParams();
   const [groupPage, setGroupPage] = useState(1);
   const [groupSearch, setGroupSearch] = useState("");
   const [groupStatus, setGroupStatus] = useState("");
   const [openId, setOpenId] = useState(undefined);
-  const activeTab = tabs.some((tab) => tab.id === searchParams.get("tab")) ? searchParams.get("tab") : "access";
-
-  const detailQuery = useQuery({
-    queryKey: ["application-access", "app", applicationId],
-    queryFn: () => applicationAccessApi.getApplication(applicationId),
-  });
-  const setupQuery = useQuery({
-    queryKey: ["application-access", "setup", applicationId],
-    queryFn: () => applicationAccessApi.getSetup(applicationId),
-    enabled: canManageApplications(user),
-  });
-  const allRoles = useApplicationRoles().data || [];
-  const roles = allRoles.filter((role) => role.application_id === applicationId);
-  const hasActiveRole = roles.some((role) => role.is_active);
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["application-access"] });
 
   const groupMutation = useMutation({
@@ -74,20 +45,6 @@ export function AppAccessPage() {
     onError: (error) => showErrorToast(error, "Could not delete this group access."),
   });
 
-  if (!canManageApplications(user)) {
-    return (
-      <div className="min-w-0">
-        <PageHeader title={applicationId} />
-        <PanelMessage>Only a protected Super Admin can manage application access.</PanelMessage>
-      </div>
-    );
-  }
-  if (detailQuery.isLoading) return <PanelMessage>Loading {applicationId}…</PanelMessage>;
-  if (detailQuery.isError || !detailQuery.data) {
-    return <PanelMessage tone="error">This application could not be found.</PanelMessage>;
-  }
-
-  const detail = detailQuery.data;
   const needle = groupSearch.trim().toLowerCase();
   const filteredGroups = detail.groups.filter((group) => {
     if (groupStatus === "ACTIVE" && !group.is_active) return false;
@@ -103,59 +60,19 @@ export function AppAccessPage() {
   const totalGroupPage = Math.max(Math.ceil(filteredGroups.length / GROUP_PAGE_SIZE), 1);
   const currentGroupPage = Math.min(groupPage, totalGroupPage);
   const visibleGroups = filteredGroups.slice((currentGroupPage - 1) * GROUP_PAGE_SIZE, currentGroupPage * GROUP_PAGE_SIZE);
+  const activeTab = tab;
   return (
-    <div className="min-w-0 space-y-5">
-      <PageHeader
-        title={applicationId}
-        description="Roles are defined here. Group access says who can use this application and with which role, and exceptions give someone inside a group a different role."
-        actions={
-          <>
-            <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
-              <Link to={BACK}><ArrowLeft size={16} /></Link>
-            </Button>
-            <Button asChild variant="secondary" size="icon" aria-label="Settings" title="Settings">
-              <Link to={`/application-access/apps/${applicationId}/settings`}><Settings size={16} /></Link>
-            </Button>
-            {activeTab === "access" ? (
-              <Button
-                type="button"
-                disabled={!hasActiveRole}
-                title={hasActiveRole ? undefined : "Add a role first"}
-                onClick={() => navigate(`/application-access/apps/${applicationId}/groups/new`)}
-                size="icon" aria-label="Add Group"
-              >
-                <Plus size={16} />
-              </Button>
-            ) : null}
-          </>
-        }
-      />
-
-      {setupQuery.data && !setupQuery.data.setup_completed && stepsDone(buildSteps(setupQuery.data)) < buildSteps(setupQuery.data).length ? (
-        <div role="note" className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#d8b45b] bg-[#fff8e8] px-5 py-3 text-sm text-[#745716]">
-          <span className="font-semibold">
-            Finish setup ({stepsDone(buildSteps(setupQuery.data))} of {buildSteps(setupQuery.data).length})
-          </span>
-          <span>{setupQuery.data.is_hub ? "Some setup steps are still open." : "This application does not show in the Hub yet."}</span>
-          <Link to={`/application-access/apps/${applicationId}/guide`} className="ml-auto text-xs font-medium text-(--mws-muted) hover:text-(--mws-charcoal) hover:underline">
-            Setup Guide
-          </Link>
-          <Button asChild variant="secondary" size="sm">
-            <Link to={`/application-access/apps/${applicationId}/setup`}>Continue Setup</Link>
-          </Button>
+    <>
+      {activeTab === "access" ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-(--mws-line) bg-white px-5 py-3 text-sm">
+          <span className="font-semibold text-(--mws-charcoal)">Organization ID</span>
+          {detail.organization_id ? (
+            <CopyableId value={detail.organization_id} />
+          ) : (
+            <span className="text-(--mws-muted)">Created automatically with the first group or role.</span>
+          )}
         </div>
       ) : null}
-
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-(--mws-line) bg-white px-5 py-3 text-sm">
-        <span className="font-semibold text-(--mws-charcoal)">Organization ID</span>
-        {detail.organization_id ? (
-          <CopyableId value={detail.organization_id} />
-        ) : (
-          <span className="text-(--mws-muted)">Created automatically with the first group or role.</span>
-        )}
-      </div>
-
-      <Tabs label="Application access" tabs={tabs} active={activeTab} onChange={(id) => setSearchParams({ tab: id })} />
 
       {activeTab === "roles" ? (
         <AppRolesTab applicationId={applicationId} roles={roles} />
@@ -265,6 +182,6 @@ export function AppAccessPage() {
           ) : null}
         </>
       )}
-    </div>
+    </>
   );
 }

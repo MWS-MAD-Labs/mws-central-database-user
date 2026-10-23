@@ -235,7 +235,7 @@ export function InternDetailPage() {
               {canViewContactPii ? (
                 <ContactRow icon={Phone} value={intern.identity.mobile_phone || '-'} />
               ) : null}
-              <GoogleAccountRow resource="interns" id={internId} email={intern.identity.email} />
+              <GoogleAccountRow resource="interns" id={internId} email={intern.identity.email} name={intern.identity.full_name} />
             </div>
 
             {hasDetail ? (

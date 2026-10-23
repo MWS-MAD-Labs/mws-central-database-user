@@ -5,9 +5,11 @@ const TONES = {
   checking: 'text-(--mws-muted)',
   free: 'text-[#476b43]',
   taken: 'text-[#a43c41] font-medium',
+  claimable: 'text-[#8a6419] font-medium',
   failed: 'text-[#a43c41]',
   'failed-google': 'text-[#8a6419]',
   unchecked: 'text-(--mws-muted)',
+  protected: 'text-[#8a6419]',
 }
 
 // Under the Email field: what the check said, and the Check button while the address has not been checked.

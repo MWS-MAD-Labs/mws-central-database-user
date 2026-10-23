@@ -31,6 +31,8 @@ export class StudentController {
       admin,
       request,
       getAuditRequestContext(c),
+      new Date(),
+      { requireParentContact: true },
     );
 
     return c.json({ data: response });

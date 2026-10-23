@@ -110,7 +110,7 @@ describe('ApplicationAccessPage', () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPage()
     await screen.findByText('Exima')
-    expect(screen.getByRole('link', { name: 'Guide' })).toHaveAttribute('href', '/application-access/guide')
+    expect(screen.getByRole('link', { name: 'Guide' })).toHaveAttribute('href', '/application-access/guides')
     expect(screen.queryByText('No Hub has been added yet.')).toBeNull()
   })
 
@@ -125,7 +125,7 @@ describe('ApplicationAccessPage', () => {
     ])
     renderPage()
     expect(await screen.findByText('No Hub has been added yet.')).toBeVisible()
-    expect(screen.getByRole('link', { name: 'Open The Guide' })).toHaveAttribute('href', '/application-access/guide?part=hub')
+    expect(screen.getByRole('link', { name: 'Open The Guide' })).toHaveAttribute('href', '/application-access/guides?part=hub')
     // One way into the guide at a time.
     expect(screen.queryByRole('link', { name: 'Guide' })).toBeNull()
   })
@@ -191,7 +191,7 @@ describe('ApplicationAccessPage', () => {
     expect(within(hubRow).getByText('Core')).toBeVisible()
     expect(within(hubRow).getByTitle('The Hub itself. It can only be removed after every other application.')).toBeVisible()
     await user.click(within(hubRow).getByRole('button', { name: 'Actions for hub' }))
-    expect(await screen.findByRole('button', { name: 'Continue Setup' })).toBeVisible()
+    expect(await screen.findByRole('button', { name: 'Open' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Setup Steps' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Delete Application' })).toBeNull()
     await user.keyboard('{Escape}')
@@ -199,8 +199,8 @@ describe('ApplicationAccessPage', () => {
     const eximaRow = screen.getByRole('button', { name: 'Actions for exima' }).closest('tr')
     await user.click(within(eximaRow).getByRole('button', { name: 'Actions for exima' }))
     expect(await screen.findByRole('button', { name: 'Retire Application' })).toBeVisible()
-    // An application that finished its setup opens Settings.
-    expect(screen.getByRole('button', { name: 'Settings' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Open' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull()
   })
 
   describe('the row menu offers what applies', () => {
@@ -243,7 +243,7 @@ describe('ApplicationAccessPage', () => {
     await screen.findByText('exima')
     expect(screen.queryByRole('button', { name: 'Manage exima' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Actions for exima' }))
-    await user.click(screen.getByRole('button', { name: 'Manage Access' }))
+    await user.click(screen.getByRole('button', { name: 'Open' }))
     expect(await screen.findByText('App page')).toBeVisible()
   })
 

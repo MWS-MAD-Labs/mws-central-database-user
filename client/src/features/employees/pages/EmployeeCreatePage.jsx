@@ -7,6 +7,7 @@ import { Button } from '../../../components/ui/Button.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { GoogleInstructionsDialog } from '../../google/components/GoogleInstructionsDialog.jsx'
+import { GoogleShareDialog } from '../../google/components/GoogleShareDialog.jsx'
 import { maskEmail } from '../../google/utils/instructions.js'
 import { clearCreateFormDraft } from '../../../lib/useCreateFormDraft.js'
 import { employeesApi } from '../api/employeesApi.js'
@@ -45,11 +46,13 @@ export function EmployeeCreatePage() {
           new Error(google.message),
           'Employee saved, but the Google account was not made. Try again from the Google account row.',
         )
+      } else if (google?.delivered_to) {
+        showSuccessToast(`Employee created. Sign-in details sent to ${google.delivered_to}.`)
       } else {
         showSuccessToast('Employee created.')
       }
-      if (google && google.outcome !== 'failed') {
-        setReady({ id: employee.id, email: employee.identity?.email, recovery: variables.payload.recovery_email })
+      if (google && google.outcome !== 'failed' && !google.delivered_to) {
+        setReady({ id: employee.id, name: employee.identity?.full_name, email: employee.identity?.email, recovery: variables.payload.recovery_email, password: google.temporary_password, notSent: google.not_sent })
         return
       }
       navigate(`/employees/${employee.id}`)
@@ -84,11 +87,23 @@ export function EmployeeCreatePage() {
         />
       )}
       {ready ? (
-        <GoogleInstructionsDialog
-          email={ready.email}
-          maskedRecovery={maskEmail(ready.recovery)}
-          onClose={() => navigate(`/employees/${ready.id}`)}
-        />
+        ready.password ? (
+          <GoogleShareDialog
+            resource="employees"
+            id={ready.id}
+            name={ready.name}
+            email={ready.email}
+            password={ready.password}
+            notSent={ready.notSent}
+            onClose={() => navigate(`/employees/${ready.id}`)}
+          />
+        ) : (
+          <GoogleInstructionsDialog
+            email={ready.email}
+            maskedRecovery={maskEmail(ready.recovery)}
+            onClose={() => navigate(`/employees/${ready.id}`)}
+          />
+        )
       ) : null}
     </div>
   )

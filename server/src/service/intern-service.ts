@@ -1,6 +1,8 @@
 import { GoogleSyncStatus } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { GoogleWorkspaceService, type GoogleSyncResult } from "./google-workspace-service";
+import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
+import { assertDomainCanReceiveEmail } from "../utils/email-domain";
 import { ResponseError } from "../error/response-error";
 import {
   AdminRole,
@@ -361,12 +363,21 @@ export class InternService {
     }
 
     const createRequest = Validation.validate(InternValidation.CREATE, request);
-    if (options.requireRecoveryEmail && !createRequest.recovery_email) {
+    // A protected admin gets an intern record but never a new Google account, so no recovery email is asked for.
+    const withoutGoogle = isProtectedSuperAdminEmail(createRequest.email);
+    const claiming = Boolean(options.requireRecoveryEmail && !withoutGoogle && createRequest.claim_existing_google);
+    if (claiming && admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(403, "Forbidden: only a Super Admin can wait for an existing Google account to be claimed");
+    }
+    if (options.requireRecoveryEmail && !withoutGoogle && !claiming && !createRequest.recovery_email) {
       throw new ResponseError(400, "Recovery email is required: it is how the person sets the password of their new Google account");
     }
     // Before anything is written: a Google that already has the email, or would not take it, stops the create here.
-    if (options.requireRecoveryEmail) {
-      await GoogleWorkspaceService.assertCanCreate(createRequest.email, createRequest.recovery_email);
+    if (options.requireRecoveryEmail && !withoutGoogle && !claiming && createRequest.recovery_email) {
+      await assertDomainCanReceiveEmail(createRequest.recovery_email);
+    }
+    if (options.requireRecoveryEmail && !withoutGoogle) {
+      await GoogleWorkspaceService.assertCanCreate(createRequest.email, createRequest.recovery_email, { claimExisting: claiming });
     }
     await assertCanWriteInternContactPii(admin, createRequest, context);
 
@@ -506,7 +517,11 @@ export class InternService {
 
     // The intern exists in Central either way. A failure here shows as a Google status they can retry.
     let google: GoogleSyncResult | undefined;
-    if (createRequest.recovery_email) {
+    if (withoutGoogle && admin.email.trim().toLowerCase() === createRequest.email.trim().toLowerCase()) {
+      google = await GoogleWorkspaceService.linkOwn(withRelations.person_id, { admin, context });
+    } else if (claiming) {
+      google = await GoogleWorkspaceService.markPendingClaim(withRelations.person_id, { admin, context });
+    } else if (createRequest.recovery_email && !withoutGoogle) {
       google = await GoogleWorkspaceService.provision(withRelations.person_id, {
         recoveryEmail: createRequest.recovery_email,
         admin,
@@ -520,6 +535,8 @@ export class InternService {
           message: error instanceof ResponseError ? error.message : "The Google account was not made",
         };
       });
+      // The first password is mailed at once, so the admin does not see it unless the mail could not be sent.
+      google = await GoogleWorkspaceService.deliverFirstPassword(google, withRelations.person_id, { to: createRequest.recovery_email, language: createRequest.email_language }, admin, context);
     }
 
     return { ...toInternResponse(withRelations, admin), ...(google && { google }) };
@@ -529,6 +546,8 @@ export class InternService {
     admin: AdminUser,
     request: UpdateInternRequest,
     context: AuditRequestContext = {},
+    // Set only by Change Email (email-change-service.ts): an email is never changed by a plain edit.
+    allowEmailChange = false,
   ): Promise<InternResponse> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedInternAction(admin, "update", context, request.id);
@@ -607,6 +626,7 @@ export class InternService {
     }
 
     if (updateRequest.email && updateRequest.email !== existingIntern.email) {
+      if (!allowEmailChange) throw new ResponseError(400, "Use Change Email to change an email");
       await GoogleWorkspaceService.assertCanChangeEmail(existingIntern.person_id, updateRequest.email);
     }
 

@@ -60,6 +60,12 @@ export const employeesApi = {
   ...createCrudApi('/api/admin/employees'),
   ...createBulkCrudApi('/api/admin/employees'),
 
+  // Whether an Employee ID is free, asked once the whole ID is typed.
+  async idAvailability(employeeId) {
+    const response = await apiRequest(`/api/admin/employees/id-availability?employee_id=${encodeURIComponent(employeeId)}`)
+    return response.data
+  },
+
   async bulkUpdate(ids, payload) {
     const response = await apiRequest('/api/admin/employees/bulk/update', {
       method: 'PATCH',
@@ -87,14 +93,14 @@ export const employeesApi = {
   },
 
   // The signed-in employee's own photo, in Central and in their Google account.
-  async uploadOwnPhoto(file) {
+  async uploadOwnPhoto(file, asAdmin = false) {
     const formData = new FormData()
     if (file instanceof Blob && !(file instanceof File)) {
       formData.set('file', file, 'photo.jpg')
     } else {
       formData.set('file', file)
     }
-    const response = await apiRequest('/api/auth/employee/me/photo', { method: 'PUT', body: formData })
+    const response = await apiRequest(asAdmin ? '/api/auth/me/photo' : '/api/auth/employee/me/photo', { method: 'PUT', body: formData })
     return response.data
   },
 
@@ -192,6 +198,22 @@ export const employeesApi = {
       method: 'PATCH',
       body: { contract_end_date: contractEndDate },
     })
+    return response.data
+  },
+
+  // The signed-in employee's own record and identifiers, for the Profile page.
+  async getOwn() {
+    const response = await apiRequest('/api/auth/employee/me/detail')
+    return response.data
+  },
+
+  async revealOwnSensitiveFields() {
+    const response = await apiRequest('/api/auth/employee/me/sensitive-fields/access', { method: 'POST' })
+    return response.data
+  },
+
+  async getOwnDisciplinaryActions(asAdmin = false) {
+    const response = await apiRequest(asAdmin ? '/api/auth/me/disciplinary-actions' : '/api/auth/employee/me/disciplinary-actions')
     return response.data
   },
 

@@ -16,8 +16,29 @@ export const googleAccountApi = {
     const response = await apiRequest(`/api/admin/${resource}/${id}/google/provision`, { method: 'POST', body: payload })
     return response.data
   },
-  async resetPassword(resource, id) {
-    const response = await apiRequest(`/api/admin/${resource}/${id}/google/reset-password`, { method: 'POST' })
+  // The server mails the new password at once ({ sent_to }) and returns it ({ password }) only when it could not.
+  async resetPassword(resource, id, payload = {}) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/reset-password`, { method: 'POST', body: payload })
+    return response.data
+  },
+  // For an account that waits for its owner: the server resets it and mails the password, nothing comes back to show.
+  async resetWaiting(resource, id, payload = { language: 'id' }) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/reset-waiting`, { method: 'POST', body: payload })
+    return response.data
+  },
+  // Where the sign-in details would go, hidden ("b***@gmail.com"), or null when the account has no recovery email.
+  async recoveryHint(resource, id) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/recovery-hint`)
+    return response.data
+  },
+  // Mails the first sign-in details. Without `to` the server uses the recovery email Google holds. The server writes the mail; only the address, language and password go up.
+  async sendSignIn(resource, id, payload) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/send-sign-in`, { method: 'POST', body: payload })
+    return response.data
+  },
+  // Takes the Google photo when Central has none. Says whether one was taken.
+  async pullPhoto(resource, id) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/photo`, { method: 'POST' })
     return response.data
   },
   async restore(resource, id) {
@@ -43,6 +64,11 @@ export const googleAccountApi = {
   // The people with no Google link whose email is already a Google account. The preview changes nothing.
   async linkPreview() {
     const response = await apiRequest('/api/admin/google/link-existing')
+    return response.data
+  },
+  // Where Central and Google disagree, from a full read of both. Super Admin only; nothing is changed.
+  async reconcile() {
+    const response = await apiRequest('/api/admin/google/reconcile')
     return response.data
   },
   async linkExisting() {

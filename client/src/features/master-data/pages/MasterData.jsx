@@ -23,6 +23,7 @@ import {
 } from '../api/masterDataApi.js'
 import { ChildrenAllowanceCard } from '../components/ChildrenAllowanceCard.jsx'
 import { GoogleAccountsCard } from '../components/GoogleAccountsCard.jsx'
+import { GoogleReconciliationCard } from '../components/GoogleReconciliationCard.jsx'
 import { MasterResourcePanel } from '../components/MasterResourcePanel.jsx'
 import { Tabs } from '../../../components/ui/Tabs.jsx'
 
@@ -174,7 +175,10 @@ function EmploymentTab({ section, onSection }) {
       ) : active === 'children-allowance' ? (
         <ChildrenAllowanceCard />
       ) : active === 'google-accounts' ? (
-        <GoogleAccountsCard />
+        <>
+          <GoogleAccountsCard />
+          <GoogleReconciliationCard />
+        </>
       ) : (
         <MasterResourcePanel resource={resources.find((resource) => resource.id === active)} />
       )}

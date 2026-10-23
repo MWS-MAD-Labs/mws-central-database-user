@@ -197,4 +197,19 @@ export class RealDirectoryClient implements DirectoryClient {
       throw toDirectoryError(error);
     }
   }
+
+  async getPhoto(userKey: string): Promise<{ data: Buffer; mimeType: string } | null> {
+    try {
+      const { data } = await this.directory.users.photos.get({ userKey });
+      if (!data.photoData) return null;
+      // The API answers in web-safe base64.
+      const base64 = data.photoData.replace(/-/g, "+").replace(/_/g, "/");
+      return { data: Buffer.from(base64, "base64"), mimeType: data.mimeType ?? "image/jpeg" };
+    } catch (error) {
+      const mapped = toDirectoryError(error);
+      // A user with no photo answers 404 too.
+      if (mapped.code === "NOT_FOUND") return null;
+      throw mapped;
+    }
+  }
 }

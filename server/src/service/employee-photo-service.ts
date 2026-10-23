@@ -268,6 +268,21 @@ export class EmployeePhotoService {
     } catch {
       throw new ResponseError(400, "File could not be read as an image.");
     }
+    await this.saveOwnPhoto(personId, employeeId, processedBuffer, context, {});
+
+    // Google follows when the account is linked. If it fails, the photo in Central stays and the next change retries.
+    await GoogleWorkspaceService.setPhoto(personId, googleBuffer, "image/jpeg");
+    return true;
+  }
+
+  // Stores a processed photo as the person's own and records it. Shared by an upload and by taking the Google photo.
+  private static async saveOwnPhoto(
+    personId: string,
+    employeeId: string,
+    processedBuffer: Buffer,
+    context: AuditRequestContext,
+    extra: Record<string, unknown>,
+  ): Promise<void> {
     const objectKey = `employee-photos/${employeeId}/${randomUUID()}.avif`;
 
     await ensureBucketExists();
@@ -288,7 +303,7 @@ export class EmployeePhotoService {
             source: AuditSource.UI,
             entity_type: "Employee",
             entity_id: employeeId,
-            new_values: { photo_object_key: objectKey },
+            new_values: { photo_object_key: objectKey, ...extra },
             ip_address: context.ip_address,
             user_agent: context.user_agent,
           },
@@ -300,9 +315,25 @@ export class EmployeePhotoService {
       throw error;
     }
     await removeObjectIfExists(previous?.photo_object_key ?? null);
+  }
 
-    // Google follows when the account is linked. If it fails, the photo in Central stays and the next change retries.
-    await GoogleWorkspaceService.setPhoto(personId, googleBuffer, "image/jpeg");
+  // Takes the photo of the linked Google account when Central has none. A photo Central already has is never touched,
+  // and nothing is sent back to Google. Returns whether a photo was taken.
+  static async pullFromGoogle(personId: string, context: AuditRequestContext = {}): Promise<boolean> {
+    const person = await prismaClient.person.findFirst({
+      where: { id: personId, deleted_at: null, employee: { deleted_at: null } },
+      select: { photo_object_key: true, photo_url: true, employee: { select: { id: true } } },
+    });
+    if (!person?.employee || person.photo_object_key || person.photo_url) return false;
+    const photo = await GoogleWorkspaceService.getPhoto(personId);
+    if (!photo || !detectImageMimeType(photo.data)) return false;
+    let processed: Buffer;
+    try {
+      processed = await processPhoto(photo.data);
+    } catch {
+      return false;
+    }
+    await this.saveOwnPhoto(personId, person.employee.id, processed, context, { source: "google" });
     return true;
   }
 

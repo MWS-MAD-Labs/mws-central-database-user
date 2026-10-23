@@ -3,7 +3,7 @@ import { Route, Routes } from "react-router";
 import { screen, waitFor } from "@testing-library/react";
 import { AuthContext } from "../../../src/features/auth/context/authContext.js";
 import { ConfirmProvider } from "../../../src/components/ui/ConfirmDialog.jsx";
-import { AppSettingsPage } from "../../../src/features/application-access/pages/AppSettingsPage.jsx";
+import { AppDetailPage } from "../../../src/features/application-access/pages/AppDetailPage.jsx";
 import { renderWithProviders } from "../../helpers/render.jsx";
 import { createFetchRouter, jsonResponse } from "../../helpers/http.js";
 
@@ -72,18 +72,20 @@ export function routesFor(data, extra = []) {
     { path: "/api/admin/application-access/apps/demo/setup", response: () => jsonResponse({ data }) },
     { path: /\/api\/admin\/application-access\/apps\/demo\/settings/, response: () => jsonResponse({ data: SETTINGS }) },
     { path: /\/api\/admin\/application-access\/taxonomy/, response: () => jsonResponse({ data: { categories: [{ key: "reporting", name: "Reporting" }], scopes: [] } }) },
+    { path: "/api/admin/application-access/apps/demo", response: () => jsonResponse({ data: { application_id: "demo", organization_id: "org_demo_abcdefghijklmnopqrst", groups: [], other_count: 0 } }) },
+    { path: "/api/admin/application-roles", response: () => jsonResponse({ data: [] }) },
     { path: /internal-endpoints|data-access/, response: () => jsonResponse({ data: [] }) },
     ...extra,
   ];
 }
 
-function renderPage(data, route = "/application-access/apps/demo/settings", extra = []) {
+function renderPage(data, route = "/application-access/apps/demo?tab=overview", extra = []) {
   globalThis.fetch = createFetchRouter(routesFor(data, extra));
   return renderWithProviders(
     <AuthContext.Provider value={{ user: { role: "SUPER_ADMIN", is_protected: true } }}>
       <ConfirmProvider>
         <Routes>
-          <Route path="/application-access/apps/:applicationId/settings" element={<AppSettingsPage />} />
+          <Route path="/application-access/apps/:applicationId" element={<AppDetailPage />} />
           <Route path="/application-access/apps/:applicationId/setup" element={<div>Setup steps</div>} />
         </Routes>
       </ConfirmProvider>
@@ -92,10 +94,10 @@ function renderPage(data, route = "/application-access/apps/demo/settings", extr
   );
 }
 
-describe("AppSettingsPage", () => {
+describe("AppDetailPage", () => {
   it("summarises the application on top and opens on the overview", async () => {
     renderPage(setup());
-    expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Demo App" })).toBeVisible();
     expect(screen.getByText("Shown in the Hub")).toBeVisible();
     expect(screen.getByText("Connected")).toBeVisible();
     expect(screen.getByText(/Last Call/)).toBeVisible();
@@ -104,7 +106,7 @@ describe("AppSettingsPage", () => {
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("https://demo.example.com/auth/sso")).toBeVisible();
     expect(screen.getByText("Reporting")).toBeVisible();
-    expect(screen.getByRole("link", { name: /Setup Guide/ })).toHaveAttribute("href", "/application-access/apps/demo/guide?part=local");
+    expect(screen.getByRole("link", { name: /Setup Guide/ })).toHaveAttribute("href", "/application-access/guides?part=local&app=demo");
     // One way to edit, and retiring is not a button on the page.
     expect(screen.getAllByRole("button", { name: /Edit/ })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Retire Application" })).toBeNull();
@@ -123,7 +125,7 @@ describe("AppSettingsPage", () => {
     expect(screen.getByText(/^Made \d{1,2} \w{3} 2026$/)).toBeVisible();
     expect(screen.queryByText(/mws_702f6901a3f1/)).toBeNull();
     expect(screen.getByText("Development")).toBeVisible();
-    expect(screen.getByText("Permissions").previousElementSibling).toHaveTextContent("4");
+    expect(screen.getAllByText("Permissions").find((node) => node.tagName === "DT").previousElementSibling).toHaveTextContent("4");
     expect(screen.getByText("Scopes").previousElementSibling).toHaveTextContent("1");
     expect(screen.getByText("Last Call")).toBeVisible();
     expect(screen.getByText("application_entitlements:read")).toBeVisible();
@@ -161,11 +163,11 @@ describe("AppSettingsPage", () => {
       <AuthContext.Provider value={{ user: { role: "SUPER_ADMIN", is_protected: true } }}>
         <ConfirmProvider>
           <Routes>
-            <Route path="/application-access/apps/:applicationId/settings" element={<AppSettingsPage />} />
+            <Route path="/application-access/apps/:applicationId" element={<AppDetailPage />} />
           </Routes>
         </ConfirmProvider>
       </AuthContext.Provider>,
-      { route: "/application-access/apps/demo/settings?tab=card" },
+      { route: "/application-access/apps/demo?tab=card" },
     );
     expect(await screen.findAllByText("Maintenance")).not.toHaveLength(0);
     expect(screen.getByText("In The Hub").previousElementSibling).toHaveTextContent("Shown");
@@ -179,24 +181,16 @@ describe("AppSettingsPage", () => {
     await waitFor(() => expect(calls).toEqual(["unpublish"]));
   });
 
-  it("lists the roles with a name that has capitals and its own key column", async () => {
-    renderPage(setup(), "/application-access/apps/demo/settings?tab=access");
-    expect(await screen.findByRole("columnheader", { name: "Key" })).toBeVisible();
-    expect(screen.getByText("Support Staff")).toBeVisible();
-    expect(screen.getByText("SUPPORT_STAFF")).toBeVisible();
-    // Two roles need no pager.
-    expect(screen.queryByText(/ roles$/)).toBeNull();
-    // Figures first, what they count under them.
+  it("shows the access figures on top of the Access tab, which is the first tab", async () => {
+    renderPage(setup(), "/application-access/apps/demo");
+    expect(await screen.findByRole("tab", { name: "Access" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByText("Active Groups")).toBeVisible();
     expect(screen.getByText("Active Groups").previousElementSibling).toHaveTextContent("1");
     expect(screen.getByText("People Reached").previousElementSibling).toHaveTextContent("128");
     expect(screen.getByText("Exceptions").previousElementSibling).toHaveTextContent("2");
     expect(screen.getByText("Blocked").previousElementSibling).toHaveTextContent("1");
-  });
-
-  it("shows the people of a role as a plain number, without an icon", async () => {
-    renderPage(setup(), "/application-access/apps/demo/settings?tab=access");
-    const cell = (await screen.findByText("120")).closest("td");
-    expect(cell.querySelector("svg")).toBeNull();
+    // The roles table of the old Settings is gone: roles have their own tab.
+    expect(screen.queryByRole("columnheader", { name: "Key" })).toBeNull();
   });
 
   it("links the address of the application so it can be opened from here", async () => {
@@ -246,7 +240,7 @@ describe("AppSettingsPage", () => {
   });
 
   it("filters the activity by date range, with this month as the start", async () => {
-    const { user } = renderPage(setup(), "/application-access/apps/demo/settings?tab=activity");
+    const { user } = renderPage(setup(), "/application-access/apps/demo?tab=activity");
     await screen.findByText("Details Changed");
     const settingsCalls = () => globalThis.fetch.mock.calls.map(([url]) => String(url)).filter((url) => url.includes("/settings?"));
     expect(settingsCalls()[0]).toMatch(/date_from=\d{4}-\d{2}-01T00%3A00%3A00\.000&date_to=/);
@@ -259,32 +253,8 @@ describe("AppSettingsPage", () => {
     expect(screen.getByText("This Month")).toBeVisible();
   });
 
-  it("pages the roles of the Access tab when there are more than ten", async () => {
-    const original = SETTINGS.access.roles;
-    SETTINGS.access.roles = Array.from({ length: 12 }, (_, index) => ({
-      id: `r${index}`,
-      key: `ROLE_${String(index).padStart(2, "0")}`,
-      label: `Role ${String(index).padStart(2, "0")}`,
-      is_active: true,
-      permission_count: 1,
-      people: index,
-      groups: 0,
-    }));
-    try {
-      const { user } = renderPage(setup(), "/application-access/apps/demo/settings?tab=access");
-      expect(await screen.findByText("Role 00")).toBeVisible();
-      expect(screen.queryByText("Role 11")).toBeNull();
-      expect(screen.getByText(/Page 1 of 2 \/ 12 roles/)).toBeVisible();
-      await user.click(screen.getByRole("button", { name: /Next/ }));
-      expect(await screen.findByText("Role 11")).toBeVisible();
-      expect(screen.queryByText("Role 00")).toBeNull();
-    } finally {
-      SETTINGS.access.roles = original;
-    }
-  });
-
   it("lists the latest changes in a table, and opens the details of one", async () => {
-    const { user } = renderPage(setup(), "/application-access/apps/demo/settings?tab=activity");
+    const { user } = renderPage(setup(), "/application-access/apps/demo?tab=activity");
     expect(await screen.findByRole("columnheader", { name: "Actor" })).toBeVisible();
     for (const name of ["Time", "Action", "Changes"]) expect(screen.getByRole("columnheader", { name })).toBeVisible();
     expect(screen.getByText("Details Changed")).toBeVisible();
@@ -307,20 +277,40 @@ describe("AppSettingsPage", () => {
   });
 
   it("keeps the switch on for an application that was hidden again, without the setup steps", async () => {
-    renderPage(setup({ application: { ...APP, published: false } }), "/application-access/apps/demo/settings?tab=card");
+    renderPage(setup({ application: { ...APP, published: false } }), "/application-access/apps/demo?tab=card");
     const toggle = await screen.findByRole("switch", { name: "Hidden From Hub" });
     expect(toggle).toBeEnabled();
     expect(screen.queryByText("Setup steps")).toBeNull();
   });
 
-  it("sends an application that is not finished back to its steps", async () => {
-    renderPage(setup({ setup_completed: false, application: { ...APP, published: false }, can_publish: false, groups: { active_count: 0 }, missing: ["groups"] }));
-    expect(await screen.findByText("Setup steps")).toBeVisible();
+  it("offers the steps for an application that is not finished, and shows only the access tabs", async () => {
+    renderPage(setup({ setup_completed: false, application: { ...APP, published: false }, can_publish: false, groups: { active_count: 0 }, missing: ["groups"] }), "/application-access/apps/demo");
+    expect(await screen.findByText(/Finish setup \(/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "Continue Setup" })).toHaveAttribute("href", "/application-access/apps/demo/setup");
+    expect(screen.getByRole("tab", { name: "Roles" })).toBeVisible();
+    expect(screen.queryByRole("tab", { name: "Connection" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Overview" })).toBeNull();
+  });
+
+  it("puts the rotate buttons on the Connection tab of the Hub too", async () => {
+    const { user } = renderPage(
+      setup({ is_hub: true, env_settings: { hub_access_mode: "warn", hub_bypass_emails: [], hub_access_cookie_name: "hub_at" }, hub: { base_url: "https://hub.example.com" }, hub_secret: { applies: false, mode: "shared", version: 1 } }),
+      "/application-access/apps/demo",
+    );
+    await user.click(await screen.findByRole("tab", { name: "Connection" }));
+    expect(await screen.findByRole("button", { name: "Rotate Token" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Hub Sign-in" })).toBeVisible();
+  });
+
+  it("links to the rotation from the overview", async () => {
+    const { user } = renderPage(setup());
+    await user.click(await screen.findByRole("button", { name: "Rotate Credentials" }));
+    expect(await screen.findByRole("button", { name: "Rotate Token" })).toBeVisible();
   });
 
   it("has no connection tab for a plain link", async () => {
     renderPage(setup({ application: { ...APP, launch_mode: "link" }, connection: { client_id: null, created: false, last_used_at: null }, permissions: { count: 0, synced_at: null } }));
-    expect(await screen.findByRole("heading", { name: "Demo App Settings" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Demo App" })).toBeVisible();
     expect(screen.queryByRole("tab", { name: "Connection" })).toBeNull();
     expect(screen.getAllByText("Plain Link").length).toBeGreaterThan(0);
   });
@@ -342,7 +332,7 @@ describe("AppSettingsPage", () => {
   });
 
   it("changes the sign-in way only after asking, and sends the new way", async () => {
-    const { user } = renderPage(setup(), "/application-access/apps/demo/settings", [
+    const { user } = renderPage(setup(), "/application-access/apps/demo?tab=overview", [
       { path: "/api/admin/application-access/apps/demo/details", method: "PATCH", response: () => jsonResponse({ data: { ...APP, session_mode: "shared" } }) },
     ]);
     const sent = () => globalThis.fetch.mock.calls.filter(([, options]) => options?.method === "PATCH").map(([, options]) => JSON.parse(options.body));
@@ -357,7 +347,7 @@ describe("AppSettingsPage", () => {
 
   it("shows the lines to add after moving to Hub Code & Token, without rotating the token", async () => {
     const line = (key, value, secret = false) => ({ key, value, secret, group: 0, line: `${key}="${value}"` });
-    const { user } = renderPage(setup({ application: { ...APP, session_mode: "shared" } }), "/application-access/apps/demo/settings", [
+    const { user } = renderPage(setup({ application: { ...APP, session_mode: "shared" } }), "/application-access/apps/demo?tab=overview", [
       {
         path: "/api/admin/application-access/apps/demo/details",
         method: "PATCH",
@@ -383,7 +373,7 @@ describe("AppSettingsPage", () => {
 
   describe("after moving to Shared Hub Session", () => {
     const open = async (confirmed) => {
-      const { user } = renderPage(setup({ session_check: { mode: "shared", changed_at: "2026-10-24T01:00:00.000Z", confirmed_at: confirmed, known: true } }), "/application-access/apps/demo/settings", [
+      const { user } = renderPage(setup({ session_check: { mode: "shared", changed_at: "2026-10-24T01:00:00.000Z", confirmed_at: confirmed, known: true } }), "/application-access/apps/demo?tab=overview", [
         {
           path: "/api/admin/application-access/apps/demo/details",
           method: "PATCH",
@@ -447,14 +437,14 @@ describe("AppSettingsPage", () => {
     expect(await screen.findByText(/Waiting for the app to sign someone in the new way/)).toBeVisible();
     stopped.unmount();
     renderPage(setup({ health: { status: "healthy", detail: null, since: null } }));
-    await screen.findByRole("heading", { name: "Demo App Settings" });
+    await screen.findByRole("heading", { name: "Demo App" });
     expect(screen.queryByText(/Check the app in Komodo/)).toBeNull();
     expect(screen.queryByText(/old token, last seen/)).toBeNull();
   });
 
   it("does not offer to change the sign-in way for a plain link", async () => {
     renderPage(setup({ application: { ...APP, launch_mode: "link" } }));
-    await screen.findByRole("heading", { name: "Demo App Settings" });
+    await screen.findByRole("heading", { name: "Demo App" });
     expect(screen.queryByRole("button", { name: "Change Sign-In Way" })).toBeNull();
     expect(screen.queryByText("How This App Signs In")).toBeNull();
   });

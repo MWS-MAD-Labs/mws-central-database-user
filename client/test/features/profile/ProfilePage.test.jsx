@@ -6,7 +6,7 @@ import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 
 describe('ProfilePage access summary', () => {
-  it('shows domain, sensitive, task, write, unit, and after-hours access', async () => {
+  it('shows domain, sensitive, task, write, unit, and after-hours access under the Access tab', async () => {
     globalThis.fetch = createFetchRouter([
       { path: '/api/admin/units/unit-elementary', response: jsonResponse({ data: { id: 'unit-elementary', name: 'Elementary' } }) },
     ])
@@ -35,12 +35,13 @@ describe('ProfilePage access summary', () => {
       after_hours_write_until: '2099-01-01T00:00:00.000Z',
     }
 
-    renderWithProviders(
+    const { user: person } = renderWithProviders(
       <AuthContext.Provider value={{ user }}>
         <ProfilePage />
       </AuthContext.Provider>,
     )
 
+    await person.click(screen.getByRole('tab', { name: 'Access' }))
     expect(screen.getByRole('heading', { name: 'Effective Access' })).toBeVisible()
     expect(screen.getByText('View Students')).toBeVisible()
     expect(screen.getByText('Manage Enrollments')).toBeVisible()
@@ -73,5 +74,94 @@ describe('ProfilePage access summary', () => {
       </AuthContext.Provider>,
     )
     expect(screen.queryByRole('button', { name: 'Change photo' })).not.toBeInTheDocument()
+  })
+
+  describe('the signed-in person\'s own employee record', () => {
+    const record = {
+      identity: { full_name: 'Dana Admin', nick_name: 'Dana', email: 'dana@millennia21.id', mobile_phone: '0812', can_view_pii: true, is_self: true, residential_address: 'Jl. Mawar 1' },
+      employment: { employee_id: '99.99.001', unit: 'Elementary', job_position: 'Teacher', job_level: 'Staff', building: 'Main', join_date: '2024-01-02T00:00:00.000Z', is_pc_mentor_eligible: false },
+      status_info: { status: 'ACTIVE', employment_type: 'PERMANENT', last_working_date: null, contract_end_date: null },
+    }
+    const revealed = {
+      gender: 'FEMALE', religion: 'ISLAM', birth_place: 'Jakarta', birth_date: '1990-05-10T00:00:00.000Z', marital_status: 'MARRIED',
+      nik: '3171000000000001', npwp: null, bank_account_number: null, bpjs_number: null, bpjs_employment_number: null, kpj_number: null,
+      children: { mode: 'BIRTH_DATES', items: [{ birth_date: '2018-03-04T00:00:00.000Z', relation: 'BIOLOGICAL' }], summary: { total: 1, allowance_eligible: 1, under_23: 1, age_23_plus: 0 } },
+    }
+    const admin = { id: 'a1', type: 'admin', role: 'SUPER_ADMIN', full_name: 'Dana Admin', email: 'dana@millennia21.id', employee_id: 'emp-1' }
+
+    it('gives an admin made from an employee their own record in tabs, with the sensitive details hidden until Show', async () => {
+      globalThis.fetch = createFetchRouter([
+        { path: '/api/admin/employees/emp-1', response: jsonResponse({ data: record }) },
+        { path: '/api/admin/employees/emp-1/sensitive-fields/access', method: 'POST', response: jsonResponse({ data: revealed }) },
+      ])
+      const { user } = renderWithProviders(
+        <AuthContext.Provider value={{ user: admin }}><ProfilePage /></AuthContext.Provider>,
+      )
+      await user.click(await screen.findByRole('tab', { name: 'Personal' }))
+      expect(await screen.findByText('Jl. Mawar 1')).toBeVisible()
+      expect(screen.queryByText('3171000000000001')).not.toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Show Sensitive Fields' }))
+      expect(await screen.findByText('3171000000000001')).toBeVisible()
+
+      await user.click(screen.getByRole('tab', { name: 'Employment' }))
+      expect(screen.getByText('99.99.001')).toBeVisible()
+      expect(screen.getByText('Elementary')).toBeVisible()
+
+      // The same reveal opens the family tab.
+      await user.click(screen.getByRole('tab', { name: 'Family' }))
+      expect(screen.getByText('1 Child')).toBeVisible()
+      expect(screen.getByRole('link', { name: 'Request a Change' })).toHaveAttribute('href', '/change-requests/mine')
+    })
+
+    it('gives an employee who signs in their own record from their own route', async () => {
+      globalThis.fetch = createFetchRouter([
+        { path: '/api/auth/employee/me/detail', response: jsonResponse({ data: record }) },
+        { path: '/api/auth/employee/me/sensitive-fields/access', method: 'POST', response: jsonResponse({ data: revealed }) },
+      ])
+      const employee = { id: 'e1', type: 'employee', full_name: 'Dana Admin', email: 'dana@millennia21.id', employment: {} }
+      const { user } = renderWithProviders(
+        <AuthContext.Provider value={{ user: employee }}><ProfilePage /></AuthContext.Provider>,
+      )
+      await user.click(await screen.findByRole('tab', { name: 'Employment' }))
+      expect(screen.getByText('99.99.001')).toBeVisible()
+      expect(screen.queryByRole('tab', { name: 'Access' })).not.toBeInTheDocument()
+    })
+
+    it('lists an employee\'s own disciplinary actions read only, and not for an admin', async () => {
+      const action = { id: 'd1', type: 'SURAT_TEGURAN', level: 1, status: 'ACTIVE', issued_date: '2026-03-01T00:00:00.000Z', valid_until: '2026-08-28T00:00:00.000Z', reason: 'Late three times', resolved_reason: null }
+      globalThis.fetch = createFetchRouter([
+        { path: '/api/auth/employee/me/detail', response: jsonResponse({ data: record }) },
+        { path: '/api/auth/employee/me/disciplinary-actions', response: jsonResponse({ data: [action] }) },
+      ])
+      const employee = { id: 'e1', type: 'employee', full_name: 'Dana Admin', email: 'dana@millennia21.id', employment: {} }
+      const { user } = renderWithProviders(
+        <AuthContext.Provider value={{ user: employee }}><ProfilePage /></AuthContext.Provider>,
+      )
+      await user.click(await screen.findByRole('tab', { name: 'Disciplinary' }))
+      expect(await screen.findByText('Late three times')).toBeVisible()
+      expect(screen.queryByRole('button', { name: /appeal/i })).not.toBeInTheDocument()
+    })
+
+    it('lets an admin made from an employee change their own photo', async () => {
+      globalThis.fetch = createFetchRouter([
+        { path: '/api/admin/employees/emp-1', response: jsonResponse({ data: record }) },
+        { path: '/api/auth/me/disciplinary-actions', response: jsonResponse({ data: [] }) },
+      ])
+      renderWithProviders(
+        <AuthContext.Provider value={{ user: admin }}><ProfilePage /></AuthContext.Provider>,
+      )
+      expect(await screen.findByRole('button', { name: 'Change photo' })).toBeVisible()
+    })
+
+    it('shows an admin who is not linked to an employee only the account and access tabs', async () => {
+      globalThis.fetch = createFetchRouter([])
+      renderWithProviders(
+        <AuthContext.Provider value={{ user: { ...admin, employee_id: null } }}><ProfilePage /></AuthContext.Provider>,
+      )
+      expect(screen.getByRole('tab', { name: 'Access' })).toBeVisible()
+      expect(screen.queryByRole('tab', { name: 'Personal' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: 'Request a Change' })).not.toBeInTheDocument()
+      expect(screen.getByTestId('no-employee-note')).toHaveTextContent('No employee record is linked to this admin')
+    })
   })
 })

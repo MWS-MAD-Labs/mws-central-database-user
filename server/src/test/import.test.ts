@@ -1926,6 +1926,43 @@ describe("Student import", () => {
       expect(updated?.full_name).toBe("Budi Updated Name");
     });
 
+    it("never changes an email: a sheet email that differs only warns, and the rest of the row still updates", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const person = await StudentTest.create({
+        email: "test_imp_keep_email@millennia21.id",
+        nis: "9100077",
+      });
+
+      const preview = await previewFile(accessToken, [
+        [
+          "Budi New Name",
+          "Budi",
+          "test_imp_other_email@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "9100077",
+          GRADE_NAME,
+          "",
+          "PSB",
+        ],
+      ]);
+      expect(preview.data.rows[0].action).toBe("UPDATE");
+      expect(JSON.stringify(preview.data.rows[0].warnings)).toContain("Import does not change emails");
+
+      const response = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).data.summary.update_count).toBe(1);
+
+      const after = await prismaClient.person.findUniqueOrThrow({ where: { id: person.id } });
+      expect(after.email).toBe("test_imp_keep_email@millennia21.id");
+      expect(after.full_name).toBe("Budi New Name");
+    });
+
     it("rejects committing the same job twice", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const preview = await previewFile(accessToken, [

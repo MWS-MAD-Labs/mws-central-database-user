@@ -71,6 +71,9 @@ import { assertAcademicUnitIds } from "../utils/academic-units";
 import { maskSensitiveValue } from "../utils/sensitive-data";
 import { GoogleWorkspaceService, type GoogleSyncResult } from "./google-workspace-service";
 import { logger } from "../lib/logger";
+import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
+import { assertDomainCanReceiveEmail } from "../utils/email-domain";
+import { linkAdminToEmployee } from "../utils/admin-person-link";
 import {
   findChildrenProblems,
   findCountsProblems,
@@ -675,12 +678,22 @@ export class EmployeeService {
       EmployeeValidation.CREATE,
       request,
     );
-    if (options.requireRecoveryEmail && !createRequest.recovery_email) {
+    // A protected admin gets an employee record but never a Google account, so no recovery email is asked for.
+    const withoutGoogle = isProtectedSuperAdminEmail(createRequest.email);
+    const claiming = Boolean(options.requireRecoveryEmail && !withoutGoogle && createRequest.claim_existing_google);
+    if (claiming && admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(403, "Forbidden: only a Super Admin can wait for an existing Google account to be claimed");
+    }
+    if (options.requireRecoveryEmail && !withoutGoogle && !claiming && !createRequest.recovery_email) {
       throw new ResponseError(400, "Recovery email is required: it is how the person sets the password of their new Google account");
     }
-    // Before anything is written: a Google that already has the email, or would not take it, stops the create here.
-    if (options.requireRecoveryEmail) {
-      await GoogleWorkspaceService.assertCanCreate(createRequest.email, createRequest.recovery_email);
+    // Before anything is written: a recovery email whose domain cannot receive mail, a Google that already has the email, or
+    // one that would not take it, stops the create here.
+    if (options.requireRecoveryEmail && !withoutGoogle && !claiming && createRequest.recovery_email) {
+      await assertDomainCanReceiveEmail(createRequest.recovery_email);
+    }
+    if (options.requireRecoveryEmail && !withoutGoogle) {
+      await GoogleWorkspaceService.assertCanCreate(createRequest.email, createRequest.recovery_email, { claimExisting: claiming });
     }
     await assertCanWriteEmployeePii(admin, createRequest, context);
 
@@ -1002,8 +1015,15 @@ export class EmployeeService {
     );
 
     // The person exists in Central either way. A failure here shows as a Google status they can retry.
+    // An admin with this email was waiting for their employee record: link them now, not at their next sign-in.
+    await linkAdminToEmployee(createRequest.email).catch((error) => logger.error("Linking the admin to the new employee failed", error));
+
     let google: GoogleSyncResult | undefined;
-    if (createRequest.recovery_email) {
+    if (withoutGoogle && admin.email.trim().toLowerCase() === createRequest.email.trim().toLowerCase()) {
+      google = await GoogleWorkspaceService.linkOwn(createdPersonId, { admin, context });
+    } else if (claiming) {
+      google = await GoogleWorkspaceService.markPendingClaim(createdPersonId, { admin, context });
+    } else if (createRequest.recovery_email && !withoutGoogle) {
       google = await GoogleWorkspaceService.provision(createdPersonId, {
         recoveryEmail: createRequest.recovery_email,
         admin,
@@ -1017,6 +1037,8 @@ export class EmployeeService {
           message: error instanceof ResponseError ? error.message : "The Google account was not made",
         };
       });
+      // The first password is mailed at once, so the admin does not see it unless the mail could not be sent.
+      google = await GoogleWorkspaceService.deliverFirstPassword(google, createdPersonId, { to: createRequest.recovery_email, language: createRequest.email_language }, admin, context);
     }
 
     return { ...toEmployeeResponse(personWithRelations, admin), ...(google && { google }) };
@@ -1029,6 +1051,8 @@ export class EmployeeService {
     // Set only by an approved IdentifierChangeRequest to apply its one
     // field past the grace period (identifier-change-request-service.ts).
     bypassIdentifierLock = false,
+    // Set only by Change Email (email-change-service.ts): an email is never changed by a plain edit.
+    allowEmailChange = false,
   ): Promise<EmployeeResponse> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedEmployeeAction(
@@ -1221,6 +1245,7 @@ export class EmployeeService {
       updateRequest.employee_id &&
       updateRequest.employee_id !== existingEmployee.employee_id;
 
+    if (emailChanged && !allowEmailChange) throw new ResponseError(400, "Use Change Email to change an email");
     if (emailChanged) {
       await GoogleWorkspaceService.assertCanChangeEmail(existingEmployee.person_id, updateRequest.email!);
     }
@@ -1933,6 +1958,49 @@ export class EmployeeService {
     return toEmployeeResponse(person, admin);
   }
 
+  // The signed-in employee's own record, for their Profile. Like `get` for yourself: the identifiers are left out until
+  // revealed. The person is the one in the session, nothing in the request names one.
+  static async getOwn(personId: string): Promise<EmployeeResponse | RedactedEmployeeDetailResponse> {
+    const person = await prismaClient.person.findFirst({
+      where: { id: personId, employee: { deleted_at: null } },
+      include: {
+        employee: {
+          include: {
+            unit: true,
+            job_position: true,
+            job_level: true,
+            building: true,
+            pc_mentor_units: { include: { unit: true } },
+            children: true,
+          },
+        },
+      },
+    });
+    if (!person || !person.employee) throw new ResponseError(404, "Employee not found");
+
+    const detail = toEmployeeDetailResponse(person, { role: AdminRole.SUPER_ADMIN }, await ChildrenAllowanceRuleService.get());
+    detail.identity.photo_url = await resolveEmployeePhotoUrl(person.photo_object_key, person.photo_url);
+    detail.identity.is_self = true;
+    return splitEmployeeDetailIdentity(detail).redacted;
+  }
+
+  // The employee's own identifiers. Reading your own data is not audited.
+  static async revealOwnPii(personId: string): Promise<EmployeeRevealedIdentity> {
+    const person = await prismaClient.person.findFirst({
+      where: { id: personId, employee: { deleted_at: null } },
+      include: {
+        employee: {
+          include: { unit: true, job_position: true, job_level: true, building: true, children: true },
+        },
+      },
+    });
+    if (!person || !person.employee) throw new ResponseError(404, "Employee not found");
+
+    return splitEmployeeDetailIdentity(
+      toEmployeeDetailResponse(person, { role: AdminRole.SUPER_ADMIN }, await ChildrenAllowanceRuleService.get()),
+    ).revealed;
+  }
+
   // Releases the identifiers GET /employees/:id leaves out, and records the
   // reveal in the same call so they cannot be read without an audit entry.
   static async revealPii(
@@ -2129,6 +2197,29 @@ export class EmployeeService {
 
   // Deliberately unscoped by unit/role - dashboard summary card only, no
   // employee detail is exposed, just a headcount.
+  // Whether an Employee ID can be given to a new employee, before the form is saved. The create still checks again.
+  static async checkEmployeeId(
+    admin: AdminUser,
+    rawId: string,
+  ): Promise<{ available: boolean; reason: "FREE" | "IN_USE" | "ARCHIVED" | "INVALID"; message: string }> {
+    if (admin.role === AdminRole.VIEWER || (admin.role === AdminRole.DATABASE_ADMIN && !admin.can_write_employee_data)) {
+      throw new ResponseError(403, "Forbidden: You don't have permission to create employees");
+    }
+    const employeeId = rawId.trim();
+    if (!/^\d{2}\.\d{2}\.\d{3}$/.test(employeeId)) {
+      return { available: false, reason: "INVALID", message: "Use the format 11.11.111" };
+    }
+    const holder = await prismaClient.employee.findFirst({
+      where: { employee_id: employeeId },
+      select: { deleted_at: true, status: true },
+    });
+    if (!holder) return { available: true, reason: "FREE", message: "Available" };
+    const archived = Boolean(holder.deleted_at) || holder.status === EmployeeStatus.ARCHIVED;
+    return archived
+      ? { available: false, reason: "ARCHIVED", message: "Used by an archived employee. Restore them instead" }
+      : { available: false, reason: "IN_USE", message: "This Employee ID is already used" };
+  }
+
   static async countTotal(): Promise<number> {
     return prismaClient.person.count({
       where: {

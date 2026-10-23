@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { EmailChangeController } from "../../controller/admin/email-change-controller";
 import { StudentController } from "../../controller/admin/student-controller";
 import { EnrollmentController } from "../../controller/admin/enrollment-controller";
 import { ParentGuardianController } from "../../controller/admin/parent-guardian-controller";
@@ -13,6 +14,7 @@ import { ExportController } from "../../controller/admin/export-controller";
 import { ImportController } from "../../controller/admin/import-controller";
 import { StudentPhotoController } from "../../controller/admin/student-photo-controller";
 import { StudentMutationHistoryController } from "../../controller/admin/student-mutation-history-controller";
+import { GoogleAccountController } from "../../controller/admin/google-account-controller";
 import {
   attachmentUploadBodyLimit,
   bulkPhotoUploadBodyLimit,
@@ -30,6 +32,14 @@ studentRouter.post("/:id/sensitive-fields/access", (c) =>
   StudentController.revealPii(c),
 );
 studentRouter.get("/count-total", (c) => StudentController.countTotal(c));
+// The student's Google account. Details go to a parent or guardian Central holds, never to a typed address.
+studentRouter.get("/:id/google", GoogleAccountController.status("student"));
+studentRouter.post("/:id/google/provision", GoogleAccountController.provision("student"));
+studentRouter.post("/:id/google/reset-password", GoogleAccountController.resetPassword("student"));
+studentRouter.post("/:id/google/send-sign-in", GoogleAccountController.sendSignIn("student"));
+studentRouter.post("/:id/google/restore", GoogleAccountController.restore("student"));
+studentRouter.post("/:id/google/suspend", GoogleAccountController.suspend("student", true));
+studentRouter.post("/:id/google/unsuspend", GoogleAccountController.suspend("student", false));
 studentRouter.get("/version", (c) => StudentController.getVersion(c));
 studentRouter.get("/backfill-candidates", (c) =>
   StudentController.getBackfillCandidates(c),
@@ -63,6 +73,7 @@ studentRouter.post("/photos/bulk-commit", bulkPhotoUploadBodyLimit, (c) =>
   StudentPhotoController.bulkCommit(c),
 );
 studentRouter.patch("/:id", (c) => StudentController.update(c));
+studentRouter.post("/:id/change-email", EmailChangeController.change("student"));
 studentRouter.get("/:id", (c) => StudentController.get(c));
 studentRouter.patch("/delete/:id", (c) => StudentController.remove(c));
 studentRouter.patch("/restore/:id", (c) => StudentController.restore(c));

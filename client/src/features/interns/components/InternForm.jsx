@@ -1,10 +1,15 @@
 import { recoveryEmailProblem, recoveryHint } from "../../google/utils/instructions.js";
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
+import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx";
+import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
+import { emailsMatch } from "../../google/utils/emailDomains.js";
+import { EmailWithDomain } from "../../google/components/EmailWithDomain.jsx";
+import { ReviewEmailLanguage } from "../../google/components/ReviewEmailLanguage.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
 import { ChangeReviewTable } from "../../../components/ui/ChangeReviewTable.jsx";
@@ -38,7 +43,6 @@ import {
   visibleErrors,
   yearsBetweenDateInputs,
   emailProblem,
-  sanitizeEmail,
   sanitizeEmailLocalPart,
   textLength,
 } from "../../../lib/form.js";
@@ -120,19 +124,29 @@ export function InternForm({
 
   const isCreate = mode === "create";
   // A new or changed email has to pass the Check button before the form can be saved.
+  // A Super Admin can make the intern for an email Google already has: it is linked when the owner signs in.
+  const [claimExisting, setClaimExisting] = useState(false);
   const emailCheck = useEmailCheck(
     values.email_local ? `${values.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
     {
       initialEmail: !isCreate && initialValues.email_local ? `${initialValues.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
+      allowClaim: isCreate && user?.role === "SUPER_ADMIN",
+      claimExisting,
+      ownEmail: user?.email ?? "",
     },
   );
+  const claiming = emailCheck.state === "claimable" && claimExisting;
+  // A protected admin address, or one waiting to be claimed, gets no new Google account, so no recovery email is asked for.
+  const noGoogle = emailCheck.state === "protected" || claiming;
   const canEditContactPii =
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_employee_pii);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const allErrors = useMemo(
-    () => computeInternErrors(values, isCreate),
-    [values, isCreate],
+    () => computeInternErrors(values, isCreate, { noGoogle }),
+    [values, isCreate, noGoogle],
   );
+  // The email typed a second time only makes sense while the first one is filled in and valid.
+  const recoveryNotReady = !values.recovery_email || Boolean(allErrors.recovery_email);
   // Drives the floating Save button's disabled/tooltip state - a field
   // with a value that fails a rule shows its error live (see
   // visibleErrors below), a blank required field still waits for a
@@ -195,15 +209,19 @@ export function InternForm({
     }));
   }
 
+  // The language of the mail that carries the password is picked in the review, which only answers yes or no.
+  const emailLanguage = useRef("en");
+
   async function handleSubmit(event) {
     event.preventDefault();
+    emailLanguage.current = "en";
     if (emailCheck.blocked) {
       showErrorToast(emailCheck.message || "Check the email before saving.");
       return;
     }
     setHasAttemptedSubmit(true);
 
-    const computedErrors = computeInternErrors(values, isCreate);
+    const computedErrors = computeInternErrors(values, isCreate, { noGoogle });
     if (Object.keys(computedErrors).length > 0) {
       showErrorToast("Please fix the highlighted fields before saving.");
       scrollToFirstError(computedErrors);
@@ -238,22 +256,29 @@ export function InternForm({
         labels: INTERN_DIFF_LABELS,
         resolveValue,
         sections: INTERN_FIELD_SECTIONS,
-        excludeKeys: ["contract_duration_months"],
+        excludeKeys: ["contract_duration_months", "recovery_email_confirm"],
       });
+      // The first password is emailed to the recovery email at once, so a slip there loses it or gives it to a stranger.
+      const mailsPassword = !noGoogle && Boolean(values.recovery_email);
+      const createWarnings = { ...fieldWarnings, ...(mailsPassword ? { recovery_email: "The password is sent to this address, so check it letter by letter." } : {}) };
       const confirmed = await confirm({
         title: "Review before creating",
         description: (
-          <ChangeReviewTable
-            changes={fields}
-            mode="create"
-            warning={reviewWarning}
-            fieldWarnings={fieldWarnings}
-          />
+          <>
+            {mailsPassword ? <ReviewEmailLanguage onChange={(value) => { emailLanguage.current = value; }} /> : null}
+            <ChangeReviewTable
+              changes={fields}
+              mode="create"
+              warning={reviewWarning}
+              fieldWarnings={createWarnings}
+            />
+          </>
         ),
         confirmLabel: internshipAlreadyEnded
           ? "Create as completed"
           : "Create intern",
-        wide: true,
+        ...(mailsPassword ? { requireCheckLabel: `The password will be sent to ${values.recovery_email}. This is the right address.` } : {}),
+        size: "xl",
       });
       if (!confirmed) return;
     } else {
@@ -285,6 +310,10 @@ export function InternForm({
     onSubmit(
       buildPayload(values, canEditContactPii, {
         includeIdentity: identityRevealed,
+        noGoogle,
+        claiming,
+        isCreate,
+        emailLanguage: emailLanguage.current,
       }),
     );
   }
@@ -336,7 +365,20 @@ export function InternForm({
               updateValue={updateValue}
             />
             <EmailField
-              note={<EmailCheckNote check={emailCheck} />}
+              note={
+                isCreate ? (
+                  <EmailCheckNote check={emailCheck} />
+                ) : (
+                  <ChangeEmailAction
+                    resource="interns"
+                    id={intern?.id}
+                    currentEmail={`${initialValues.email_local}@${ALLOWED_EMAIL_DOMAIN}`}
+                    name={values.full_name}
+                    canChange={user?.role === "SUPER_ADMIN"}
+                  />
+                )
+              }
+              disabled={!isCreate}
               domain={ALLOWED_EMAIL_DOMAIN}
               max={EMAIL_LOCAL_MAX_LENGTH}
               sanitize={sanitizeEmailLocalPart}
@@ -344,26 +386,55 @@ export function InternForm({
               errors={errors}
               updateValue={updateValue}
             />
+            {emailCheck.state === "claimable" ? (
+              <CheckboxField
+                className="md:col-span-2"
+                label="Wait for this person to sign in"
+                description="Google already has this account. It is not changed. It is linked when its owner signs in to Central, which proves the mailbox is theirs."
+                checked={claimExisting}
+                onChange={(event) => setClaimExisting(event.target.checked)}
+              />
+            ) : null}
             {isCreate ? (
+              <div className="grid min-w-0 gap-4 md:col-span-2 md:grid-cols-2">
               <Field
                 label="Recovery Email"
                 name="recovery_email"
                 error={errors.recovery_email}
-                required
+                required={!noGoogle}
                 counter={{ value: values.recovery_email, max: 100, count: textLength }}
-                hint={recoveryHint(values.recovery_email, errors.recovery_email, ALLOWED_EMAIL_DOMAIN)}
+                hint={
+                  noGoogle
+                    ? claiming
+                      ? "Not needed: the existing Google account is kept as it is."
+                      : "Not needed: no Google account is made for this address."
+                    : (
+                      <>
+                        {recoveryHint(values.recovery_email, errors.recovery_email, ALLOWED_EMAIL_DOMAIN)}
+                        <EmailSuggestion email={values.recovery_email} onUse={(fixed) => updateValue("recovery_email", fixed)} />
+                      </>
+                    )
+                }
               >
-                <TextInput
-                  type="email"
+                <EmailWithDomain
+                  disabled={noGoogle}
                   invalid={Boolean(errors.recovery_email)}
                   value={values.recovery_email}
-                  maxLength={100}
-                  placeholder="name@gmail.com"
-                  onChange={(event) =>
-                    updateValue("recovery_email", sanitizeEmail(event.target.value))
-                  }
+                  onChange={(value) => updateValue("recovery_email", value)}
                 />
               </Field>
+              {!noGoogle ? (
+                <ConfirmEmailField
+                  label="Confirm Recovery Email"
+                  name="recovery_email_confirm"
+                  value={values.recovery_email_confirm}
+                  primary={values.recovery_email}
+                  disabled={recoveryNotReady}
+                  error={errors.recovery_email_confirm}
+                  onChange={(value) => updateValue("recovery_email_confirm", value)}
+                />
+              ) : null}
+              </div>
             ) : null}
             {identityRevealed ? (
               <>
@@ -550,7 +621,7 @@ export function InternForm({
                 value={values.contract_duration_months}
                 onChange={handleDurationChange}
                 options={CONTRACT_DURATION_OPTIONS}
-                placeholder="Set end date manually"
+                placeholder="Set End Date Manually"
                 searchPlaceholder="Search Durations"
               />
             </Field>
@@ -618,7 +689,7 @@ export function InternForm({
                     event.target.value.replace(/\D/g, "").slice(0, 4),
                   )
                 }
-                placeholder="Expected or actual"
+                placeholder="Expected Or Actual"
               />
             </Field>
             <LimitedField
@@ -689,6 +760,7 @@ function getInitialValues(mode, intern, options) {
     nick_name: identity.nick_name || "",
     email_local: emailLocalPart(identity.email),
     recovery_email: "",
+    recovery_email_confirm: "",
     gender: identity.gender || "",
     religion: identity.religion || "",
     religion_other: identity.religion_other || "",
@@ -730,8 +802,13 @@ const SENSITIVE_VALUE_KEYS = [
   "birth_date",
 ];
 
-function buildPayload(values, canEditContactPii, { includeIdentity = true } = {}) {
+function buildPayload(values, canEditContactPii, { includeIdentity = true, noGoogle = false, claiming = false, isCreate = false, emailLanguage } = {}) {
   const payload = buildFullPayload(values, canEditContactPii);
+  // An email is changed only by Change Email, never by saving the form.
+  if (!isCreate) delete payload.email;
+  if (isCreate && !noGoogle && emailLanguage) payload.email_language = emailLanguage;
+  if (noGoogle) delete payload.recovery_email;
+  if (claiming) payload.claim_existing_google = true;
   // Never revealed means never loaded: leave them out so nothing is overwritten.
   if (!includeIdentity) {
     for (const key of SENSITIVE_VALUE_KEYS) delete payload[key];
@@ -868,11 +945,12 @@ const INTERN_FIELD_SECTIONS = {
   graduation_year: "Education",
 };
 
-function computeInternErrors(values, isCreate) {
+function computeInternErrors(values, isCreate, { noGoogle = false } = {}) {
   const errors = {};
   if (isCreate) {
     for (const [field, label] of Object.entries(REQUIRED_FIELD_LABELS)) {
       if (field === "religion_other" && values.religion !== "OTHER") continue;
+      if (field === "recovery_email" && noGoogle) continue;
       if (!values[field]) {
         errors[field] = `${label} is required.`;
       }
@@ -882,13 +960,17 @@ function computeInternErrors(values, isCreate) {
     const problem = emailProblem(`${values.email_local}@${ALLOWED_EMAIL_DOMAIN}`);
     if (problem) errors.email_local = problem;
   }
-  if (isCreate && values.recovery_email) {
+  if (isCreate && values.recovery_email && !noGoogle) {
     const problem = recoveryEmailProblem(
       values.recovery_email,
       values.email_local ? `${values.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
       emailProblem,
     );
     if (problem) errors.recovery_email = problem;
+    if (!problem) {
+      if (!values.recovery_email_confirm) errors.recovery_email_confirm = "Type the recovery email again.";
+      else if (!emailsMatch(values.recovery_email, values.recovery_email_confirm)) errors.recovery_email_confirm = "The two emails do not match.";
+    }
   }
   if (
     values.join_date &&

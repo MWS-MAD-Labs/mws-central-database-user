@@ -1,20 +1,20 @@
+import { appGuideHref } from "../utils/startGuide.js";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, BookOpen, Pencil, ShieldCheck } from "lucide-react";
-import { Link, Navigate, useParams, useSearchParams } from "react-router";
+import { ArrowLeft, BookOpen, Pencil, Plus, ShieldCheck } from "lucide-react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
-import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
 import { ToggleSwitch } from "../../../components/ui/FormControls.jsx";
 import { NameList } from "../../../components/ui/NameList.jsx";
-import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { Tabs } from "../../../components/ui/Tabs.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { formatDate, formatDateTime } from "../../../lib/format.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { AppAccessSection } from "../components/AppAccessSection.jsx";
 import { AppCardPreview } from "../components/AppCardPreview.jsx";
 import { ApplicationManagementDialogs } from "../components/ApplicationManagementDialogs.jsx";
 import { AppStatusStrip } from "../components/AppStatusStrip.jsx";
@@ -26,6 +26,7 @@ import { DifferentDomainNote } from "../components/DifferentDomainNote.jsx";
 import { OrganizationCheck } from "../components/OrganizationCheck.jsx";
 import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
 import { useApplicationManagement } from "../hooks/useApplicationManagement.js";
+import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.js";
 import { useInternalEndpoints } from "../hooks/useInternalEndpoints.js";
 import { buildSteps, stepsDone, timeAgo } from "../utils/setupSteps.js";
@@ -63,18 +64,6 @@ function Stats({ items }) {
   );
 }
 
-const ROLES_PER_PAGE = 10;
-const rolePaging = (total, page) => ({
-  current_page: Math.min(page, Math.max(Math.ceil(total / ROLES_PER_PAGE), 1)),
-  total_page: Math.max(Math.ceil(total / ROLES_PER_PAGE), 1),
-  total_item: total,
-  size: ROLES_PER_PAGE,
-});
-const rolesOnPage = (roles, page) => {
-  const current = rolePaging(roles.length, page).current_page;
-  return roles.slice((current - 1) * ROLES_PER_PAGE, current * ROLES_PER_PAGE);
-};
-
 const mono = (value) => <span className="font-mono text-xs">{value}</span>;
 
 // What can still change once an application is set up, and what is known about it. A summary on top and a tab for each
@@ -89,17 +78,17 @@ const HEALTH_LABEL = {
 };
 const ALERT_HEALTH = ["check_token", "token_pending", "sign_in_pending", "unreachable"];
 
-export function AppSettingsPage() {
+export function AppDetailPage() {
   const { user } = useAuth();
   const { applicationId } = useParams();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const superAdmin = canManageApplications(user);
   const setupQuery = useQuery({
     queryKey: ["application-access", "setup", applicationId],
     queryFn: () => applicationAccessApi.getSetup(applicationId),
     enabled: superAdmin,
   });
-  const [rolesPage, setRolesPage] = useState(1);
   const [activityPage, setActivityPage] = useState(1);
   const [activitySize, setActivitySize] = useState(10);
   const [activityRange, setActivityRange] = useState({ preset: "this_month", ...computeDateRange("this_month") });
@@ -115,11 +104,17 @@ export function AppSettingsPage() {
     enabled: superAdmin,
     placeholderData: keepPreviousData,
   });
+  const detailQuery = useQuery({
+    queryKey: ["application-access", "app", applicationId],
+    queryFn: () => applicationAccessApi.getApplication(applicationId),
+    enabled: superAdmin,
+  });
+  const roles = (useApplicationRoles().data || []).filter((role) => role.application_id === applicationId);
+  const hasActiveRole = roles.some((role) => role.is_active);
   const mgmt = useApplicationManagement(applicationId, setupQuery.data);
   const { countFor, loaded: endpointsLoaded } = useInternalEndpoints();
   const taxonomy = useApplicationTaxonomy();
   const base = `/application-access/apps/${applicationId}`;
-  const guide = `${base}/guide`;
 
   if (!superAdmin) {
     return (
@@ -129,15 +124,15 @@ export function AppSettingsPage() {
       </div>
     );
   }
-  if (setupQuery.isLoading || settingsQuery.isLoading) return <PanelMessage>Loading settings…</PanelMessage>;
-  if (setupQuery.isError || !setupQuery.data) return <PanelMessage tone="error">This application could not be found.</PanelMessage>;
+  if (setupQuery.isLoading || settingsQuery.isLoading || detailQuery.isLoading) return <PanelMessage>Loading {applicationId}…</PanelMessage>;
+  if (setupQuery.isError || !setupQuery.data || detailQuery.isError || !detailQuery.data) return <PanelMessage tone="error">This application could not be found.</PanelMessage>;
 
   const setup = setupQuery.data;
   const more = settingsQuery.data;
   const health = setup.health;
   const steps = buildSteps(setup);
-  // An application that was never finished still has its steps to do.
-  if (!setup.setup_completed && stepsDone(steps) < steps.length) return <Navigate to={`${base}/setup`} replace />;
+  // An application that was never finished still has its steps to do. Until then only the access tabs are shown.
+  const unfinished = !setup.setup_completed && stepsDone(steps) < steps.length;
 
   const app = setup.application;
   const retired = Boolean(app.retired_at);
@@ -150,19 +145,22 @@ export function AppSettingsPage() {
   const differentDomain = sharedHere && sameParentDomain(setup.hub_address, app.launch_url) === false;
 
   const tabs = [
-    { id: "overview", label: "Overview" },
-    ...(setup.is_hub ? [{ id: "hub", label: "Hub Sign-in" }] : link ? [] : [{ id: "connection", label: "Connection" }]),
-    ...(setup.is_hub ? [] : [{ id: "card", label: "Hub Card" }]),
     { id: "access", label: "Access" },
-    { id: "activity", label: "Activity" },
+    { id: "roles", label: "Roles" },
+    ...(link ? [] : [{ id: "permissions", label: "Permissions" }]),
+    ...(unfinished ? [] : [{ id: "overview", label: "Overview" }]),
+    ...(unfinished ? [] : setup.is_hub ? [{ id: "hub", label: "Hub Sign-in" }] : []),
+    ...(unfinished || link ? [] : [{ id: "connection", label: "Connection" }]),
+    ...(unfinished || setup.is_hub ? [] : [{ id: "card", label: "Hub Card" }]),
+    ...(unfinished ? [] : [{ id: "activity", label: "Activity" }]),
   ];
   const wanted = params.get("tab");
-  const active = tabs.some((tab) => tab.id === wanted) ? wanted : "overview";
+  const active = tabs.some((tab) => tab.id === wanted) ? wanted : "access";
 
   return (
     <div className="min-w-0 space-y-5">
       <PageHeader
-        title={`${app.name} Settings`}
+        title={app.name}
         description={app.application_id}
         actions={
           <>
@@ -170,8 +168,20 @@ export function AppSettingsPage() {
               <Link to={base}><ArrowLeft size={16} /></Link>
             </Button>
             <Button asChild variant="secondary" size="icon" aria-label="Setup Guide" title="Setup Guide">
-              <Link to={`${guide}?part=local`}><BookOpen size={16} /></Link>
+              <Link to={appGuideHref(applicationId, "local")}><BookOpen size={16} /></Link>
             </Button>
+            {active === "access" && !retired ? (
+              <Button
+                type="button"
+                disabled={!hasActiveRole}
+                title={hasActiveRole ? "Add Group" : "Add a role first"}
+                onClick={() => navigate(`${base}/groups/new`)}
+                size="icon"
+                aria-label="Add Group"
+              >
+                <Plus size={16} />
+              </Button>
+            ) : null}
             {retired ? null : (
               <Button type="button" size="icon" aria-label="Edit Details" title="Edit Details" onClick={() => setEditing(true)}>
                 <Pencil size={16} />
@@ -241,6 +251,21 @@ export function AppSettingsPage() {
         </div>
       ) : null}
 
+      {unfinished ? (
+        <div role="note" className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#d8b45b] bg-[#fff8e8] px-5 py-3 text-sm text-[#745716]">
+          <span className="font-semibold">
+            Finish setup ({stepsDone(steps)} of {steps.length})
+          </span>
+          <span>{setup.is_hub ? "Some setup steps are still open." : "This application does not show in the Hub yet."}</span>
+          <Link to={appGuideHref(applicationId)} className="ml-auto text-xs font-medium text-(--mws-muted) hover:text-(--mws-charcoal) hover:underline">
+            Setup Guide
+          </Link>
+          <Button asChild variant="secondary" size="sm">
+            <Link to={`${base}/setup`}>Continue Setup</Link>
+          </Button>
+        </div>
+      ) : null}
+
       {!retired && ALERT_HEALTH.includes(health?.status) ? (
         <div role="note" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl border border-[#d8b45b] bg-[#fff8e8] px-5 py-3 text-sm text-[#745716]">
           <span className="font-semibold">{HEALTH_LABEL[health.status]}</span>
@@ -258,7 +283,7 @@ export function AppSettingsPage() {
           {health.status === "check_token" || health.status === "token_pending" ? (
             <span className="ml-auto">
               <TextAction asChild>
-                <Link to={`${guide}?part=rotate`}>Rotation Guide</Link>
+                <Link to={appGuideHref(applicationId, "rotate")}>Rotation Guide</Link>
               </TextAction>
             </span>
           ) : null}
@@ -275,8 +300,23 @@ export function AppSettingsPage() {
         groupsPath={base}
       />
 
-      <Tabs label="Settings" tabs={tabs} active={active} onChange={(id) => setParams({ tab: id })} />
+      <Tabs label="Application" tabs={tabs} active={active} onChange={(id) => setParams({ tab: id })} />
 
+      {active === "access" || active === "roles" || active === "permissions" ? (
+        <>
+          {active === "access" ? (
+            <Stats
+              items={[
+                ["Active Groups", more?.access.groups ?? setup.groups.active_count],
+                ["People Reached", more ? more.access.people : "-"],
+                ["Exceptions", more ? more.access.exceptions : "-"],
+                ["Blocked", more ? more.access.blocked : "-"],
+              ]}
+            />
+          ) : null}
+          <AppAccessSection applicationId={applicationId} detail={detailQuery.data} roles={roles} tab={active} />
+        </>
+      ) : (
       <section className="rounded-2xl border border-(--mws-line) bg-white p-5">
         {active === "overview" ? (
           <Rows
@@ -301,6 +341,12 @@ export function AppSettingsPage() {
               ...(more ? [["Created", formatDateTime(more.created_at)], ["Last Updated", `${formatDateTime(more.updated_at)}${more.activity[0]?.by ? ` by ${more.activity[0].by}` : ""}`]] : []),
             ]}
           />
+        ) : null}
+
+        {active === "overview" && !link && setup.connection.created && !retired ? (
+          <div className="mt-4 border-t border-(--mws-line) pt-4">
+            <TextAction onClick={() => setParams({ tab: "connection" })}>Rotate Credentials</TextAction>
+          </div>
         ) : null}
 
         {active === "hub" && setup.env_settings ? <HubSettingsCard settings={setup.env_settings} hub={setup.hub} applicationId={applicationId} sharedApps={setup.shared_apps ?? []} /> : null}
@@ -336,6 +382,9 @@ export function AppSettingsPage() {
             {retired ? null : setup.connection.created ? (
               <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-(--mws-line) pt-4">
                 <TextAction onClick={() => setRotating(true)}>Rotate Token</TextAction>
+                {setup.hub_secret?.applies && setup.hub_secret.mode === "own" ? (
+                  <TextAction onClick={() => setRotating("all")}>Rotate Everything</TextAction>
+                ) : null}
                 {setup.hub_secret?.applies ? (
                   <TextAction loading={appSecretMutation.isPending} onClick={changeAppSecret}>
                     {setup.hub_secret.mode === "own" ? "Rotate Hub Secret" : "Give A Dedicated Hub Secret"}
@@ -346,7 +395,7 @@ export function AppSettingsPage() {
                 ) : null}
                 {endpointsLoaded && setup.data_access.editable ? <TextAction onClick={() => setDataAccess(true)}>Change Data Access</TextAction> : null}
                 <TextAction asChild>
-                  <Link to={`${guide}?part=rotate`}>Rotation Guide</Link>
+                  <Link to={appGuideHref(applicationId, "rotate")}>Rotation Guide</Link>
                 </TextAction>
               </div>
             ) : (
@@ -388,78 +437,6 @@ export function AppSettingsPage() {
           </div>
         ) : null}
 
-        {active === "access" ? (
-          <div className="space-y-5">
-            <Stats
-              items={[
-                ["Active Groups", more?.access.groups ?? setup.groups.active_count],
-                ["People Reached", more ? more.access.people : "-"],
-                ["Exceptions", more ? more.access.exceptions : "-"],
-                ["Blocked", more ? more.access.blocked : "-"],
-              ]}
-            />
-            {more && more.access.roles.length > 0 ? (
-              <div className="space-y-0">
-              <DenseTable
-                minWidth={620}
-                head={
-                  <>
-                    <th className="px-4 py-2.5">Name</th>
-                    <th className="px-4 py-2.5">Key</th>
-                    <th className="px-4 py-2.5 text-center">Permissions</th>
-                    <th className="px-4 py-2.5 text-center">People</th>
-                    <th className="px-4 py-2.5 text-center">Groups</th>
-                    <th className="px-4 py-2.5">Status</th>
-                  </>
-                }
-              >
-                {rolesOnPage(more.access.roles, rolesPage).map((role) => (
-                  <tr key={role.id} className={denseRowClass}>
-                    <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>{titleCase(role.label)}</td>
-                    <td className={`${denseCellClass} font-mono text-xs text-(--mws-muted)`}>{role.key}</td>
-                    <td className={`${denseCellClass} text-center`}>{role.permission_count}</td>
-                    <td className={`${denseCellClass} text-center`}>
-                      <span className={role.people === 0 ? "text-(--mws-muted)" : undefined}>{role.people}</span>
-                    </td>
-                    <td className={`${denseCellClass} text-center`}>{role.groups}</td>
-                    <td className={denseCellClass}>
-                      <span className="inline-flex items-center gap-2 text-xs font-semibold text-(--mws-charcoal)">
-                        <span aria-hidden="true" className={`size-2 rounded-full ${role.is_active ? "bg-[#58a451]" : "bg-[#b8b0ad]"}`} />
-                        {role.is_active ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </DenseTable>
-              {more.access.roles.length > ROLES_PER_PAGE ? (
-                <PaginationBar
-                  paging={rolePaging(more.access.roles.length, rolesPage)}
-                  itemLabel="roles"
-                  onPrevious={() => setRolesPage(Math.max(rolesPage - 1, 1))}
-                  onNext={() => setRolesPage(rolesPage + 1)}
-                  onPageChange={setRolesPage}
-                />
-              ) : null}
-              </div>
-            ) : (
-              <p className="text-sm text-(--mws-muted)">No roles yet.</p>
-            )}
-            <div className="flex flex-wrap gap-x-5 gap-y-2">
-              <TextAction asChild>
-                <Link to={base}>Open Groups</Link>
-              </TextAction>
-              <TextAction asChild>
-                <Link to={`${base}?tab=roles`}>Open Roles</Link>
-              </TextAction>
-              {link ? null : (
-                <TextAction asChild>
-                  <Link to={`${base}?tab=permissions`}>Open Permissions</Link>
-                </TextAction>
-              )}
-            </div>
-          </div>
-        ) : null}
-
         {active === "activity" ? (
           <AppActivityTab
             data={more}
@@ -482,6 +459,7 @@ export function AppSettingsPage() {
           />
         ) : null}
       </section>
+      )}
 
       {setup.is_hub ? (
         <div role="note" className="flex items-center gap-3 rounded-2xl border border-[#d9a9ac] bg-[#7E15180D] px-5 py-3 text-sm text-(--mws-burgundy)">

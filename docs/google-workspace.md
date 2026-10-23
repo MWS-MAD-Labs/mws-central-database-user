@@ -4,7 +4,7 @@ Central makes and keeps the Google Workspace account of every employee and inter
 
 ## What runs where
 
-Only a production Central with `GOOGLE_WORKSPACE_ENABLED=true` talks to the real Workspace, or any other one that also has `GOOGLE_WORKSPACE_TEST_PREFIX` set (then only addresses with that prefix go to Google). Staging and development share that Workspace, so otherwise they use a simulated client that only writes to the log ("would create ..."). The Employee and Intern detail pages show **Simulated** next to the Google account there.
+Only a production Central with `GOOGLE_WORKSPACE_ENABLED=true` talks to the real Workspace, or any other one that also has `GOOGLE_WORKSPACE_TEST_PREFIX` set (then only addresses with that prefix go to Google). Staging and development share that Workspace, so otherwise they use a simulated client that only writes to the log ("would create ..."). The Employee and Intern detail pages show **Simulated** next to the Google account there. The simulated client's ids carry a random part per run (`simulated-1a2b3c4d-1`), because the links it leaves in the database must not collide with the ids of the next run. Check does not refuse any email while Google is simulated: it answers that it did not look.
 
 ## Trying it for real from your own machine (or staging)
 
@@ -20,7 +20,7 @@ Only addresses that start with a test prefix are sent to Google, so nothing else
 
 1. In Google Cloud, a service account with domain-wide delegation. In the Admin Console (Security > API controls > Domain-wide delegation) allow its client ID with the scope `https://www.googleapis.com/auth/admin.directory.user`.
 2. A Workspace admin that Central acts as, with the **User Management** role only (not the main super admin), for example `central-sync@millennia21.id`.
-3. Admin Console > Security > Account recovery: allow users to recover their own account. New accounts get a random password nobody knows and a recovery email, so the person sets their own password with "Forgot password". Try it on one test account first.
+3. Admin Console > Security > Account recovery: allow users to recover their own account. New accounts get a temporary password that the person must change at the first sign in, and a recovery email for "Forgot password" later. Try it on one test account first.
 4. Set these in the Komodo stack of the production Central (they reach the container through `docker-compose.yml`):
 
 | Variable | Value |
@@ -31,6 +31,8 @@ Only addresses that start with a test prefix are sent to Google, so nothing else
 | `GOOGLE_WORKSPACE_CREDENTIALS_B64` | the service account JSON, base64 on one line (`base64 -w0 key.json`) |
 | `GOOGLE_WORKSPACE_TEST_PREFIX` | leave empty in production. Only for trying it from elsewhere, see above |
 | `GOOGLE_OU_EMPLOYEE`, `GOOGLE_OU_INTERN`, `GOOGLE_OU_STUDENT` | optional, the org unit path for each kind, for example `/Employees` |
+
+The sign-in email needs an SMTP server too, see Sending the first sign-in details.
 
 The key is a secret. Keep it out of Git and out of chat, and make a new one if it was ever shared.
 
@@ -48,9 +50,27 @@ The page asks the server what the admin may do and shows only those buttons.
 
 Until the account is restored, Make temporary password, Change recovery email, Suspend and Unsuspend are off, in the page and on the server. The email of the person can still be changed in Central (it has to pass the check); the Google account is not touched, and Restore renames it to the email and name Central holds at that moment. A person who forgot their password and has no usable recovery email gets a temporary password from **Make temporary password**, shown once.
 
+## Changing the email of someone who exists
+
+The Email field of an edit form is locked, and saving a form never changes it (a plain edit that sends a different email is refused). The email is changed only by **Change Email** on the form, which is for a Super Admin (`POST /api/admin/{employees,interns,students}/:id/change-email`). The dialog shows the current email, checks the new one with the same Check button, wants it typed twice and a reason (kept in the audit log), and says what follows: the Google account is renamed (same account, same data), the person signs in with the new address, and apps that find people by email may need it. It is refused for a protected admin address, for a person who is also an admin (change the admin first), for an email already used in Central, and for one Google already has. A person with no Google account only changes in Central.
+
+## Import and emails
+
+An import never changes an email. A row that matches an existing student or employee updates the rest of the row, and when the email in the sheet differs from the stored one the preview warns ("Import does not change emails") and the row is still committed. An email is changed only by Change Email. The import dialog says it is for loading many people at once, and that one person goes through the form.
+
+## Checking an Employee ID
+
+The Employee ID field of the create form asks `GET /api/admin/employees/id-availability?employee_id=` as soon as the whole ID is typed (11.11.111) and says Available, used, or used by an archived employee, and the form will not save a used one. The server still refuses a used ID when the employee is saved.
+
 ## Checking an email
 
 A new or changed email has to pass the **Check** button before Create or Save is enabled. Typing never asks Google. The answer belongs to the address that was checked, so changing the text asks for a new check. The server checks again by itself on create, and on an edit of someone who has a Google account, because that account is renamed with the email.
+
+## An email Google already has, for a new employee or intern
+
+The form refuses it, since a typo could be someone else's mailbox. A Super Admin can tick "Wait for this person to sign in" instead (`claim_existing_google`). The person is saved with the status `PENDING_CLAIM`, nothing is made or changed in Google, and no recovery email is asked for. The account is linked when that mailbox's owner signs in to Central with Google, because the sign-in is what proves it is theirs. Until then provision, the bulk link and every other action on the account are refused. Someone who never signs in stays waiting. Interns work the same way, and so do protected admin addresses on the intern form.
+
+A claimed account keeps the name it has in Google: Central no longer writes its name over it (`google_keeps_name`), only the email follows. While it waits, a protected Super Admin can reset its password (`POST .../google/reset-waiting`). It goes ahead only when the name in Google is the name in Central, the password is mailed to the recovery email Google holds for the account, and it is never shown or sent to the mailbox itself. It needs SMTP, and an account with no recovery email cannot use it.
 
 ## Accounts that were in Google before Central
 
@@ -71,6 +91,10 @@ On a development machine with the test prefix set, a real person such as `dummys
 
 A person made before the Google accounts has no link, even when their email is already a Google account. The row then says **In Google** with a **Link** button that needs no recovery email. Master Data > Employment > Google Accounts shows how everyone stands and links all the matches at once, after a preview. Workspace admins and addresses outside the allowed prefix are left out.
 
+## Central and Google compared
+
+Master Data > Employment > Google Accounts has a second card, **Central And Google**, with a **Run Report** button (Super Admin, `GET /api/admin/google/reconcile`). It reads everyone in Central and every active account in Google, changes nothing, and groups the differences: **Only In Central** (someone who should have an account and has none), **Only In Google** (an account nobody in Central has the email of), **Not Linked** (the same email on both sides, not linked), **Email Differs**, **Name Differs** (an account claimed with its own name is marked, since that is expected), **Should Be Suspended** (the person left and the account is still active), **Suspended In Google** (active here, suspended there) and **Link Broken** (linked to an account Google does not have). Each group shows up to 200 rows and **Download CSV** has the same. Workspace admins, protected admin addresses, addresses outside the domain or that Central may not reach from here, and the simulated Google are left out (the simulated Google refuses the report). The answer is kept for a minute, so pressing the button again does not ask Google again.
+
 ## Hints in the lists
 
 In Employees, Interns and Students a name that has hints is coloured by the most serious one (red: wrong, amber: worth a look, blue: information, plain with a dotted underline: only a note) and opens the hints when clicked. They are listed grouped as Discipline, Google Account and Data To Review, each with a sentence. The Google hints are only for things that need someone to look: a failed account, a deleted or missing one (with the last day it can be restored), a suspended one that nobody expected, a password not set after a week, and an account still active for someone who left. Having no account is not a hint, and neither is an account Central suspended because the person left. The server sends them as `google_account.hints` on every employee and intern.
@@ -78,7 +102,8 @@ In Employees, Interns and Students a name that has hints is coloured by the most
 ## Rules the code keeps
 
 - Only people held in Central, on `ALLOWED_DOMAIN`. Workspace admins and `PROTECTED_SUPER_ADMIN_EMAILS` are never changed from here.
-- A temporary password is shown once to the Super Admin who asked and is never stored, logged or put in the audit log.
+- A protected admin who makes their own employee record gets their Google account linked (read only, `linkOwn`): they are signed in with it, so it is theirs. Nothing is made or changed there, and every other action stays refused. When someone else makes the record, it is saved with no link, and it is linked the first time that admin signs in to Central. Until then the row reads Not Checked.
+- A temporary password is shown once, to the admin who made the account or the protected Super Admin who reset it, and is never stored, logged or put in the audit log. The mail that carries it is written by the server; the audit entry only says to which hidden address and in which language.
 - The recovery email goes to Google and is not kept in Central. It can be any clean address, another mailbox of the organization included (`@millennia21.id`), but not the account's own address. If that mailbox belongs to someone who left or is suspended, the code never arrives. Google does not ask the owner of that address to confirm, so the forms remind you to read it again, and the review before creating shows it in full. It is hidden (`b***@gmail.com`) only where the full address is not on the screen: the current one in Change Recovery Email, and the sign-in instructions that get passed on. Central cannot tell whether the same address is the recovery email of other accounts.
 - A failure from Google never undoes the person in Central. The Google account row shows **Failed** with the reason, and a Super Admin can try again.
 - Employee photos: the signed-in employee only, through `PUT /api/auth/employee/me/photo`. Admins still have their existing upload; closing that path is a separate decision.
@@ -102,10 +127,71 @@ With `GOOGLE_SUSPEND_ON_OFFBOARD=true` (off by default), Central suspends the Go
 - An account turned on again directly in Google is locked again by the hourly status check, or when the detail page is opened. There is up to an hour of delay: Google sends no event to Central. Near real time would need the Reports API (another scope).
 - Suspending is recorded in the audit log with the reason, and `reactivated_in_google` when it was undone in Google.
 
+## Sending the first sign-in details
+
+An email that is made up is the main way a password gets lost, so the forms guard the address the password goes to (the recovery email of an employee or intern, the parent's email of a student). The form suggests the right domain for a misspelt popular one (`gmial.com` to `gmail.com`), asks for the email typed twice (pasting is blocked), and the review dialog flags the address and will not create until a box is ticked saying it is the right one. The server refuses a domain that certainly cannot receive mail (no MX record and no address, `email-domain.ts`; a DNS that does not answer lets it through) on create and on Change Recovery Email. Nobody can tell from here whether the mailbox itself exists or whose it is, so an unread password still shows up later as an account nobody signed in to.
+
+When email is set up, the first password is mailed by the server the moment the account is made (employees and interns to the recovery email typed in the form, students to the parent), and by Make Temporary Password to the recovery email Google holds (a student's to the parent chosen, the primary one by default). The admin never sees it: the form says where it went (`delivered_to`, hidden) and no dialog opens. Only when it cannot be sent (email off, nobody to send to, the 20 an hour or the wait for the same person reached, or the mail failed) does the server give the password back, with the reason in `not_sent` (`EMAIL_OFF`, `NO_RECIPIENT`, `LIMIT`, `FAILED`), and the dialog below open with that reason on top, since the account or the old password is already gone. The status of an account also says `details_sent` (a mail with the first details went out since the last password was made); while the password is still waiting and that is false, the Google row says the details were not emailed and points to Make Temporary Password, which makes a new password and mails it. The mail is a designed page (`signin-email-html.ts`): a burgundy header, the email and the password in a card (the password in a box that one tap selects, because a mail cannot run a Copy button), a **Sign in to Google** button that opens Google with the email filled in, the steps and a warning, with the plain text sent along for apps that show no page. Names and addresses are escaped. The header carries the school logo as an inline attachment (`server/src/assets/millennia-logo.png`, made from the SVG logo; a client that blocks images simply shows no logo), the password box is marked COPY with a long-press hint, and a dark-mode block is there for the apps that read it. The admin picks the language (English or Bahasa Indonesia, English by default) with a toggle in the review before creating, and in the Make Temporary Password dialog (`email_language` and `language`). On the forms, an email that is not the organization's (the recovery email, a parent's) is a name and a domain pick (gmail.com first, in the app's own dropdown, with Another Domain to type a whole address), typed again in a second field (on a common domain only the name is typed again, with the domain shown fixed after it; another domain is typed whole both times). The admission of a new student goes step by step: Entry Type (nothing picked at first), then Join Academic Year, Join Grade and Current Grade, each waiting for the one before. Preview it in Mailpit's HTML tab. The rest of this section is that dialog.
+
+A new account is made with a temporary password (16 characters). The dialog that opens right after, **Share Sign-in Details**, shows it once (hidden until Show) with a message ready to paste into WhatsApp: "Halo {name}, ..." in Bahasa Indonesia or English, editable before Copy Message. While the password is hidden it is hidden in the message too (dots, read-only); Show reveals both and lets the admin edit the message. Copy Message always copies the real text. **Send Email** mails the same details, by default to the account's recovery email: the server reads it from Google and sends there, the browser only sees it hidden (`b***@gmail.com`). The admin can choose another address instead. An account with no recovery email says so and offers Add Recovery Email. Make Temporary Password opens the same dialog. Closing it without copying or sending asks first, because the password cannot be shown again.
+
+The server only mails for an account that still waits for its first password and was issued in the last 48 hours, to an address that is not the account's own, and at most 20 mails an hour per admin. Making a new password and mailing the details go together, because a new password ends the one just given out, so both wait the same **2 minutes** for the same person: a new temporary password is refused for 2 minutes after the last one was made (by creating the account or by Make Temporary Password), and a second mail for 2 minutes after the last.
+
+The other actions on a Google account wait too, per person, in `GOOGLE_COOLDOWN_SECONDS` (`google-workspace-service.ts`):
+
+| Action | Waits | Read from |
+|---|---|---|
+| Check Google | 10 seconds | the last press of Check, kept in the server's memory. The page looking at Google by itself when it opens does not count |
+| Suspend, Unsuspend | 30 seconds | the last suspend or unsuspend in the audit log |
+| Add or Change Recovery Email | 1 minute | the last recovery email entry in the audit log |
+| Make Temporary Password | 2 minutes | `google_password_issued_at` |
+| Send Email | 2 minutes | the last `GOOGLE_SIGNIN_EMAILED` in the audit log |
+
+An action inside its wait is refused with 429 and the time left. Those read from the audit log survive a restart of the server. The status carries `check_available_at`, `suspend_available_at`, `recovery_available_at`, `password_available_at`, `email_available_at` and `cooldowns` (the seconds above), and the page keeps the button off with a burgundy ring around it that shortens as the wait runs out (`CooldownRing`).
+
+### What Check says
+
+Check Google answers with `check: { outcome, changes, checked_at }`. `outcome` is `checked`, `simulated` (this environment does not talk to the real Google, so nothing was asked), `unreachable` (Google did not answer; the last answer is kept) or `skipped`. `changes` lists what differs from before: the status of the account, the password state and a new sign-in. The page shows a message, and under the account "Checked 14:32. Nothing changed." or the changes, and "Last checked 14:32" before anything is pressed.
+
+Email needs an SMTP server, which is a mailbox's login for sending, not something Central makes. Use the same block as MTSS or Exima: copy their `SMTP_*` lines from Komodo (MTSS already sends from `no-reply@millennia21.id`). Without these variables Send Email is off and says so.
+
+| Variable | Where it comes from |
+|---|---|
+| `SMTP_HOST` | the mail server: `smtp.gmail.com` for Google Workspace (`smtp-relay.gmail.com` for a relay that allows the server's IP and needs no login) |
+| `SMTP_PORT` | `465` (SSL, what Exima uses) or `587` (the default here). Port 465 turns `SMTP_SECURE` on by itself |
+| `SMTP_SECURE` | `true` for 465, empty for 587 |
+| `SMTP_USER` | the sender mailbox, for example `no-reply@millennia21.id` |
+| `SMTP_PASSWORD` | an **app password** of that mailbox, not its normal password: Google Account of the mailbox > Security > 2-Step Verification (must be on) > App passwords. MTSS calls the same value `SMTP_PASS`, and that name works here too |
+| `SMTP_FROM` | what the person sees as sender, for example `Millennia Central <no-reply@millennia21.id>` |
+
+Use a mailbox made for this, not an admin's own. In development run Mailpit (`docker run -p 1025:1025 -p 8025:8025 axllent/mailpit`) with `SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025`, `SMTP_FROM=central@localhost`, and read the mail at `http://localhost:8025`. Tests never send mail.
+
+## Profile
+
+`/profile` shows the signed-in person's own employee record, read only, in tabs: Overview (the account), Personal (contact, address, education, and the sensitive details), Employment, Family and, for admins, Access. An admin is made from an employee, so the record is theirs when `AdminUser.person_id` points to one (`GET /api/auth/me` returns `employee_id`); an admin with no link sees only Overview and Access. An employee who signs in reads it from `GET /api/auth/employee/me/detail`. Identifiers (NIK, NPWP, bank, BPJS, birth details, children) stay hidden until Show; the reveal is recorded as `ACCESS_EMPLOYEE_PII` with `self: true`. Nothing is edited there: a change goes through Request a Change (`/change-requests/mine`), and the photo can still be changed by the person.
+
+## Photos
+
+Central owns the photo. It is kept in MinIO and shown from there. An employee who changes their own photo on the Profile page sends it to their Google account too (an admin who uploads a photo does not). Nothing in Google overwrites a photo in Central: when Central has none, the photo of the linked Google account is taken once, when the account is claimed or linked, when a Super Admin checks the account, or with the Use Google photo button on the employee page (`POST /api/admin/employees/:id/google/photo`). A photo changed in Google afterwards is not read.
+
+## Students
+
+A student has a Google account too. The form makes it at once when the student is created, with the parent's email as recovery email, and the first password comes back once in a Share dialog (it is not made for a legacy student or one saved to be linked, and a failure leaves the student saved with a Google status that can be retried). Later actions are on the student's detail page (`/api/admin/students/:id/google`, the same set as for employees). What is different is who gets the first password: a parent or guardian.
+
+- **The student form checks the email like the employee form.** Pressing Check asks Google, and the server repeats the check on create (only for the form, not the import) and when a student who already has an account is renamed.
+- **An email Google already has, for a legacy student.** Students do not sign in to Central, so nobody can claim the account by signing in. A Super Admin ticks "Link the existing Google account later" on the form (legacy students only) or opens the student page later, and links it from there. It goes ahead only when the name in Google is the name in Central (word order and case do not count), the student is a legacy one (a legacy NIS, or no valid NIS yet, or saved as waiting), and nothing is changed in Google. No password is made and the name in Google is never written over. For any other student, or any other admin, an email Google already has is refused. Once a valid NIS is issued the legacy NIS is cleared, so the student stops counting as legacy unless it was saved as waiting.
+- **A new student comes with a parent or guardian who has an email.** `POST /api/admin/students` requires `parent: { type, full_name, email, phone? }` and saves it with the student as the primary contact. This goes further than `Centralized User Database.md` (20.2), which only says a parent contact *should* be there. The import of older data does not ask for it (it calls the service without `requireParentContact`), and older students without one keep working; they just cannot get a Google account until one parent or guardian with an email is added.
+- **Create Google Account** asks which parent or guardian the account is for (the primary one is chosen). Their email becomes the account's **recovery email**, so "Forgot password" also reaches them. Without a parent or guardian with an email the button is off and says why, and the server answers 400.
+- **Share Sign-in Details** lists the parents and guardians that have an email (email hidden, phone shown only to an admin who may see sensitive student data). Copy Message is written to the chosen one ("Yth. Bapak/Ibu {name}, akun Google Millennia untuk {student} sudah dibuat..."). **Send Email** sends `{ parent_id, language, password }`: the server reads the address from the parent record, checks the parent belongs to the student, and writes the mail itself. No address is typed or taken from the browser.
+- **Who may do what**: making the account is for a Super Admin or a Database Admin who may write students in the student's unit (the unit of the current grade); seeing the status needs the student's unit in the admin's view scope. Reset password, suspend, restore and Check stay as for employees (protected Super Admin, Super Admin).
+- **Locked** (no new password, no unsuspend): a student who withdrew, transferred or was archived, or is deleted. A graduate keeps the account for now.
+- The waits (2 minutes for a new password and for a mail, and the others) apply to students too.
+- Not done yet: making accounts for a whole class at once, hints in the student list, suspending on leave.
+
 ## Recovery email
 
-The recovery email lives only in Google, so "Forgot password" sends its code there. A Super Admin can see it hidden (`b***@gmail.com`) and change it from the Google account row. The new address goes to Google and is not kept in Central or the audit log. If the person cannot use any recovery email, Reset Google password gives a temporary password without it. Self-service recovery must be on in the Admin Console (Security, Account recovery), otherwise Reset in Central is the only way.
+The recovery email lives only in Google, so "Forgot password" sends its code there. A Super Admin can see it hidden (`b***@gmail.com`) and the admin who may make the account sees the same hint. Whoever may make the account can **add** one when the account has none (older accounts); replacing one that is there stays with the protected Super Admins. The new address goes to Google and is not kept in Central or the audit log. If the person cannot use any recovery email, Reset Google password gives a temporary password without it. Self-service recovery must be on in the Admin Console (Security, Account recovery), otherwise Reset in Central is the only way.
 
 ## Not done yet
 
-Students (their parents' emails exist only after the student is created, so the account is a separate step), suspending the Google account when someone leaves, a one-off report that compares every email in Central with Google, and a self-service photo for interns (they have no sign-in to Central).
+Bulk account creation per class, suspending the Google account when someone leaves, a one-off report that compares every email in Central with Google, and a self-service photo for interns (they have no sign-in to Central).

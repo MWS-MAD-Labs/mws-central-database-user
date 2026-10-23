@@ -8,6 +8,10 @@ import {
 } from "../../model/auth-model";
 import { EmployeePhotoService } from "../../service/employee-photo-service";
 import { AuthService } from "../../service/auth-service";
+import { EmployeeService } from "../../service/employee-service";
+import { DisciplinaryActionService } from "../../service/disciplinary-action-service";
+import { prismaClient } from "../../lib/prisma";
+import { linkAdminToEmployee } from "../../utils/admin-person-link";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 
@@ -44,7 +48,39 @@ export class AuthController {
 
   static async me(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
-    return c.json({ data: await toAdminResponse(admin) });
+    // An admin is made from an employee. When that employee is still held, the Profile shows their record.
+    // The link is also made here, so an employee added after the last sign-in is found by opening the page again.
+    const personId = admin.person_id ?? (await linkAdminToEmployee(admin.email));
+    const employee = personId
+      ? await prismaClient.employee.findFirst({ where: { person_id: personId, deleted_at: null }, select: { id: true } })
+      : null;
+    return c.json({ data: { ...(await toAdminResponse({ ...admin, person_id: personId })), employee_id: employee?.id ?? null } });
+  }
+
+  // An admin made from an employee reads that employee's own actions. No employee, no actions.
+  static async adminDisciplinaryActions(c: Context<{ Variables: AdminVariables }>) {
+    c.header("Cache-Control", "no-store");
+    const admin = c.var.admin;
+    const employee = admin.person_id
+      ? await prismaClient.employee.findFirst({ where: { person_id: admin.person_id, deleted_at: null }, select: { id: true } })
+      : null;
+    return c.json({ data: employee ? await DisciplinaryActionService.listOwn(employee.id) : [] });
+  }
+
+  // The signed-in employee's own record for the Profile page, and the identifiers it leaves out once they ask for them.
+  static async employeeDetail(c: Context<{ Variables: EmployeeVariables }>) {
+    c.header("Cache-Control", "no-store");
+    return c.json({ data: await EmployeeService.getOwn(c.var.employee.id) });
+  }
+
+  static async employeeRevealPii(c: Context<{ Variables: EmployeeVariables }>) {
+    c.header("Cache-Control", "no-store");
+    return c.json({ data: await EmployeeService.revealOwnPii(c.var.employee.id) });
+  }
+
+  static async employeeDisciplinaryActions(c: Context<{ Variables: EmployeeVariables }>) {
+    c.header("Cache-Control", "no-store");
+    return c.json({ data: await DisciplinaryActionService.listOwn(c.var.employee.employee!.id) });
   }
 
   static async employeeMe(c: Context<{ Variables: EmployeeVariables }>) {
@@ -66,6 +102,22 @@ export class AuthController {
       file,
       getAuditRequestContext(c),
     );
+    return c.json({ data: true });
+  }
+
+  // An admin made from an employee changes that employee's photo. The person comes from the session.
+  static async adminPhoto(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const body = await c.req.parseBody();
+    const file = body["file"];
+    if (!(file instanceof File)) {
+      throw new ResponseError(400, "A file is required under the 'file' field");
+    }
+    const employee = admin.person_id
+      ? await prismaClient.employee.findFirst({ where: { person_id: admin.person_id, deleted_at: null }, select: { id: true } })
+      : null;
+    if (!admin.person_id || !employee) throw new ResponseError(404, "Employee not found");
+    await EmployeePhotoService.uploadOwn(admin.person_id, employee.id, file, getAuditRequestContext(c));
     return c.json({ data: true });
   }
 

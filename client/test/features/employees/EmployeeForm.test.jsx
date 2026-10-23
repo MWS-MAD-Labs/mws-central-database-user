@@ -26,13 +26,18 @@ function renderEmployeeForm({
   onSubmit = mock(() => {}),
   isSubmitting = false,
   myRequests = [],
+  availability = { available: true, reason: 'FREE', message: 'Available' },
+  idAvailability = { available: true, reason: 'FREE', message: 'Available' },
 } = {}) {
   globalThis.fetch = mock(async (url) => {
     if (url.includes('/identifier-change-requests/mine')) {
       return new Response(JSON.stringify({ data: myRequests, paging: { current_page: 1, total_page: 1, total_item: myRequests.length, size: 20 }, unseen_decided_count: 0 }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     if (url.includes('/email-availability')) {
-      return jsonResponse({ available: true, reason: 'FREE', message: 'Available' })
+      return jsonResponse(availability)
+    }
+    if (url.includes('/id-availability')) {
+      return jsonResponse(idAvailability)
     }
     if (url.includes('/education-suggestions')) {
       return jsonResponse({ institution_names: [], majors: [] })
@@ -93,7 +98,6 @@ describe('EmployeeForm', () => {
   it('submits a valid normalized create payload', async () => {
     setSystemTime(new Date('2026-09-17T12:00:00.000Z'))
     const { user, onSubmit } = renderEmployeeForm({ mode: 'create' })
-
     await user.type(field('full_name').querySelector('input'), 'ari employee')
     await user.type(field('nick_name').querySelector('input'), 'ari')
     await user.type(field('email_local').querySelector('input'), 'ari.employee!')
@@ -101,18 +105,20 @@ describe('EmployeeForm', () => {
     expect(field('email_local').querySelector('input').value).toBe('ari.employee')
     await user.click(screen.getByRole('button', { name: 'Check' }))
     await screen.findByText('Available')
-    await user.type(field('recovery_email').querySelector('input'), 'Ari+Pribadi@Gmail.com')
-    expect(field('recovery_email').querySelector('input').value).toBe('ari+pribadi@gmail.com')
-    expect(screen.getByText('Check the spelling. Nobody confirms it.')).toBeVisible()
+    await user.type(field('recovery_email').querySelector('input'), 'Ari+Pribadi')
+    await user.type(field('recovery_email_confirm').querySelector('input'), 'ari+pribadi')
+    // The name is typed, the domain is a pick (gmail.com first), and together they are the email.
+    expect(field('recovery_email').querySelector('input').value).toBe('ari+pribadi')
+    expect(screen.getByRole('button', { name: '@gmail.com' })).toBeVisible()
     await chooseSelect(user, 'Select Gender', 'Male')
     await chooseSelect(user, 'Select Religion', 'Islam')
     await user.type(field('birth_place').querySelector('input'), 'jakarta')
     await user.type(field('employee_id').querySelector('input'), '1111111')
     await chooseSelect(user, 'Probation', 'Permanent')
-    await chooseSelect(user, 'Select unit', 'Elementary')
-    await chooseSelect(user, 'Select level', /Teacher/)
-    await chooseSelect(user, 'Select position', 'Classroom Teacher')
-    await chooseSelect(user, 'Select building', 'Main Building')
+    await chooseSelect(user, 'Select Unit', 'Elementary')
+    await chooseSelect(user, 'Select Level', /Teacher/)
+    await chooseSelect(user, 'Select Position', 'Classroom Teacher')
+    await chooseSelect(user, 'Select Building', 'Main Building')
     setDate('birth_date', '10/05/1990')
     setDate('join_date', '01/07/2020')
     await user.type(field('mobile_phone').querySelector('input'), '+62 812-3456')
@@ -121,6 +127,12 @@ describe('EmployeeForm', () => {
     const review = await screen.findByRole('dialog', { name: 'Review before creating' })
     // The last look before saving shows the recovery email in full, so a typo can still be caught.
     expect(within(review).getByText('ari+pribadi@gmail.com')).toBeVisible()
+    // The language of the mail is chosen here: English unless switched to Indonesian.
+    expect(within(review).getByRole('radio', { name: 'English' })).toBeChecked()
+    await user.click(within(review).getByRole('radio', { name: 'Bahasa Indonesia' }))
+    // The create button waits for a tick that the address is the right one.
+    expect(within(review).getByRole('button', { name: 'Create employee' })).toBeDisabled()
+    await user.click(within(review).getByRole('checkbox'))
     await user.click(within(review).getByRole('button', { name: 'Create employee' }))
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
@@ -129,6 +141,7 @@ describe('EmployeeForm', () => {
       nick_name: 'Ari',
       email: 'ari.employee@millennia21.id',
       recovery_email: 'ari+pribadi@gmail.com',
+      email_language: 'id',
       gender: 'MALE',
       religion: 'ISLAM',
       religion_other: null,
@@ -156,6 +169,8 @@ describe('EmployeeForm', () => {
     expect(await screen.findByText('Recovery email is required.')).toBeVisible()
 
     // Another mailbox of the organization is a fine place for the code to go.
+    await user.click(screen.getByRole('button', { name: '@gmail.com' }))
+    await user.click(screen.getByRole('option', { name: 'Another Domain' }))
     const recovery = field('recovery_email').querySelector('input')
     await user.type(recovery, 'colleague@millennia21.id')
     expect(await screen.findByText('An organization mailbox. Check the spelling.')).toBeVisible()
@@ -165,6 +180,123 @@ describe('EmployeeForm', () => {
     await user.type(recovery, 'ARI.EMPLOYEE@millennia21.id')
     expect(await screen.findByText("That is the account's own address. Use another mailbox.")).toBeVisible()
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('asks for no recovery email for a protected admin address, which becomes an employee without a Google account', async () => {
+    const message = 'This is a protected admin address. The employee is saved without a Google account'
+    const { user } = renderEmployeeForm({ mode: 'create', availability: { available: true, reason: 'PROTECTED', message } })
+    await user.type(field('full_name').querySelector('input'), 'rizqi')
+    await user.type(field('email_local').querySelector('input'), 'rizqi')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+    expect(await screen.findByText(message)).toBeVisible()
+    fireEvent.submit(document.querySelector('form'))
+    expect(screen.queryByText('Recovery email is required.')).not.toBeInTheDocument()
+    expect(field('recovery_email').querySelector('input')).toBeDisabled()
+    expect(screen.getByText('Not needed: no Google account is made for this address.')).toBeVisible()
+  })
+
+  it('saves a protected admin address with every other field filled and no recovery email', async () => {
+    setSystemTime(new Date('2026-09-17T12:00:00.000Z'))
+    const message = 'This is a protected admin address. It is saved without a link to Google, and Central never changes that account'
+    const { user, onSubmit } = renderEmployeeForm({ mode: 'create', availability: { available: true, reason: 'PROTECTED', message } })
+    await user.type(field('full_name').querySelector('input'), 'rizqi')
+    await user.type(field('nick_name').querySelector('input'), 'rizqi')
+    await user.type(field('email_local').querySelector('input'), 'rizqi')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+    expect(await screen.findByText(message)).toBeVisible()
+    await chooseSelect(user, 'Select Gender', 'Male')
+    await chooseSelect(user, 'Select Religion', 'Islam')
+    await user.type(field('birth_place').querySelector('input'), 'jakarta')
+    await user.type(field('employee_id').querySelector('input'), '1111111')
+    await chooseSelect(user, 'Probation', 'Permanent')
+    await chooseSelect(user, 'Select Unit', 'Elementary')
+    await chooseSelect(user, 'Select Level', /Teacher/)
+    await chooseSelect(user, 'Select Position', 'Classroom Teacher')
+    await chooseSelect(user, 'Select Building', 'Main Building')
+    setDate('birth_date', '10/05/1990')
+    setDate('join_date', '01/07/2020')
+
+    fireEvent.submit(document.querySelector('form'))
+    const review = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(review).getByRole('button', { name: 'Create employee' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('recovery_email')
+  })
+
+  it('suggests the right domain for a misspelt recovery email and wants the email typed twice', async () => {
+    const { user } = renderEmployeeForm({ mode: 'create' })
+    // An address on another domain is typed whole, and a misspelt popular one gets a suggestion.
+    await user.click(screen.getByRole('button', { name: '@gmail.com' }))
+    await user.click(screen.getByRole('option', { name: 'Another Domain' }))
+    const recovery = field('recovery_email').querySelector('input')
+    await user.type(recovery, 'ari@gmial.com')
+    await user.click(screen.getByRole('button', { name: 'Use it' }))
+    expect(recovery.value).toBe('ari@gmail.com')
+
+    const again = field('recovery_email_confirm').querySelector('input')
+    await user.type(again, 'ari@gmial.com')
+    fireEvent.submit(document.querySelector('form'))
+    expect(await screen.findByText('The two emails do not match.')).toBeVisible()
+  })
+
+  it('keeps the second recovery email off, and quiet, until the first one is filled in and valid', async () => {
+    const { user } = renderEmployeeForm({ mode: 'create' })
+    const again = field('recovery_email_confirm').querySelector('input')
+    expect(again).toBeDisabled()
+    expect(screen.queryByText('Type the recovery email again.')).not.toBeInTheDocument()
+    // Side by side, with a name that says whose it confirms.
+    expect(screen.getByText('Confirm Recovery Email')).toBeVisible()
+    expect(field('recovery_email_confirm').parentElement).toBe(field('recovery_email').parentElement)
+
+    const recovery = field('recovery_email').querySelector('input')
+    await user.type(recovery, 'ari')
+    expect(recovery.value).toBe('ari')
+    // The domain was a pick, so the second typing is only the name, with the domain shown as fixed after it.
+    const nameAgain = field('recovery_email_confirm').querySelector('input')
+    expect(nameAgain).toBeEnabled()
+    expect(within(field('recovery_email_confirm')).getByText('@gmail.com')).toBeVisible()
+    await user.type(nameAgain, 'ari')
+    expect(nameAgain.value).toBe('ari')
+
+    await user.clear(recovery)
+    const emptied = field('recovery_email_confirm').querySelector('input')
+    expect(emptied).toBeDisabled()
+    expect(emptied.value).toBe('')
+
+    // The domain is a pick, gmail.com first, and it stays picked while the name is still empty.
+    expect(screen.getByRole('button', { name: '@gmail.com' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '@gmail.com' }))
+    await user.click(screen.getByRole('option', { name: '@yahoo.com' }))
+    await user.type(recovery, 'budi')
+    expect(screen.getByRole('button', { name: '@yahoo.com' })).toBeVisible()
+  })
+
+  it('locks the email of someone who exists and offers Change Email to a Super Admin only', async () => {
+    const { unmount } = renderEmployeeForm({ mode: 'edit' })
+    expect(field('email_local').querySelector('input')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Change email' })).toBeVisible()
+    unmount()
+
+    renderEmployeeForm({ mode: 'edit', user: employeeDatabaseAdmin })
+    expect(field('email_local').querySelector('input')).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Change email' })).not.toBeInTheDocument()
+    expect(screen.getByText('Only a Super Admin can change an email.')).toBeVisible()
+  })
+
+  it('says right away that an Employee ID is used, and does not let the form pass with it', async () => {
+    const { user, onSubmit } = renderEmployeeForm({ mode: 'create', idAvailability: { available: false, reason: 'IN_USE', message: 'This Employee ID is already used' } })
+    await user.type(field('employee_id').querySelector('input'), '1111111')
+    expect(await screen.findByText('This Employee ID is already used')).toBeVisible()
+    fireEvent.submit(document.querySelector('form'))
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('does not ask about an Employee ID until the whole ID is typed', async () => {
+    const { user } = renderEmployeeForm({ mode: 'create' })
+    await user.type(field('employee_id').querySelector('input'), '11111')
+    expect(globalThis.fetch.mock.calls.some(([url]) => String(url).includes('id-availability'))).toBe(false)
+    await user.type(field('employee_id').querySelector('input'), '11')
+    expect(await screen.findByText('Available')).toBeVisible()
   })
 
   it('keeps the form from saving a new email until it is checked', async () => {
@@ -196,7 +328,7 @@ describe('EmployeeForm', () => {
   it('limits database admins to their unit and restricts PII editing', async () => {
     const { user } = renderEmployeeForm({ mode: 'create', user: employeeDatabaseAdmin })
 
-    await user.click(screen.getByRole('button', { name: 'Select unit' }))
+    await user.click(screen.getByRole('button', { name: 'Select Unit' }))
     expect(screen.getByRole('option', { name: 'Elementary' })).toBeVisible()
     expect(screen.queryByRole('option', { name: 'Secondary' })).not.toBeInTheDocument()
     await user.keyboard('{Escape}')

@@ -1,8 +1,23 @@
-import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
+import {
+  SensitiveHiddenNote,
+  SensitiveToggle,
+} from "../../../components/ui/SensitiveToggle.jsx";
 import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, UserRound } from "lucide-react";
+import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
+import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx";
+import {
+  ConfirmEmailField,
+  EmailSuggestion,
+} from "../../google/components/ConfirmEmailField.jsx";
+import { emailsMatch } from "../../google/utils/emailDomains.js";
+import { EmailWithDomain } from "../../google/components/EmailWithDomain.jsx";
+import { ReviewEmailLanguage } from "../../google/components/ReviewEmailLanguage.jsx";
+import { AdmissionStep } from "./AdmissionStep.jsx";
+import { SegmentedControl } from "../../../components/ui/SegmentedControl.jsx";
+import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { Button } from "../../../components/ui/Button.jsx";
 import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
 import { ChangeReviewTable } from "../../../components/ui/ChangeReviewTable.jsx";
@@ -31,6 +46,7 @@ import {
   trimmedOrUndefined,
   visibleErrors,
   emailProblem,
+  phoneDigitsOnly,
   sanitizeEmailLocalPart,
 } from "../../../lib/form.js";
 import {
@@ -131,12 +147,34 @@ export function StudentForm({
   );
 
   const isCreate = mode === "create";
+  // A new or changed email has to pass the Check button before the form can be saved.
+  // A Super Admin can save a legacy student whose email Google already has, and link the account afterwards.
+  const [claimExisting, setClaimExisting] = useState(false);
+  const emailCheck = useEmailCheck(
+    values.email_local ? `${values.email_local}@${ALLOWED_EMAIL_DOMAIN}` : "",
+    {
+      initialEmail:
+        !isCreate && initialValues.email_local
+          ? `${initialValues.email_local}@${ALLOWED_EMAIL_DOMAIN}`
+          : "",
+      allowClaim:
+        isCreate && user?.role === "SUPER_ADMIN" && Boolean(values.is_legacy),
+      claimExisting,
+    },
+  );
+  const claiming = emailCheck.state === "claimable" && claimExisting;
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  // A new student joins the grade they are in, so while the current grade is untouched it follows the join grade, as long
+  // as the join year is the one running. Picking a current grade by hand ends that.
+  const [currentGradeTouched, setCurrentGradeTouched] = useState(false);
   const allErrors = useMemo(
     () => computeStudentErrors(values, isCreate),
     [values, isCreate],
   );
+  // The email typed a second time only makes sense while the first one is filled in and valid.
+  const parentEmailNotReady =
+    !values.parent_email || Boolean(allErrors.parent_email);
   // Drives the floating Save button's disabled/tooltip state - a field
   // with a value that fails a rule shows its error live (see
   // visibleErrors below), a blank required field still waits for a
@@ -236,8 +274,35 @@ export function StudentForm({
     setValues((current) => ({ ...current, [field]: checked }));
   }
 
+  // The language of the mail that carries the password is picked in the review, which only answers yes or no.
+  const emailLanguage = useRef("en");
+
+  function followJoinGrade(yearId, gradeId) {
+    if (
+      !isCreate ||
+      currentGradeTouched ||
+      currentGradeLocked ||
+      !yearId ||
+      !gradeId
+    )
+      return;
+    const year = (options.academicYears || []).find(
+      (item) => item.id === yearId,
+    );
+    const allowed = (currentGradeOptionsForRole || []).some(
+      (grade) => grade.id === gradeId,
+    );
+    if (year?.status === "ACTIVE" && allowed)
+      updateValue("current_grade_id", gradeId);
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
+    emailLanguage.current = "en";
+    if (emailCheck.blocked) {
+      showErrorToast(emailCheck.message || "Check the email before saving.");
+      return;
+    }
     setHasAttemptedSubmit(true);
 
     const computedErrors = computeStudentErrors(values, isCreate);
@@ -275,18 +340,43 @@ export function StudentForm({
         excludeKeys: STUDENT_DIFF_EXCLUDED_KEYS,
         sections: STUDENT_FIELD_SECTIONS,
       });
+      // A legacy student or one linked later gets no account now, so no password is mailed.
+      const mailsPassword =
+        !values.is_legacy && !claiming && Boolean(values.parent_email);
       const confirmed = await confirm({
         title: "Review before creating",
         description: (
-          <ChangeReviewTable
-            changes={fields}
-            mode="create"
-            warning={lockWarning}
-            fieldWarnings={lockFieldWarnings}
-          />
+          <>
+            {mailsPassword ? (
+              <ReviewEmailLanguage
+                onChange={(value) => {
+                  emailLanguage.current = value;
+                }}
+              />
+            ) : null}
+            <ChangeReviewTable
+              changes={fields}
+              mode="create"
+              warning={lockWarning}
+              fieldWarnings={
+                mailsPassword
+                  ? {
+                      ...lockFieldWarnings,
+                      parent_email:
+                        "The password is sent to this address, so check it letter by letter.",
+                    }
+                  : lockFieldWarnings
+              }
+            />
+          </>
         ),
         confirmLabel: nisnBeingSet ? "Create and lock NISN" : "Create student",
-        wide: true,
+        ...(mailsPassword
+          ? {
+              requireCheckLabel: `The password will be sent to ${values.parent_email}. This is the right address.`,
+            }
+          : {}),
+        size: "xl",
       });
       if (!confirmed) return;
     } else {
@@ -314,7 +404,12 @@ export function StudentForm({
     }
 
     onSubmit(
-      buildPayload(values, { includeBirth: birthRevealed }),
+      buildPayload(values, {
+        includeBirth: birthRevealed,
+        isCreate,
+        claiming,
+        emailLanguage: emailLanguage.current,
+      }),
       pendingPhotoBlob,
     );
   }
@@ -332,7 +427,11 @@ export function StudentForm({
               Identity
             </h2>
             {!birthRevealed && canRevealBirth ? (
-              <SensitiveToggle revealed={false} loading={revealBirthMutation.isPending} onShow={handleRevealBirth} />
+              <SensitiveToggle
+                revealed={false}
+                loading={revealBirthMutation.isPending}
+                onShow={handleRevealBirth}
+              />
             ) : null}
           </div>
           {isCreate ? (
@@ -391,10 +490,33 @@ export function StudentForm({
               domain={ALLOWED_EMAIL_DOMAIN}
               max={EMAIL_LOCAL_MAX_LENGTH}
               sanitize={sanitizeEmailLocalPart}
+              note={
+                isCreate ? (
+                  <EmailCheckNote check={emailCheck} />
+                ) : (
+                  <ChangeEmailAction
+                    resource="students"
+                    id={student?.id}
+                    currentEmail={`${initialValues.email_local}@${ALLOWED_EMAIL_DOMAIN}`}
+                    name={values.full_name}
+                    canChange={user?.role === "SUPER_ADMIN"}
+                  />
+                )
+              }
+              disabled={!isCreate}
               values={values}
               errors={errors}
               updateValue={updateValue}
             />
+            {emailCheck.state === "claimable" ? (
+              <CheckboxField
+                className="md:col-span-2"
+                label="Link the existing Google account later"
+                description="Google already has this account. It is not changed. A Super Admin links it from the student page once the name in Google is the name here."
+                checked={claimExisting}
+                onChange={(event) => setClaimExisting(event.target.checked)}
+              />
+            ) : null}
             <Field label="Gender" name="gender" error={errors.gender} required>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
@@ -456,7 +578,11 @@ export function StudentForm({
                 name="legacy_nis"
                 error={errors.legacy_nis}
                 required={values.is_legacy}
-                counter={values.is_legacy ? { value: values.legacy_nis, max: 50, count: textLength } : undefined}
+                counter={
+                  values.is_legacy
+                    ? { value: values.legacy_nis, max: 50, count: textLength }
+                    : undefined
+                }
                 hint={
                   values.is_legacy
                     ? "Enter the exact historical NIS. If it matches the standard 7-digit format, it will automatically become the official NIS."
@@ -552,86 +678,202 @@ export function StudentForm({
                 }
               />
             </Field>
-            <Field
-              label="Entry Type"
-              name="entry_type"
-              error={errors.entry_type}
-              required
-              hint={
-                errors.entry_type
-                  ? undefined
-                  : entryTypeLocked
-                    ? "NIS is already assigned, so this is locked to keep them matching."
-                    : isCreate
+            {isCreate ? (
+              <div className="md:col-span-2">
+                <AdmissionStep number={1} done={Boolean(values.entry_type)}>
+                  <Field
+                    label="Entry Type"
+                    name="entry_type"
+                    error={errors.entry_type}
+                    required
+                  >
+                    <SegmentedControl
+                      label="Entry type"
+                      options={entryTypeOptions(studentEntryTypes)}
+                      value={values.entry_type}
+                      onChange={(value) => updateValue("entry_type", value)}
+                    />
+                  </Field>
+                </AdmissionStep>
+                <AdmissionStep
+                  number={2}
+                  done={Boolean(values.join_academic_year_id)}
+                  locked={!values.entry_type}
+                >
+                  <Field
+                    label="Join Academic Year"
+                    name="join_academic_year_id"
+                    error={errors.join_academic_year_id}
+                    required
+                  >
+                    <SearchableSelect
+                      required={hasAttemptedSubmit}
+                      disabled={!values.entry_type}
+                      value={values.join_academic_year_id}
+                      onChange={(value) => {
+                        updateValue("join_academic_year_id", value);
+                        followJoinGrade(value, values.join_grade_id);
+                      }}
+                      options={academicYearOptions(options.academicYears)}
+                      placeholder={
+                        values.entry_type
+                          ? "Select Join Year"
+                          : "Select Entry Type First"
+                      }
+                      searchPlaceholder="Search Years"
+                    />
+                  </Field>
+                </AdmissionStep>
+                <AdmissionStep
+                  number={3}
+                  done={Boolean(values.join_grade_id)}
+                  locked={!values.join_academic_year_id}
+                >
+                  <Field
+                    label="Join Grade"
+                    name="join_grade_id"
+                    error={errors.join_grade_id}
+                    required
+                  >
+                    <SearchableSelect
+                      required={hasAttemptedSubmit}
+                      disabled={!values.join_academic_year_id}
+                      value={values.join_grade_id}
+                      onChange={(value) => {
+                        updateValue("join_grade_id", value);
+                        followJoinGrade(values.join_academic_year_id, value);
+                      }}
+                      options={gradeOptions(joinGradeOptions)}
+                      placeholder={
+                        values.join_academic_year_id
+                          ? "Select Join Grade"
+                          : "Select Join Year First"
+                      }
+                      searchPlaceholder="Search Grades"
+                    />
+                  </Field>
+                </AdmissionStep>
+                <AdmissionStep
+                  number={4}
+                  done={Boolean(values.current_grade_id)}
+                  locked={!values.join_grade_id}
+                >
+                  <Field
+                    label="Current Grade"
+                    name="current_grade_id"
+                    error={errors.current_grade_id}
+                    required
+                  >
+                    <SearchableSelect
+                      required={hasAttemptedSubmit}
+                      disabled={!values.join_grade_id}
+                      value={values.current_grade_id}
+                      onChange={(value) => {
+                        setCurrentGradeTouched(true);
+                        updateValue("current_grade_id", value);
+                      }}
+                      options={gradeOptions(currentGradeOptionsForRole)}
+                      placeholder={
+                        values.join_grade_id
+                          ? "Select Current Grade"
+                          : "Select Join Grade First"
+                      }
+                      searchPlaceholder="Search Grades"
+                    />
+                  </Field>
+                </AdmissionStep>
+              </div>
+            ) : (
+              <>
+                <Field
+                  label="Entry Type"
+                  name="entry_type"
+                  error={errors.entry_type}
+                  required
+                  hint={
+                    errors.entry_type
                       ? undefined
-                      : "Safe to correct for legacy imports. Only affects a future NIS reissue."
-              }
-            >
-              <SearchableSelect
-                required={hasAttemptedSubmit}
-                disabled={entryTypeLocked}
-                value={values.entry_type}
-                onChange={(value) => updateValue("entry_type", value)}
-                options={entryTypeOptions(studentEntryTypes)}
-                placeholder="Select Entry Type"
-                searchPlaceholder="Search Entry Type"
-              />
-            </Field>
-            <Field
-              label="Current Grade"
-              name="current_grade_id"
-              error={errors.current_grade_id}
-              required
-              hint={
-                errors.current_grade_id
-                  ? undefined
-                  : currentGradeLocked
-                    ? "Derived from this student's enrollment history, so it's locked here. Use Enroll, Promote, or Transfer on their class record to change it."
-                    : undefined
-              }
-            >
-              <SearchableSelect
-                required={isCreate && hasAttemptedSubmit}
-                disabled={currentGradeLocked}
-                value={values.current_grade_id}
-                onChange={(value) => updateValue("current_grade_id", value)}
-                options={gradeOptions(currentGradeOptionsForRole)}
-                placeholder="Select Current Grade"
-                searchPlaceholder="Search Grades"
-              />
-            </Field>
-            <Field
-              label="Join Academic Year"
-              name="join_academic_year_id"
-              error={errors.join_academic_year_id}
-              required
-            >
-              <SearchableSelect
-                required={isCreate && hasAttemptedSubmit}
-                value={values.join_academic_year_id}
-                onChange={(value) =>
-                  updateValue("join_academic_year_id", value)
-                }
-                options={academicYearOptions(options.academicYears)}
-                placeholder="Select Join Year"
-                searchPlaceholder="Search Years"
-              />
-            </Field>
-            <Field
-              label="Join Grade"
-              name="join_grade_id"
-              error={errors.join_grade_id}
-              required
-            >
-              <SearchableSelect
-                required={isCreate && hasAttemptedSubmit}
-                value={values.join_grade_id}
-                onChange={(value) => updateValue("join_grade_id", value)}
-                options={gradeOptions(joinGradeOptions)}
-                placeholder="Select Join Grade"
-                searchPlaceholder="Search Grades"
-              />
-            </Field>
+                      : entryTypeLocked
+                        ? "NIS is already assigned, so this is locked to keep them matching."
+                        : isCreate
+                          ? undefined
+                          : "Safe to correct for legacy imports. Only affects a future NIS reissue."
+                  }
+                >
+                  <SearchableSelect
+                    required={hasAttemptedSubmit}
+                    disabled={entryTypeLocked}
+                    value={values.entry_type}
+                    onChange={(value) => updateValue("entry_type", value)}
+                    options={entryTypeOptions(studentEntryTypes)}
+                    placeholder="Select Entry Type"
+                    searchPlaceholder="Search Entry Type"
+                  />
+                </Field>
+                <Field
+                  label="Current Grade"
+                  name="current_grade_id"
+                  error={errors.current_grade_id}
+                  required
+                  hint={
+                    errors.current_grade_id
+                      ? undefined
+                      : currentGradeLocked
+                        ? "Derived from this student's enrollment history, so it's locked here. Use Enroll, Promote, or Transfer on their class record to change it."
+                        : undefined
+                  }
+                >
+                  <SearchableSelect
+                    required={isCreate && hasAttemptedSubmit}
+                    disabled={currentGradeLocked}
+                    value={values.current_grade_id}
+                    onChange={(value) => {
+                      setCurrentGradeTouched(true);
+                      updateValue("current_grade_id", value);
+                    }}
+                    options={gradeOptions(currentGradeOptionsForRole)}
+                    placeholder="Select Current Grade"
+                    searchPlaceholder="Search Grades"
+                  />
+                </Field>
+                <Field
+                  label="Join Academic Year"
+                  name="join_academic_year_id"
+                  error={errors.join_academic_year_id}
+                  required
+                >
+                  <SearchableSelect
+                    required={isCreate && hasAttemptedSubmit}
+                    value={values.join_academic_year_id}
+                    onChange={(value) => {
+                      updateValue("join_academic_year_id", value);
+                      followJoinGrade(value, values.join_grade_id);
+                    }}
+                    options={academicYearOptions(options.academicYears)}
+                    placeholder="Select Join Year"
+                    searchPlaceholder="Search Years"
+                  />
+                </Field>
+                <Field
+                  label="Join Grade"
+                  name="join_grade_id"
+                  error={errors.join_grade_id}
+                  required
+                >
+                  <SearchableSelect
+                    required={isCreate && hasAttemptedSubmit}
+                    value={values.join_grade_id}
+                    onChange={(value) => {
+                      updateValue("join_grade_id", value);
+                      followJoinGrade(values.join_academic_year_id, value);
+                    }}
+                    options={gradeOptions(joinGradeOptions)}
+                    placeholder="Select Join Grade"
+                    searchPlaceholder="Search Grades"
+                  />
+                </Field>
+              </>
+            )}
             <LimitedField
               label="Previous School"
               field="previous_school"
@@ -768,6 +1010,87 @@ export function StudentForm({
           </div>
         </section>
 
+        {isCreate ? (
+          <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
+              Parent Or Guardian
+            </h2>
+            <div className="grid min-w-0 gap-4 md:grid-cols-2">
+              <Field
+                label="Relation"
+                name="parent_type"
+                error={errors.parent_type}
+                required
+              >
+                <SearchableSelect
+                  required={hasAttemptedSubmit}
+                  value={values.parent_type}
+                  onChange={(value) => updateValue("parent_type", value)}
+                  options={PARENT_TYPES}
+                  placeholder="Select Relation"
+                  searchPlaceholder="Search Relation"
+                />
+              </Field>
+              <LimitedField
+                label="Name"
+                field="parent_name"
+                max={100}
+                required
+                transform={capitalizeWords}
+                values={values}
+                errors={errors}
+                updateValue={updateValue}
+              />
+              <Field
+                label="Parent Email"
+                name="parent_email"
+                error={errors.parent_email}
+                required
+                hint={
+                  <EmailSuggestion
+                    email={values.parent_email}
+                    onUse={(fixed) => updateValue("parent_email", fixed)}
+                  />
+                }
+              >
+                <EmailWithDomain
+                  invalid={Boolean(errors.parent_email)}
+                  value={values.parent_email}
+                  onChange={(value) => updateValue("parent_email", value)}
+                />
+              </Field>
+              <ConfirmEmailField
+                label="Confirm Parent Email"
+                name="parent_email_confirm"
+                value={values.parent_email_confirm}
+                primary={values.parent_email}
+                disabled={parentEmailNotReady}
+                error={errors.parent_email_confirm}
+                onChange={(value) => updateValue("parent_email_confirm", value)}
+              />
+              <Field
+                label="Phone"
+                name="parent_phone"
+                error={errors.parent_phone}
+              >
+                <TextInput
+                  type="tel"
+                  maxLength={16}
+                  value={values.parent_phone}
+                  invalid={Boolean(errors.parent_phone)}
+                  placeholder="081234567890"
+                  onChange={(event) =>
+                    updateValue(
+                      "parent_phone",
+                      phoneDigitsOnly(event.target.value),
+                    )
+                  }
+                />
+              </Field>
+            </div>
+          </section>
+        ) : null}
+
         <FormActionBar>
           {!isCreate && isDirty ? (
             <Button
@@ -790,9 +1113,11 @@ export function StudentForm({
             disabled={
               isSubmitting ||
               missingRequiredCount > 0 ||
+              emailCheck.blocked ||
               (!isCreate && !isDirty)
             }
             title={
+              (emailCheck.blocked ? emailCheck.message : undefined) ||
               buildFixFieldsTooltip(allErrors) ||
               (!isCreate && !isDirty ? "No changes to save yet." : undefined)
             }
@@ -855,7 +1180,8 @@ function getInitialValues(mode, student, options) {
     legacy_nis: academic.legacy_nis || "",
     nis: academic.nis || "",
     nisn: academic.nisn || "",
-    entry_type: academic.entry_type || "PSB",
+    // A new student starts with no entry type: it is the first step of the admission, picked on purpose.
+    entry_type: academic.entry_type || (mode === "create" ? "" : "PSB"),
     current_grade_id:
       findOptionByName(options.grades, academic.current_grade)?.id || "",
     join_academic_year_id: academic.join_academic_year_id || "",
@@ -868,11 +1194,43 @@ function getInitialValues(mode, student, options) {
     pickup_drop_service: Boolean(academic.pickup_drop_service),
     catering_service: Boolean(academic.catering_service),
     psb_guide: Boolean(academic.psb_guide),
+    // The first parent or guardian, asked for when a student is created.
+    parent_type: "",
+    parent_name: "",
+    parent_email: "",
+    parent_email_confirm: "",
+    parent_phone: "",
   };
 }
 
-function buildPayload(values, { includeBirth = true } = {}) {
+const PARENT_TYPES = [
+  { value: "FATHER", label: "Father" },
+  { value: "MOTHER", label: "Mother" },
+  { value: "GUARDIAN", label: "Guardian" },
+];
+
+function buildPayload(
+  values,
+  {
+    includeBirth = true,
+    isCreate = false,
+    claiming = false,
+    emailLanguage,
+  } = {},
+) {
   const payload = buildFullPayload(values);
+  if (claiming) payload.claim_existing_google = true;
+  // An email is changed only by Change Email, never by saving the form.
+  if (!isCreate) delete payload.email;
+  if (isCreate && emailLanguage) payload.email_language = emailLanguage;
+  if (isCreate) {
+    payload.parent = cleanPayload({
+      type: values.parent_type,
+      full_name: trimmedOrUndefined(values.parent_name),
+      email: trimmedOrUndefined(values.parent_email),
+      phone: trimmedOrUndefined(values.parent_phone),
+    });
+  }
   // Never revealed means never loaded: leave them out so nothing is overwritten.
   if (!includeBirth) {
     delete payload.birth_place;
@@ -958,6 +1316,13 @@ function buildEmail(localPart) {
   return trimmed ? `${trimmed}@${ALLOWED_EMAIL_DOMAIN}` : undefined;
 }
 
+// Asked for at create only: someone to give the Google account's first password to.
+const PARENT_REQUIRED_LABELS = {
+  parent_type: "Relation",
+  parent_name: "Parent or guardian name",
+  parent_email: "Parent or guardian email",
+};
+
 const REQUIRED_FIELD_LABELS = {
   full_name: "Full name",
   nick_name: "Nick name",
@@ -991,7 +1356,7 @@ const STUDENT_FIELD_FORMATTERS = {
 // than relying on it happening to never change. is_legacy isn't saved
 // either, but it does decide whether legacy_nis/status get sent, so it's
 // kept with a plain-language label instead of hidden.
-const STUDENT_DIFF_EXCLUDED_KEYS = ["nis"];
+const STUDENT_DIFF_EXCLUDED_KEYS = ["nis", "parent_email_confirm"];
 
 const STUDENT_DIFF_LABELS = {
   ...REQUIRED_FIELD_LABELS,
@@ -1026,19 +1391,44 @@ const STUDENT_FIELD_SECTIONS = {
   pickup_drop_service: "Services",
   catering_service: "Services",
   psb_guide: "Services",
+
+  parent_type: "Parent or guardian",
+  parent_name: "Parent or guardian",
+  parent_email: "Parent or guardian",
+  parent_phone: "Parent or guardian",
 };
 
 function computeStudentErrors(values, isCreate) {
   const errors = {};
   if (isCreate) {
-    for (const [field, label] of Object.entries(REQUIRED_FIELD_LABELS)) {
+    for (const [field, label] of Object.entries({
+      ...REQUIRED_FIELD_LABELS,
+      ...PARENT_REQUIRED_LABELS,
+    })) {
       if (!values[field]) {
         errors[field] = `${label} is required.`;
       }
     }
+    if (values.parent_email) {
+      const problem = emailProblem(values.parent_email, { external: true });
+      if (problem) errors.parent_email = problem;
+      else if (!values.parent_email_confirm)
+        errors.parent_email_confirm = "Type the parent email again.";
+      else if (!emailsMatch(values.parent_email, values.parent_email_confirm))
+        errors.parent_email_confirm = "The two emails do not match.";
+    }
+    if (
+      values.parent_phone &&
+      !/^(\+62|62|0)\d{8,13}$/.test(values.parent_phone)
+    ) {
+      errors.parent_phone =
+        "Enter an Indonesian phone number, for example 081234567890.";
+    }
   }
   if (values.email_local) {
-    const problem = emailProblem(`${values.email_local}@${ALLOWED_EMAIL_DOMAIN}`);
+    const problem = emailProblem(
+      `${values.email_local}@${ALLOWED_EMAIL_DOMAIN}`,
+    );
     if (problem) errors.email_local = problem;
   }
   if (values.religion === "OTHER" && !values.religion_other) {

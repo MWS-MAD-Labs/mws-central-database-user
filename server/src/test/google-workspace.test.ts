@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import {
   AdminUserTest,
   AuditLogTest,
   EmployeeTest,
   generateEmployeeAccessToken,
+  InternTest,
   MasterDataTest,
   TestRequest,
 } from "./test-utils";
@@ -22,7 +23,9 @@ import {
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { setDirectoryClientForTests } from "../lib/google-workspace";
+import { MemoryMailer, setMailerForTests } from "../lib/mailer";
 import { SimulatedDirectoryClient } from "../lib/google-workspace/simulated-directory-client";
+import { FakeDirectory } from "./fake-directory";
 import {
   DirectoryError,
   type CreateDirectoryUser,
@@ -30,90 +33,10 @@ import {
   type DirectoryUser,
   type UpdateDirectoryUser,
 } from "../lib/google-workspace/directory-client";
-import { GoogleWorkspaceService, generateTemporaryPassword, splitName } from "../service/google-workspace-service";
+import { GoogleWorkspaceService, generateTemporaryPassword, resetCheckCooldownForTests, resetSignInEmailLimitForTests, splitName } from "../service/google-workspace-service";
 import { detectImageMimeType } from "../utils/image-processing";
 import sharp from "sharp";
-
-// A Google that lives in memory and remembers what it was asked.
-class FakeDirectory implements DirectoryClient {
-  readonly mode = "google" as const;
-  users = new Map<string, DirectoryUser>();
-  created: CreateDirectoryUser[] = [];
-  updated: { userKey: string; patch: UpdateDirectoryUser }[] = [];
-  passwords: { userKey: string; password: string }[] = [];
-  photos: { userKey: string; mimeType: string; size: number }[] = [];
-  failCreateWith: DirectoryError | null = null;
-  // Users deleted in Google that can still be restored.
-  deleted = new Map<string, DirectoryUser>();
-  restored: { userId: string; orgUnitPath: string }[] = [];
-
-  async findUser(userKey: string) {
-    return [...this.users.values()].find((user) => user.id === userKey || user.primaryEmail === userKey) ?? null;
-  }
-  async findDeletedUser(email: string, userId?: string | null) {
-    return [...this.deleted.values()].find((user) => user.primaryEmail === email || (userId && user.id === userId)) ?? null;
-  }
-  async listUsers({ deleted }: { deleted: boolean }) {
-    return [...(deleted ? this.deleted : this.users).values()];
-  }
-  async createUser(input: CreateDirectoryUser) {
-    // The address of a deleted account is still taken.
-    if ([...this.deleted.values()].some((user) => user.primaryEmail === input.primaryEmail)) {
-      throw new DirectoryError("EXISTS", "exists");
-    }
-    if (this.failCreateWith) throw this.failCreateWith;
-    this.created.push(input);
-    const user: DirectoryUser = {
-      id: `g-${this.created.length}`,
-      primaryEmail: input.primaryEmail,
-      givenName: input.givenName,
-      familyName: input.familyName,
-      suspended: false,
-      isAdmin: false,
-      changePasswordAtNextLogin: true, lastLoginTime: null,
-      recoveryEmail: input.recoveryEmail ?? null,
-    };
-    this.users.set(user.id, user);
-    return user;
-  }
-  async updateUser(userKey: string, patch: UpdateDirectoryUser) {
-    this.updated.push({ userKey, patch });
-    const user = await this.findUser(userKey);
-    if (!user) throw new DirectoryError("NOT_FOUND", "gone");
-    const next = { ...user, ...patch };
-    this.users.set(user.id, next);
-    return next;
-  }
-  async restoreUser(userId: string, orgUnitPath: string) {
-    const user = this.deleted.get(userId);
-    if (!user) throw new DirectoryError("NOT_FOUND", "gone");
-    this.deleted.delete(userId);
-    this.restored.push({ userId, orgUnitPath });
-    this.users.set(userId, user);
-    return user;
-  }
-  async setRecoveryEmail(userKey: string, recoveryEmail: string) {
-    const user = await this.findUser(userKey);
-    if (!user) throw new DirectoryError("NOT_FOUND", "gone");
-    const next = { ...user, recoveryEmail };
-    this.users.set(user.id, next);
-    return next;
-  }
-  async setSuspended(userKey: string, suspended: boolean) {
-    const user = await this.findUser(userKey);
-    if (!user) throw new DirectoryError("NOT_FOUND", "gone");
-    const next = { ...user, suspended };
-    this.users.set(user.id, next);
-    return next;
-  }
-  async resetPassword(userKey: string, password: string) {
-    if (!(await this.findUser(userKey))) throw new DirectoryError("NOT_FOUND", "gone");
-    this.passwords.push({ userKey, password });
-  }
-  async setPhoto(userKey: string, photo: Buffer, mimeType: string) {
-    this.photos.push({ userKey, mimeType, size: photo.length });
-  }
-}
+import { GoogleAuth } from "../utils/google-auth";
 
 describe("google workspace accounts", () => {
   let master: { unit: MasterUnit; position: MasterJobPosition; level: MasterJobLevel; building: MasterBuilding };
@@ -130,6 +53,10 @@ describe("google workspace accounts", () => {
     setDirectoryClientForTests(google);
     // The fake says it is Google, so outside production the test prefix applies, like for a real one.
     process.env.GOOGLE_WORKSPACE_TEST_PREFIX = "test_google";
+    // With email on, a new password is mailed at once and not shown. Most tests read it, so email starts off here.
+    const noMail = new MemoryMailer();
+    noMail.enabled = false;
+    setMailerForTests(noMail);
   });
   afterEach(async () => {
     delete process.env.GOOGLE_WORKSPACE_TEST_PREFIX;
@@ -168,6 +95,16 @@ describe("google workspace accounts", () => {
   };
   const personOf = (employeeId: string) =>
     prismaClient.person.findFirstOrThrow({ where: { employee: { id: employeeId } } });
+  // The few minutes a new password and a new mail wait for the same person, taken as passed.
+  const letTimePass = async (employeeId: string) => {
+    const person = await personOf(employeeId);
+    resetCheckCooldownForTests();
+    const earlier = new Date(Date.now() - 10 * 60_000);
+    await prismaClient.person.update({ where: { id: person.id }, data: { google_password_issued_at: earlier } });
+    // Checked a minute ago: past the wait, and still fresh enough that the page does not look at Google again by itself.
+    await prismaClient.person.update({ where: { id: person.id }, data: { google_checked_at: new Date(Date.now() - 60_000) } });
+    await prismaClient.auditLog.updateMany({ where: { entity_id: person.id }, data: { created_at: earlier } });
+  };
 
   describe("the helpers", () => {
     it("gives Google a given and a family name", () => {
@@ -181,7 +118,7 @@ describe("google workspace accounts", () => {
     });
   });
 
-  it("makes the Google account of a new employee, with the recovery email and no known password", async () => {
+  it("makes the Google account of a new employee, with the recovery email and a temporary password shown once", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
     const { response, json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
     expect(response.status).toBe(200);
@@ -195,6 +132,533 @@ describe("google workspace accounts", () => {
     expect(person.google_user_id).toBe("g-1");
     // The recovery email went to Google and is nowhere in Central.
     expect(JSON.stringify(person)).not.toContain("rizqi.pribadi@gmail.com");
+
+    // The first password is the one Google got, comes back once, and is not kept anywhere.
+    const password = json.data.google.temporary_password as string;
+    expect(password).toHaveLength(16);
+    expect(google.created[0].password).toBe(password);
+    expect(JSON.stringify(person)).not.toContain(password);
+    expect(JSON.stringify(await prismaClient.auditLog.findMany())).not.toContain(password);
+    const status = await (await TestRequest.get(`/api/admin/employees/${json.data.id}/google`, accessToken)).json();
+    expect(JSON.stringify(status)).not.toContain(password);
+  });
+
+  it("gives no password for an account that was already in Google", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+    const existing = await create(accessToken);
+    expect(existing.json.data.google.temporary_password).toBeDefined();
+    await prismaClient.person.update({
+      where: { id: (await personOf(existing.json.data.id)).id },
+      data: { google_user_id: null, google_sync_status: GoogleSyncStatus.NONE },
+    });
+    const response = await TestRequest.post(`/api/admin/employees/${existing.json.data.id}/google/provision`, {}, accessToken);
+    const data = (await response.json()).data;
+    expect(data.outcome).toBe("linked");
+    expect(data.temporary_password).toBeUndefined();
+  });
+
+  describe("the wait between the same action for the same person", () => {
+    const post = (id: string, path: string, token: string, body: Record<string, unknown> = {}) =>
+      TestRequest.post(`/api/admin/employees/${id}/google/${path}`, body, token);
+    const statusUrl = (id: string) => `/api/admin/employees/${id}/google`;
+    const made = async (token: string) => {
+      const { json } = await create(token);
+      await letTimePass(json.data.id);
+      return json.data.id as string;
+    };
+
+    it("does not start the wait when the page looks at Google by itself, only when Check is pressed", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await made(accessToken);
+      // The last look is old, so opening the page makes the server look again on its own.
+      const person = await personOf(id);
+      await prismaClient.person.update({ where: { id: person.id }, data: { google_checked_at: new Date(Date.now() - 10 * 60_000) } });
+      const opened = (await (await TestRequest.get(statusUrl(id), accessToken)).json()).data;
+      expect(opened.check).toBeUndefined();
+      expect(opened.check_available_at).toBeNull();
+      expect((await personOf(id)).google_checked_at!.getTime()).toBeGreaterThan(Date.now() - 5000);
+
+      // The first press goes through, the next one is held.
+      expect((await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken)).status).toBe(200);
+      expect((await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken)).status).toBe(429);
+      // Opening the page again does not extend or restart it.
+      const again = (await (await TestRequest.get(statusUrl(id), accessToken)).json()).data;
+      expect(Date.parse(again.check_available_at)).toBeGreaterThan(Date.now());
+    });
+
+    it("makes Check wait ten seconds, says what it found, and tells the page when it may be pressed again", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await made(accessToken);
+
+      const first = (await (await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken)).json()).data;
+      expect(first.check).toMatchObject({ outcome: "checked", changes: [] });
+      expect(Date.parse(first.check_available_at)).toBeGreaterThan(Date.now());
+      expect(first.cooldowns).toEqual({ check: 10, suspend: 30, recovery: 60, password: 120, email: 120 });
+
+      const again = await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken);
+      expect(again.status).toBe(429);
+      expect((await again.json()).errors).toMatch(/Google was checked a moment ago. Wait \d+ more seconds? to check again/);
+
+      // Someone suspended it in Google: the next Check says so.
+      const person = await personOf(id);
+      google.users.set(person.google_user_id!, { ...google.users.get(person.google_user_id!)!, suspended: true });
+      await letTimePass(id);
+      const found = (await (await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken)).json()).data;
+      expect(found.check.changes).toEqual(["Status changed from Linked to Suspended"]);
+    });
+
+    it("says honestly when Google is only simulated or cannot be reached", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await made(accessToken);
+      const person = await personOf(id);
+
+      setDirectoryClientForTests(new SimulatedDirectoryClient());
+      const simulated = (await (await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken)).json()).data;
+      expect(simulated.check.outcome).toBe("simulated");
+      expect(simulated.checked_at).not.toBeNull();
+      expect(simulated.check_available_at).not.toBeNull();
+
+      setDirectoryClientForTests(google);
+      await letTimePass(id);
+      google.findUser = async () => {
+        throw new Error("network down");
+      };
+      const down = (await (await TestRequest.get(`${statusUrl(id)}?refresh=true`, accessToken)).json()).data;
+      expect(down.check.outcome).toBe("unreachable");
+      expect(down.status).toBe(person.google_sync_status);
+    });
+
+    it("makes Suspend and Unsuspend wait thirty seconds", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await made(accessToken);
+      expect((await post(id, "suspend", accessToken)).status).toBe(200);
+      const quick = await post(id, "unsuspend", accessToken);
+      expect(quick.status).toBe(429);
+      expect((await quick.json()).errors).toMatch(/suspended or unsuspended a moment ago. Wait \d+ more seconds?/);
+      expect(Date.parse((await (await TestRequest.get(statusUrl(id), accessToken)).json()).data.suspend_available_at)).toBeGreaterThan(Date.now());
+
+      await letTimePass(id);
+      expect((await post(id, "unsuspend", accessToken)).status).toBe(200);
+    });
+
+    it("makes changing the recovery email wait a minute, and only counts that, not other updates", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await made(accessToken);
+      expect((await post(id, "recovery-email", accessToken, { recovery_email: "satu@gmail.com" })).status).toBe(200);
+      const quick = await post(id, "recovery-email", accessToken, { recovery_email: "dua@gmail.com" });
+      expect(quick.status).toBe(429);
+      expect((await quick.json()).errors).toMatch(/recovery email was changed a moment ago. Wait \d+ more seconds?/);
+      expect(google.users.get((await personOf(id)).google_user_id!)!.recoveryEmail).toBe("satu@gmail.com");
+
+      await letTimePass(id);
+      expect((await post(id, "recovery-email", accessToken, { recovery_email: "dua@gmail.com" })).status).toBe(200);
+    });
+
+    it("remembers the wait after a restart, because it is read from the audit log", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await made(accessToken);
+      expect((await post(id, "suspend", accessToken)).status).toBe(200);
+      // A new process has no memory; the audit entry is what is left.
+      expect(await prismaClient.auditLog.count({ where: { action: AuditAction.GOOGLE_ACCOUNT_SUSPEND, entity_id: (await personOf(id)).id } })).toBe(1);
+      expect((await post(id, "unsuspend", accessToken)).status).toBe(429);
+    });
+  });
+
+  describe("a protected admin as an employee", () => {
+    const PROTECTED_EMAIL = "test_superadmin@millennia21.id";
+
+    it("says a protected address is fine to save, without Google", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const response = await TestRequest.get(`/api/admin/google/email-availability?email=${encodeURIComponent(PROTECTED_EMAIL)}`, accessToken);
+      expect((await response.json()).data).toMatchObject({ available: true, reason: "PROTECTED" });
+    });
+
+    it("creates the employee with no recovery email and no Google account, and links the admin to it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { response, json } = await create(accessToken, { email: PROTECTED_EMAIL });
+      expect(response.status).toBe(200);
+      expect(json.data.google).toBeUndefined();
+      expect(google.created).toHaveLength(0);
+      expect((await personOf(json.data.id)).google_user_id).toBeNull();
+
+      const admin = await prismaClient.adminUser.findFirstOrThrow({ where: { email: PROTECTED_EMAIL } });
+      expect(admin.person_id).toBe((await personOf(json.data.id)).id);
+    });
+
+    it("links the Google account of the admin who makes their own record, without changing it", async () => {
+      // Outside production only addresses with the test prefix reach Google, like for everyone.
+      process.env.GOOGLE_WORKSPACE_TEST_PREFIX = "test_super";
+      google.users.set("own-1", {
+        id: "own-1", primaryEmail: PROTECTED_EMAIL, givenName: "Super", familyName: "Admin",
+        suspended: false, isAdmin: true, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { response, json } = await create(accessToken, { email: PROTECTED_EMAIL });
+      expect(response.status).toBe(200);
+      expect(json.data.google).toMatchObject({ status: "ACTIVE", outcome: "linked" });
+      expect(await personOf(json.data.id)).toMatchObject({ google_user_id: "own-1", google_keeps_name: true });
+      expect(google.created).toHaveLength(0);
+      expect(google.updated).toHaveLength(0);
+      expect(google.passwords).toHaveLength(0);
+    });
+
+    it("does not link it when somebody else makes the record", async () => {
+      google.users.set("own-1", {
+        id: "own-1", primaryEmail: PROTECTED_EMAIL, givenName: "Super", familyName: "Admin",
+        suspended: false, isAdmin: true, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const other = await prismaClient.adminUser.findFirstOrThrow({ where: { email: PROTECTED_EMAIL } });
+      await prismaClient.adminUser.update({ where: { id: other.id }, data: { email: "test_other_admin@millennia21.id" } });
+      const before = process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+      process.env.PROTECTED_SUPER_ADMIN_EMAILS = `${before ?? ""},${PROTECTED_EMAIL}`;
+      try {
+        const { response, json } = await create(accessToken, { email: PROTECTED_EMAIL });
+        expect(response.status).toBe(200);
+        expect(json.data.google).toBeUndefined();
+        expect((await personOf(json.data.id)).google_user_id).toBeNull();
+      } finally {
+        process.env.PROTECTED_SUPER_ADMIN_EMAILS = before;
+      }
+    });
+
+    it("links the account when the protected admin signs in, whoever made the record, and does not for anyone else", async () => {
+      process.env.GOOGLE_WORKSPACE_TEST_PREFIX = "test_super";
+      google.users.set("own-1", {
+        id: "own-1", primaryEmail: PROTECTED_EMAIL, givenName: "Super", familyName: "Admin",
+        suspended: false, isAdmin: true, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+      await AdminUserTest.createSuperAdmin(master.unit.id);
+      await EmployeeTest.create({
+        email: PROTECTED_EMAIL,
+        unitId: master.unit.id,
+        jobPositionId: master.position.id,
+        jobLevelId: master.level.id,
+        buildingId: master.building.id,
+      });
+      expect((await prismaClient.person.findFirstOrThrow({ where: { email: PROTECTED_EMAIL } })).google_user_id).toBeNull();
+
+      const spy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
+        google_id: "x", email: "test_google_lain@millennia21.id", name: "Lain", avatar_url: "",
+      });
+      await TestRequest.post("/api/auth/google", { code: "X" });
+      expect((await prismaClient.person.findFirstOrThrow({ where: { email: PROTECTED_EMAIL } })).google_user_id).toBeNull();
+
+      spy.mockResolvedValue({ google_id: "own-1", email: PROTECTED_EMAIL, name: "Super Admin", avatar_url: "" });
+      await TestRequest.post("/api/auth/google", { code: "X" });
+      spy.mockRestore();
+      const person = await prismaClient.person.findFirstOrThrow({ where: { email: PROTECTED_EMAIL } });
+      expect(person).toMatchObject({ google_user_id: "own-1", google_sync_status: GoogleSyncStatus.ACTIVE });
+      expect(google.created).toHaveLength(0);
+      expect(google.updated).toHaveLength(0);
+      expect(google.passwords).toHaveLength(0);
+    });
+
+    it("says why a protected admin that is not linked yet is not looked up", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken, { email: PROTECTED_EMAIL });
+      const status = await TestRequest.get(`/api/admin/employees/${json.data.id}/google`, accessToken);
+      expect((await status.json()).data.lookup).toMatchObject({ state: "blocked", message: expect.stringContaining("linked when its owner signs in") });
+    });
+
+    it("does not make a Google account even when a recovery email is sent for it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { response, json } = await create(accessToken, { email: PROTECTED_EMAIL, recovery_email: "rizqi.pribadi@gmail.com" });
+      expect(response.status).toBe(200);
+      expect(json.data.google).toBeUndefined();
+      expect(google.created).toHaveLength(0);
+    });
+
+    it("still asks for a recovery email for everyone else", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const response = await TestRequest.post("/api/admin/employees", body({ recovery_email: undefined }), accessToken);
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe("the password is mailed at once", () => {
+    let mailer: MemoryMailer;
+    beforeEach(() => {
+      mailer = new MemoryMailer();
+      setMailerForTests(mailer);
+      resetSignInEmailLimitForTests();
+      resetCheckCooldownForTests();
+    });
+    afterEach(() => setMailerForTests(null));
+
+    it("sends a new employee's first password to the recovery email and does not give it to the admin", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { response, json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      expect(response.status).toBe(200);
+      expect(json.data.google).toMatchObject({ status: "ACTIVE", outcome: "created", delivered_to: "r***@gmail.com" });
+      expect(json.data.google.temporary_password).toBeUndefined();
+      expect(mailer.outbox).toHaveLength(1);
+      expect(mailer.outbox[0].to).toBe("rizqi.pribadi@gmail.com");
+      expect(mailer.outbox[0].text).toContain(google.created[0].password);
+      expect(JSON.stringify(await prismaClient.auditLog.findMany())).not.toContain(google.created[0].password);
+    });
+
+    it("shows the password to the admin instead when the mail cannot be sent", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      mailer.send = async () => {
+        throw new Error("smtp down");
+      };
+      const { json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      expect(json.data.google).toMatchObject({ status: "ACTIVE", outcome: "created" });
+      expect(json.data.google.temporary_password).toBe(google.created[0].password);
+      expect(json.data.google.delivered_to).toBeUndefined();
+    });
+
+    it("says why the password is shown instead: email off, nobody to send to, a limit, or a failed mail", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const notSent = async () => (await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" })).json.data.google.not_sent;
+
+      mailer.enabled = false;
+      expect(await notSent()).toBe("EMAIL_OFF");
+      mailer.enabled = true;
+
+      const send = mailer.send.bind(mailer);
+      mailer.send = async () => {
+        throw new Error("smtp down");
+      };
+      expect(await notSent()).toBe("FAILED");
+      mailer.send = send;
+
+      // A second mail for the same person right after the first waits, which is the same answer as the hourly limit.
+      const { json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      expect(json.data.google.delivered_to).toBe("r***@gmail.com");
+      const admin = await prismaClient.adminUser.findFirstOrThrow({ where: { email: "test_superadmin@millennia21.id" } });
+      const again = await GoogleWorkspaceService.deliverPassword(json.data.id ? (await personOf(json.data.id)).id : "", { to: "rizqi.pribadi@gmail.com", password: "Abcdefgh12345678" }, admin);
+      expect(again).toEqual({ not_sent: "LIMIT" });
+    });
+
+    it("says there is nobody to send a reset to when Google holds no recovery email", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      mailer.enabled = false;
+      const { json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      mailer.enabled = true;
+      const person = await personOf(json.data.id);
+      google.users.set(person.google_user_id!, { ...google.users.get(person.google_user_id!)!, recoveryEmail: null });
+      await letTimePass(json.data.id);
+      const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/reset-password`, {}, accessToken);
+      expect((await response.json()).data).toMatchObject({ not_sent: "NO_RECIPIENT" });
+    });
+
+    it("tells the page whether the first details were ever mailed", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const sentStatus = async (id: string) =>
+        (await (await TestRequest.get(`/api/admin/employees/${id}/google`, accessToken)).json()).data.details_sent;
+
+      const mailed = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      expect(await sentStatus(mailed.json.data.id)).toBe(true);
+
+      mailer.enabled = false;
+      const notMailed = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      mailer.enabled = true;
+      expect(await sentStatus(notMailed.json.data.id)).toBe(false);
+    });
+
+    it("writes the mail in the language chosen, English when none is", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const plain = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      expect(plain.json.data.google.delivered_to).toBe("r***@gmail.com");
+      expect(mailer.outbox[0].subject).toBe("Your Millennia Google account is ready");
+      expect(mailer.outbox[0].html).toContain("Sign in to Google");
+      expect(mailer.outbox[0].attachments?.[0].cid).toBe("millennia-logo");
+
+      await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com", email_language: "id" });
+      expect(mailer.outbox[1].subject).toBe("Akun Google Millennia kamu sudah siap");
+
+      await letTimePass(plain.json.data.id);
+      const reset = await TestRequest.post(`/api/admin/employees/${plain.json.data.id}/google/reset-password`, {}, accessToken);
+      expect((await reset.json()).data).toEqual({ sent_to: "r***@gmail.com" });
+      expect(mailer.outbox[2].subject).toBe("The password of your Millennia Google account was reset");
+
+      await letTimePass(plain.json.data.id);
+      await TestRequest.post(`/api/admin/employees/${plain.json.data.id}/google/reset-password`, { language: "id" }, accessToken);
+      expect(mailer.outbox[3].subject).toBe("Password akun Google Millennia kamu direset");
+    });
+
+    it("mails a reset password to the recovery email Google holds, and shows it only when it cannot", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      mailer.enabled = false;
+      const { json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+      mailer.enabled = true;
+      await letTimePass(json.data.id);
+
+      const sent = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/reset-password`, {}, accessToken);
+      expect(sent.status).toBe(200);
+      expect((await sent.json()).data).toEqual({ sent_to: "r***@gmail.com" });
+      expect(mailer.outbox).toHaveLength(1);
+      expect(mailer.outbox[0].to).toBe("rizqi.pribadi@gmail.com");
+      expect(mailer.outbox[0].subject).toContain("was reset");
+      expect(mailer.outbox[0].text).toContain(google.passwords[0].password);
+
+      await letTimePass(json.data.id);
+      mailer.enabled = false;
+      const shown = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/reset-password`, {}, accessToken);
+      expect((await shown.json()).data).toEqual({ password: google.passwords[1].password, not_sent: "EMAIL_OFF" });
+    });
+  });
+
+  describe("mailing the first sign-in details", () => {
+    let mailer: MemoryMailer;
+    beforeEach(() => {
+      mailer = new MemoryMailer();
+      setMailerForTests(mailer);
+      resetSignInEmailLimitForTests();
+    });
+    afterEach(() => setMailerForTests(null));
+
+    const made = async (token: string) => {
+      // Made with email off, so the password comes back to be sent by hand in these tests.
+      mailer.enabled = false;
+      const { json } = await create(token, { recovery_email: "pribadi.owner@gmail.com" });
+      mailer.enabled = true;
+      return { id: json.data.id as string, email: json.data.identity.email as string, password: json.data.google.temporary_password as string };
+    };
+    const send = (id: string, token: string, over: Record<string, unknown> = {}) =>
+      TestRequest.post(`/api/admin/employees/${id}/google/send-sign-in`, { to: "pribadi.owner@gmail.com", language: "id", ...over }, token);
+
+    it("sends a mail the server wrote, with the name, email and password, and keeps the password out of the audit", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      const response = await send(account.id, accessToken, { password: account.password });
+      expect(response.status).toBe(200);
+      expect((await response.json()).data).toEqual({ sent: true });
+
+      expect(mailer.outbox).toHaveLength(1);
+      const mail = mailer.outbox[0];
+      expect(mail.to).toBe("pribadi.owner@gmail.com");
+      expect(mail.text).toContain("Halo Rizqi Sabilla Putra");
+      expect(mail.text).toContain(account.email);
+      expect(mail.text).toContain(account.password);
+
+      const entries = await prismaClient.auditLog.findMany({ where: { action: AuditAction.GOOGLE_SIGNIN_EMAILED } });
+      expect(entries).toHaveLength(1);
+      expect(JSON.stringify(entries)).not.toContain(account.password);
+      expect(JSON.stringify(entries)).not.toContain("pribadi.owner@gmail.com");
+      expect(JSON.stringify(entries)).toContain("p***@gmail.com");
+    });
+
+    it("writes the mail in English when asked", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      await send(account.id, accessToken, { password: account.password, language: "en" });
+      expect(mailer.outbox[0].subject).toBe("Your Millennia Google account is ready");
+      expect(mailer.outbox[0].text).toContain("Temporary password:");
+    });
+
+    it("says so when the server has no email set up", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      setMailerForTests({ enabled: false, send: async () => {} });
+      const response = await send(account.id, accessToken, { password: account.password });
+      expect(response.status).toBe(503);
+      const status = await (await TestRequest.get(`/api/admin/employees/${account.id}/google`, accessToken)).json();
+      expect(status.data.email_enabled).toBe(false);
+    });
+
+    it("refuses the account's own address, a bad address or a short password, and an account already in use", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      expect((await send(account.id, accessToken, { password: account.password, to: account.email })).status).toBe(400);
+      expect((await send(account.id, accessToken, { password: account.password, to: "not-an-email" })).status).toBe(400);
+      expect((await send(account.id, accessToken, { password: "short" })).status).toBe(400);
+      expect(mailer.outbox).toHaveLength(0);
+
+      // They have signed in and set their own password: nothing to send any more.
+      await prismaClient.person.update({ where: { id: (await personOf(account.id)).id }, data: { google_password_pending: false } });
+      expect((await send(account.id, accessToken, { password: account.password })).status).toBe(409);
+      // Issued long ago.
+      await prismaClient.person.update({
+        where: { id: (await personOf(account.id)).id },
+        data: { google_password_pending: true, google_password_issued_at: new Date(Date.now() - 3 * 86_400_000) },
+      });
+      expect((await send(account.id, accessToken, { password: account.password })).status).toBe(409);
+      expect(mailer.outbox).toHaveLength(0);
+    });
+
+    it("sends to the recovery email Google holds when no address is given, without the browser ever having it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      const response = await TestRequest.post(
+        `/api/admin/employees/${account.id}/google/send-sign-in`,
+        { language: "id", password: account.password },
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+      expect(JSON.stringify(await response.json())).not.toContain("pribadi.owner");
+      expect(mailer.outbox).toHaveLength(1);
+      expect(mailer.outbox[0].to).toBe("pribadi.owner@gmail.com");
+      const entries = await prismaClient.auditLog.findMany({ where: { action: AuditAction.GOOGLE_SIGNIN_EMAILED } });
+      expect(JSON.stringify(entries)).not.toContain("pribadi.owner@gmail.com");
+    });
+
+    it("says so, and sends nothing, when Google has no recovery email and no address was given", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      const person = await personOf(account.id);
+      google.users.set(person.google_user_id!, { ...google.users.get(person.google_user_id!)!, recoveryEmail: null });
+      const response = await TestRequest.post(
+        `/api/admin/employees/${account.id}/google/send-sign-in`,
+        { language: "id", password: account.password },
+        accessToken,
+      );
+      expect(response.status).toBe(409);
+      expect((await response.json()).errors).toContain("no recovery email");
+      expect(mailer.outbox).toHaveLength(0);
+      // An address typed by the admin still works.
+      expect((await send(account.id, accessToken, { password: account.password })).status).toBe(200);
+    });
+
+    it("makes the same person wait a few minutes between mails, and between new passwords, saying for how long", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      const base = `/api/admin/employees/${account.id}/google`;
+
+      // A password was just made with the account, so another cannot be made yet.
+      const tooSoon = await TestRequest.post(`${base}/reset-password`, {}, accessToken);
+      expect(tooSoon.status).toBe(429);
+      expect((await tooSoon.json()).errors).toMatch(/Wait \d+ more (seconds?|minutes) to make another/);
+
+      expect((await send(account.id, accessToken, { password: account.password })).status).toBe(200);
+      const again = await send(account.id, accessToken, { password: account.password });
+      expect(again.status).toBe(429);
+      expect((await again.json()).errors).toMatch(/Wait .* to send them again/);
+      expect(mailer.outbox).toHaveLength(1);
+
+      // The page is told when each is allowed again, so it can keep the buttons off.
+      const status = (await (await TestRequest.get(base, accessToken)).json()).data;
+      expect(Date.parse(status.password_available_at)).toBeGreaterThan(Date.now());
+      expect(Date.parse(status.email_available_at)).toBeGreaterThan(Date.now());
+
+      await letTimePass(account.id);
+      expect((await send(account.id, accessToken, { password: account.password })).status).toBe(200);
+      const after = (await (await TestRequest.get(base, accessToken)).json()).data;
+      expect(after.password_available_at).toBeNull();
+      expect(after.email_available_at).not.toBeNull();
+    });
+
+    it("is for the admins who may create the account", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      await AdminUserTest.delete();
+      const noWrite = await AdminUserTest.createDatabaseAdmin(master.unit.id, { canWriteEmployeeData: false });
+      expect((await send(account.id, noWrite.accessToken, { password: account.password })).status).toBe(403);
+      expect(mailer.outbox).toHaveLength(0);
+    });
+
+    it("stops one admin after twenty mails an hour", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const account = await made(accessToken);
+      for (let i = 0; i < 20; i += 1) {
+        expect((await send(account.id, accessToken, { password: account.password })).status).toBe(200);
+        await letTimePass(account.id);
+        await prismaClient.person.update({ where: { id: (await personOf(account.id)).id }, data: { google_password_issued_at: new Date(Date.now() - 60_000) } });
+      }
+      expect((await send(account.id, accessToken, { password: account.password })).status).toBe(429);
+    });
   });
 
   it("links the account Google already has to a person who is already in Central", async () => {
@@ -262,6 +726,22 @@ describe("google workspace accounts", () => {
     expect(result.message).toContain("Unexpected error (TypeError)");
     expect(result.message).not.toContain("could not be reached");
     expect(result.message).not.toContain("something of ours broke");
+  });
+
+  it("tells an archived person's email from an active one when it is checked", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+    const person = await EmployeeTest.create({
+      email: "test_google_arsip@millennia21.id",
+      unitId: master.unit.id,
+      jobPositionId: master.position.id,
+      jobLevelId: master.level.id,
+      buildingId: master.building.id,
+    });
+    const check = async () =>
+      (await (await TestRequest.get("/api/admin/google/email-availability?email=test_google_arsip@millennia21.id", accessToken)).json()).data;
+    expect(await check()).toMatchObject({ available: false, reason: "IN_CENTRAL", message: "This email is already used in Central" });
+    await prismaClient.employee.update({ where: { id: person.employee!.id }, data: { status: EmployeeStatus.ARCHIVED } });
+    expect(await check()).toMatchObject({ available: false, reason: "IN_CENTRAL", message: "Used by an archived person. Restore them instead" });
   });
 
   it("does not create a person whose email already has a Google account", async () => {
@@ -414,7 +894,7 @@ describe("google workspace accounts", () => {
 
   describe("changing the email of someone with a Google account", () => {
     const put = (token: string, id: string, email: string) =>
-      TestRequest.patch(`/api/admin/employees/${id}`, { email }, token);
+      TestRequest.post(`/api/admin/employees/${id}/change-email`, { email, reason: "Test change" }, token);
 
     it("refuses an email Google already has, and lets a free one through", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
@@ -455,6 +935,7 @@ describe("google workspace accounts", () => {
       const user = google.users.get(person.google_user_id!)!;
       google.users.delete(user.id);
       google.deleted.set(user.id, { ...user, deletionTime: new Date() });
+      await letTimePass(json.data.id);
       await TestRequest.get(`/api/admin/employees/${json.data.id}/google?refresh=true`, token);
       return { id: json.data.id as string, person, user };
     };
@@ -481,7 +962,7 @@ describe("google workspace accounts", () => {
       const { id, person, user } = await deleteInGoogle(accessToken);
       const updatesBefore = google.updated.length;
 
-      const changed = await TestRequest.patch(`/api/admin/employees/${id}`, { email: "test_google_afterdelete@millennia21.id" }, accessToken);
+      const changed = await TestRequest.post(`/api/admin/employees/${id}/change-email`, { email: "test_google_afterdelete@millennia21.id", reason: "Test change" }, accessToken);
       expect(changed.status).toBe(200);
       expect(google.updated).toHaveLength(updatesBefore);
       expect((await personOf(id)).google_sync_status).toBe(GoogleSyncStatus.MISSING);
@@ -729,10 +1210,12 @@ describe("google workspace accounts", () => {
       expect((await TestRequest.post(`${base}/recovery-email`, { recovery_email: "a@gmail.com" }, plain.accessToken)).status).toBe(403);
       // The rest of the account work stays with any Super Admin.
       expect((await TestRequest.post(`${base}/suspend`, {}, plain.accessToken)).status).toBe(200);
+      await letTimePass(json.data.id);
       expect((await TestRequest.post(`${base}/unsuspend`, {}, plain.accessToken)).status).toBe(200);
 
       await AdminUserTest.delete();
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      await letTimePass(json.data.id);
       expect((await TestRequest.post(`${base}/reset-password`, {}, accessToken)).status).toBe(200);
       expect((await TestRequest.post(`${base}/recovery-email`, { recovery_email: "a@gmail.com" }, accessToken)).status).toBe(200);
     });
@@ -742,15 +1225,15 @@ describe("google workspace accounts", () => {
       const { json } = await create(superToken);
       const read = async (token: string) =>
         (await (await TestRequest.get(`/api/admin/employees/${json.data.id}/google`, token)).json()).data.can;
-      expect(await read(superToken)).toEqual({ create: true, manage: true, takeover: true });
+      expect(await read(superToken)).toEqual({ create: true, link_existing: true, manage: true, takeover: true });
 
       await AdminUserTest.delete();
       const db = await AdminUserTest.createDatabaseAdmin(master.unit.id);
-      expect(await read(db.accessToken)).toEqual({ create: true, manage: false, takeover: false });
+      expect(await read(db.accessToken)).toEqual({ create: true, link_existing: true, manage: false, takeover: false });
 
       await AdminUserTest.delete();
       const plain = await AdminUserTest.createSuperAdmin(master.unit.id, { id: "plain-super-id", email: "test_plain_super@millennia21.id", plain: true });
-      expect(await read(plain.accessToken)).toEqual({ create: true, manage: true, takeover: false });
+      expect(await read(plain.accessToken)).toEqual({ create: true, link_existing: true, manage: true, takeover: false });
     });
   });
 
@@ -758,6 +1241,7 @@ describe("google workspace accounts", () => {
     it("gives a Super Admin a new password once, and keeps it out of the audit log", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const { json } = await create(accessToken);
+      await letTimePass(json.data.id);
       const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/reset-password`, {}, accessToken);
       expect(response.status).toBe(200);
       expect(response.headers.get("cache-control")).toBe("no-store");
@@ -803,8 +1287,11 @@ describe("google workspace accounts", () => {
       const { json } = await create(token);
       return { id: json.data.id as string, person: await personOf(json.data.id) };
     };
-    const statusOf = async (token: string, id: string, refresh = false) =>
-      (await (await TestRequest.get(`/api/admin/employees/${id}/google${refresh ? "?refresh=true" : ""}`, token)).json()).data;
+    const statusOf = async (token: string, id: string, refresh = false) => {
+      // Pressing Check waits a few seconds for the same person; these tests press it as often as they like.
+      if (refresh) await letTimePass(id);
+      return (await (await TestRequest.get(`/api/admin/employees/${id}/google${refresh ? "?refresh=true" : ""}`, token)).json()).data;
+    };
 
     it("holds an email back whose Google account was deleted less than 20 days ago", async () => {
       google.deleted.set("old", gone("old", "test_google_deleted@millennia21.id"));
@@ -927,10 +1414,12 @@ describe("google workspace accounts", () => {
       expect(google.users.get(user.id)!.suspended).toBe(true);
       expect(await statusOf(accessToken, id)).toMatchObject({ status: GoogleSyncStatus.SUSPENDED });
 
+      await letTimePass(id);
       expect((await TestRequest.post(`/api/admin/employees/${id}/google/unsuspend`, {}, accessToken)).status).toBe(200);
       expect(google.users.get(user.id)!.suspended).toBe(false);
       expect(await statusOf(accessToken, id)).toMatchObject({ status: GoogleSyncStatus.ACTIVE });
 
+      await letTimePass(id);
       google.users.set(user.id, { ...google.users.get(user.id)!, isAdmin: true });
       expect((await TestRequest.post(`/api/admin/employees/${id}/google/suspend`, {}, accessToken)).status).toBe(400);
     });
@@ -984,6 +1473,7 @@ describe("google workspace accounts", () => {
       expect(done.password_state).toBe("SET");
       expect(done.last_login_at).toBe("2026-10-30T08:00:00.000Z");
 
+      await letTimePass(id);
       await TestRequest.post(`/api/admin/employees/${id}/google/reset-password`, {}, accessToken);
       expect((await statusOf(accessToken, id)).password_state).toBe("PENDING");
     });
@@ -1169,6 +1659,68 @@ describe("google workspace accounts", () => {
       expect(JSON.stringify(entries)).toContain("recovery_email_changed");
     });
 
+    describe("hint and adding one", () => {
+      const withoutRecovery = async (token: string) => {
+        const { json } = await create(token);
+        const person = await personOf(json.data.id);
+        google.users.set(person.google_user_id!, { ...google.users.get(person.google_user_id!)!, recoveryEmail: null });
+        return { id: json.data.id as string, googleId: person.google_user_id! };
+      };
+
+      it("gives the admin who may create the account only a hidden hint, or null", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken, { recovery_email: "rizqi.pribadi@gmail.com" });
+        await AdminUserTest.delete();
+        const dbAdmin = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+        const hint = await TestRequest.get(`/api/admin/employees/${json.data.id}/google/recovery-hint`, dbAdmin.accessToken);
+        expect(hint.status).toBe(200);
+        expect(hint.headers.get("cache-control")).toBe("no-store");
+        expect((await hint.json()).data).toEqual({ hint: "r***@gmail.com" });
+      });
+
+      it("returns null when the account has none, and turns away an admin who may not create", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const none = await withoutRecovery(accessToken);
+        expect((await (await TestRequest.get(`/api/admin/employees/${none.id}/google/recovery-hint`, accessToken)).json()).data).toEqual({ hint: null });
+        await AdminUserTest.delete();
+        const noWrite = await AdminUserTest.createDatabaseAdmin(master.unit.id, { canWriteEmployeeData: false });
+        expect((await TestRequest.get(`/api/admin/employees/${none.id}/google/recovery-hint`, noWrite.accessToken)).status).toBe(403);
+      });
+
+      it("lets whoever may create the account add one when it is empty, but not replace one that is there", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const none = await withoutRecovery(accessToken);
+        await AdminUserTest.delete();
+        const dbAdmin = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+        const url = `/api/admin/employees/${none.id}/google/recovery-email`;
+        expect((await TestRequest.post(url, { recovery_email: "baru.pribadi@gmail.com" }, dbAdmin.accessToken)).status).toBe(200);
+        expect(google.users.get(none.googleId)!.recoveryEmail).toBe("baru.pribadi@gmail.com");
+        const entries = await prismaClient.auditLog.findMany({ where: { action: AuditAction.GOOGLE_ACCOUNT_UPDATE } });
+        expect(JSON.stringify(entries)).toContain("recovery_email_set");
+        expect(JSON.stringify(entries)).not.toContain("baru.pribadi");
+
+        // Now there is one: replacing it is for the protected Super Admins only.
+        await letTimePass(none.id);
+        const second = await TestRequest.post(url, { recovery_email: "lain@gmail.com" }, dbAdmin.accessToken);
+        expect(second.status).toBe(403);
+        expect(google.users.get(none.googleId)!.recoveryEmail).toBe("baru.pribadi@gmail.com");
+        await AdminUserTest.delete();
+        const protectedAdmin = await AdminUserTest.createSuperAdmin(master.unit.id);
+        await letTimePass(none.id);
+        expect((await TestRequest.post(url, { recovery_email: "lain@gmail.com" }, protectedAdmin.accessToken)).status).toBe(200);
+        expect(google.users.get(none.googleId)!.recoveryEmail).toBe("lain@gmail.com");
+      });
+
+      it("refuses the account's own address as the one to add", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const none = await withoutRecovery(accessToken);
+        const own = (await personOf(none.id)).email;
+        await AdminUserTest.delete();
+        const dbAdmin = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+        expect((await TestRequest.post(`/api/admin/employees/${none.id}/google/recovery-email`, { recovery_email: own }, dbAdmin.accessToken)).status).toBe(400);
+      });
+    });
+
     it("refuses a non Super Admin and someone without an account", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const { json } = await create(accessToken);
@@ -1219,12 +1771,274 @@ describe("google workspace accounts", () => {
       expect(await prismaClient.auditLog.count({ where: { action: AuditAction.UPLOAD_OWN_PHOTO } })).toBe(1);
     });
 
+    describe("the photo Google already has", () => {
+      it("is taken when Central has none, and never sent back", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken);
+        const person = await personOf(json.data.id);
+        expect(person.photo_object_key).toBeNull();
+        google.googlePhotos.set(person.google_user_id!, await png());
+
+        const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/photo`, {}, accessToken);
+        expect(response.status).toBe(200);
+        expect((await response.json()).data.pulled).toBe(true);
+        expect((await personOf(json.data.id)).photo_object_key).toContain(`employee-photos/${json.data.id}/`);
+        expect(google.photos).toHaveLength(0);
+        const entry = await prismaClient.auditLog.findFirstOrThrow({ where: { action: AuditAction.UPLOAD_OWN_PHOTO } });
+        expect(JSON.stringify(entry.new_values)).toContain("google");
+      });
+
+      it("never replaces a photo Central already has", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken);
+        const person = await personOf(json.data.id);
+        await prismaClient.person.update({ where: { id: person.id }, data: { photo_object_key: "employee-photos/keep/own.avif" } });
+        google.googlePhotos.set(person.google_user_id!, await png());
+
+        const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/photo`, {}, accessToken);
+        expect((await response.json()).data.pulled).toBe(false);
+        expect((await personOf(json.data.id)).photo_object_key).toBe("employee-photos/keep/own.avif");
+      });
+
+      it("says no when Google has no photo either, and only a Super Admin may ask", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken);
+        const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/photo`, {}, accessToken);
+        expect((await response.json()).data.pulled).toBe(false);
+        const { accessToken: other } = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+        expect((await TestRequest.post(`/api/admin/employees/${json.data.id}/google/photo`, {}, other)).status).toBe(403);
+      });
+
+      it("is taken when Check finds the linked account, and a failure does not break the check", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken);
+        const person = await personOf(json.data.id);
+        google.googlePhotos.set(person.google_user_id!, await png());
+        resetCheckCooldownForTests();
+        const check = await TestRequest.get(`/api/admin/employees/${json.data.id}/google?refresh=true`, accessToken);
+        expect(check.status).toBe(200);
+        expect((await personOf(json.data.id)).photo_object_key).toContain(`employee-photos/${json.data.id}/`);
+      });
+    });
+
     it("is not open to an admin session", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const form = new FormData();
       form.append("file", new File([await png()], "me.png", { type: "image/png" }));
       const response = await TestRequest.putMultipart("/api/auth/employee/me/photo", form, accessToken);
       expect(response.status).toBe(401);
+    });
+  });
+
+  describe("an email Google already has", () => {
+    const existing = (email: string) =>
+      google.users.set("old-1", {
+        id: "old-1", primaryEmail: email, givenName: "Lama", familyName: "Sekali",
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+
+    it("is refused for a new employee unless a Super Admin chooses to wait for the owner to sign in", async () => {
+      existing("test_google_lama@millennia21.id");
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const refused = await create(accessToken, { email: "test_google_lama@millennia21.id", recovery_email: "lama@gmail.com" });
+      expect(refused.response.status).toBe(400);
+
+      const { response, json } = await create(accessToken, { email: "test_google_lama@millennia21.id", claim_existing_google: true });
+      expect(response.status).toBe(200);
+      expect(json.data.google).toMatchObject({ status: "PENDING_CLAIM", outcome: "waiting" });
+      expect(google.created).toHaveLength(0);
+      const person = await personOf(json.data.id);
+      expect(person.google_sync_status).toBe(GoogleSyncStatus.PENDING_CLAIM);
+      expect(person.google_user_id).toBeNull();
+    });
+
+    it("is not claimable by a Database Admin, nor when Google has no such account", async () => {
+      existing("test_google_lama@millennia21.id");
+      const dba = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      const denied = await create(dba.accessToken, { email: "test_google_lama@millennia21.id", claim_existing_google: true });
+      expect(denied.response.status).toBe(403);
+
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const empty = await create(accessToken, { email: "test_google_nobody@millennia21.id", claim_existing_google: true });
+      expect(empty.response.status).toBe(400);
+    });
+
+    it("is linked only when its owner signs in, and no admin action can link it before that", async () => {
+      existing("test_google_lama@millennia21.id");
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken, { email: "test_google_lama@millennia21.id", claim_existing_google: true });
+      const id = json.data.id as string;
+      const person = await personOf(id);
+
+      // Not by the admin: the bulk link skips it and provision refuses it.
+      const linked = await GoogleWorkspaceService.linkExisting({ link: true });
+      expect(linked.matches.find((match) => match.person_id === person.id)).toBeUndefined();
+      expect((await TestRequest.post(`/api/admin/employees/${id}/google/provision`, {}, accessToken)).status).toBe(400);
+      expect((await personOf(id)).google_user_id).toBeNull();
+
+      // Someone else signing in does not claim it.
+      const spy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
+        google_id: "g-1", email: "test_google_lain@millennia21.id", name: "Lain", avatar_url: "",
+      });
+      await TestRequest.post("/api/auth/google", { code: "X" });
+      expect((await personOf(id)).google_sync_status).toBe(GoogleSyncStatus.PENDING_CLAIM);
+
+      // The owner does.
+      spy.mockResolvedValue({ google_id: "old-1", email: "test_google_lama@millennia21.id", name: "Lama", avatar_url: "" });
+      await TestRequest.post("/api/auth/google", { code: "X" });
+      spy.mockRestore();
+      const after = await personOf(id);
+      expect(after).toMatchObject({ google_sync_status: GoogleSyncStatus.ACTIVE, google_user_id: "old-1" });
+      expect(google.created).toHaveLength(0);
+      expect(google.passwords).toHaveLength(0);
+    });
+  });
+
+  describe("an account that waits for its owner", () => {
+    let mailer: MemoryMailer;
+    beforeEach(() => {
+      mailer = new MemoryMailer();
+      setMailerForTests(mailer);
+      resetSignInEmailLimitForTests();
+      resetCheckCooldownForTests();
+    });
+    afterEach(() => setMailerForTests(null));
+
+    const waiting = async (token: string, userOver: Record<string, unknown> = {}) => {
+      google.users.set("old-1", {
+        id: "old-1", primaryEmail: "test_google_lama@millennia21.id", givenName: "Rizqi Sabilla", familyName: "Putra",
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
+        recoveryEmail: "lama.pribadi@gmail.com", ...userOver,
+      } as DirectoryUser);
+      const { json } = await create(token, { email: "test_google_lama@millennia21.id", claim_existing_google: true });
+      return json.data.id as string;
+    };
+    const reset = (id: string, token: string) => TestRequest.post(`/api/admin/employees/${id}/google/reset-waiting`, { language: "id" }, token);
+
+    it("gets a new password mailed to the recovery email Google holds, never shown and never sent to its own mailbox", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await waiting(accessToken);
+      const response = await reset(id, accessToken);
+      expect(response.status).toBe(200);
+      const data = (await response.json()).data;
+      expect(data).toEqual({ sent_to: "l***@gmail.com" });
+      expect(google.passwords).toHaveLength(1);
+      expect(mailer.outbox).toHaveLength(1);
+      expect(mailer.outbox[0].to).toBe("lama.pribadi@gmail.com");
+      expect(mailer.outbox[0].text).toContain(google.passwords[0].password);
+      expect(JSON.stringify(await prismaClient.auditLog.findMany())).not.toContain(google.passwords[0].password);
+      // Still waiting: only signing in links it.
+      expect((await personOf(id)).google_sync_status).toBe(GoogleSyncStatus.PENDING_CLAIM);
+    });
+
+    it("is left alone when the name in Google is not the name here, has no recovery email, or email is off", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await waiting(accessToken, { givenName: "Orang", familyName: "Lain" });
+      expect((await reset(id, accessToken)).status).toBe(409);
+      google.users.set("old-1", { ...google.users.get("old-1")!, givenName: "Rizqi Sabilla", familyName: "Putra", recoveryEmail: null });
+      expect((await reset(id, accessToken)).status).toBe(409);
+      google.users.set("old-1", { ...google.users.get("old-1")!, recoveryEmail: "lama.pribadi@gmail.com" });
+      mailer.enabled = false;
+      expect((await reset(id, accessToken)).status).toBe(503);
+      expect(google.passwords).toHaveLength(0);
+      expect(mailer.outbox).toHaveLength(0);
+    });
+
+    it("is not reset by a Database Admin, by a second press in the wait, or when the account is not waiting", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await waiting(accessToken);
+      const dba = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      expect((await reset(id, dba.accessToken)).status).toBe(403);
+      expect((await reset(id, accessToken)).status).toBe(200);
+      expect((await reset(id, accessToken)).status).toBe(429);
+
+      const { json } = await create(accessToken, { recovery_email: "biasa@gmail.com" });
+      expect((await reset(json.data.id, accessToken)).status).toBe(400);
+    });
+
+    it("keeps the name Google has once claimed, while the email still follows Central", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const id = await waiting(accessToken, { givenName: "Nama", familyName: "Lama" });
+      const spy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
+        google_id: "old-1", email: "test_google_lama@millennia21.id", name: "Nama Lama", avatar_url: "",
+      });
+      await TestRequest.post("/api/auth/google", { code: "X" });
+      spy.mockRestore();
+      expect((await personOf(id)).google_keeps_name).toBe(true);
+
+      await GoogleWorkspaceService.syncProfile((await personOf(id)).id);
+      expect(google.users.get("old-1")).toMatchObject({ givenName: "Nama", familyName: "Lama" });
+
+      // A person made the usual way still has the name Central holds.
+      const { json } = await create(accessToken, { recovery_email: "biasa@gmail.com" });
+      await GoogleWorkspaceService.syncProfile((await personOf(json.data.id)).id);
+      expect([...google.users.values()].find((user) => user.primaryEmail.startsWith("test_google_") && user.givenName === "Rizqi Sabilla")).toBeTruthy();
+    });
+  });
+
+  describe("an intern", () => {
+    const internBody = (over: Record<string, unknown> = {}) => ({
+      full_name: "Intan Magang",
+      nick_name: "Intan",
+      email: "test_google_test_intern_a@millennia21.id",
+      gender: Gender.FEMALE,
+      religion: Religion.ISLAM,
+      unit_id: master.unit.id,
+      job_position_id: master.position.id,
+      building_id: master.building.id,
+      join_date: new Date("2026-07-01").toISOString(),
+      end_date: new Date("2026-12-31").toISOString(),
+      ...over,
+    });
+    const make = (token: string, over: Record<string, unknown> = {}) =>
+      TestRequest.postRaw("/api/admin/interns", internBody(over), token);
+    const existing = (email: string) =>
+      google.users.set("old-i", {
+        id: "old-i", primaryEmail: email, givenName: "Intan", familyName: "Magang",
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+    afterEach(async () => {
+      await InternTest.delete();
+    });
+
+    it("waits for its owner when a Super Admin chooses so for an email Google already has, and is linked at sign-in", async () => {
+      existing("test_google_test_intern_a@millennia21.id");
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      expect((await make(accessToken, { recovery_email: "intan@gmail.com" })).status).toBe(400);
+
+      const dba = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+      expect((await make(dba.accessToken, { claim_existing_google: true })).status).toBe(403);
+
+      const response = await make(accessToken, { claim_existing_google: true });
+      expect(response.status).toBe(200);
+      expect((await response.json()).data.google).toMatchObject({ status: "PENDING_CLAIM", outcome: "waiting" });
+      expect(google.created).toHaveLength(0);
+
+      const spy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
+        google_id: "old-i", email: "test_google_test_intern_a@millennia21.id", name: "Intan Magang", avatar_url: "",
+      });
+      await TestRequest.post("/api/auth/google", { code: "X" });
+      spy.mockRestore();
+      const person = await prismaClient.person.findFirstOrThrow({ where: { email: "test_google_test_intern_a@millennia21.id" } });
+      expect(person).toMatchObject({ google_sync_status: GoogleSyncStatus.ACTIVE, google_user_id: "old-i", google_keeps_name: true });
+    });
+
+    it("is saved with no recovery email for a protected address, and linked when the admin makes their own", async () => {
+      process.env.GOOGLE_WORKSPACE_TEST_PREFIX = "test_super";
+      google.users.set("own-1", {
+        id: "own-1", primaryEmail: "test_superadmin@millennia21.id", givenName: "Super", familyName: "Admin",
+        suspended: false, isAdmin: true, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const response = await make(accessToken, { email: "test_superadmin@millennia21.id" });
+      expect(response.status).toBe(200);
+      expect((await response.json()).data.google).toMatchObject({ status: "ACTIVE", outcome: "linked" });
+      expect(google.created).toHaveLength(0);
+      expect(google.passwords).toHaveLength(0);
+      const intern = await prismaClient.intern.findFirstOrThrow({ where: { person: { email: "test_superadmin@millennia21.id" } } });
+      await prismaClient.internMutationHistory.deleteMany({ where: { intern_id: intern.id } });
+      await prismaClient.intern.delete({ where: { id: intern.id } });
+      await prismaClient.person.delete({ where: { id: intern.person_id } });
     });
   });
 

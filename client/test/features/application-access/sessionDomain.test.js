@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { appHomeUrl, parentDomainOf, registrableDomain, sameParentDomain } from '../../../src/features/application-access/utils/sessionDomain.js'
+import { appHomeUrl, differentDomainText, isBareHost, parentDomainOf, registrableDomain, sameParentDomain } from '../../../src/features/application-access/utils/sessionDomain.js'
 
 describe('sessionDomain', () => {
   it('finds the domain a person can register, also under a second level suffix like web.id', () => {
@@ -26,5 +26,14 @@ describe('sessionDomain', () => {
     expect(appHomeUrl('https://app.millenniaws.sch.id/daily-checkin/auth/sso')).toBe('https://app.millenniaws.sch.id/daily-checkin/')
     expect(appHomeUrl('https://exima.mws.web.id/auth/sso')).toBe('https://exima.mws.web.id/')
     expect(appHomeUrl('')).toBe('')
+  })
+
+  it('says "at" for localhost and an IP address, and points to one host for both', () => {
+    expect(isBareHost('http://localhost:5175')).toBe(true)
+    expect(isBareHost('http://10.0.11.185:3000/auth/sso')).toBe(true)
+    expect(isBareHost('https://app.mws.web.id')).toBe(false)
+    const text = differentDomainText('Daily', 'http://localhost:5175', 'http://10.0.11.185:3000/auth/sso')
+    expect(text).toContain('Daily is at 10.0.11.185 and the Hub is at localhost')
+    expect(text).toContain('open the Hub and the application through the same one')
   })
 })

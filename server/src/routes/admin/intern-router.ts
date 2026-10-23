@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { EmailChangeController } from "../../controller/admin/email-change-controller";
 import { InternController } from "../../controller/admin/intern-controller";
 import { GoogleAccountController } from "../../controller/admin/google-account-controller";
 import type { AdminVariables } from "../../type/hono-context";
@@ -31,6 +32,7 @@ internRouter.post("/:id/sensitive-fields/access", (c) =>
   InternController.revealPii(c),
 );
 internRouter.patch("/:id", (c) => InternController.update(c));
+internRouter.post("/:id/change-email", EmailChangeController.change("intern"));
 internRouter.get("/:id", (c) => InternController.get(c));
 internRouter.patch("/delete/:id", (c) => InternController.remove(c));
 internRouter.patch("/restore/:id", (c) => InternController.restore(c));
@@ -39,6 +41,9 @@ internRouter.patch("/restore/:id", (c) => InternController.restore(c));
 internRouter.get("/:id/google", GoogleAccountController.status("intern"));
 internRouter.post("/:id/google/provision", GoogleAccountController.provision("intern"));
 internRouter.post("/:id/google/reset-password", GoogleAccountController.resetPassword("intern"));
+internRouter.post("/:id/google/reset-waiting", GoogleAccountController.resetWaiting("intern"));
+internRouter.post("/:id/google/send-sign-in", GoogleAccountController.sendSignIn("intern"));
+internRouter.get("/:id/google/recovery-hint", GoogleAccountController.recoveryHint("intern"));
 internRouter.post("/:id/google/restore", GoogleAccountController.restore("intern"));
 internRouter.post("/:id/google/suspend", GoogleAccountController.suspend("intern", true));
 internRouter.post("/:id/google/unsuspend", GoogleAccountController.suspend("intern", false));

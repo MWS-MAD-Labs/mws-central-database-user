@@ -16,15 +16,15 @@ const AcademicPage = lazy(() => import('../features/academic/pages/AcademicPage.
 const ClassDetailPage = lazy(() => import('../features/academic/pages/ClassDetailPage.jsx').then((module) => ({ default: module.ClassDetailPage })))
 const PcActivityRoomDetailPage = lazy(() => import('../features/academic/pages/PcActivityRoomDetailPage.jsx').then((module) => ({ default: module.PcActivityRoomDetailPage })))
 const ApiClientsPage = lazy(() => import('../features/api-clients/pages/ApiClientsPage.jsx').then((module) => ({ default: module.ApiClientsPage })))
-const AppAccessPage = lazy(() => import('../features/application-access/pages/AppAccessPage.jsx').then((module) => ({ default: module.AppAccessPage })))
+const AppDetailPage = lazy(() => import('../features/application-access/pages/AppDetailPage.jsx').then((module) => ({ default: module.AppDetailPage })))
 const GroupFormPage = lazy(() => import('../features/application-access/pages/GroupFormPage.jsx').then((module) => ({ default: module.GroupFormPage })))
 const ExceptionAddPage = lazy(() => import('../features/application-access/pages/ExceptionAddPage.jsx').then((module) => ({ default: module.ExceptionAddPage })))
 const GroupAccessEditPage = lazy(() => import('../features/application-access/pages/GroupAccessEditPage.jsx').then((module) => ({ default: module.GroupAccessEditPage })))
 const AppCreatePage = lazy(() => import('../features/application-access/pages/AppCreatePage.jsx').then((module) => ({ default: module.AppCreatePage })))
-const AppGuidePage = lazy(() => import('../features/application-access/pages/AppGuidePage.jsx').then((module) => ({ default: module.AppGuidePage })))
-const AppStartGuidePage = lazy(() => import('../features/application-access/pages/AppStartGuidePage.jsx').then((module) => ({ default: module.AppStartGuidePage })))
+const GuidesPage = lazy(() => import('../features/application-access/pages/GuidesPage.jsx').then((module) => ({ default: module.GuidesPage })))
+const GuideRedirect = lazy(() => import('../features/application-access/pages/GuideRedirect.jsx').then((module) => ({ default: module.GuideRedirect })))
 const AppSetupPage = lazy(() => import('../features/application-access/pages/AppSetupPage.jsx').then((module) => ({ default: module.AppSetupPage })))
-const AppSettingsPage = lazy(() => import('../features/application-access/pages/AppSettingsPage.jsx').then((module) => ({ default: module.AppSettingsPage })))
+const AppSettingsRedirect = lazy(() => import('../features/application-access/pages/AppSettingsRedirect.jsx').then((module) => ({ default: module.AppSettingsRedirect })))
 const BulkRolesPage = lazy(() => import('../features/application-access/pages/BulkRolesPage.jsx').then((module) => ({ default: module.BulkRolesPage })))
 const RoleFormPage = lazy(() => import('../features/application-access/pages/RoleFormPage.jsx').then((module) => ({ default: module.RoleFormPage })))
 const ApplicationAccessPage = lazy(() => import('../features/application-access/pages/ApplicationAccessPage.jsx').then((module) => ({ default: module.ApplicationAccessPage })))
@@ -94,12 +94,13 @@ export default function App() {
           <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="api-clients" element={<ApiClientsPage />} />
           <Route path="application-access" element={<ApplicationAccessPage />} />
-          <Route path="application-access/guide" element={<AppStartGuidePage />} />
+          <Route path="application-access/guides" element={<GuidesPage />} />
+          <Route path="application-access/guide" element={<GuideRedirect />} />
           <Route path="application-access/apps/new" element={<AppCreatePage />} />
-          <Route path="application-access/apps/:applicationId" element={<AppAccessPage />} />
+          <Route path="application-access/apps/:applicationId" element={<AppDetailPage />} />
           <Route path="application-access/apps/:applicationId/setup" element={<AppSetupPage />} />
-          <Route path="application-access/apps/:applicationId/settings" element={<AppSettingsPage />} />
-          <Route path="application-access/apps/:applicationId/guide" element={<AppGuidePage />} />
+          <Route path="application-access/apps/:applicationId/settings" element={<AppSettingsRedirect />} />
+          <Route path="application-access/apps/:applicationId/guide" element={<GuideRedirect />} />
           <Route path="application-access/apps/:applicationId/groups/new" element={<GroupFormPage />} />
           <Route path="application-access/apps/:applicationId/groups/:ruleId" element={<GroupAccessEditPage />} />
           <Route path="application-access/apps/:applicationId/groups/:ruleId/exceptions/new" element={<ExceptionAddPage />} />

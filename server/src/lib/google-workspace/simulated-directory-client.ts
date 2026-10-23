@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { logger } from "../logger";
 import {
   DirectoryError,
@@ -13,6 +14,8 @@ export class SimulatedDirectoryClient implements DirectoryClient {
   readonly mode = "simulated" as const;
   private readonly users = new Map<string, DirectoryUser>();
   private counter = 0;
+  // Ids must not repeat after a restart: links made by an earlier run are still in the database.
+  private readonly run = randomUUID().slice(0, 8);
 
   private byKey(userKey: string): DirectoryUser | undefined {
     return this.users.get(userKey) ?? [...this.users.values()].find((user) => user.primaryEmail === userKey);
@@ -36,7 +39,7 @@ export class SimulatedDirectoryClient implements DirectoryClient {
     }
     this.counter += 1;
     const user: DirectoryUser = {
-      id: `simulated-${this.counter}`,
+      id: `simulated-${this.run}-${this.counter}`,
       primaryEmail: input.primaryEmail,
       givenName: input.givenName,
       familyName: input.familyName,
@@ -97,5 +100,10 @@ export class SimulatedDirectoryClient implements DirectoryClient {
     const user = this.byKey(userKey);
     if (!user) throw new DirectoryError("NOT_FOUND", "The user does not exist in Google Workspace");
     logger.info(`[google simulated] would set the photo of ${user.primaryEmail}`);
+  }
+
+  // The simulation has no photos of its own.
+  async getPhoto(): Promise<{ data: Buffer; mimeType: string } | null> {
+    return null;
   }
 }

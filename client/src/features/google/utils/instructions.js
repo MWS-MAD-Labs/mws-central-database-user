@@ -87,6 +87,81 @@ export function signInInstructions(email, maskedRecovery, language = 'id') {
   ].join('\n')
 }
 
+const MESSAGE_COPY = {
+  id: (name, email, password) => [
+    `Halo ${name},`,
+    '',
+    'Akun Google Millennia kamu sudah dibuat.',
+    '',
+    `Email: ${email}`,
+    `Password sementara: ${password}`,
+    '',
+    'Cara masuk:',
+    '1. Buka accounts.google.com, lalu masuk dengan email dan password sementara di atas.',
+    '2. Google meminta kamu membuat password baru. Pakai minimal 8 karakter dan jangan dipakai di akun lain.',
+    '3. Setelah itu pakai email ini untuk masuk ke Central, Hub, dan aplikasi sekolah.',
+    '',
+    'Jangan bagikan password ini kepada siapa pun.',
+  ],
+  en: (name, email, password) => [
+    `Hello ${name},`,
+    '',
+    'Your Millennia Google account has been made.',
+    '',
+    `Email: ${email}`,
+    `Temporary password: ${password}`,
+    '',
+    'How to sign in:',
+    '1. Open accounts.google.com and sign in with the email and the temporary password above.',
+    '2. Google asks you to make a new password. Use at least 8 characters, not used on another account.',
+    '3. After that, use this email to sign in to Central, the Hub and the school apps.',
+    '',
+    'Do not share this password with anyone.',
+  ],
+}
+
+// The same, for a student: written to the parent or guardian, about the student.
+const PARENT_MESSAGE_COPY = {
+  id: (parentName, name, email, password) => [
+    `Yth. Bapak/Ibu ${parentName},`,
+    '',
+    `Akun Google Millennia untuk ${name} sudah dibuat.`,
+    '',
+    `Email: ${email}`,
+    `Password sementara: ${password}`,
+    '',
+    'Cara masuk:',
+    '1. Buka accounts.google.com, lalu masuk dengan email dan password sementara di atas.',
+    '2. Google meminta password baru. Pakai minimal 8 karakter dan jangan dipakai di akun lain.',
+    '3. Setelah itu email ini dipakai untuk masuk ke aplikasi sekolah.',
+    '',
+    'Mohon password ini dijaga, hanya untuk Bapak/Ibu dan putra/putri Anda.',
+  ],
+  en: (parentName, name, email, password) => [
+    `Dear ${parentName},`,
+    '',
+    `The Millennia Google account of ${name} has been made.`,
+    '',
+    `Email: ${email}`,
+    `Temporary password: ${password}`,
+    '',
+    'How to sign in:',
+    '1. Open accounts.google.com and sign in with the email and the temporary password above.',
+    '2. Google asks for a new password. Choose at least 8 characters, not used on another account.',
+    '3. After that, the email is used to sign in to the school apps.',
+    '',
+    'Please keep this password to yourself and the student.',
+  ],
+}
+
+// The message for WhatsApp (or anything you paste into): greeting, email, temporary password and the first steps. The
+// mail the server sends says the same; the admin can edit this one before copying it. With `parentName` it is the one
+// for a student's parent or guardian.
+export function signInMessage({ name, email, password, language = 'id', parentName }) {
+  if (parentName) return (PARENT_MESSAGE_COPY[language] || PARENT_MESSAGE_COPY.id)(parentName, name || '', email, password).join('\n')
+  return (MESSAGE_COPY[language] || MESSAGE_COPY.id)(name || '', email, password).join('\n')
+}
+
 // What is wrong with a recovery email, or null. Any clean address works, another mailbox of the organization included;
 // the account's own address does not, because the code for a forgotten password cannot be read from that account.
 export function recoveryEmailProblem(recoveryEmail, accountEmail, emailProblem) {
@@ -103,8 +178,6 @@ export function recoveryEmailProblem(recoveryEmail, accountEmail, emailProblem) 
 // are named as such.
 export function recoveryHint(recoveryEmail, problem, domain) {
   const value = (recoveryEmail || '').trim()
-  if (!value || problem) return 'Google sends the reset code here.'
-  return value.toLowerCase().endsWith(`@${domain}`)
-    ? 'An organization mailbox. Check the spelling.'
-    : 'Check the spelling. Nobody confirms it.'
+  if (!value || problem) return undefined
+  return value.toLowerCase().endsWith(`@${domain}`) ? 'An organization mailbox. Check the spelling.' : undefined
 }

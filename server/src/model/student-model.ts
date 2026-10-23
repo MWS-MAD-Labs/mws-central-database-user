@@ -3,6 +3,7 @@ import type {
   Class,
   ConsentStatus,
   Gender,
+  ParentType,
   Grade,
   HealthRecord,
   PCDay,
@@ -43,6 +44,9 @@ export type StudentSortField = (typeof STUDENT_SORT_FIELDS)[number];
 
 export interface StudentCreateOptions {
   disableAutoGenerateNis?: boolean;
+  // Set by the create endpoint only: a new student comes with one parent or guardian who has an email, so there is
+  // someone to give the Google account's first password to. Imports of older data are not asked for it.
+  requireParentContact?: boolean;
 }
 export function buildStudentOrderBy(
   sortBy: StudentSortField,
@@ -86,6 +90,10 @@ export type CreateStudentRequest = {
   nis?: string;
   // Preserve the imported NIS after a new one is issued.
   legacy_nis?: string;
+  // The email already has a Google account: a Super Admin links it later, for a legacy student only.
+  claim_existing_google?: boolean;
+  // The language of the mail that carries the first password. English unless said otherwise.
+  email_language?: "id" | "en";
   nisn?: string;
   // Preserve imported NISN values that do not match the current format.
   legacy_nisn?: string;
@@ -103,6 +111,15 @@ export type CreateStudentRequest = {
   graduation_grade?: string;
   leave_year?: string;
   sn?: boolean;
+
+  // The parent or guardian who is the first contact. Saved with the student, as the primary one.
+  parent?: {
+    type: ParentType;
+    full_name: string;
+    email: string;
+    phone?: string;
+    address?: string;
+  };
 
   // Super Admin override for a verified grade inconsistency.
   override_too_far_ahead_reason?: string;

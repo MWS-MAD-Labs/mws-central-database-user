@@ -225,6 +225,37 @@ export function sanitizeEmailLocalPart(value, { external = false } = {}) {
 
 // A whole email typed freely (parents, recovery): the local part may also carry a +label, and a domain of letters, digits,
 // dots and hyphens.
+const POPULAR_EMAIL_DOMAINS = ['gmail.com', 'yahoo.com', 'yahoo.co.id', 'ymail.com', 'outlook.com', 'hotmail.com', 'icloud.com', 'live.com', 'proton.me']
+
+function editDistance(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, index) => index)
+  for (let i = 1; i <= a.length; i += 1) {
+    let diagonal = row[0]
+    row[0] = i
+    for (let j = 1; j <= b.length; j += 1) {
+      const above = row[j]
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1))
+      diagonal = above
+    }
+  }
+  return row[b.length]
+}
+
+// A likely misspelling of a popular email domain (gmial.com, gmail.co), as the whole fixed address, or null.
+export function suggestEmailDomain(email) {
+  const text = String(email || '').toLowerCase()
+  const at = text.lastIndexOf('@')
+  if (at < 1) return null
+  const domain = text.slice(at + 1)
+  if (!domain.includes('.') || POPULAR_EMAIL_DOMAINS.includes(domain)) return null
+  let best = null
+  for (const candidate of POPULAR_EMAIL_DOMAINS) {
+    const distance = editDistance(domain, candidate)
+    if (distance > 0 && distance <= 2 && (!best || distance < best.distance)) best = { candidate, distance }
+  }
+  return best ? `${text.slice(0, at)}@${best.candidate}` : null
+}
+
 export function sanitizeEmail(value) {
   const text = String(value || '').toLowerCase().replace(/\s/g, '')
   const at = text.indexOf('@')

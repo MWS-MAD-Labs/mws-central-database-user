@@ -119,6 +119,71 @@ describe("POST /api/admin/students", () => {
     expect(auditLog.entity_type).toBe("Student");
   });
 
+  describe("the parent or guardian a new student comes with", () => {
+    const studentBody = (email: string, nis: string, over: Record<string, unknown> = {}) => ({
+      full_name: "Student With Parent",
+      nick_name: "Parent",
+      email,
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-01-01").toISOString(),
+      nis,
+      entry_type: "PSB",
+      current_grade_id: gradeId,
+      join_academic_year_id: academicYearId,
+      join_grade_id: gradeId,
+      ...over,
+    });
+
+    it("saves it with the student, as the primary contact, and records it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await TestRequest.post(
+        "/api/admin/students",
+        studentBody("test_stu_withparent@millennia21.id", "9000201", {
+          parent: { type: "FATHER", full_name: "Budi Santoso", email: "budi.santoso@gmail.com", phone: "081234567890" },
+        }),
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+      const id = (await response.json()).data.id as string;
+      const contacts = await prismaClient.parentGuardian.findMany({ where: { student_id: id } });
+      expect(contacts).toHaveLength(1);
+      expect(contacts[0]).toMatchObject({ type: "FATHER", full_name: "Budi Santoso", email: "budi.santoso@gmail.com", is_primary: true });
+      expect(await prismaClient.auditLog.count({ where: { action: "CREATE_PARENT_GUARDIAN", entity_id: contacts[0].id } })).toBe(1);
+    });
+
+    it("is asked for: a new student without one is refused, and so is one without an email", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const none = await TestRequest.post(
+        "/api/admin/students",
+        studentBody("test_stu_noparent@millennia21.id", "9000202", { parent: undefined }),
+        accessToken,
+      );
+      expect(none.status).toBe(400);
+      expect(JSON.stringify(await none.json())).toContain("A parent or guardian with an email is required");
+
+      const noEmail = await TestRequest.post(
+        "/api/admin/students",
+        studentBody("test_stu_noparentmail@millennia21.id", "9000203", { parent: { type: "MOTHER", full_name: "Siti Aminah" } }),
+        accessToken,
+      );
+      expect(noEmail.status).toBe(400);
+      expect(await prismaClient.student.count({ where: { person: { email: { startsWith: "test_stu_noparent" } } } })).toBe(0);
+    });
+
+    it("is not asked for by the import path, which brings older data as it is", async () => {
+      const { StudentService } = await import("../service/student-service");
+      const admin = await prismaClient.adminUser.findFirstOrThrow({ where: { role: "SUPER_ADMIN" } }).catch(async () => {
+        await AdminUserTest.createSuperAdmin();
+        return prismaClient.adminUser.findFirstOrThrow({ where: { role: "SUPER_ADMIN" } });
+      });
+      const created = await StudentService.create(admin, studentBody("test_stu_imported@millennia21.id", "9000204") as never);
+      expect(created.id).toBeDefined();
+      expect(await prismaClient.parentGuardian.count({ where: { student_id: created.id } })).toBe(0);
+    });
+  });
+
   it("should reject creating an ACTIVE student before class enrollment", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -3772,9 +3837,9 @@ describe("PATCH /api/admin/students/:id", () => {
       joinAcademicYearId: academicYearId,
     });
 
-    const response = await TestRequest.patch(
-      `/api/admin/students/${student.student!.id}`,
-      { email: "test_stu_upd_taken@millennia21.id" },
+    const response = await TestRequest.post(
+      `/api/admin/students/${student.student!.id}/change-email`,
+      { email: "test_stu_upd_taken@millennia21.id", reason: "Spelling fixed" },
       accessToken,
     );
     const body = await response.json();

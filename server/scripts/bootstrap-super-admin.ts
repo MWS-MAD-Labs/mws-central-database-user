@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { AdminRole } from "../src/generated/prisma/client";
 import { prismaClient } from "../src/lib/prisma";
+import { linkAdminToEmployee } from "../src/utils/admin-person-link";
 
 const email = process.env.BOOTSTRAP_ADMIN_EMAIL || Bun.argv[2];
 const fullName =
@@ -48,6 +49,10 @@ const admin = await prismaClient.adminUser.upsert({
 });
 
 console.log(`Bootstrapped SUPER_ADMIN: ${admin.email}`);
+
+// When the employee is already there, the admin is tied to their record now instead of at the next sign-in.
+const linked = await linkAdminToEmployee(admin.email);
+console.log(linked ? "Linked to the employee record." : "No employee record with this email yet. It is linked when the employee is added.");
 console.log(`Unit: ${unit.name} (${unit.id})`);
 
 await prismaClient.$disconnect();

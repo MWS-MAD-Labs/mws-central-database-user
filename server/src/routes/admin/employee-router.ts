@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { EmailChangeController } from "../../controller/admin/email-change-controller";
 import { EmployeeController } from "../../controller/admin/employee-controller";
 import { ExportController } from "../../controller/admin/export-controller";
 import { ImportController } from "../../controller/admin/import-controller";
@@ -21,6 +22,7 @@ employeeRouter.get("/", EmployeeController.search);
 // Must come before /:id - otherwise Hono matches "export"/"import" as the :id param.
 employeeRouter.get("/export", (c) => ExportController.exportEmployees(c));
 employeeRouter.get("/count-total", (c) => EmployeeController.countTotal(c));
+employeeRouter.get("/id-availability", (c) => EmployeeController.idAvailability(c));
 employeeRouter.get("/version", (c) => EmployeeController.getVersion(c));
 employeeRouter.get("/education-suggestions", (c) =>
   EmployeeController.getEducationSuggestions(c),
@@ -56,6 +58,7 @@ employeeRouter.post("/photos/bulk-commit", bulkPhotoUploadBodyLimit, (c) =>
   EmployeePhotoController.bulkCommit(c),
 );
 employeeRouter.patch("/:id", (c) => EmployeeController.update(c));
+employeeRouter.post("/:id/change-email", EmailChangeController.change("employee"));
 employeeRouter.get("/:id", (c) => EmployeeController.get(c));
 employeeRouter.post("/:id/sensitive-fields/access", (c) =>
   EmployeeController.recordPiiAccess(c),
@@ -141,6 +144,10 @@ employeeRouter.patch(
 employeeRouter.get("/:id/google", GoogleAccountController.status("employee"));
 employeeRouter.post("/:id/google/provision", GoogleAccountController.provision("employee"));
 employeeRouter.post("/:id/google/reset-password", GoogleAccountController.resetPassword("employee"));
+employeeRouter.post("/:id/google/reset-waiting", GoogleAccountController.resetWaiting("employee"));
+employeeRouter.post("/:id/google/send-sign-in", GoogleAccountController.sendSignIn("employee"));
+employeeRouter.get("/:id/google/recovery-hint", GoogleAccountController.recoveryHint("employee"));
+employeeRouter.post("/:id/google/photo", GoogleAccountController.pullPhoto("employee"));
 employeeRouter.post("/:id/google/restore", GoogleAccountController.restore("employee"));
 employeeRouter.post("/:id/google/suspend", GoogleAccountController.suspend("employee", true));
 employeeRouter.post("/:id/google/unsuspend", GoogleAccountController.suspend("employee", false));
