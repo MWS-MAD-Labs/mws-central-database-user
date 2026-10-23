@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { TextAction } from '../../../components/ui/TextAction.jsx'
-import { TextInput } from '../../../components/ui/FormControls.jsx'
+import { SearchableSelect, TextInput } from '../../../components/ui/FormControls.jsx'
 import { sanitizeEmail, sanitizeEmailLocalPart } from '../../../lib/form.js'
 
 // The domains most people use, so the part after @ is one pick. Anything else (an organization's own mail) is typed.
 const COMMON_EMAIL_DOMAINS = ['gmail.com', 'yahoo.com', 'yahoo.co.id', 'outlook.com', 'hotmail.com', 'icloud.com', 'proton.me']
 const OTHER = '__other'
+const DOMAIN_OPTIONS = [
+  ...COMMON_EMAIL_DOMAINS.map((domain) => ({ value: domain, label: `@${domain}` })),
+  { value: OTHER, label: 'Another Domain' },
+]
 
 const domainOf = (value) => (value.includes('@') ? value.slice(value.indexOf('@') + 1) : '')
 const localOf = (value) => (value.includes('@') ? value.slice(0, value.indexOf('@')) : value)
@@ -64,27 +68,22 @@ export function EmailWithDomain({ value, onChange, invalid = false, disabled = f
           onChange(local ? `${local}@${selected}` : '')
         }}
       />
-      <select
-        aria-label="Email domain"
+      <SearchableSelect
+        className="w-44 shrink-0"
+        buttonClassName="rounded-l-none border-l-0"
         value={selected}
         disabled={disabled}
-        onChange={(event) => {
-          if (event.target.value === OTHER) {
+        options={DOMAIN_OPTIONS}
+        placeholder="Domain"
+        onChange={(next) => {
+          if (next === OTHER) {
             setTyping(true)
             return
           }
-          setChosen(event.target.value)
-          onChange(localOf(text) ? `${localOf(text)}@${event.target.value}` : '')
+          setChosen(next)
+          onChange(localOf(text) ? `${localOf(text)}@${next}` : '')
         }}
-        className="shrink-0 cursor-pointer rounded-r-xl border border-l-0 border-(--mws-line) bg-(--mws-soft) px-3 text-sm text-(--mws-muted) outline-none focus:border-(--mws-burgundy) disabled:cursor-not-allowed"
-      >
-        {COMMON_EMAIL_DOMAINS.map((item) => (
-          <option key={item} value={item}>
-            @{item}
-          </option>
-        ))}
-        <option value={OTHER}>Another Domain</option>
-      </select>
+      />
     </div>
   )
 }

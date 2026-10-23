@@ -117,9 +117,10 @@ describe('StudentForm', () => {
     await chooseSelect(user, 'Select Religion', 'Islam')
     await user.type(field('birth_place').querySelector('input'), 'jakarta')
 
-    await chooseSelect(user, 'Select Current Grade', 'Grade 1')
+    await user.click(screen.getByRole('radio', { name: 'PSB' }))
     await chooseSelect(user, 'Select Join Year', '2025/2026')
     await chooseSelect(user, 'Select Join Grade', 'Grade 1')
+    await chooseSelect(user, 'Select Current Grade', 'Grade 1')
     await user.click(screen.getByRole('checkbox', { name: 'Pickup/Drop' }))
     await user.click(screen.getByRole('checkbox', { name: 'PSB Guide' }))
     await chooseSelect(user, 'Select Relation', 'Father')
@@ -168,6 +169,48 @@ describe('StudentForm', () => {
     const first = field('parent_email').querySelector('input')
     await user.type(first, 'budi')
     expect(again).toBeEnabled()
+  })
+
+  it('goes step by step: entry type first, then the join year, the join grade and the current grade', async () => {
+    const { user } = renderStudentForm({ mode: 'create' })
+    // Nothing is picked for the student, and the later steps wait.
+    expect(screen.getByRole('radio', { name: 'PSB' })).not.toBeChecked()
+    const join = within(field('join_academic_year_id')).getByRole('button')
+    expect(join).toBeDisabled()
+    expect(join.textContent).toBe('Select Entry Type First')
+    expect(within(field('join_grade_id')).getByRole('button')).toBeDisabled()
+    expect(within(field('current_grade_id')).getByRole('button')).toBeDisabled()
+
+    await user.click(screen.getByRole('radio', { name: 'Transfer' }))
+    expect(screen.getByRole('radio', { name: 'Transfer' })).toBeChecked()
+    expect(within(field('join_academic_year_id')).getByRole('button')).toBeEnabled()
+    expect(within(field('join_grade_id')).getByRole('button').textContent).toBe('Select Join Year First')
+
+    await chooseSelect(user, 'Select Join Year', '2025/2026')
+    expect(within(field('join_grade_id')).getByRole('button')).toBeEnabled()
+    await chooseSelect(user, 'Select Join Grade', 'Grade 1')
+    expect(within(field('current_grade_id')).getByRole('button')).toBeEnabled()
+  })
+
+  it('fills the current grade from the join grade while the join year is the running one, until it is picked by hand', async () => {
+    const { user } = renderStudentForm({ mode: 'create' })
+    await user.click(screen.getByRole('radio', { name: 'PSB' }))
+    // A year that is over leaves the current grade alone.
+    await chooseSelect(user, 'Select Join Year', '2025/2026')
+    await chooseSelect(user, 'Select Join Grade', 'Grade 1')
+    expect(field('current_grade_id').textContent).toContain('Select Current Grade')
+
+    // The running year makes the current grade follow the join grade.
+    await user.click(within(field('join_academic_year_id')).getByRole('button'))
+    await user.click(screen.getByRole('option', { name: '2026/2027' }))
+    expect(field('current_grade_id').textContent).toContain('Grade 1')
+
+    // Picking the current grade by hand ends the following.
+    await user.click(within(field('current_grade_id')).getByRole('button'))
+    await user.click(screen.getByRole('option', { name: 'Grade 2' }))
+    await user.click(within(field('join_grade_id')).getByRole('button'))
+    await user.click(screen.getByRole('option', { name: 'Grade 7' }))
+    expect(field('current_grade_id').textContent).toContain('Grade 2')
   })
 
   it('requires religion details when OTHER is selected', async () => {

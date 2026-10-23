@@ -109,7 +109,7 @@ describe('EmployeeForm', () => {
     await user.type(field('recovery_email_confirm').querySelector('input'), 'ari+pribadi@gmail.com')
     // The name is typed, the domain is a pick (gmail.com first), and together they are the email.
     expect(field('recovery_email').querySelector('input').value).toBe('ari+pribadi')
-    expect(screen.getByLabelText('Email domain').value).toBe('gmail.com')
+    expect(screen.getByRole('button', { name: '@gmail.com' })).toBeVisible()
     await chooseSelect(user, 'Select Gender', 'Male')
     await chooseSelect(user, 'Select Religion', 'Islam')
     await user.type(field('birth_place').querySelector('input'), 'jakarta')
@@ -169,7 +169,8 @@ describe('EmployeeForm', () => {
     expect(await screen.findByText('Recovery email is required.')).toBeVisible()
 
     // Another mailbox of the organization is a fine place for the code to go.
-    await user.selectOptions(screen.getByLabelText('Email domain'), 'Another Domain')
+    await user.click(screen.getByRole('button', { name: '@gmail.com' }))
+    await user.click(screen.getByRole('option', { name: 'Another Domain' }))
     const recovery = field('recovery_email').querySelector('input')
     await user.type(recovery, 'colleague@millennia21.id')
     expect(await screen.findByText('An organization mailbox. Check the spelling.')).toBeVisible()
@@ -225,7 +226,8 @@ describe('EmployeeForm', () => {
   it('suggests the right domain for a misspelt recovery email and wants the email typed twice', async () => {
     const { user } = renderEmployeeForm({ mode: 'create' })
     // An address on another domain is typed whole, and a misspelt popular one gets a suggestion.
-    await user.selectOptions(screen.getByLabelText('Email domain'), 'Another Domain')
+    await user.click(screen.getByRole('button', { name: '@gmail.com' }))
+    await user.click(screen.getByRole('option', { name: 'Another Domain' }))
     const recovery = field('recovery_email').querySelector('input')
     await user.type(recovery, 'ari@gmial.com')
     await user.click(screen.getByRole('button', { name: 'Use it' }))
@@ -258,11 +260,11 @@ describe('EmployeeForm', () => {
     expect(again.value).toBe('')
 
     // The domain is a pick, gmail.com first, and it stays picked while the name is still empty.
-    const domain = screen.getByLabelText('Email domain')
-    expect(domain.value).toBe('gmail.com')
-    await user.selectOptions(domain, 'yahoo.com')
+    expect(screen.getByRole('button', { name: '@gmail.com' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '@gmail.com' }))
+    await user.click(screen.getByRole('option', { name: '@yahoo.com' }))
     await user.type(recovery, 'budi')
-    expect(screen.getByLabelText('Email domain').value).toBe('yahoo.com')
+    expect(screen.getByRole('button', { name: '@yahoo.com' })).toBeVisible()
   })
 
   it('locks the email of someone who exists and offers Change Email to a Super Admin only', async () => {

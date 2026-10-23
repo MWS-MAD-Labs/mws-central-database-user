@@ -8,6 +8,8 @@ import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx
 import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
 import { EmailWithDomain } from "../../google/components/EmailWithDomain.jsx";
 import { ReviewEmailLanguage } from "../../google/components/ReviewEmailLanguage.jsx";
+import { AdmissionStep } from "./AdmissionStep.jsx";
+import { SegmentedControl } from "../../../components/ui/SegmentedControl.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
 import { Button } from "../../../components/ui/Button.jsx";
 import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
@@ -620,6 +622,69 @@ export function StudentForm({
                 }
               />
             </Field>
+            {isCreate ? (
+              <div className="md:col-span-2">
+                <AdmissionStep number={1} done={Boolean(values.entry_type)}>
+                  <Field label="Entry Type" name="entry_type" error={errors.entry_type} required>
+                    <SegmentedControl
+                      label="Entry type"
+                      options={entryTypeOptions(studentEntryTypes)}
+                      value={values.entry_type}
+                      onChange={(value) => updateValue("entry_type", value)}
+                    />
+                  </Field>
+                </AdmissionStep>
+                <AdmissionStep number={2} done={Boolean(values.join_academic_year_id)} locked={!values.entry_type}>
+                  <Field label="Join Academic Year" name="join_academic_year_id" error={errors.join_academic_year_id} required>
+                    <SearchableSelect
+                      required={hasAttemptedSubmit}
+                      disabled={!values.entry_type}
+                      value={values.join_academic_year_id}
+                      onChange={(value) => {
+                        updateValue("join_academic_year_id", value);
+                        followJoinGrade(value, values.join_grade_id);
+                      }}
+                      options={academicYearOptions(options.academicYears)}
+                      placeholder={values.entry_type ? "Select Join Year" : "Select Entry Type First"}
+                      searchPlaceholder="Search Years"
+                    />
+                  </Field>
+                </AdmissionStep>
+                <AdmissionStep number={3} done={Boolean(values.join_grade_id)} locked={!values.join_academic_year_id}>
+                  <Field label="Join Grade" name="join_grade_id" error={errors.join_grade_id} required>
+                    <SearchableSelect
+                      required={hasAttemptedSubmit}
+                      disabled={!values.join_academic_year_id}
+                      value={values.join_grade_id}
+                      onChange={(value) => {
+                        updateValue("join_grade_id", value);
+                        followJoinGrade(values.join_academic_year_id, value);
+                      }}
+                      options={gradeOptions(joinGradeOptions)}
+                      placeholder={values.join_academic_year_id ? "Select Join Grade" : "Select Join Year First"}
+                      searchPlaceholder="Search Grades"
+                    />
+                  </Field>
+                </AdmissionStep>
+                <AdmissionStep number={4} done={Boolean(values.current_grade_id)} locked={!values.join_grade_id}>
+                  <Field label="Current Grade" name="current_grade_id" error={errors.current_grade_id} required>
+                    <SearchableSelect
+                      required={hasAttemptedSubmit}
+                      disabled={!values.join_grade_id}
+                      value={values.current_grade_id}
+                      onChange={(value) => {
+                        setCurrentGradeTouched(true);
+                        updateValue("current_grade_id", value);
+                      }}
+                      options={gradeOptions(currentGradeOptionsForRole)}
+                      placeholder={values.join_grade_id ? "Select Current Grade" : "Select Join Grade First"}
+                      searchPlaceholder="Search Grades"
+                    />
+                  </Field>
+                </AdmissionStep>
+              </div>
+            ) : (
+              <>
             <Field
               label="Entry Type"
               name="entry_type"
@@ -707,6 +772,8 @@ export function StudentForm({
                 searchPlaceholder="Search Grades"
               />
             </Field>
+              </>
+            )}
             <LimitedField
               label="Previous School"
               field="previous_school"
@@ -991,7 +1058,8 @@ function getInitialValues(mode, student, options) {
     legacy_nis: academic.legacy_nis || "",
     nis: academic.nis || "",
     nisn: academic.nisn || "",
-    entry_type: academic.entry_type || "PSB",
+    // A new student starts with no entry type: it is the first step of the admission, picked on purpose.
+    entry_type: academic.entry_type || (mode === "create" ? "" : "PSB"),
     current_grade_id:
       findOptionByName(options.grades, academic.current_grade)?.id || "",
     join_academic_year_id: academic.join_academic_year_id || "",
