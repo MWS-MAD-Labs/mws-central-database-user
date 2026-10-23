@@ -26,6 +26,10 @@ describe("Full student lifecycle flow", () => {
     await prismaClient.studentMutationHistory.deleteMany({
       where: { student: { person: { email: { contains: "flow_e2e" } } } },
     });
+    // A new student comes with a parent, so the contact goes before the student.
+    await prismaClient.parentGuardian.deleteMany({
+      where: { student: { person: { email: { contains: "flow_e2e" } } } },
+    });
     await prismaClient.student.deleteMany({
       where: { person: { email: { contains: "flow_e2e" } } },
     });
