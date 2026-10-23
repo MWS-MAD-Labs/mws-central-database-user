@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
 import { AuthContext } from "../../../src/features/auth/context/authContext.js";
-import { AppGuidePage } from "../../../src/features/application-access/pages/AppGuidePage.jsx";
+import { GuidesPage } from "../../../src/features/application-access/pages/GuidesPage.jsx";
 import { renderWithProviders } from "../../helpers/render.jsx";
 import { createFetchRouter, jsonResponse } from "../../helpers/http.js";
 import { ownerMessage, prefixedName, workflowJob } from "../../../src/features/application-access/utils/setupGuide.js";
@@ -33,24 +33,28 @@ function Where() {
   return <p data-testid="where">{location.search}</p>;
 }
 
-function renderGuide(query = "", setup = makeSetup(), user = { role: "SUPER_ADMIN", is_protected: true }) {
+function renderGuide(query = "", setup = makeSetup(), user = { role: "SUPER_ADMIN", is_protected: true }, withApp = true) {
   globalThis.fetch = createFetchRouter([
+    { path: "/api/admin/application-access/context", response: () => jsonResponse({ data: { environment: "staging", suggested_hub_url: "https://app-stg.mws.web.id" } }) },
+    { path: "/api/admin/application-access/applications", response: () => jsonResponse({ data: [{ application_id: "demo", name: "Demo App" }] }) },
     { path: "/api/admin/application-access/apps/demo/setup", response: () => jsonResponse({ data: setup }) },
   ]);
+  const address = new URLSearchParams(query);
+  if (!address.has("app") && withApp) address.set("app", "demo");
   return renderWithProviders(
     <AuthContext.Provider value={{ user }}>
       <Where />
       <Routes>
-        <Route path="/application-access/apps/:applicationId/guide" element={<AppGuidePage />} />
+        <Route path="/application-access/guides" element={<GuidesPage />} />
       </Routes>
     </AuthContext.Provider>,
-    { route: `/application-access/apps/demo/guide${query}` },
+    { route: `/application-access/guides?${address.toString()}` },
   );
 }
 
 const title = async () => (await screen.findByRole("heading", { level: 2 })).textContent;
 
-describe("AppGuidePage", () => {
+describe("GuidesPage", () => {
   it("refuses anyone who is not a Super Admin", async () => {
     renderGuide("", makeSetup(), { role: "DATABASE_ADMIN" });
     expect(await screen.findByText("Only a protected Super Admin can manage application access.")).toBeVisible();
@@ -58,27 +62,32 @@ describe("AppGuidePage", () => {
 
   it("shows one numbered part at a time, with Back and Next that keep the place in the address", async () => {
     const { user } = renderGuide();
-    expect(await title()).toBe("Before you start");
-    expect(screen.getByText("Part 1 of 6")).toBeVisible();
+    expect(await title()).toBe("How it fits");
+    expect(screen.getByText("Part 1 of 11")).toBeVisible();
     // The list of parts is there for the whole read.
     const nav = screen.getByRole("navigation", { name: "Parts of the guide" });
-    expect(within(nav).getAllByRole("link").map((link) => link.textContent.replace(/^\d/, ""))).toEqual([
-      "Before you start",
+    expect(within(nav).getAllByRole("link").map((link) => link.textContent.replace(/^\d+/, ""))).toEqual([
+      "How it fits",
+      "Add the Hub first",
+      "Add an application",
+      "Choose the sign-in way",
       "On your machine",
       "Send the permissions",
       "Staging and production",
+      "Check it works",
       "When you rotate",
-      "Troubleshooting",
+      "Retire or remove",
+      "When something fails",
     ]);
-    expect(within(nav).getByRole("link", { name: /Before you start/ })).toHaveAttribute("aria-current", "step");
+    expect(within(nav).getByRole("link", { name: /How it fits/ })).toHaveAttribute("aria-current", "step");
     // Nothing to go back to on the first part.
     expect(screen.queryByRole("link", { name: "Back" })).toBeNull();
 
-    await user.click(screen.getAllByRole("link", { name: /Next: On your machine/ })[0]);
-    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("?part=local"));
-    expect(await title()).toBe("On your machine");
+    await user.click(screen.getAllByRole("link", { name: /Next: Add the Hub first/ })[0]);
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("?part=hub&app=demo"));
+    expect(await title()).toBe("Add the Hub first");
     await user.click(screen.getAllByRole("link", { name: "Back" })[0]);
-    expect(await title()).toBe("Before you start");
+    expect(await title()).toBe("How it fits");
   });
 
   it("opens on the part named in the address, and falls back to the first for an unknown one", async () => {
@@ -86,7 +95,7 @@ describe("AppGuidePage", () => {
     expect(await title()).toBe("When you rotate");
     view.unmount();
     renderGuide("?part=nowhere");
-    expect(await title()).toBe("Before you start");
+    expect(await title()).toBe("How it fits");
   });
 
   it("walks the local setup with the names this application reads and ends with what to expect", async () => {
@@ -164,7 +173,7 @@ describe("AppGuidePage", () => {
       expect(job.textContent).not.toContain("environment:");
       expect(job.textContent).toContain("secrets.STAGING_CENTRAL_API_TOKEN");
       // The place in the guide is kept while the choice changes.
-      expect(screen.getByText("Part 4 of 6")).toBeVisible();
+      expect(screen.getByText("Part 7 of 11")).toBeVisible();
     });
 
     it("writes a message for the repository owner when nothing can be changed", async () => {
@@ -214,6 +223,25 @@ describe("AppGuidePage", () => {
     // The last part of the guide goes back to the setup.
   });
 
+  it("links the rotation to the Connection tab of the application picked", async () => {
+    renderGuide("?part=rotate");
+    expect(await screen.findByRole("link", { name: "Open The Connection Tab" })).toHaveAttribute("href", "/application-access/apps/demo?tab=connection");
+  });
+
+  it("covers a deploy without a pipeline, the checks after a rotation and Rotate Everything", async () => {
+    renderGuide("?part=rotate");
+    expect(await screen.findByText("No pipeline or GitHub secrets")).toBeVisible();
+    expect(screen.getByText(/Komodo: open the stack/)).toBeVisible();
+    expect(screen.getByText("After you put the values in")).toBeVisible();
+    expect(screen.getByText("Rotate Everything")).toBeVisible();
+    expect(screen.queryByText("Rotate the Hub's signing key")).toBeNull();
+  });
+
+  it("explains the signing key rotation on the Hub's guide", async () => {
+    renderGuide("?part=rotate", makeSetup({ is_hub: true }));
+    expect(await screen.findByText("Rotate the Hub's signing key")).toBeVisible();
+  });
+
   it("uses the sync command of the Hub for the Hub and has no secret of its own to rotate", async () => {
     const view = renderGuide("?part=permissions", makeSetup({ is_hub: true }));
     expect(await screen.findByText(/The Hub keeps its permissions in its code/)).toBeVisible();
@@ -224,12 +252,99 @@ describe("AppGuidePage", () => {
     expect(screen.queryByText("Rotate the Hub secret of this application")).toBeNull();
   });
 
-  it("lists what to check when nothing arrives, and ends by going back to the setup", async () => {
-    renderGuide("?part=troubleshooting");
+  it("lists what to check when nothing arrives, for the application picked, and ends by going back to the applications", async () => {
+    renderGuide("?part=problems");
     expect(await screen.findByText("Still nothing after 10 minutes")).toBeVisible();
     expect(screen.getByText(/its ID is demo/)).toBeVisible();
     expect(screen.getByText(/The deploy job cannot see a secret/)).toBeVisible();
     expect(screen.queryByRole("link", { name: /^Next:/ })).toBeNull();
-    expect(screen.getAllByRole("link", { name: "Back To Setup" })[0]).toHaveAttribute("href", "/application-access/apps/demo/setup");
+    expect(screen.getAllByRole("link", { name: "Back To Applications" })[0]).toHaveAttribute("href", "/application-access");
+  });
+
+  it("covers a deploy without a pipeline, with Komodo and with curl", async () => {
+    const { user } = renderGuide("?part=deploy&github=komodo");
+    expect(await screen.findByText(/Open the terminal of the application container in Komodo/)).toBeVisible();
+    await user.click(screen.getByRole("radio", { name: /No pipeline, I use curl/ }));
+    expect(await screen.findByText(/curl -i -X PUT "https:\/\/staging-db.example.com\/api\/internal\/application-permissions\/me"/)).toBeVisible();
+  });
+
+  it("keeps the general text before an application is picked", async () => {
+    renderGuide("?part=local", makeSetup(), undefined, false);
+    expect(await screen.findByText("General")).toBeVisible();
+    const href = screen.getByRole("link", { name: /How it fits/ }).getAttribute("href");
+    expect(href).toContain("part=how");
+    expect(href).not.toContain("app=");
+    expect(screen.queryByText(/its ID is demo/)).toBeNull();
+  });
+
+  describe("the start of the way", () => {
+    it("names what Central needs and the Hub with its key command, lines and address", async () => {
+      renderGuide("?part=how");
+      expect(await screen.findByText(/APP_SECRETS_KEY in this Central/)).toBeVisible();
+      expect(await screen.findByText(/You are in the Staging Central/)).toBeVisible();
+    });
+
+    it("walks through the Hub with the key command and the address of this Hub", async () => {
+      renderGuide("?part=hub");
+      expect(await title()).toBe("Add the Hub first");
+      expect(screen.getByText(/openssl genpkey -algorithm RSA/)).toBeVisible();
+      expect(screen.getByText(/Key: choose Make Signing Key/)).toBeVisible();
+      expect(await screen.findByText(/https:\/\/app-stg\.mws\.web\.id\/\.well-known\/jwks\.json/)).toBeVisible();
+    });
+
+    it("walks through adding an application and lists what failed with its cause", async () => {
+      const view = renderGuide("?part=app");
+      expect(await title()).toBe("Add an application");
+      expect(screen.getByText(/needs students:read/)).toBeVisible();
+      view.unmount();
+      renderGuide("?part=problems");
+      const message = await screen.findByText("A Hub answers here, but it has no sign-in key yet");
+      expect(message.closest("div")).toHaveTextContent("HUB_SSO_PRIVATE_KEY");
+      expect(screen.getByText("Missing required scope")).toBeVisible();
+    });
+
+    it("explains how an application is retired and removed", async () => {
+      renderGuide("?part=remove");
+      expect(await screen.findByText(/1\. Retire\./)).toBeVisible();
+      expect(screen.getByText(/The Hub itself:/)).toBeVisible();
+    });
+
+    it("never prints a secret", async () => {
+      const { container } = renderGuide("?part=hub");
+      await title();
+      expect(container.textContent).not.toMatch(/BEGIN PRIVATE KEY-----\s*[A-Za-z0-9+/=]{20,}/);
+    });
+  });
+
+  describe("languages", () => {
+    it("reads in English by default and switches to Indonesian, keeping the place and the choice", async () => {
+      window.localStorage.removeItem("mws-guide-lang");
+      const { user } = renderGuide("?part=rotate");
+      expect(await title()).toBe("When you rotate");
+      expect(screen.getByRole("radio", { name: "English" })).toHaveAttribute("aria-checked", "true");
+      await user.click(screen.getByRole("radio", { name: "Indonesia" }));
+      expect(await title()).toBe("Rotasi");
+      expect(screen.getByText(/Rotasi menghasilkan nilai baru/)).toBeVisible();
+      expect(screen.getByText(/Selesai jika/)).toBeVisible();
+      expect(screen.getByText(/Bagian 9 dari 11/)).toBeVisible();
+      expect(screen.getByTestId("where").textContent).toContain("lang=id");
+      expect(window.localStorage.getItem("mws-guide-lang")).toBe("id");
+      window.localStorage.removeItem("mws-guide-lang");
+    });
+
+    it("opens in Indonesian from the address and carries it to the next part", async () => {
+      const { user } = renderGuide("?part=how&lang=id");
+      expect(await title()).toBe("Gambaran umum");
+      expect(screen.getByText(/Ada tiga bagian yang saling bergantung/)).toBeVisible();
+      await user.click(screen.getAllByRole("link", { name: /Berikutnya: Tambahkan Hub terlebih dahulu/ })[0]);
+      await waitFor(() => expect(screen.getByTestId("where").textContent).toContain("lang=id"));
+      expect(await title()).toBe("Tambahkan Hub terlebih dahulu");
+    });
+
+    it("writes the deploy choices, the owner message and the rotation in Indonesian", async () => {
+      renderGuide("?part=deploy&github=owner&lang=id");
+      expect(await screen.findByText("Saya tidak dapat mengubah pengaturan GitHub")).toBeVisible();
+      expect(screen.getByText(/Halo, saya sedang menghubungkan Demo App/, { selector: "pre" })).toBeVisible();
+    });
   });
 });

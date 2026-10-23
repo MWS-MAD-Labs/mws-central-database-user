@@ -17,7 +17,8 @@ export function startingEnvironment(environment) {
 // The rows of the table of GitHub settings for one environment. A value is only filled in when it is known for
 // that environment, which is the Central being looked at. For the other one it is null and the row says where to
 // get it. Tokens and secrets are never filled in: they are shown once, when they are made.
-export function guideRows({ keys, applicationId, selected, environment, centralUrl, hubAddress, organizationId, mode = 'environments' }) {
+export function guideRows({ keys, applicationId, selected, environment, centralUrl, hubAddress, organizationId, mode = 'environments', lang = 'en' }) {
+  const L = (en, id) => (lang === 'id' ? id : en)
   const { base, token, short } = connectionKeys(keys)
   const here = selected === environment
   const hub = hubAddress ? hubAddress.replace(/\/+$/, '') : null
@@ -30,26 +31,26 @@ export function guideRows({ keys, applicationId, selected, environment, centralU
     const prefixed = mode === 'prefixed' && inPipeline
     const kind = target === 'server' ? 'Server' : prefixed || item.secret ? 'Secret' : 'Variable'
     const name = prefixed ? prefixedName(item.key, selected) : item.key
-    const usedBy = inPipeline ? 'Pipeline and server' : 'Server only'
+    const usedBy = inPipeline ? L('Pipeline and server', 'Pipeline dan server') : L('Server only', 'Hanya server')
     let value = null
-    let source = `From the block of the ${selected} Central.`
+    let source = L(`From the block of the ${selected} Central.`, `Dari blok Central ${selected}.`)
     if (item.key === 'HUB_SSO_APP_ID') {
       value = applicationId
-      source = 'The ID of this application.'
+      source = L('The ID of this application.', 'ID aplikasi ini.')
     } else if (item.key === base) {
       value = here && centralUrl ? `${centralUrl}${short ? '/api/internal' : ''}` : null
-      source = `The address of the ${selected} Central${short ? ', ending in /api/internal' : ''}.`
+      source = L(`The address of the ${selected} Central${short ? ', ending in /api/internal' : ''}.`, `Alamat Central ${selected}${short ? ', diakhiri /api/internal' : ''}.`)
     } else if (item.key.endsWith('ORGANIZATION_ID')) {
       value = here ? organizationId : null
-      source = 'Made by that Central for this application. It differs between Centrals.'
+      source = L('Made by that Central for this application. It differs between Centrals.', 'Dibuat oleh Central itu untuk aplikasi ini. Setiap Central berbeda.')
     } else if (item.key === 'HUB_BASE_URL') {
       value = here ? hub : null
-      source = `The address of the Hub in ${selected}.`
+      source = L(`The address of the Hub in ${selected}.`, `Alamat Hub di ${selected}.`)
     } else if (item.key === 'HUB_SSO_JWKS_URL') {
       value = here && hub ? `${hub}/.well-known/jwks.json` : null
-      source = 'The Hub address followed by /.well-known/jwks.json.'
+      source = L('The Hub address followed by /.well-known/jwks.json.', 'Alamat Hub diikuti /.well-known/jwks.json.')
     } else if (item.secret) {
-      source = 'Shown once, in the block you copy when the connection is made or rotated.'
+      source = L('Shown once, in the block you copy when the connection is made or rotated.', 'Tampil sekali, di blok yang disalin saat koneksi dibuat atau dirotasi.')
     }
     return { key: item.key, name, kind, usedBy, target, value, source }
   })
@@ -107,47 +108,121 @@ export function githubEnvironmentOf(environment) {
 
 // What to do after a rotation, in the order it is done, with the names this application reads and the GitHub
 // environment of the Central being looked at.
-export function rotationSteps({ keys, environment }) {
+export function rotationSteps({ keys, environment, lang = 'en' }) {
+  const L = (en, id) => (lang === 'id' ? id : en)
   const { token } = connectionKeys(keys)
   const github = githubEnvironmentOf(environment)
   const inGithub = (name) =>
     github
-      ? `In GitHub replace the secret ${name} with the new value. It is in the environment ${github}, or among the repository secrets as ${prefixedName(name, github)} if you do not use Environments.`
-      : `This is a development Central. If the application also runs in staging or production, those have their own values, rotate them in their own Central.`
+      ? L(
+          `In GitHub replace the secret ${name} with the new value. It is in the environment ${github}, or among the repository secrets as ${prefixedName(name, github)} if you do not use Environments.`,
+          `Di GitHub, ganti secret ${name} dengan nilai baru. Secret ini ada di environment ${github}, atau di repository secrets dengan nama ${prefixedName(name, github)} jika Anda tidak menggunakan Environments.`,
+        )
+      : L(
+          `This is a development Central. If the application also runs in staging or production, those have their own values, rotate them in their own Central.`,
+          `Ini Central development. Jika aplikasinya juga berjalan di staging atau production, keduanya memiliki nilai sendiri. Rotasi di Central masing-masing.`,
+        )
   return {
     token: [
-      'Copy the new block now. The token is shown once, and closing the dialog without copying loses it.',
-      `Replace ${token} in the .env of the application.`,
+      L('Copy the new block now. The token is shown once, and closing the dialog without copying loses it.', 'Salin blok barunya sekarang. Token hanya tampil satu kali. Jika dialog ditutup sebelum disalin, token tersebut hilang.'),
+      L(`Replace ${token} in the .env of the application.`, `Ganti ${token} di .env aplikasi.`),
       inGithub(token),
-      'Deploy or restart the application so it reads the new value. If you chose a grace time, the old token keeps working until it ends, so do this before then.',
-      'This page shows Connected again once the application calls Central with the new token.',
+      L(
+        'Deploy or restart the application so it reads the new value. If you chose a grace time, the old token keeps working until it ends, so do this before then.',
+        'Deploy atau restart aplikasi supaya membaca nilai baru. Jika Anda memilih grace time, token lama masih berlaku sampai waktunya habis, karena itu selesaikan sebelum waktu tersebut habis.',
+      ),
+      L('This page shows Connected again once the application calls Central with the new token.', 'Halaman ini kembali menampilkan Connected begitu aplikasi memanggil Central dengan token baru.'),
     ],
     appSecret: [
-      'Copy the new line now. The secret is shown once.',
-      'Replace HUB_INTERNAL_SECRET in the .env of the application.',
+      L('Copy the new line now. The secret is shown once.', 'Salin baris barunya sekarang. Secret hanya tampil satu kali.'),
+      L('Replace HUB_INTERNAL_SECRET in the .env of the application.', 'Ganti HUB_INTERNAL_SECRET di .env aplikasi.'),
       inGithub('HUB_INTERNAL_SECRET'),
-      'Deploy or restart the application. Until then it and the Hub do not trust each other. Other applications are not affected.',
+      L(
+        'Deploy or restart the application. Until then it and the Hub do not trust each other. Other applications are not affected.',
+        'Deploy atau restart aplikasi. Sebelum itu, aplikasi dan Hub belum saling percaya. Aplikasi lain tidak terpengaruh.',
+      ),
+    ],
+    signingKey: [
+      L('Rotate it in the Hub setup. The private key is shown once.', 'Rotasi di Hub setup. Private key hanya tampil satu kali.'),
+      L(
+        'Replace HUB_SSO_PRIVATE_KEY and HUB_SSO_KEY_ID in the .env of the Hub, and in its GitHub environment and server.',
+        'Ganti HUB_SSO_PRIVATE_KEY dan HUB_SSO_KEY_ID di .env Hub, di environment GitHub, dan di servernya.',
+      ),
+      L(
+        'Restart the Hub. Everybody is signed out and signs in again. Applications need nothing, they read the new key from the Hub.',
+        'Restart Hub. Semua orang akan keluar dan harus sign in kembali. Aplikasi tidak perlu diubah, mereka membaca key baru dari Hub.',
+      ),
+    ],
+    // For an application that has no pipeline: the values go in by hand.
+    byHand: [
+      L(
+        'Komodo: open the stack of the application, replace the value in its Environment field, save and redeploy.',
+        'Komodo: buka stack aplikasi, ganti nilai di kolom Environment, simpan, lalu redeploy.',
+      ),
+      L(
+        'A server you run by hand: edit the .env next to the compose file and restart the container.',
+        'Server yang dikelola manual: ubah .env di samping file compose, lalu restart container.',
+      ),
+      L(
+        'A repository without secrets for this: send the owner the name of each value and ask them to add it, or open a pull request that changes the deploy settings.',
+        'Repository yang tidak dapat Anda ubah: kirim nama setiap nilai ke owner dan minta ditambahkan, atau buka pull request yang mengubah pengaturan deploy.',
+      ),
+    ],
+    // What to check once the new values are in.
+    after: [
+      L('The setup page shows Connected again once the application calls Central with the new token.', 'Halaman setup kembali menampilkan Connected begitu aplikasi memanggil Central dengan token baru.'),
+      L('Try the token by hand. A 200 means Central accepts it, a 401 means the old value is still in use.', 'Uji tokennya secara manual. 200 berarti Central menerimanya, 401 berarti nilai lama masih digunakan.'),
+      L('Run the permissions job again if the application sends permissions at deploy.', 'Jalankan ulang job permission jika aplikasi mengirim permission saat deploy.'),
+      L('When the grace time ends, the old token stops working. Anything that still has it fails then.', 'Begitu grace time habis, token lama mati. Apa pun yang masih memakainya akan gagal saat itu.'),
     ],
     master: [
-      'Rotate it in the Hub setup. The dialog lists every application that is reached.',
-      'Put the new HUB_INTERNAL_SECRET in the .env of the Hub, and in the GitHub environment and the server of the Hub.',
-      'Then do the same for each application in that list: open it here, rotate its token or ask for its secret, and replace the value in its .env and GitHub environment.',
-      'Applications that have a secret of their own get a new one made from the new master, so their .env changes too.',
+      L('Rotate it in the Hub setup. The dialog lists every application that is reached.', 'Rotasi di Hub setup. Dialognya menampilkan daftar aplikasi yang terdampak.'),
+      L(
+        'Put the new HUB_INTERNAL_SECRET in the .env of the Hub, and in the GitHub environment and the server of the Hub.',
+        'Pasang HUB_INTERNAL_SECRET baru di .env Hub, di environment GitHub, dan di server Hub.',
+      ),
+      L(
+        'Then do the same for each application in that list: open it here, rotate its token or ask for its secret, and replace the value in its .env and GitHub environment.',
+        'Lalu ulangi untuk setiap aplikasi di daftar itu: buka di sini, rotasi tokennya atau minta secret-nya, dan ganti nilainya di .env serta environment GitHub aplikasi itu.',
+      ),
+      L(
+        'Applications that have a secret of their own get a new one made from the new master, so their .env changes too.',
+        'Aplikasi yang memiliki secret sendiri ikut mendapat secret baru turunan master baru, sehingga .env-nya juga berubah.',
+      ),
     ],
     // The short version shown in the dialog that follows a rotation.
     short: [
-      `Replace ${token} in the .env of the application.`,
-      github ? `Replace the secret ${token} in the GitHub environment ${github}.` : 'Replace it in the GitHub environment of staging or production if it runs there.',
-      'Deploy or restart the application.',
+      L(`Replace ${token} in the .env of the application.`, `Ganti ${token} di .env aplikasi.`),
+      github
+        ? L(`Replace the secret ${token} in the GitHub environment ${github}.`, `Ganti secret ${token} di environment GitHub ${github}.`)
+        : L('Replace it in the GitHub environment of staging or production if it runs there.', 'Ganti juga di environment GitHub staging atau production jika aplikasinya berjalan di sana.'),
+      L('Deploy or restart the application.', 'Deploy atau restart aplikasi.'),
     ],
   }
 }
 
 export const GITHUB_MODES = [
-  { id: 'environments', label: 'I can use Environments', text: 'Owner or admin of the repository. Two environments, the same names in each.' },
-  { id: 'prefixed', label: 'I can only add repository secrets', text: 'No Environments menu. Names get a STAGING_ or PRODUCTION_ in front.' },
-  { id: 'owner', label: 'I cannot change GitHub settings', text: 'Read only. Send the owner a message that says exactly what to add.' },
+  { id: 'environments', label: 'I can use Environments', text: 'Owner or admin of the repository. Two environments, the same names in each.', label_id: 'Saya dapat gunakan Environments', text_id: 'Owner atau admin repository. Dua environment dengan nama yang sama.' },
+  { id: 'prefixed', label: 'I can only add repository secrets', text: 'No Environments menu. Names get a STAGING_ or PRODUCTION_ in front.', label_id: 'Saya hanya dapat menambah repository secrets', text_id: 'Tidak ada menu Environments. Nama diberi awalan STAGING_ atau PRODUCTION_.' },
+  { id: 'owner', label: 'I cannot change GitHub settings', text: 'Read only. Send the owner a message that says exactly what to add.', label_id: 'Saya tidak dapat mengubah pengaturan GitHub', text_id: 'Hanya dapat baca. Kirim pesan ke owner berisi apa saja yang harus ditambahkan.' },
+  { id: 'komodo', label: 'No pipeline, I use Komodo', text: 'Set the values in the stack and send the permissions from the terminal of the container.', label_id: 'Tanpa pipeline, saya gunakan Komodo', text_id: 'Isi nilai di stack, lalu kirim permission dari terminal container.' },
+  { id: 'curl', label: 'No pipeline, I use curl', text: 'Send the permissions with one curl call from any machine that can reach Central.', label_id: 'Tanpa pipeline, saya gunakan curl', text_id: 'Kirim permission dengan satu curl dari mesin mana pun yang dapat menjangkau Central.' },
 ]
+
+// The ways that need no GitHub secrets and no workflow.
+export const NO_PIPELINE_MODES = ['komodo', 'curl']
+
+// The mode the table of values is written for: only Environments keeps plain names, the rest use the prefixed ones.
+export const valueModeOf = (mode) => (mode === 'environments' ? 'environments' : 'prefixed')
+
+// Sends permissions.json with curl, without a script in the repository.
+export function putPermissionsCommand({ keys, baseValue }) {
+  const { path } = connectionKeys(keys)
+  return `curl -i -X PUT "${baseValue || '<the address of Central>'}${path}" \\
+  -H "Authorization: Bearer <the token>" \\
+  -H "Content-Type: application/json" \\
+  --data @permissions.json`
+}
 
 export function prefixedName(key, environment) {
   return `${environment.toUpperCase()}_${key}`
@@ -242,14 +317,31 @@ ${indent(sendScript({ keys, mode, command }), 10)}`
 }
 
 // What to send the owner of a repository when you cannot change its settings yourself.
-export function ownerMessage({ applicationName, keys, isHub, environment, centralUrl, hubAddress, organizationId, applicationId }) {
+export function ownerMessage({ applicationName, keys, isHub, environment, centralUrl, hubAddress, organizationId, applicationId, lang = 'en' }) {
   const known = (selected) =>
-    guideRows({ keys, applicationId, selected, environment, centralUrl, hubAddress, organizationId, mode: 'prefixed' })
+    guideRows({ keys, applicationId, selected, environment, centralUrl, hubAddress, organizationId, mode: 'prefixed', lang })
   const lines = (selected) =>
     known(selected)
       .filter((row) => row.target === 'github')
-      .map((row) => `  - ${row.name}: ${row.value ?? `(from the ${selected} Central, I will send it)`}`)
+      .map((row) => `  - ${row.name}: ${row.value ?? (lang === 'id' ? `(dari Central ${selected}, akan saya kirim)` : `(from the ${selected} Central, I will send it)`)}`)
       .join('\n')
+  if (lang === 'id') {
+    return `Halo, saya sedang menghubungkan ${applicationName} ke Central. Saya tidak dapat mengubah pengaturan repository ini, jadi mohon tambahkan repository secrets berikut (Settings, Secrets and variables, Actions, New repository secret):
+
+Staging:
+${lines('staging')}
+
+Production:
+${lines('production')}
+
+Di GitHub cukup tiga nama ini. Baris lain di blok dibaca server dan tidak perlu diletakkan di sana.
+
+Lalu tambahkan job ini ke workflow deploy, setelah job deploy:
+
+${workflowJob({ keys, isHub, mode: 'prefixed' })}
+
+Job ini mengirim permission aplikasi ke Central di setiap deploy. Nilai yang bertanda "akan saya kirim" adalah token, yang akan saya kirim secara terpisah dan pribadi secara pribadi.`
+  }
   return `Hi, I am setting up ${applicationName} to connect to Central. I cannot change this repository's settings, so could you add these repository secrets (Settings, Secrets and variables, Actions, New repository secret)?
 
 Staging:

@@ -3,9 +3,9 @@ import { Route, Routes } from "react-router";
 import { screen, waitFor, within } from "@testing-library/react";
 import { AuthContext } from "../../../src/features/auth/context/authContext.js";
 import { ConfirmProvider } from "../../../src/components/ui/ConfirmDialog.jsx";
-import { AppAccessPage } from "../../../src/features/application-access/pages/AppAccessPage.jsx";
+import { AppDetailPage } from "../../../src/features/application-access/pages/AppDetailPage.jsx";
 import { renderWithProviders } from "../../helpers/render.jsx";
-import { createFetchRouter, jsonResponse } from "../../helpers/http.js";
+import { createFetchRouter as baseRouter, jsonResponse } from "../../helpers/http.js";
 
 const roles = [
   {
@@ -102,6 +102,47 @@ const detail = (extra = {}) => ({
   ...extra,
 });
 
+// The page also reads the setup and the settings of the application, so every router answers those too.
+function createFetchRouter(list) {
+  return baseRouter([
+    ...list,
+    { path: "/api/admin/application-access/apps/exima/setup", response: () => jsonResponse({ data: SETUP }) },
+    { path: /\/api\/admin\/application-access\/apps\/exima\/settings/, response: () => jsonResponse({ data: SETTINGS }) },
+    { path: /\/api\/admin\/application-access\/taxonomy/, response: () => jsonResponse({ data: { categories: [], scopes: [] } }) },
+    { path: /internal-endpoints|data-access/, response: () => jsonResponse({ data: [] }) },
+  ]);
+}
+
+const SETUP = {
+  application: {
+    application_id: "exima", name: "Exima", description: null, icon: null, category: null, launch_url: "https://exima.example.com/auth/sso",
+    logout_url: null, published: true, retired_at: null, launch_mode: "sso", session_mode: "relay", uses_hub: true, hub_status: "active", hub_keywords: [],
+  },
+  organization_id: "org_exima_a1b2c3",
+  connection: { client_id: "c1", created: true, last_used_at: new Date().toISOString() },
+  permissions: { count: 2, synced_at: new Date().toISOString() },
+  roles: { active_count: 2 },
+  groups: { active_count: 1 },
+  can_publish: true,
+  setup_completed: true,
+  missing: [],
+  is_hub: false,
+  env_settings: null,
+  removal: { can_remove: false, retire_available: true },
+  hub_secret: { mode: "shared", version: 1, applies: false },
+  env_keys: [],
+  environment: "development",
+  data_access: { scope_names: [], editable: false },
+};
+const SETTINGS = {
+  created_at: "2026-10-03T08:00:00.000Z",
+  updated_at: "2026-10-12T09:30:00.000Z",
+  token: null,
+  access: { groups: 1, people: 3, exceptions: 1, blocked: 0, roles: [] },
+  activity: [],
+  activity_paging: { current_page: 1, total_page: 1, total_item: 0, size: 10 },
+};
+
 // Exceptions by group id, served like the paged endpoint.
 function routes(
   data = detail(),
@@ -137,6 +178,16 @@ function routes(
       path: "/api/admin/application-roles",
       response: () => jsonResponse({ data: roles }),
     },
+    {
+      path: "/api/admin/application-access/apps/exima/setup",
+      response: () => jsonResponse({ data: SETUP }),
+    },
+    {
+      path: /\/api\/admin\/application-access\/apps\/exima\/settings/,
+      response: () => jsonResponse({ data: SETTINGS }),
+    },
+    { path: /\/api\/admin\/application-access\/taxonomy/, response: () => jsonResponse({ data: { categories: [], scopes: [] } }) },
+    { path: /internal-endpoints|data-access/, response: () => jsonResponse({ data: [] }) },
   ];
 }
 
@@ -150,7 +201,7 @@ function renderPage(
         <Routes>
           <Route
             path="/application-access/apps/:applicationId"
-            element={<AppAccessPage />}
+            element={<AppDetailPage />}
           />
           <Route
             path="/application-access"
@@ -197,7 +248,7 @@ async function openExceptions(user, role = "STAFF") {
   await user.click(within(card).getByRole("button", { name: /Exceptions/ }));
 }
 
-describe("AppAccessPage", () => {
+describe("AppDetailPage access tabs", () => {
   it("refuses anyone who is not a Super Admin", async () => {
     globalThis.fetch = createFetchRouter(routes());
     renderPage({ role: "DATABASE_ADMIN" });

@@ -1,3 +1,4 @@
+import { appGuideHref } from "../utils/startGuide.js";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ShieldCheck, Check, Circle, Loader2, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -54,7 +55,6 @@ export function AppSetupPage() {
       return data.connection.created && data.permissions.count === 0 ? POLL_MS : false;
     },
   });
-  const guideBase = `/application-access/apps/${applicationId}/guide`;
   const githubEnvironment = githubEnvironmentOf(setupQuery.data?.environment);
   const mgmt = useApplicationManagement(applicationId, setupQuery.data);
   const { setEditing, setRotating, setDataAccess, setRemoving, setRemovalGuide, navigate, restoreMutation, publishMutation, connectMutation, appSecretMutation, retire, changeAppSecret } = mgmt;
@@ -75,7 +75,7 @@ export function AppSetupPage() {
   const setup = setupQuery.data;
   const steps = buildSteps(setup);
   // The steps are for the first time. Once the application was shown in the Hub, or every step is done, Settings takes over.
-  if (setup.setup_completed || stepsDone(steps) === steps.length) return <Navigate to={`/application-access/apps/${applicationId}/settings`} replace />;
+  if (setup.setup_completed || stepsDone(steps) === steps.length) return <Navigate to={`/application-access/apps/${applicationId}?tab=overview`} replace />;
   const endpointCount = countFor(setup.data_access.scope_names);
   const finished = stepsDone(steps);
   const base = `/application-access/apps/${applicationId}`;
@@ -108,7 +108,7 @@ export function AppSetupPage() {
               </TextAction>
             ) : null}
             <TextAction asChild>
-              <Link to={`${guideBase}?part=local`}>Setup Guide</Link>
+              <Link to={appGuideHref(applicationId, "local")}>Setup Guide</Link>
             </TextAction>
             {setup.hub_secret?.applies ? (
               <TextAction loading={appSecretMutation.isPending} onClick={changeAppSecret}>
@@ -118,6 +118,9 @@ export function AppSetupPage() {
             <TextAction onClick={() => setRotating(true)}>
               Rotate Token
             </TextAction>
+            {setup.hub_secret?.applies && setup.hub_secret.mode === "own" ? (
+              <TextAction onClick={() => setRotating("all")}>Rotate Everything</TextAction>
+            ) : null}
           </>
         ) : (
           <Button type="button" loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
@@ -209,7 +212,7 @@ export function AppSetupPage() {
                   <ActionsMenuItem
                     onClick={() => {
                       closeMenu();
-                      navigate(guideBase);
+                      navigate(appGuideHref(applicationId));
                     }}
                   >
                     Setup Guide
@@ -358,7 +361,7 @@ export function AppSetupPage() {
                       In the repository, add the token, the Central address and the Organization ID in GitHub, so the deploy can send the
                       permissions. Put them in the environment <span className="font-mono">{githubEnvironment}</span>, or as repository
                       secrets with {githubEnvironment.toUpperCase()}_ in front if you cannot use environments. The{" "}
-                      <Link to={`${guideBase}?part=deploy`} className="font-semibold underline">
+                      <Link to={appGuideHref(applicationId, "deploy")} className="font-semibold underline">
                         Setup Guide
                       </Link>{" "}
                       shows both and the workflow job for each.
@@ -383,7 +386,7 @@ export function AppSetupPage() {
                     another name can be read first and keep the new token from being used. Check that it was restarted, and that this
                     block was made for the application that reads it (its ID here is {applicationId}). Then send the permissions once
                     from your machine, as in the{" "}
-                    <Link to={`${guideBase}?part=troubleshooting`} className="font-semibold underline">
+                    <Link to={appGuideHref(applicationId, "problems")} className="font-semibold underline">
                       Setup Guide
                     </Link>
                     .

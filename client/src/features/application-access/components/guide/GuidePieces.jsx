@@ -1,4 +1,5 @@
 import { Check } from "lucide-react";
+import { useT } from "../../utils/guideLang.js";
 
 export function Code({ children }) {
   return (
@@ -26,11 +27,12 @@ export function Steps({ items }) {
 
 // How to know a part is finished, so nobody moves on guessing.
 export function DoneWhen({ children }) {
+  const t = useT();
   return (
     <div className="flex items-start gap-3 rounded-xl border border-[#b9d4b3] bg-[#f1f8ef] px-4 py-3 text-sm leading-6 text-[#3b5d36]">
       <Check size={16} className="mt-1 shrink-0" aria-hidden="true" />
       <p>
-        <span className="font-semibold">You are done when </span>
+        <span className="font-semibold">{t("You are done when ", "Selesai jika ")}</span>
         {children}
       </p>
     </div>
