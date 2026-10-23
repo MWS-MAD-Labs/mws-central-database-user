@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { emailProblem } from '../../../lib/form.js'
+import { showInfoToast } from '../../../lib/toast.js'
 import { googleAccountApi } from '../api/googleAccountApi.js'
 
 // Asks the server whether an email can be used, once, when the person presses Check. The answer belongs to the
@@ -13,7 +14,11 @@ export function useEmailCheck(email, { initialEmail = '', allowClaim = false, cl
   const [result, setResult] = useState(null)
   const mutation = useMutation({
     mutationFn: (value) => googleAccountApi.emailAvailability(value),
-    onSuccess: (data, value) => setResult({ email: value, data }),
+    onSuccess: (data, value) => {
+      setResult({ email: value, data })
+      // A Google that is only simulated cannot say anything about the address, so a floating note says so.
+      if (data.reason === 'NOT_CHECKED') showInfoToast(data.message)
+    },
     onError: (_error, value) => setResult({ email: value, failed: true }),
   })
 
@@ -45,7 +50,6 @@ export function useEmailCheck(email, { initialEmail = '', allowClaim = false, cl
       message: own ? 'This is your own address. Your Google account is linked and Central does not change it' : answer.data.message,
     }
   }
-  // A Google that is only simulated here cannot say anything about the address. The note says so, so the press is not silent.
-  if (answer.data.reason === 'NOT_CHECKED') return { ...none, state: 'unchecked', message: answer.data.message }
+  if (answer.data.reason === 'NOT_CHECKED') return { ...none, state: 'unchecked', message: null }
   return { ...none, state: answer.data.reason === 'CHECK_FAILED' ? 'failed-google' : 'unchecked', message: answer.data.message }
 }

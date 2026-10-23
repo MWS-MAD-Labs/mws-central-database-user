@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import toast, { Toaster } from 'react-hot-toast'
 import { useState } from 'react'
 import { EmailCheckNote } from '../../../src/features/google/components/EmailCheckNote.jsx'
 import { useEmailCheck } from '../../../src/features/google/hooks/useEmailCheck.js'
@@ -18,6 +19,9 @@ function Harness({ initialEmail = '' }) {
     </div>
   )
 }
+
+// The toast host asks for the reduced-motion setting, which the test window does not have.
+globalThis.matchMedia ??= () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
 
 const answer = (data) => ({ path: /\/api\/admin\/google\/email-availability/, response: jsonResponse({ data }) })
 const calls = (fetchMock) => fetchMock.mock.calls.filter(([url]) => String(url).includes('email-availability')).length
@@ -77,13 +81,14 @@ describe('checking an email with the button', () => {
   })
 
   it('lets it through when Google was not asked or could not be', async () => {
+    toast.remove()
     globalThis.fetch = createFetchRouter([answer({ available: true, reason: 'NOT_CHECKED', message: 'Not checked against Google in this environment' })])
-    renderWithProviders(<Harness />)
+    renderWithProviders(<><Toaster /><Harness /></>)
     await userEvent.type(screen.getByLabelText('email'), 'ari@millennia21.id')
     await userEvent.click(screen.getByRole('button', { name: 'Check' }))
-    // A Google that is only simulated says so under the field, and lets it through.
+    // A Google that is only simulated says so in a floating note, and lets it through.
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Check' })).not.toBeInTheDocument())
-    expect(await screen.findByText('Not checked against Google in this environment')).toBeVisible()
+    expect(await screen.findByText('Not checked against Google in this environment')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled()
   })
 
