@@ -567,7 +567,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
       description={
         initialJobId
           ? "Rows from this import job. Fix any errors, then commit, or roll back if it is already done."
-          : "Upload a CSV or Excel file, fix any errors in the preview, then commit."
+          : "Upload a CSV or Excel file, fix any errors in the preview, then commit. Import is for loading many people at once. For one person, use the form. An import never changes an email."
       }
       onClose={onClose}
       panelClassName={
