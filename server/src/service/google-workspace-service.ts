@@ -1212,6 +1212,13 @@ export class GoogleWorkspaceService {
   static async setPhoto(personId: string, photo: Buffer, mimeType: string): Promise<boolean> {
     const person = await load(personId);
     if (!person.google_user_id) return false;
+    // A person who left keeps an account nothing changes on, and outside production only test addresses are touched.
+    if ((await this.lockState(person.id))?.locked) return false;
+    try {
+      assertAllowedTarget(person.email);
+    } catch {
+      return false;
+    }
     try {
       await getDirectoryClient().setPhoto(person.google_user_id, photo, mimeType);
       return true;

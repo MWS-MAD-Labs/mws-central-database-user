@@ -172,7 +172,7 @@ Use a mailbox made for this, not an admin's own. In development run Mailpit (`do
 
 ## Photos
 
-Central owns the photo. It is kept in MinIO and shown from there. An employee who changes their own photo on the Profile page sends it to their Google account too (an admin who uploads a photo does not). Nothing in Google overwrites a photo in Central: when Central has none, the photo of the linked Google account is taken once, when the account is claimed or linked, when a Super Admin checks the account, or with the Use Google photo button on the employee page (`POST /api/admin/employees/:id/google/photo`). A photo changed in Google afterwards is not read.
+Central owns the photo. It is kept in MinIO and shown from there. An employee who changes their own photo on the Profile page sends it to their Google account too. An admin who uploads a photo for an employee, single or bulk, keeps it in Central only. A photo an admin uploads for a student, single or bulk, also goes to the student's linked Google account (one after the other, best effort, skipped for a student who left); a student cannot change their own photo. Nothing in Google overwrites a photo in Central: when Central has none, the photo of the linked Google account is taken once, when the account is claimed or linked, when a Super Admin checks the account, or with the Use Google photo button on the employee page (`POST /api/admin/employees/:id/google/photo`). A photo changed in Google afterwards is not read.
 
 ## Students
 

@@ -27,13 +27,14 @@ import {
   type UploadStudentPhotoRequest,
 } from "../model/student-photo-model";
 import { AuditService } from "./audit-service";
+import { GoogleWorkspaceService } from "./google-workspace-service";
 import { resolveWriteUnitScope, type AdminWithOptionalScope } from "../utils/admin-permissions";
 import { assertCanWriteNow } from "../utils/office-hours";
 import {
   assertCanViewSensitiveData,
   assertStudentInAdminUnit,
 } from "../utils/sensitive-data";
-import { detectImageMimeType, processPhoto } from "../utils/image-processing";
+import { detectImageMimeType, processPhoto, processPhotoForGoogle } from "../utils/image-processing";
 import { StudentPhotoValidation } from "../validation/student-photo-validation";
 import { Validation } from "../validation/validation";
 
@@ -239,6 +240,15 @@ export class StudentPhotoService {
     // Only after the new object is safely committed - avoids leaving the
     // student photoless if something above failed.
     await removeObjectIfExists(previousObjectKey);
+
+    // A student cannot change their own photo, so Google follows the upload when the account is linked. A single
+    // upload and every upload of a bulk run come through here, one after the other. If Google fails, the photo in
+    // Central stays.
+    try {
+      await GoogleWorkspaceService.setPhoto(person.id, await processPhotoForGoogle(rawBuffer), "image/jpeg");
+    } catch {
+      // Not worth failing the upload for.
+    }
 
     return true;
   }

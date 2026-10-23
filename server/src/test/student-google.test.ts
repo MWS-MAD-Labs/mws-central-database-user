@@ -15,6 +15,18 @@ import { MemoryMailer, setMailerForTests } from "../lib/mailer";
 import { resetCheckCooldownForTests, resetSignInEmailLimitForTests } from "../service/google-workspace-service";
 import { FakeDirectory } from "./fake-directory";
 import { DirectoryError } from "../lib/google-workspace/directory-client";
+import { minioClient } from "../lib/minio";
+
+const minioAvailable = await minioClient.listBuckets().then(
+  () => true,
+  () => false,
+);
+
+// A small PNG that decodes.
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 describe("the Google account of a student", () => {
   let google: FakeDirectory;
@@ -406,6 +418,53 @@ describe("the Google account of a student", () => {
       const dba = await AdminUserTest.createDatabaseAdmin(unitId);
       expect((await TestRequest.post(url(id, "/provision"), {}, dba.accessToken)).status).toBe(403);
       expect((await TestRequest.get(url(id), dba.accessToken).then((r) => r.json())).data.can.link_existing).toBe(false);
+    });
+  });
+  describe("the photo of a student", () => {
+    const photoForm = () => {
+      const form = new FormData();
+      form.append("file", new File([PNG], "photo.png", { type: "image/png" }));
+      return form;
+    };
+    const upload = (token: string, id: string) => TestRequest.postMultipart(`/api/admin/students/${id}/photo`, photoForm(), token);
+
+    it.skipIf(!minioAvailable)("follows the upload to the linked Google account, here and in a bulk run", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      const first = await makeStudent(accessToken, {}, true);
+      const second = await makeStudent(accessToken, {}, true);
+      expect((await upload(accessToken, first)).status).toBe(200);
+      expect(google.photos).toHaveLength(1);
+      expect(google.photos[0].mimeType).toBe("image/jpeg");
+
+      const form = new FormData();
+      form.append("mappings", JSON.stringify([{ file_name: "two.png", student_id: second }]));
+      form.append("files", new File([PNG], "two.png", { type: "image/png" }));
+      const bulk = await TestRequest.postMultipart("/api/admin/students/photos/bulk-commit", form, accessToken);
+      expect((await bulk.json()).data.success_count).toBe(1);
+      expect(google.photos).toHaveLength(2);
+    });
+
+    it.skipIf(!minioAvailable)("is kept in Central only for a student with no Google account, or one who left", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      const none = await makeStudent(accessToken);
+      expect((await upload(accessToken, none)).status).toBe(200);
+      expect((await personOf(none)).photo_object_key).toContain("student-photos/");
+      expect(google.photos).toHaveLength(0);
+
+      const left = await makeStudent(accessToken, {}, true);
+      await prismaClient.student.update({ where: { id: left }, data: { status: StudentStatus.WITHDRAWN } });
+      expect((await upload(accessToken, left)).status).toBe(200);
+      expect(google.photos).toHaveLength(0);
+    });
+
+    it.skipIf(!minioAvailable)("does not fail the upload when Google does", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      const id = await makeStudent(accessToken, {}, true);
+      google.setPhoto = async () => {
+        throw new DirectoryError("FAILED", "Google is down");
+      };
+      expect((await upload(accessToken, id)).status).toBe(200);
+      expect((await personOf(id)).photo_object_key).toContain("student-photos/");
     });
   });
 });
