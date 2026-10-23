@@ -80,7 +80,7 @@ export function EmailWithDomain({
         value={localOf(text)}
         invalid={invalid}
         disabled={disabled}
-        placeholder="name"
+        placeholder="Email"
         autoComplete="off"
         onChange={(event) => {
           const local = sanitizeEmailLocalPart(event.target.value, {
