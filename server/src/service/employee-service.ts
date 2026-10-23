@@ -1984,9 +1984,8 @@ export class EmployeeService {
     return splitEmployeeDetailIdentity(detail).redacted;
   }
 
-  // The employee's own identifiers, with the reveal recorded in the same call, like `revealPii`. There is no admin to
-  // name in the entry: the employee it is about is the one who looked.
-  static async revealOwnPii(personId: string, context: AuditRequestContext = {}): Promise<EmployeeRevealedIdentity> {
+  // The employee's own identifiers. Reading your own data is not audited.
+  static async revealOwnPii(personId: string): Promise<EmployeeRevealedIdentity> {
     const person = await prismaClient.person.findFirst({
       where: { id: personId, employee: { deleted_at: null } },
       include: {
@@ -1996,19 +1995,6 @@ export class EmployeeService {
       },
     });
     if (!person || !person.employee) throw new ResponseError(404, "Employee not found");
-
-    const { cached } = await withLookupCache("employee-pii-access", ["self", person.employee.id], async () => true);
-    if (!cached) {
-      await AuditService.record({
-        action: AuditAction.ACCESS_EMPLOYEE_PII,
-        source: AuditSource.UI,
-        entity_type: "Employee",
-        entity_id: person.employee.id,
-        new_values: { resource: "EmployeeSensitiveFields", full_name: person.full_name, self: true },
-        ip_address: context.ip_address,
-        user_agent: context.user_agent,
-      });
-    }
 
     return splitEmployeeDetailIdentity(
       toEmployeeDetailResponse(person, { role: AdminRole.SUPER_ADMIN }, await ChildrenAllowanceRuleService.get()),

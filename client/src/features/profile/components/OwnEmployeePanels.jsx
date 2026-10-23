@@ -1,9 +1,11 @@
 import { Mail, Phone } from "lucide-react";
+import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { ListPopover } from "../../../components/ui/ListPopover.jsx";
 import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/SensitiveToggle.jsx";
 import { formatDate, formatEducationLevel, formatStatus, formatTenure } from "../../../lib/format.js";
 import { ContactRow } from "../../employees/components/ContactRow.jsx";
 import { DetailRow } from "../../employees/components/DetailRow.jsx";
+import { disciplinaryActionTypeLabels } from "../../employees/api/employeesApi.js";
 import { describeChildren } from "../../employees/utils/childrenRules.js";
 
 const card = "min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]";
@@ -146,6 +148,38 @@ export function FamilyPanel({ employee, pii, revealed, revealing, onShow, onHide
         </dl>
       ) : (
         <SensitiveHiddenNote />
+      )}
+    </section>
+  );
+}
+
+const actionTone = { ACTIVE: "red", RESOLVED: "green", REVOKED: "amber" };
+
+// The person's own warning letters, read only.
+export function DisciplinaryPanel({ actions }) {
+  return (
+    <section className={card}>
+      <CardTitle>Disciplinary Actions</CardTitle>
+      {actions.length === 0 ? (
+        <p className="text-sm text-(--mws-muted)">No disciplinary actions.</p>
+      ) : (
+        <ul className="divide-y divide-(--mws-line)">
+          {actions.map((action) => (
+            <li key={action.id} className="py-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold">
+                  {disciplinaryActionTypeLabels[action.type] || formatStatus(action.type)} Level {action.level}
+                </span>
+                <StatusBadge tone={actionTone[action.status] || "neutral"}>{formatStatus(action.status)}</StatusBadge>
+              </div>
+              <p className="mt-1 text-(--mws-muted)">
+                Issued {formatDate(action.issued_date)}, valid until {formatDate(action.valid_until)}
+              </p>
+              <p className="mt-1">{action.reason}</p>
+              {action.resolved_reason ? <p className="mt-1 text-(--mws-muted)">Resolved: {action.resolved_reason}</p> : null}
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );

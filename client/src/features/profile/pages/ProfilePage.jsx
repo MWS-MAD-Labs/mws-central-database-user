@@ -19,7 +19,7 @@ import { unitsApi } from "../../master-data/api/masterDataApi.js";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { Tabs } from "../../../components/ui/Tabs.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
-import { EmploymentPanel, FamilyPanel, PersonalPanel } from "../components/OwnEmployeePanels.jsx";
+import { DisciplinaryPanel, EmploymentPanel, FamilyPanel, PersonalPanel } from "../components/OwnEmployeePanels.jsx";
 
 function ProfileRow({ label, value }) {
   return (
@@ -70,9 +70,9 @@ export function ProfilePage() {
   const queryClient = useQueryClient();
   const photoInputRef = useRef(null);
   const [cropFile, setCropFile] = useState(null);
-  // An employee changes their own photo, and Google follows. Nobody else can.
+  // An employee, or an admin made from one, changes their own photo, and Google follows.
   const ownPhoto = useMutation({
-    mutationFn: (file) => employeesApi.uploadOwnPhoto(file),
+    mutationFn: (file) => employeesApi.uploadOwnPhoto(file, isAdmin),
     onSuccess: () => {
       setCropFile(null);
       queryClient.invalidateQueries();
@@ -109,6 +109,11 @@ export function ProfilePage() {
     enabled: hasRecord,
   });
   const employee = recordQuery.data ?? null;
+  const actionsQuery = useQuery({
+    queryKey: ["profile", "disciplinary", isAdmin ? "admin" : "me"],
+    queryFn: () => employeesApi.getOwnDisciplinaryActions(isAdmin),
+    enabled: hasRecord,
+  });
   const [pii, setPii] = useState(null);
   const revealPii = useMutation({
     mutationFn: () => (isAdmin ? employeesApi.recordSensitiveFieldsAccess(employeeId) : employeesApi.revealOwnSensitiveFields()),
@@ -122,6 +127,7 @@ export function ProfilePage() {
           { id: "personal", label: "Personal" },
           { id: "employment", label: "Employment" },
           { id: "family", label: "Family" },
+          ...(hasRecord ? [{ id: "disciplinary", label: "Disciplinary" }] : []),
         ]
       : []),
     ...(isAdmin ? [{ id: "access", label: "Access" }] : []),
@@ -165,7 +171,7 @@ export function ProfilePage() {
               {getUserEmail(user)}
             </p>
           </div>
-          {!isAdmin && user?.type === "employee" ? (
+          {hasRecord ? (
             <>
               <input
                 ref={photoInputRef}
@@ -268,6 +274,7 @@ export function ProfilePage() {
       ) : null}
       {employee && activeTab === "personal" ? <div className="mt-5"><PersonalPanel {...piiPanel} /></div> : null}
       {employee && activeTab === "employment" ? <div className="mt-5"><EmploymentPanel employee={employee} /></div> : null}
+      {employee && activeTab === "disciplinary" ? <div className="mt-5"><DisciplinaryPanel actions={actionsQuery.data ?? []} /></div> : null}
       {employee && activeTab === "family" ? <div className="mt-5"><FamilyPanel {...piiPanel} /></div> : null}
 
       {isAdmin && activeTab === "access" ? (

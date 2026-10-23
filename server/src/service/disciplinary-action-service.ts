@@ -180,6 +180,16 @@ export class DisciplinaryActionService {
     return { ...page, data: page.data.map(toDisciplinaryActionResponse) };
   }
 
+  // The employee's own actions, read only and not audited. The employee comes from the session.
+  static async listOwn(employeeId: string): Promise<DisciplinaryActionResponse[]> {
+    const actions = await prismaClient.employeeDisciplinaryAction.findMany({
+      where: { employee_id: employeeId },
+      include: { issued_by_admin: { select: { full_name: true } } },
+      orderBy: [{ issued_date: "desc" }, { id: "desc" }],
+    });
+    return actions.map(toDisciplinaryActionResponse);
+  }
+
   // Masked-by-default on the client; this records the reveal for audit,
   // mirroring EmployeeService.recordPiiAccess.
   static async recordAccess(

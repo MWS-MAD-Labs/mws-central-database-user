@@ -15,6 +15,9 @@ employeeAuthRouter.get("/me/detail", employeeAuthMiddleware, (c) =>
 employeeAuthRouter.post("/me/sensitive-fields/access", employeeAuthMiddleware, (c) =>
   AuthController.employeeRevealPii(c),
 );
+employeeAuthRouter.get("/me/disciplinary-actions", employeeAuthMiddleware, (c) =>
+  AuthController.employeeDisciplinaryActions(c),
+);
 employeeAuthRouter.post("/logout", employeeAuthMiddleware, (c) =>
   AuthController.employeeLogout(c),
 );

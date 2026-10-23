@@ -127,6 +127,32 @@ describe('ProfilePage access summary', () => {
       expect(screen.queryByRole('tab', { name: 'Access' })).not.toBeInTheDocument()
     })
 
+    it('lists an employee\'s own disciplinary actions read only, and not for an admin', async () => {
+      const action = { id: 'd1', type: 'SURAT_TEGURAN', level: 1, status: 'ACTIVE', issued_date: '2026-03-01T00:00:00.000Z', valid_until: '2026-08-28T00:00:00.000Z', reason: 'Late three times', resolved_reason: null }
+      globalThis.fetch = createFetchRouter([
+        { path: '/api/auth/employee/me/detail', response: jsonResponse({ data: record }) },
+        { path: '/api/auth/employee/me/disciplinary-actions', response: jsonResponse({ data: [action] }) },
+      ])
+      const employee = { id: 'e1', type: 'employee', full_name: 'Dana Admin', email: 'dana@millennia21.id', employment: {} }
+      const { user } = renderWithProviders(
+        <AuthContext.Provider value={{ user: employee }}><ProfilePage /></AuthContext.Provider>,
+      )
+      await user.click(await screen.findByRole('tab', { name: 'Disciplinary' }))
+      expect(await screen.findByText('Late three times')).toBeVisible()
+      expect(screen.queryByRole('button', { name: /appeal/i })).not.toBeInTheDocument()
+    })
+
+    it('lets an admin made from an employee change their own photo', async () => {
+      globalThis.fetch = createFetchRouter([
+        { path: '/api/admin/employees/emp-1', response: jsonResponse({ data: record }) },
+        { path: '/api/auth/me/disciplinary-actions', response: jsonResponse({ data: [] }) },
+      ])
+      renderWithProviders(
+        <AuthContext.Provider value={{ user: admin }}><ProfilePage /></AuthContext.Provider>,
+      )
+      expect(await screen.findByRole('button', { name: 'Change photo' })).toBeVisible()
+    })
+
     it('shows an admin who is not linked to an employee only the account and access tabs', async () => {
       globalThis.fetch = createFetchRouter([])
       renderWithProviders(

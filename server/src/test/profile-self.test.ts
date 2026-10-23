@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { AdminUserTest, AuditLogTest, EmployeeTest, MasterDataTest, TestRequest } from "./test-utils";
-import { AuditAction, type MasterBuilding, type MasterJobLevel, type MasterJobPosition, type MasterUnit } from "../generated/prisma/client";
+import { AuditAction, DisciplinaryActionType, type MasterBuilding, type MasterJobLevel, type MasterJobPosition, type MasterUnit } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 
 describe("the signed-in person's own record, for the Profile page", () => {
@@ -100,7 +100,7 @@ describe("the signed-in person's own record, for the Profile page", () => {
       expect(theirs.data.identity.email).toBe("test_profile_other@millennia21.id");
     });
 
-    it("gets the identifiers only by asking, and the asking is recorded", async () => {
+    it("gets the identifiers only by asking, and the asking is not audited", async () => {
       const mine = await employee("test_profile_pii@millennia21.id", { employeeId: "99.99.7003" });
       await prismaClient.employee.update({ where: { id: mine.person.employee!.id }, data: { nik: "3171000000000002" } });
 
@@ -109,10 +109,40 @@ describe("the signed-in person's own record, for the Profile page", () => {
       expect(JSON.stringify(await response.json())).toContain("3171000000000002");
 
       const entries = await prismaClient.auditLog.findMany({ where: { action: AuditAction.ACCESS_EMPLOYEE_PII, entity_id: mine.person.employee!.id } });
-      expect(entries).toHaveLength(1);
-      expect(entries[0].admin_id).toBeNull();
-      expect(JSON.stringify(entries[0].new_values)).toContain("\"self\":true");
-      expect(JSON.stringify(entries[0].new_values)).not.toContain("3171000000000002");
+      expect(entries).toHaveLength(0);
+    });
+
+    it("lists their own disciplinary actions, and nobody else's, without an audit entry", async () => {
+      const mine = await employee("test_profile_sp@millennia21.id", { employeeId: "99.99.7004" });
+      const other = await employee("test_profile_sp_other@millennia21.id", { employeeId: "99.99.7005" });
+      const base = { type: DisciplinaryActionType.SURAT_TEGURAN, level: 1, issued_date: new Date(), valid_until: new Date(Date.now() + 86400000) };
+      await prismaClient.employeeDisciplinaryAction.create({ data: { ...base, employee_id: mine.person.employee!.id, reason: "Late three times" } });
+      await prismaClient.employeeDisciplinaryAction.create({ data: { ...base, employee_id: other.person.employee!.id, reason: "Not mine" } });
+
+      const response = await TestRequest.get("/api/auth/employee/me/disciplinary-actions", mine.accessToken);
+      expect(response.status).toBe(200);
+      const data = (await response.json()).data;
+      expect(data).toHaveLength(1);
+      expect(data[0].reason).toBe("Late three times");
+      expect(await prismaClient.auditLog.count({ where: { entity_id: mine.person.employee!.id } })).toBe(0);
+
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      expect((await TestRequest.get("/api/auth/employee/me/disciplinary-actions", accessToken)).status).toBe(401);
+
+      // An admin made from this employee reads the same list from their own route.
+      await prismaClient.adminUser.update({ where: { id: "test-super-admin-id" }, data: { person_id: mine.person.id } });
+      const asAdmin = await (await TestRequest.get("/api/auth/me/disciplinary-actions", accessToken)).json();
+      expect(asAdmin.data).toHaveLength(1);
+    });
+
+    it("has no photo to change for an admin who is not made from an employee", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const form = () => {
+        const data = new FormData();
+        data.set("file", new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" }));
+        return data;
+      };
+      expect((await TestRequest.putMultipart("/api/auth/me/photo", form(), accessToken)).status).toBe(404);
     });
 
     it("is not open to an admin session or to nobody", async () => {
