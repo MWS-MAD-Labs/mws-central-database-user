@@ -126,7 +126,7 @@ describe('StudentForm', () => {
     await chooseSelect(user, 'Select Relation', 'Father')
     await user.type(field('parent_name').querySelector('input'), 'budi santoso')
     await user.type(field('parent_email').querySelector('input'), 'budi.santoso')
-    await user.type(field('parent_email_confirm').querySelector('input'), 'budi.santoso@gmail.com')
+    await user.type(field('parent_email_confirm').querySelector('input'), 'budi.santoso')
     await user.type(field('parent_phone').querySelector('input'), '081234567890')
 
     const birthDate = field('birth_date')
@@ -168,7 +168,8 @@ describe('StudentForm', () => {
     expect(screen.queryByText('Type the parent email again.')).not.toBeInTheDocument()
     const first = field('parent_email').querySelector('input')
     await user.type(first, 'budi')
-    expect(again).toBeEnabled()
+    // On a common domain the second typing is only the name, in a field of its own.
+    expect(field('parent_email_confirm').querySelector('input')).toBeEnabled()
   })
 
   it('goes step by step: entry type first, then the join year, the join grade and the current grade', async () => {

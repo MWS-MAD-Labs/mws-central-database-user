@@ -2,17 +2,14 @@ import { useState } from 'react'
 import { TextAction } from '../../../components/ui/TextAction.jsx'
 import { SearchableSelect, TextInput } from '../../../components/ui/FormControls.jsx'
 import { sanitizeEmail, sanitizeEmailLocalPart } from '../../../lib/form.js'
+import { COMMON_EMAIL_DOMAINS, domainOf, localOf } from '../utils/emailDomains.js'
 
-// The domains most people use, so the part after @ is one pick. Anything else (an organization's own mail) is typed.
-const COMMON_EMAIL_DOMAINS = ['gmail.com', 'yahoo.com', 'yahoo.co.id', 'outlook.com', 'hotmail.com', 'icloud.com', 'proton.me']
 const OTHER = '__other'
 const DOMAIN_OPTIONS = [
   ...COMMON_EMAIL_DOMAINS.map((domain) => ({ value: domain, label: `@${domain}` })),
   { value: OTHER, label: 'Another Domain' },
 ]
 
-const domainOf = (value) => (value.includes('@') ? value.slice(value.indexOf('@') + 1) : '')
-const localOf = (value) => (value.includes('@') ? value.slice(0, value.indexOf('@')) : value)
 
 // An email that is not the organization's: the name, and the domain as a pick (gmail.com first), with "Other" to type the
 // whole address. The value stays one whole email, so a form and the server read it as before.

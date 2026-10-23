@@ -6,6 +6,7 @@ import { Camera, UserRound } from "lucide-react";
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
 import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx";
 import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
+import { emailsMatch } from "../../google/utils/emailDomains.js";
 import { EmailWithDomain } from "../../google/components/EmailWithDomain.jsx";
 import { ReviewEmailLanguage } from "../../google/components/ReviewEmailLanguage.jsx";
 import { AdmissionStep } from "./AdmissionStep.jsx";
@@ -951,6 +952,7 @@ export function StudentForm({
                 label="Confirm Parent Email"
                 name="parent_email_confirm"
                 value={values.parent_email_confirm}
+                primary={values.parent_email}
                 disabled={parentEmailNotReady}
                 error={errors.parent_email_confirm}
                 onChange={(value) => updateValue("parent_email_confirm", value)}
@@ -1280,7 +1282,7 @@ function computeStudentErrors(values, isCreate) {
       const problem = emailProblem(values.parent_email, { external: true });
       if (problem) errors.parent_email = problem;
       else if (!values.parent_email_confirm) errors.parent_email_confirm = "Type the parent email again.";
-      else if (values.parent_email_confirm !== values.parent_email) errors.parent_email_confirm = "The two emails do not match.";
+      else if (!emailsMatch(values.parent_email, values.parent_email_confirm)) errors.parent_email_confirm = "The two emails do not match.";
     }
     if (values.parent_phone && !/^(\+62|62|0)\d{8,13}$/.test(values.parent_phone)) {
       errors.parent_phone = "Enter an Indonesian phone number, for example 081234567890.";

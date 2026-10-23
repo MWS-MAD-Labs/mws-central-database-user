@@ -2,6 +2,7 @@ import { recoveryEmailProblem, recoveryHint } from "../../google/utils/instructi
 import { EmailCheckNote } from "../../google/components/EmailCheckNote.jsx";
 import { ChangeEmailAction } from "../../google/components/ChangeEmailAction.jsx";
 import { ConfirmEmailField, EmailSuggestion } from "../../google/components/ConfirmEmailField.jsx";
+import { emailsMatch } from "../../google/utils/emailDomains.js";
 import { EmailWithDomain } from "../../google/components/EmailWithDomain.jsx";
 import { ReviewEmailLanguage } from "../../google/components/ReviewEmailLanguage.jsx";
 import { useEmailCheck } from "../../google/hooks/useEmailCheck.js";
@@ -777,6 +778,7 @@ export function EmployeeForm({
                   label="Confirm Recovery Email"
                   name="recovery_email_confirm"
                   value={values.recovery_email_confirm}
+                  primary={values.recovery_email}
                   disabled={recoveryNotReady}
                   error={errors.recovery_email_confirm}
                   onChange={(value) => updateValue("recovery_email_confirm", value)}
@@ -1972,7 +1974,7 @@ function computeEmployeeErrors(
     if (problem) errors.recovery_email = problem;
     if (!problem) {
       if (!values.recovery_email_confirm) errors.recovery_email_confirm = "Type the recovery email again.";
-      else if (values.recovery_email_confirm !== values.recovery_email) errors.recovery_email_confirm = "The two emails do not match.";
+      else if (!emailsMatch(values.recovery_email, values.recovery_email_confirm)) errors.recovery_email_confirm = "The two emails do not match.";
     }
   }
   if (

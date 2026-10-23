@@ -106,7 +106,7 @@ describe('EmployeeForm', () => {
     await user.click(screen.getByRole('button', { name: 'Check' }))
     await screen.findByText('Available')
     await user.type(field('recovery_email').querySelector('input'), 'Ari+Pribadi')
-    await user.type(field('recovery_email_confirm').querySelector('input'), 'ari+pribadi@gmail.com')
+    await user.type(field('recovery_email_confirm').querySelector('input'), 'ari+pribadi')
     // The name is typed, the domain is a pick (gmail.com first), and together they are the email.
     expect(field('recovery_email').querySelector('input').value).toBe('ari+pribadi')
     expect(screen.getByRole('button', { name: '@gmail.com' })).toBeVisible()
@@ -251,13 +251,17 @@ describe('EmployeeForm', () => {
     const recovery = field('recovery_email').querySelector('input')
     await user.type(recovery, 'ari')
     expect(recovery.value).toBe('ari')
-    expect(again).toBeEnabled()
-    await user.type(again, 'ari@gmail.com')
-    expect(again.value).toBe('ari@gmail.com')
+    // The domain was a pick, so the second typing is only the name, with the domain shown as fixed after it.
+    const nameAgain = field('recovery_email_confirm').querySelector('input')
+    expect(nameAgain).toBeEnabled()
+    expect(within(field('recovery_email_confirm')).getByText('@gmail.com')).toBeVisible()
+    await user.type(nameAgain, 'ari')
+    expect(nameAgain.value).toBe('ari')
 
     await user.clear(recovery)
-    expect(again).toBeDisabled()
-    expect(again.value).toBe('')
+    const emptied = field('recovery_email_confirm').querySelector('input')
+    expect(emptied).toBeDisabled()
+    expect(emptied.value).toBe('')
 
     // The domain is a pick, gmail.com first, and it stays picked while the name is still empty.
     expect(screen.getByRole('button', { name: '@gmail.com' })).toBeVisible()
