@@ -1,7 +1,7 @@
 import { appGuideHref } from "../utils/startGuide.js";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, BookOpen, Pencil, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
@@ -170,35 +170,38 @@ export function AppDetailPage() {
             <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
               <Link to={base}><ArrowLeft size={16} /></Link>
             </Button>
-            <Button asChild variant="secondary" size="icon" aria-label="Setup Guide" title="Setup Guide">
-              <Link to={appGuideHref(applicationId, "local")}><BookOpen size={16} /></Link>
-            </Button>
-            {active === "access" && !retired ? (
-              <Button
-                type="button"
-                disabled={!hasActiveRole}
-                title={hasActiveRole ? "Add Group" : "Add a role first"}
-                onClick={() => navigate(`${base}/groups/new`)}
-                size="icon"
-                aria-label="Add Group"
-              >
-                <Plus size={16} />
-              </Button>
-            ) : null}
-            {retired || setup.is_hub || link ? null : (
-              <Button type="button" variant="secondary" size="icon" aria-label="Check Now" title="Check Now" disabled={checkNow.isPending} onClick={() => checkNow.mutate(applicationId)}>
-                <RefreshCw size={16} />
-              </Button>
-            )}
-            {retired ? null : (
-              <Button type="button" size="icon" aria-label="Edit Details" title="Edit Details" onClick={() => setEditing(true)}>
-                <Pencil size={16} />
-              </Button>
-            )}
-            {setup.is_hub && !retired && !setup.removal.retire_available && !setup.removal.can_remove ? null : (
-              <ActionsMenu label="More actions">
+            <ActionsMenu label="More actions">
                 {(closeMenu) => (
                   <>
+                    <ActionsMenuItem
+                      onClick={() => {
+                        closeMenu();
+                        navigate(appGuideHref(applicationId, "local"));
+                      }}
+                    >
+                      Setup Guide
+                    </ActionsMenuItem>
+                    {retired || setup.is_hub || link ? null : (
+                      <ActionsMenuItem
+                        onClick={() => {
+                          closeMenu();
+                          checkNow.mutate(applicationId);
+                        }}
+                      >
+                        Check Now
+                      </ActionsMenuItem>
+                    )}
+                    {retired ? null : (
+                      <ActionsMenuItem
+                        onClick={() => {
+                          closeMenu();
+                          setEditing(true);
+                        }}
+                      >
+                        Edit Details
+                      </ActionsMenuItem>
+                    )}
+                    <div className="my-1 border-t border-(--mws-line)" />
                     <ActionsMenuItem
                       onClick={() => {
                         closeMenu();
@@ -243,7 +246,6 @@ export function AppDetailPage() {
                   </>
                 )}
               </ActionsMenu>
-            )}
           </>
         }
       />
@@ -303,6 +305,8 @@ export function AppDetailPage() {
       <AppStatusStrip
         hubStatus={retired ? { tone: "red", label: "Retired" } : setup.is_hub ? { tone: "neutral", label: "Hub" } : { tone: app.published ? "green" : "amber", label: app.published ? "Shown in the Hub" : "Hidden from the Hub" }}
         link={link}
+        isHub={setup.is_hub}
+        address={setup.address}
         health={health}
         connection={setup.connection}
         access={more?.access}
@@ -324,7 +328,7 @@ export function AppDetailPage() {
               ]}
             />
           ) : null}
-          <AppAccessSection applicationId={applicationId} detail={detailQuery.data} roles={roles} tab={active} />
+          <AppAccessSection applicationId={applicationId} detail={detailQuery.data} roles={roles} tab={active} canAddGroup={hasActiveRole} retired={retired} />
         </>
       ) : (
       <section className="rounded-2xl border border-(--mws-line) bg-white p-5">

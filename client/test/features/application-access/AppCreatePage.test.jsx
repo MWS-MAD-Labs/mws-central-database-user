@@ -152,6 +152,36 @@ describe('AppCreatePage', () => {
     expect(screen.getByRole('radio', { name: 'Local HTTP' })).toHaveAttribute('aria-checked', 'true')
   })
 
+  it('says at once when a port on this machine is already an application\'s, and holds the button', async () => {
+    const OTHERS = {
+      ...NO_HUB,
+      response: () =>
+        jsonResponse({
+          data: [
+            { application_id: 'hub', is_hub: true },
+            { application_id: 'exima', name: 'Exima', launch_url: 'http://localhost:3001/auth/sso', retired: false },
+            { application_id: 'daily', name: 'Daily', launch_url: 'https://apps.example.com/daily/auth/sso', retired: false },
+          ],
+          paging: { current_page: 1, total_page: 1, total_item: 3, size: 20 },
+        }),
+    }
+    globalThis.fetch = createFetchRouter([SCOPES, OTHERS, CONTEXT, TAXONOMY, APP_OK])
+    const { user } = await renderPage()
+    await user.type(screen.getByLabelText('Name'), 'Learnspace')
+    await user.click(screen.getByRole('radio', { name: 'Local HTTP' }))
+    await user.type(screen.getByLabelText('Application Address'), 'localhost:3001')
+    expect(await screen.findByText('Exima already uses this port. Each port on this machine belongs to one application.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Add Application' })).toBeDisabled()
+    await user.clear(screen.getByLabelText('Application Address'))
+    await user.type(screen.getByLabelText('Application Address'), 'localhost:3002')
+    await waitFor(() => expect(screen.queryByText(/already uses this port/)).toBeNull())
+    // A domain can be shared by path, with a note.
+    await user.click(screen.getByRole('radio', { name: 'Public HTTPS' }))
+    await user.clear(screen.getByLabelText('Application Address'))
+    await user.type(screen.getByLabelText('Application Address'), 'apps.example.com/mtss')
+    expect(await screen.findByText(/Same domain as Daily/)).toBeVisible()
+  })
+
   it('uses the Hub URL configured for this staging Central', async () => {
     globalThis.fetch = createFetchRouter([
       SCOPES,
