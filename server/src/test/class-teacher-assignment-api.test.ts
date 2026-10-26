@@ -125,6 +125,9 @@ describe("Class Teacher Assignment API (internal)", () => {
       job_position: masterData.position.name,
       employee_id: "99.99.API1",
     });
+    expect(assignment.unit_id).toBe(masterData.unit.id);
+    expect(assignment.grade_id).toBe(klass.grade_id);
+    expect(assignment.additional_grade_ids).toEqual([]);
     expect(assignment.employee_id).toBe(person.employee!.id);
     expect(assignment.employee_email).toBe(person.email);
     expect(assignment.academic_year_id).toBe(klass.academic_year_id);
