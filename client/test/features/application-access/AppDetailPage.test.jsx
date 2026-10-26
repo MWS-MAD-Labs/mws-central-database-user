@@ -106,6 +106,8 @@ describe("AppDetailPage", () => {
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("https://demo.example.com/auth/sso")).toBeVisible();
     expect(screen.getByText("Reporting")).toBeVisible();
+    // Back leads to the list, not to this page.
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/application-access");
     // The header holds Back and one menu. The rest is inside it.
     expect(screen.queryByRole("button", { name: "Edit Details" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Add Group" })).toBeNull();

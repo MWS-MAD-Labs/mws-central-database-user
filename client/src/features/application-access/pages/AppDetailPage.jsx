@@ -168,7 +168,7 @@ export function AppDetailPage() {
         actions={
           <>
             <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
-              <Link to={base}><ArrowLeft size={16} /></Link>
+              <Link to="/application-access"><ArrowLeft size={16} /></Link>
             </Button>
             <ActionsMenu label="More actions">
                 {(closeMenu) => (
