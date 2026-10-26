@@ -49,12 +49,14 @@ export function isBareHost(address) {
 export const BARE_HOST_ADVICE =
   'A cookie is kept per host name, so open the Hub and the application through the same one, for example localhost for both. The port does not matter.'
 
-// The page people open, without the sign-in path the Hub sends them to.
+// The page people open. A standard sign-in path (/auth/sso) is cut off and the path in front of it is kept, like
+// /daily-checkin/. A sign-in path under /api (like /api/v1/auth/sso) or any other path belongs to an API, so the page is the root
+// of the host.
 export function appHomeUrl(launchUrl) {
   if (!launchUrl) return ''
   try {
     const url = new URL(launchUrl)
-    url.pathname = url.pathname.replace(/\/auth\/sso\/?$/, '/') || '/'
+    url.pathname = /\/auth\/sso\/?$/.test(url.pathname) && !/^\/api(\/|$)/.test(url.pathname) ? url.pathname.replace(/\/auth\/sso\/?$/, '/') || '/' : '/'
     url.search = ''
     url.hash = ''
     return url.toString()
