@@ -459,6 +459,22 @@ export class AcademicYearService {
     if (nextStart && nextEnd && nextStart >= nextEnd) {
       throw new ResponseError(400, "start_date must be before end_date");
     }
+    // A semester has to stay inside its year, so the year cannot shrink past one.
+    if (updateRequest.start_date !== undefined || updateRequest.end_date !== undefined) {
+      const outside = await prismaClient.academicSemester.findFirst({
+        where: {
+          academic_year_id: existing.id,
+          OR: [{ start_date: { lt: nextStart } }, ...(nextEnd ? [{ end_date: { gt: nextEnd } }] : [])],
+        },
+        orderBy: { position: "asc" },
+      });
+      if (outside) {
+        throw new ResponseError(
+          400,
+          `${outside.name} runs from ${outside.start_date.toISOString().slice(0, 10)} to ${outside.end_date.toISOString().slice(0, 10)}, outside the new dates. Change the semester first.`,
+        );
+      }
+    }
     const effectiveName = updateRequest.name ?? existing.name;
     const activatingTarget =
       updateRequest.status === AcademicYearStatus.ACTIVE &&

@@ -5,6 +5,7 @@ import { employeeApiRouter } from "./employee-api-router";
 import { studentApiRouter } from "./student-api-router";
 import { internApiRouter } from "./intern-api-router";
 import { personApiRouter } from "./person-api-router";
+import { academicYearApiRouter } from "./academic-year-api-router";
 import { classApiRouter } from "./class-api-router";
 import { classTeacherAssignmentApiRouter } from "./class-teacher-assignment-api-router";
 import { studentSupportAssignmentApiRouter } from "./student-support-assignment-api-router";
@@ -21,6 +22,7 @@ internalRouter.route("/students", studentApiRouter);
 internalRouter.route("/interns", internApiRouter);
 internalRouter.route("/persons", personApiRouter);
 internalRouter.route("/classes", classApiRouter);
+internalRouter.route("/academic-years", academicYearApiRouter);
 internalRouter.route("/class-teacher-assignments", classTeacherAssignmentApiRouter);
 internalRouter.route(
   "/student-support-assignments",
