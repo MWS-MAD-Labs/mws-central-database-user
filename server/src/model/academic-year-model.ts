@@ -16,6 +16,8 @@ export type CreateAcademicYearRequest = {
   start_date: string;
   end_date?: string;
   status?: AcademicYearStatus;
+  // Left out, the year gets Semester 1 and 2 from its dates. An empty list means none.
+  semesters?: { name: string; start_date: string; end_date: string }[];
 };
 
 // Creates July-June years and derives status from their dates.

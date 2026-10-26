@@ -119,10 +119,16 @@ describe('AcademicYearsPanel', () => {
     await screen.findByText('2026/2027')
 
     await user.click(screen.getByRole('button', { name: 'New Year' }))
+    expect(screen.getByDisplayValue('Semester 1')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Semester 2')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
       url === '/api/admin/academic-years' && options.method === 'POST',
     )).toBe(true))
+    const post = fetchMock.mock.calls.find(([url, options]) => url === '/api/admin/academic-years' && options.method === 'POST')
+    const sent = JSON.parse(post[1].body)
+    expect(sent.semesters.map((item) => item.name)).toEqual(['Semester 1', 'Semester 2'])
+    expect(sent.semesters[1].start_date > sent.semesters[0].end_date).toBe(true)
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New Academic Year' })).not.toBeInTheDocument())
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
 

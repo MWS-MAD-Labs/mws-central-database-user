@@ -52,6 +52,16 @@ export class AcademicYearValidation {
           message: "Status must be a valid format",
         })
         .optional(),
+      semesters: z
+        .array(
+          z.object({
+            name: z.string().trim().min(1, "Semester name is required").max(64, "Semester name is too long"),
+            start_date: z.iso.datetime("Semester start date must be a valid ISO-8601 datetime string"),
+            end_date: z.iso.datetime("Semester end date must be a valid ISO-8601 datetime string"),
+          }),
+        )
+        .max(4, "A year can have at most 4 semesters")
+        .optional(),
     })
     .refine(
       (data) =>

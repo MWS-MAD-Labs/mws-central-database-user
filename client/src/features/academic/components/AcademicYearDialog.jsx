@@ -6,6 +6,7 @@ import {
   DateField,
   Field,
   NumberInput,
+  TextInput,
   SearchableSelect,
 } from "../../../components/ui/FormControls.jsx";
 import {
@@ -30,6 +31,22 @@ function computeDefaultEndDate(startDateInput) {
   end.setUTCFullYear(end.getUTCFullYear() + 1);
   end.setUTCDate(end.getUTCDate() - 1);
   return end.toISOString().slice(0, 10);
+}
+
+// Two halves of the year, the second starting the day after the first ends.
+function computeDefaultSemesters(startInput, endInput) {
+  const start = new Date(`${startInput}T00:00:00.000Z`);
+  const end = new Date(`${endInput}T00:00:00.000Z`);
+  if (!startInput || !endInput || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start >= end) return [];
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = Math.floor((end - start) / dayMs);
+  const firstEnd = new Date(start.getTime() + Math.floor(days / 2) * dayMs);
+  const secondStart = new Date(firstEnd.getTime() + dayMs);
+  const day = (date) => date.toISOString().slice(0, 10);
+  return [
+    { name: "Semester 1", start_date: startInput, end_date: day(firstEnd) },
+    { name: "Semester 2", start_date: day(secondStart), end_date: endInput },
+  ];
 }
 
 function computeDefaultStartDate(startYear) {
@@ -70,8 +87,17 @@ export function AcademicYearDialog({
   const [endDateTouched, setEndDateTouched] = useState(() =>
     Boolean(dateInputFromIso(dialog.record?.end_date)),
   );
+  // Fields the user changed by hand, keyed by semester index. The rest follow the year dates.
+  const [semesterEdits, setSemesterEdits] = useState({});
+  const semesters = computeDefaultSemesters(values.start_date, values.end_date).map((item, index) => ({
+    ...item,
+    ...semesterEdits[index],
+  }));
+  function editSemester(index, field, value) {
+    setSemesterEdits((current) => ({ ...current, [index]: { ...current[index], [field]: value } }));
+  }
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const errors = hasAttemptedSubmit ? computeAcademicYearErrors(values) : {};
+  const errors = hasAttemptedSubmit ? computeAcademicYearErrors(values, dialog.mode === "create" ? semesters : []) : {};
 
   // Only a real year makes a name, so a half typed one does not show a made up name.
   const startYearNumber = isValidYear(values.startYear) ? optionalNumber(values.startYear) : null;
@@ -147,7 +173,8 @@ export function AcademicYearDialog({
   function submit(event) {
     event.preventDefault();
     setHasAttemptedSubmit(true);
-    if (Object.keys(computeAcademicYearErrors(values)).length > 0) return;
+    const semesterList = dialog.mode === "create" ? semesters : [];
+    if (Object.keys(computeAcademicYearErrors(values, semesterList)).length > 0) return;
     onSubmit(
       cleanPayload({
         name: computedName || undefined,
@@ -156,6 +183,14 @@ export function AcademicYearDialog({
         status: values.status,
         activate_classes:
           values.status === "ACTIVE" ? values.activateClasses : undefined,
+        semesters:
+          dialog.mode === "create" && semesterList.length > 0
+            ? semesterList.map((item) => ({
+                name: item.name.trim(),
+                start_date: isoFromDateInput(item.start_date),
+                end_date: isoFromDateInput(item.end_date),
+              }))
+            : undefined,
       }),
     );
   }
@@ -280,6 +315,30 @@ export function AcademicYearDialog({
             }}
           />
         </Field>
+        {dialog.mode === "create"
+          ? semesters.map((item, index) => (
+              <div key={index} className="grid gap-4 md:col-span-2 md:grid-cols-3">
+                <Field label={`Semester ${index + 1}`} error={errors[`semester_${index}`]}>
+                  <TextInput
+                    value={item.name}
+                    onChange={(event) => editSemester(index, "name", event.target.value)}
+                  />
+                </Field>
+                <Field label="Start Date">
+                  <DateField
+                    value={item.start_date}
+                    onChange={(event) => editSemester(index, "start_date", event.target.value)}
+                  />
+                </Field>
+                <Field label="End Date">
+                  <DateField
+                    value={item.end_date}
+                    onChange={(event) => editSemester(index, "end_date", event.target.value)}
+                  />
+                </Field>
+              </div>
+            ))
+          : null}
         <Field label="Status" className="md:col-span-2">
           <SearchableSelect
             value={values.status}
@@ -333,7 +392,7 @@ function enumOptions(values) {
   return values.map((value) => ({ value, label: formatStatus(value) }));
 }
 
-function computeAcademicYearErrors(values) {
+function computeAcademicYearErrors(values, semesters = []) {
   const errors = {};
   const yearError = yearProblem(values.startYear, "Start year");
   if (yearError) errors.startYear = yearError;
@@ -343,5 +402,14 @@ function computeAcademicYearErrors(values) {
   const dateMessage = `Use a date in ${LIMITS.ACADEMIC_YEAR_MIN} to ${LIMITS.ACADEMIC_YEAR_MAX + 1}.`;
   if (values.start_date && outOfRange(values.start_date)) errors.start_date = dateMessage;
   if (values.end_date && outOfRange(values.end_date)) errors.end_date = dateMessage;
+  semesters.forEach((item, index) => {
+    if (!item.name.trim()) errors[`semester_${index}`] = "Name is required.";
+    else if (!item.start_date || !item.end_date || item.start_date > item.end_date)
+      errors[`semester_${index}`] = "Use a start date that is not after the end date.";
+    else if (item.start_date < values.start_date || item.end_date > values.end_date)
+      errors[`semester_${index}`] = "Keep the dates inside the academic year.";
+    else if (index > 0 && item.start_date <= semesters[index - 1].end_date)
+      errors[`semester_${index}`] = "Start after the previous semester ends.";
+  });
   return errors;
 }
