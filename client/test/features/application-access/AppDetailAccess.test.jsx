@@ -236,7 +236,7 @@ function renderPage(
 
 // The group rows start closed. Opens the n-th one (0 is the broadest).
 async function openGroup(user, index = 0) {
-  const headings = await screen.findAllByRole("heading", { level: 2 });
+  const headings = (await screen.findAllByRole("heading", { level: 2 })).slice(1);
   await user.click(within(headings[index]).getByRole("button"));
 }
 
@@ -268,7 +268,8 @@ describe("AppDetailPage access tabs", () => {
     expect(
       screen.queryByRole("button", { name: "Copy" }),
     ).not.toBeInTheDocument();
-    const rows = await screen.findAllByRole("heading", { level: 2 });
+    // The first heading is the card title, the rest are the group rows.
+    const rows = (await screen.findAllByRole("heading", { level: 2 })).slice(1);
     expect(rows).toHaveLength(2);
     // The row already says the role and who it covers.
     expect(within(rows[0]).getByText("STAFF")).toBeVisible();
@@ -779,15 +780,15 @@ describe("AppDetailPage access tabs", () => {
     globalThis.fetch = createFetchRouter(routes(detail({ groups }), [], {}));
     const { user } = renderPage();
     await screen.findByText(/Page 1 of 2/);
-    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(10);
+    expect(screen.getAllByRole("heading", { level: 2 }).slice(1)).toHaveLength(10);
     await user.click(screen.getByRole("button", { name: "Next" }));
     await waitFor(() =>
-      expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(2),
+      expect(screen.getAllByRole("heading", { level: 2 }).slice(1)).toHaveLength(2),
     );
 
     await user.type(screen.getByPlaceholderText("Search groups"), "admin");
     await waitFor(() =>
-      expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(1),
+      expect(screen.getAllByRole("heading", { level: 2 }).slice(1)).toHaveLength(1),
     );
   });
 
@@ -1093,7 +1094,7 @@ describe("AppDetailPage access tabs", () => {
         await screen.findByRole("button", { name: "Add Roles" }),
       ).toBeVisible();
       await user.click(screen.getByRole("tab", { name: "Access" }));
-      expect(await screen.findAllByRole("heading", { level: 2 })).toHaveLength(
+      expect((await screen.findAllByRole("heading", { level: 2 })).slice(1)).toHaveLength(
         2,
       );
     });

@@ -735,6 +735,27 @@ describe("application onboarding", () => {
       }
     });
 
+    it("gives one port on a local host to one application, even when the paths differ, and checks it on every save", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const port = 43000 + Math.floor(Math.random() * 1000);
+      await create(accessToken, { launch_url: `http://localhost:${port}/auth/sso` });
+      const twin = `${appId}-twin`;
+      try {
+        const clash = await TestRequest.post(`${ACCESS}/applications`, { application_id: twin, name: "TEST_Twin", launch_url: `http://localhost:${port}/api/v1/auth/sso` }, accessToken);
+        expect(clash.status).toBe(400);
+        expect((await clash.json()).errors).toContain(`TEST_Onboard already uses localhost:${port}. Each port on this machine belongs to one application`);
+        // A row made before the rule, with the very same address, cannot be saved again until it is put right.
+        await prismaClient.application.create({ data: { application_id: twin, name: "TEST_Twin", launch_url: `http://localhost:${port}/auth/sso` } });
+        const resave = await TestRequest.patch(`${ACCESS}/apps/${twin}/details`, { name: "TEST_Twin 2", launch_url: `http://localhost:${port}/auth/sso` }, accessToken);
+        expect(resave.status).toBe(400);
+        const moved = await TestRequest.patch(`${ACCESS}/apps/${twin}/details`, { launch_url: `http://localhost:${port + 1}/auth/sso` }, accessToken);
+        expect(moved.status).toBe(200);
+      } finally {
+        await prismaClient.application.deleteMany({ where: { application_id: twin } });
+        await prismaClient.applicationOrganization.deleteMany({ where: { application_id: twin } });
+      }
+    });
+
     it("waits for proof after the sign-in way changes, from the app's own lookups for shared and from the Hub for code and token", async () => {
       const shared = `test-sess-${randomBytes(3).toString("hex")}`;
       process.env.HUB_APPLICATION_ID = appId;

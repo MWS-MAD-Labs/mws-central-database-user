@@ -4,7 +4,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { cn } from "../../../lib/cn.js";
 import { formatDate } from "../../../lib/format.js";
 import { timeAgo } from "../utils/setupSteps.js";
-import { connectionState } from "../utils/connectionState.js";
+import { addressState, connectionState } from "../utils/connectionState.js";
 
 const DOT = {
   green: { color: "bg-[#58a451]", ping: true },
@@ -34,8 +34,9 @@ function Cell({ label, children }) {
 }
 
 // The summary at the top of Settings: where it shows, whether it is connected, who can open it and since when.
-export function AppStatusStrip({ hubStatus, link, health, connection, access, createdAt, groupsPath }) {
+export function AppStatusStrip({ hubStatus, link, isHub = false, address = null, health, connection, access, createdAt, groupsPath }) {
   const state = connectionState({ link, health, connection });
+  const addressLine = addressState({ link, isHub, address });
   const people = access?.people;
   return (
     <div className="grid grid-cols-2 divide-y divide-(--mws-line) rounded-2xl border border-(--mws-line) bg-white text-sm md:grid-cols-4 md:divide-x md:divide-y-0">
@@ -48,6 +49,12 @@ export function AppStatusStrip({ hubStatus, link, health, connection, access, cr
           {state.label}
         </p>
         <p className="text-xs text-(--mws-muted)">{state.note}</p>
+        {addressLine ? (
+          <p className="flex items-center gap-2 pt-1 text-xs text-(--mws-charcoal)" title={addressLine.title}>
+            <Dot tone={addressLine.tone} pulse={false} />
+            {`Sign-In Address: ${addressLine.label}`}
+          </p>
+        ) : null}
       </Cell>
       <Cell label="People">
         {access ? (

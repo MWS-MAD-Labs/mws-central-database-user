@@ -4,6 +4,7 @@ import { applicationAccessApi } from "../api/applicationAccessApi.js";
 
 const ANSWERS = {
   unreachable: "Nothing answers at the sign-in address. Is the application running?",
+  unverifiable: "This server answers every path, so Central cannot tell if the sign-in page exists. Open the application from the Hub to confirm.",
   wrong_path: "Something answers, but the sign-in page does not exist. Check the end of the address.",
 };
 

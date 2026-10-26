@@ -8,6 +8,8 @@ import { descriptionProblem, nameProblem, slugifyApplicationId, tidyText } from 
 import { ENVIRONMENTS, addressPlaceholder, addressProblem, environmentOfScheme, joinAddress, readAddressInput, splitAddress } from "../utils/applicationUrl.js";
 import { HUB_ICON_NAMES } from "../utils/hubIcons.js";
 import { useAddressCheck } from "../hooks/useAddressCheck.js";
+import { addressClash, isLocalHost } from "../utils/applicationAddress.js";
+import { useQuery } from "@tanstack/react-query";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { AddressCheckStatus } from "./AddressCheckStatus.jsx";
 import { AddressInput } from "./AddressInput.jsx";
@@ -62,6 +64,7 @@ const ADDRESS_TEXTS = {
   anyway: "Used as typed, not checked.",
   unreachable: "Nothing answers at this address. Is the application running?",
   wrong_path: "Something answers here, but this page does not exist. Check the end of the address.",
+  unverifiable: "This server answers every path, so Central cannot tell if the page exists. Open the application from the Hub to confirm.",
   refused: "This address cannot be checked.",
   failed: "The address could not be checked just now. Try again.",
   anywayTitle: "Use This Address Anyway",
@@ -110,6 +113,12 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
   const [pasted, setPasted] = useState({ launch: null, logout: null });
   const [notes, setNotes] = useState({ launch: null, logout: null });
   const taxonomy = useApplicationTaxonomy();
+  // The other applications, to say early when an address is already theirs.
+  const othersQuery = useQuery({
+    queryKey: ["application-access", "applications", "address-clash"],
+    queryFn: () => applicationAccessApi.listApplications({ size: 100 }),
+    enabled: !isHub,
+  });
   // A value that is no longer in the list (a removed one) shows as none.
   const categoryOptions = [{ value: "", label: "No category" }, ...taxonomy.categories.map((item) => ({ value: item.key, label: item.name }))];
   const scopeOptions = [{ value: "", label: "No scope" }, ...taxonomy.scopes.map((item) => ({ value: item.key, label: item.name }))];
@@ -138,10 +147,12 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     return `This address starts with ${scheme}:// but the Environment is ${label}. Change the Environment, or use a ${environment === "local" ? "http" : "https"} address.`;
   };
 
+  const clashWith = hub || !effectiveLaunch.trim() ? null : addressClash(joinAddress(environment, effectiveLaunch), othersQuery.data?.data ?? [], initial?.application_id);
+  const clashError = !clashWith || clashWith.type === "domain" ? undefined : isLocalHost(joinAddress(environment, effectiveLaunch)) ? `${clashWith.name} already uses this port. Each port on this machine belongs to one application.` : `${clashWith.name} already uses this sign-in address.`;
   const errors = {
     name: hub ? undefined : (nameProblem(values.name) ?? undefined),
     description: descriptionProblem(values.description) ?? undefined,
-    launch_url: hub ? undefined : (clash("launch") ?? addressProblem(environment, effectiveLaunch, { required: needsLaunch }) ?? undefined),
+    launch_url: hub ? undefined : (clash("launch") ?? addressProblem(environment, effectiveLaunch, { required: needsLaunch }) ?? clashError),
     logout_url: hub ? undefined : (clash("logout") ?? addressProblem(environment, effectiveLogout) ?? undefined),
   };
   const valid = !Object.values(errors).some(Boolean) && !hubSettingsProblem;
@@ -461,6 +472,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
           </>
         )}
         {hub ? null : <AddressCheckStatus state={addressCheck} texts={ADDRESS_TEXTS} />}
+        {clashError ? <p role="alert" className="text-xs text-[#a43c41]">{clashError}</p> : null}
+        {clashWith?.type === "domain" ? <p className="text-xs text-(--mws-muted)">{`Same domain as ${clashWith.name}. That works when each application has its own path.`}</p> : null}
         {launchMode === "sso" ? (
           <button
             type="button"
@@ -503,7 +516,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       <Button type="button" variant="secondary" className={layout === "page" ? "flex-1" : undefined} onClick={onCancel}>
         Cancel
       </Button>
-      <Button type="submit" className={layout === "page" ? "flex-1" : undefined} loading={submitting} disabled={unchanged || !addressReady || missing}>
+      <Button type="submit" className={layout === "page" ? "flex-1" : undefined} loading={submitting} disabled={unchanged || !addressReady || missing || Boolean(clashError)}>
         {submitLabel}
       </Button>
     </div>

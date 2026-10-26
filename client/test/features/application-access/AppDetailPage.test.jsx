@@ -96,7 +96,7 @@ function renderPage(data, route = "/application-access/apps/demo?tab=overview", 
 
 describe("AppDetailPage", () => {
   it("summarises the application on top and opens on the overview", async () => {
-    renderPage(setup());
+    const { user } = renderPage(setup());
     expect(await screen.findByRole("heading", { name: "Demo App" })).toBeVisible();
     expect(screen.getByText("Shown in the Hub")).toBeVisible();
     expect(screen.getByText("Connected")).toBeVisible();
@@ -106,14 +106,19 @@ describe("AppDetailPage", () => {
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("https://demo.example.com/auth/sso")).toBeVisible();
     expect(screen.getByText("Reporting")).toBeVisible();
-    expect(screen.getByRole("link", { name: /Setup Guide/ })).toHaveAttribute("href", "/application-access/guides?part=local&app=demo");
-    // One way to edit, and retiring is not a button on the page.
-    expect(screen.getAllByRole("button", { name: /Edit/ })).toHaveLength(1);
+    // The header holds Back and one menu. The rest is inside it.
+    expect(screen.queryByRole("button", { name: "Edit Details" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add Group" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Retire Application" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    expect(screen.getByRole("button", { name: "Setup Guide" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Check Now" })).toBeVisible();
+    expect(screen.getAllByRole("button", { name: /Edit/ })).toHaveLength(1);
   });
 
   it("opens the details form with the status and keywords in it", async () => {
     const { user } = renderPage(setup());
+    await user.click(await screen.findByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("button", { name: "Edit Details" }));
     expect(await screen.findByLabelText("Keywords")).toHaveValue("checkin, daily");
   });
@@ -456,6 +461,7 @@ describe("AppDetailPage", () => {
     ]);
     expect(await screen.findByText(/sign-in page was not found since/)).toBeVisible();
     expect(screen.getByText(/Fix the Sign-In Address in Edit Details/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "More actions" }));
     await user.click(screen.getByRole("button", { name: "Check Now" }));
     await waitFor(() => expect(asked).toHaveLength(1));
   });

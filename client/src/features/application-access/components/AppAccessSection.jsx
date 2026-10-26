@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Plus } from "lucide-react";
 import { useNavigate } from "react-router";
 import { DebouncedSearchInput, FilterSelect } from "../../../components/ui/FormControls.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
@@ -18,7 +19,7 @@ const GROUP_PAGE_SIZE = 10;
 
 // The access, roles and permissions of one application, one tab at a time. The groups come from `detail`, the roles
 // from the page that already loaded them.
-export function AppAccessSection({ applicationId, detail, roles, tab }) {
+export function AppAccessSection({ applicationId, detail, roles, tab, canAddGroup = true, retired = false }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -80,6 +81,24 @@ export function AppAccessSection({ applicationId, detail, roles, tab }) {
         <AppPermissionsTab applicationId={applicationId} />
       ) : (
         <>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2 font-display text-base font-bold text-(--mws-charcoal)">
+              Groups
+              <span className="text-sm font-normal text-(--mws-muted)">{detail.groups.length}</span>
+            </h2>
+            {retired ? null : (
+              <button
+                type="button"
+                aria-label="Add Group"
+                title={canAddGroup ? "Add Group" : "Add a role first"}
+                disabled={!canAddGroup}
+                onClick={() => navigate(`/application-access/apps/${applicationId}/groups/new`)}
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-(--mws-muted) transition-colors hover:bg-(--mws-soft) hover:text-(--mws-burgundy) focus-visible:outline-2 focus-visible:outline-(--mws-burgundy) disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-(--mws-muted)"
+              >
+                <Plus size={18} />
+              </button>
+            )}
+          </div>
           {detail.groups.length === 0 ? (
             <PanelMessage>
               No group access yet. Add a group first. It decides who can use {applicationId}, and exceptions go
