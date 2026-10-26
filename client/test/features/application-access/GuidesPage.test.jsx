@@ -295,6 +295,7 @@ describe("GuidesPage", () => {
     it("walks through adding an application and lists what failed with its cause", async () => {
       const view = renderGuide("?part=app");
       expect(await title()).toBe("Add an application");
+      expect(screen.getByText(/Learnspace uses \/api\/v1\/auth\/sso/)).toBeVisible();
       expect(screen.getByText(/needs students:read/)).toBeVisible();
       view.unmount();
       renderGuide("?part=problems");

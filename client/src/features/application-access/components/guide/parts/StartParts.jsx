@@ -194,6 +194,10 @@ export function AppPart() {
               "Atur tampilan di Hub (ikon, grup, deskripsi) dan data Central apa saja yang boleh dibaca. Defaultnya Employees.",
             ),
             t(
+              "Set the sign-in address to the page the application really serves for the Hub. Daily and Exima use /auth/sso, Learnspace uses /api/v1/auth/sso. A path the application does not have ends in a Not Found page.",
+              "Isi alamat sign-in dengan halaman yang benar-benar disediakan aplikasi untuk Hub. Daily dan Exima memakai /auth/sso, Learnspace memakai /api/v1/auth/sso. Jalur yang tidak dimiliki aplikasi berakhir di halaman Not Found.",
+            ),
+            t(
               "Add it. A block of environment lines appears once, with the token and CENTRAL_ORGANIZATION_ID. Copy it before you close the box. If you lose it, rotate the token.",
               "Simpan. Satu blok baris environment muncul sekali, berisi token dan CENTRAL_ORGANIZATION_ID. Salin sebelum kotaknya ditutup. Jika terlanjur hilang, rotasi tokennya.",
             ),
