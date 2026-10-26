@@ -8,6 +8,12 @@ import {
   Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
+import {
+  assertSemesterSet,
+  createSemestersForYear,
+  defaultSemesterDates,
+  type SemesterInput,
+} from "./academic-semester-service";
 import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
@@ -286,6 +292,20 @@ export class AcademicYearService {
     assertDatesMatchName(createRequest.name, createStartDate, createEndDate);
     await assertNoOverlappingAcademicYear(createStartDate, createEndDate);
 
+    const semesterInputs: SemesterInput[] = createRequest.semesters
+      ? createRequest.semesters.map((item) => ({
+          name: item.name,
+          start_date: new Date(item.start_date),
+          end_date: new Date(item.end_date),
+        }))
+      : createEndDate
+        ? defaultSemesterDates(createStartDate, createEndDate)
+        : [];
+    const semesters = assertSemesterSet(
+      { name: createRequest.name, start_date: createStartDate, end_date: createEndDate },
+      semesterInputs,
+    );
+
     if (createRequest.status === AcademicYearStatus.ACTIVE) {
       assertActiveYearIsReasonable(createRequest.name);
 
@@ -325,6 +345,7 @@ export class AcademicYearService {
           },
           tx,
         );
+        await createSemestersForYear(tx, admin, newYear.id, semesters, context);
 
         return newYear;
       });

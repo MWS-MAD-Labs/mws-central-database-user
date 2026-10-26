@@ -101,6 +101,56 @@ describe("academic semesters", () => {
     expect((await TestRequest.post(`${BASE}/${year.id}/semesters/defaults`, {}, accessToken)).status).toBe(400);
   });
 
+  it("makes the semesters with the year: given, by default, or none", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const body = {
+      name: YEAR_NAME,
+      start_date: iso(`${YEAR}-07-01`),
+      end_date: iso(`${YEAR + 1}-06-30`),
+      status: "UPCOMING",
+    };
+    const bad = await TestRequest.post(
+      BASE,
+      {
+        ...body,
+        semesters: [
+          { name: "Semester 1", start_date: iso(`${YEAR}-07-01`), end_date: iso(`${YEAR}-12-31`) },
+          { name: "Semester 2", start_date: iso(`${YEAR}-12-01`), end_date: iso(`${YEAR + 1}-06-30`) },
+        ],
+      },
+      accessToken,
+    );
+    expect(bad.status).toBe(400);
+    expect(await prismaClient.academicYear.count({ where: { name: YEAR_NAME } })).toBe(0);
+
+    const given = await TestRequest.post(
+      BASE,
+      {
+        ...body,
+        semesters: [
+          { name: "Ganjil", start_date: iso(`${YEAR}-07-01`), end_date: iso(`${YEAR}-12-31`) },
+          { name: "Genap", start_date: iso(`${YEAR + 1}-01-05`), end_date: iso(`${YEAR + 1}-06-30`) },
+        ],
+      },
+      accessToken,
+    );
+    expect(given.status).toBe(200);
+    const id = (await given.json()).data.id;
+    const rows = await prismaClient.academicSemester.findMany({ where: { academic_year_id: id }, orderBy: { position: "asc" } });
+    expect(rows.map((row) => row.name)).toEqual(["Ganjil", "Genap"]);
+    await prismaClient.academicYear.delete({ where: { id } });
+
+    const byDefault = await TestRequest.post(BASE, body, accessToken);
+    const defaultId = (await byDefault.json()).data.id;
+    const made = await prismaClient.academicSemester.findMany({ where: { academic_year_id: defaultId }, orderBy: { position: "asc" } });
+    expect(made.map((row) => row.name)).toEqual(["Semester 1", "Semester 2"]);
+    await prismaClient.academicYear.delete({ where: { id: defaultId } });
+
+    const none = await TestRequest.post(BASE, { ...body, semesters: [] }, accessToken);
+    const noneId = (await none.json()).data.id;
+    expect(await prismaClient.academicSemester.count({ where: { academic_year_id: noneId } })).toBe(0);
+  });
+
   it("does not let the year shrink past a semester, and deletes them with the year", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const year = await makeYear();

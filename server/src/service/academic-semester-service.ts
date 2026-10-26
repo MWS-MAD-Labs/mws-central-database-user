@@ -64,6 +64,56 @@ function assertDatesFit(
   }
 }
 
+export type SemesterInput = { name: string; start_date: Date; end_date: Date };
+
+// Checks a whole set for a new year: names, order and dates inside the year, no overlap.
+export function assertSemesterSet(
+  year: { name: string; start_date: Date; end_date: Date | null },
+  items: SemesterInput[],
+): SemesterInput[] {
+  if (items.length > MAX_SEMESTERS) {
+    throw new ResponseError(400, `A year can have at most ${MAX_SEMESTERS} semesters`);
+  }
+  const sorted = [...items].sort((a, b) => a.start_date.getTime() - b.start_date.getTime());
+  const seen: SemesterInput[] = [];
+  for (const item of sorted) {
+    if (seen.some((other) => other.name.toLowerCase() === item.name.toLowerCase())) {
+      throw new ResponseError(400, "Semester names have to be different");
+    }
+    assertDatesFit(year, item.start_date, item.end_date, seen);
+    seen.push(item);
+  }
+  return sorted;
+}
+
+// Writes the semesters of a year that was just made, inside its transaction.
+export async function createSemestersForYear(
+  tx: Prisma.TransactionClient,
+  admin: AdminUser,
+  yearId: string,
+  items: SemesterInput[],
+  context: AuditRequestContext = {},
+) {
+  for (const [index, item] of items.entries()) {
+    const row = await tx.academicSemester.create({
+      data: { academic_year_id: yearId, position: index + 1, ...item },
+    });
+    await AuditService.record(
+      {
+        action: AuditAction.CREATE_ACADEMIC_SEMESTER,
+        source: AuditSource.UI,
+        entity_type: "AcademicSemester",
+        entity_id: row.id,
+        admin_id: admin.id,
+        new_values: toAcademicSemesterAuditSnapshot(row),
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      },
+      tx,
+    );
+  }
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }

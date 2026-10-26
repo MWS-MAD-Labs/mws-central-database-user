@@ -74,7 +74,7 @@ describe('AcademicYearDialog', () => {
     const { user } = renderWithProviders(
       <AcademicYearDialog dialog={{ mode: 'create' }} suggestedStartYear={2026} isSubmitting={false} onClose={() => {}} onSubmit={() => {}} />,
     )
-    const year = screen.getByRole('textbox')
+    const year = screen.getAllByRole('textbox')[0]
     await user.clear(year)
     await user.type(year, '202753445455445')
     expect(year).toHaveValue('2027')
@@ -87,7 +87,7 @@ describe('AcademicYearDialog', () => {
   it('refuses a year outside the range on save', async () => {
     const onSubmit = mock()
     const { user } = renderWithProviders(<AcademicYearDialog dialog={{ mode: 'create' }} suggestedStartYear={2026} isSubmitting={false} onClose={() => {}} onSubmit={onSubmit} />)
-    const year = screen.getByRole('textbox')
+    const year = screen.getAllByRole('textbox')[0]
     await user.clear(year)
     await user.type(year, '1999')
     await user.click(screen.getByRole('button', { name: /Save|Create/ }))
