@@ -1,4 +1,4 @@
-import { confirmSignIn, healthOf, type ApplicationHealth, type HealthCredential } from "./application-health";
+import { checkOneApplication, confirmSignIn, healthOf, type ApplicationHealth, type HealthCredential } from "./application-health";
 import { AdminRole, ApiCredentialStatus, HubSecretMode, ApplicationLaunchMode, ApplicationSessionMode, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
 import type { AdminUser } from "../generated/prisma/client";
 import type { HubCardStatus } from "../generated/prisma/client";
@@ -23,7 +23,7 @@ import { getIntegrationEnvironment } from "../utils/integration-environment";
 import { ApiClientService } from "./api-client-service";
 import { ApplicationIntegrationProfileService } from "./application-integration-profile-service";
 import { AuditService } from "./audit-service";
-import { ApplicationAccessService, clearActiveSnapshot, resolveOrganizationId } from "./application-entitlement-service";
+import { ApplicationAccessService, assertAddressFree, clearActiveSnapshot, resolveOrganizationId } from "./application-entitlement-service";
 
 const CONNECT_PURPOSE = "app-connection";
 export { REQUIRED_CONNECT_SCOPES };
@@ -417,6 +417,7 @@ export class ApplicationOnboardingService {
     const input = Validation.validate(ApplicationValidation.UPDATE, request);
     const before = await findApplication(input.application_id);
     await ApplicationTaxonomyService.assertKnown(input);
+    if (input.launch_url && input.launch_url !== before.launch_url) await assertAddressFree(input.launch_url, before.application_id);
     // The Hub is always called HUB. An older Hub row with another spelling can be put right, nothing else.
     if (input.application_id === hubApplicationId() && input.name !== undefined && input.name !== before.name && input.name !== "HUB") {
       throw new ResponseError(400, "The name of the Hub cannot change");
@@ -755,6 +756,16 @@ export class ApplicationOnboardingService {
       user_agent: context.user_agent,
     });
     return settings;
+  }
+
+  // Asks the sign-in address of one application right now and keeps the answer. No second miss is waited for.
+  static async checkAddress(admin: AdminUser, applicationId: string): Promise<{ verdict: string }> {
+    assertSuperAdmin(admin);
+    const app = await findApplication(applicationId);
+    if (applicationId === hubApplicationId() || app.launch_mode !== ApplicationLaunchMode.SSO || !app.launch_url) {
+      throw new ResponseError(400, "This application has no sign-in address to check");
+    }
+    return { verdict: await checkOneApplication(app, { immediate: true }) };
   }
 
   // The address people and applications reach the Hub at. The applications get it in their .env.

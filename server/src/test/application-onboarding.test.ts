@@ -6,7 +6,7 @@ import { syncApiScopes } from "../lib/sync-api-scopes";
 import { slugifyApplicationId } from "../utils/application-id";
 import { decryptSecret } from "../utils/secret-box";
 import { deriveAppSecret } from "../utils/hub-app-secret";
-import { checkApplicationAddresses, healthOf, useExchangeSeenForTest } from "../service/application-health";
+import { checkApplicationAddresses, checkOneApplication, healthOf, useExchangeSeenForTest } from "../service/application-health";
 import { AdminUserTest, ApiClientTest, EmployeeTest, HubTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const ACCESS = "/api/admin/application-access";
@@ -690,6 +690,49 @@ describe("application onboarding", () => {
       expect(list.find((row: { application_id: string }) => row.application_id === appId).health.status).toBe("unreachable");
       await checkApplicationAddresses(async () => "ok");
       expect((await health()).status).not.toBe("unreachable");
+    });
+
+    it("keeps a wrong path at once and Check Now asks right away without waiting for a second miss", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken, { connect: true });
+      const health = async () => (await (await TestRequest.get(`${ACCESS}/apps/${appId}/setup`, accessToken)).json()).data.health;
+      await checkApplicationAddresses(async () => "wrong_path");
+      expect(await health()).toMatchObject({ status: "wrong_path", detail: "The sign-in address answers Not Found" });
+      await checkApplicationAddresses(async () => "ok");
+      expect((await health()).status).not.toBe("wrong_path");
+
+      // One miss does not mark it in the background loop, but Check Now does.
+      const row = await prismaClient.application.findUniqueOrThrow({ where: { application_id: appId } });
+      await checkOneApplication(row, { check: async () => "unreachable", immediate: true });
+      expect((await health()).status).toBe("unreachable");
+
+      const checked = await TestRequest.post(`${ACCESS}/apps/${appId}/check`, {}, accessToken);
+      expect(checked.status).toBe(200);
+      // Nothing listens at the example address, so it is asked for real and answers with one of the verdicts.
+      expect(["ok", "unreachable", "wrong_path"]).toContain((await checked.json()).data.verdict);
+      const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
+      expect((await TestRequest.post(`${ACCESS}/apps/${appId}/check`, {}, other)).status).toBe(403);
+    });
+
+    it("refuses an address another live application has, and tells a shared origin in the list", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken, { launch_url: "https://shared-origin.example.com/mtss/auth/sso" });
+      const twin = `${appId}-twin`;
+      const same = await TestRequest.post(`${ACCESS}/applications`, { application_id: twin, name: "TEST_Twin", launch_url: "https://SHARED-origin.example.com/mtss/auth/sso/" }, accessToken);
+      expect(same.status).toBe(400);
+      expect((await same.json()).errors).toContain("TEST_Onboard already uses this sign-in address");
+
+      const sibling = await TestRequest.post(`${ACCESS}/applications`, { application_id: twin, name: "TEST_Twin", launch_url: "https://shared-origin.example.com/daily/auth/sso" }, accessToken);
+      expect(sibling.status).toBe(200);
+      try {
+        const list = (await (await TestRequest.get(`${ACCESS}/applications?search=${twin}`, accessToken)).json()).data;
+        expect(list.find((row: { application_id: string }) => row.application_id === twin).shares_origin_with).toEqual(["TEST_Onboard"]);
+        const moved = await TestRequest.patch(`${ACCESS}/apps/${twin}/details`, { launch_url: "https://shared-origin.example.com/mtss/auth/sso" }, accessToken);
+        expect(moved.status).toBe(400);
+      } finally {
+        await prismaClient.application.deleteMany({ where: { application_id: twin } });
+        await prismaClient.applicationOrganization.deleteMany({ where: { application_id: twin } });
+      }
     });
 
     it("waits for proof after the sign-in way changes, from the app's own lookups for shared and from the Hub for code and token", async () => {
