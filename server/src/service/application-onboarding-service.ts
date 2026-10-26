@@ -56,6 +56,8 @@ export type SetupStatus = {
   organization_id: string;
   connection: { client_id: string | null; created: boolean; created_at: string | null; last_used_at: string | null; newest_token_used_at: string | null };
   health: ApplicationHealth | null;
+  // What the last check of the sign-in address found. Null for the Hub, a plain link or an address never checked.
+  address: { status: string; checked_at: string } | null;
   // Whether the application signs in the way it was last switched to. Null when it was never switched.
   session_check: { mode: "relay" | "shared"; changed_at: string; confirmed_at: string | null; known: boolean } | null;
   permissions: { count: number; synced_at: string | null };
@@ -417,7 +419,7 @@ export class ApplicationOnboardingService {
     const input = Validation.validate(ApplicationValidation.UPDATE, request);
     const before = await findApplication(input.application_id);
     await ApplicationTaxonomyService.assertKnown(input);
-    if (input.launch_url && input.launch_url !== before.launch_url) await assertAddressFree(input.launch_url, before.application_id);
+    if (input.launch_url) await assertAddressFree(input.launch_url, before.application_id);
     // The Hub is always called HUB. An older Hub row with another spelling can be put right, nothing else.
     if (input.application_id === hubApplicationId() && input.name !== undefined && input.name !== before.name && input.name !== "HUB") {
       throw new ResponseError(400, "The name of the Hub cannot change");
@@ -639,6 +641,10 @@ export class ApplicationOnboardingService {
               addressDownSince: app.address_down_since,
               signIn: { changedAt: app.session_mode_changed_at, confirmedAt: sessionConfirmedAt },
             }),
+      address:
+        applicationId === hubApplicationId() || app.launch_mode === ApplicationLaunchMode.LINK || !app.address_status || !app.address_checked_at
+          ? null
+          : { status: app.address_status, checked_at: app.address_checked_at.toISOString() },
       session_check:
         signInChecked && app.session_mode_changed_at
           ? {

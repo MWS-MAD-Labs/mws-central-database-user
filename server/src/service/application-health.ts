@@ -183,7 +183,7 @@ export async function checkOneApplication(
     data: {
       address_checked_at: now,
       address_failures: failures,
-      address_status: wrongPath ? "wrong_path" : markedDown ? "unreachable" : down ? application.address_status : "ok",
+      address_status: wrongPath ? "wrong_path" : markedDown ? "unreachable" : down ? application.address_status : verdict === "unverifiable" ? "unverifiable" : "ok",
       address_down_since: bad ? (application.address_down_since ?? now) : down ? application.address_down_since : null,
     },
   });

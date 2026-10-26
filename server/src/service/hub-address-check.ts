@@ -142,7 +142,8 @@ export async function checkHubSecret(address: string, secret: string): Promise<H
   }
 }
 
-export type ApplicationAddressVerdict = "ok" | "unreachable" | "wrong_path" | "refused";
+// "unverifiable" is a server that answers every path with a page, so a wrong path cannot be told from a right one.
+export type ApplicationAddressVerdict = "ok" | "unreachable" | "wrong_path" | "unverifiable" | "refused";
 
 // Whether the sign-in address of an application answers. The address is asked as saved, path included. A 404 means
 // something is running there but not at that path. A redirect to the sign-in page is still an application that is up.
@@ -162,9 +163,22 @@ export async function checkApplicationAddress(address: string): Promise<Applicat
       redirect: "manual",
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
+    if (response.status >= 500) {
+      await response.body?.cancel();
+      return "unreachable";
+    }
+    if (response.status === 404) {
+      await response.body?.cancel();
+      return "wrong_path";
+    }
+    const isPage = response.status === 200 && (response.headers.get("content-type") ?? "").toLowerCase().includes("text/html");
     await response.body?.cancel();
-    if (response.status >= 500) return "unreachable";
-    return response.status === 404 ? "wrong_path" : "ok";
+    if (!isPage) return "ok";
+    // A page may be the real sign-in page or a catch-all. A path that cannot exist tells which.
+    const stray = await fetch(new URL(`/central-check-${crypto.randomUUID()}`, url.origin), { redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS) });
+    await stray.body?.cancel();
+    const answersEverything = stray.status === 200 && (stray.headers.get("content-type") ?? "").toLowerCase().includes("text/html");
+    return answersEverything ? "unverifiable" : "ok";
   } catch {
     return "unreachable";
   }

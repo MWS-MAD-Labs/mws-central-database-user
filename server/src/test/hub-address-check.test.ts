@@ -253,6 +253,31 @@ describe("hub address check", () => {
       }
     });
 
+    it("tells a server that answers every path with a page from one that has the sign-in page", async () => {
+      const html = (body: string) => new Response(body, { status: 200, headers: { "Content-Type": "text/html" } });
+      const spa = Bun.serve({ port: 0, fetch: () => html("<html>app</html>") });
+      const mixed = Bun.serve({
+        port: 0,
+        fetch(request) {
+          const path = new URL(request.url).pathname;
+          if (path === "/login") return html("<html>login</html>");
+          if (path === "/auth/sso") return new Response("", { status: 302, headers: { Location: "/login" } });
+          if (path === "/api/json") return Response.json({ ok: true });
+          return new Response("not here", { status: 404 });
+        },
+      });
+      try {
+        expect(await checkApplicationAddress(`http://127.0.0.1:${spa.port}/auth/sso`)).toBe("unverifiable");
+        expect(await checkApplicationAddress(`http://127.0.0.1:${mixed.port}/login`)).toBe("ok");
+        expect(await checkApplicationAddress(`http://127.0.0.1:${mixed.port}/auth/sso`)).toBe("ok");
+        expect(await checkApplicationAddress(`http://127.0.0.1:${mixed.port}/api/json`)).toBe("ok");
+        expect(await checkApplicationAddress(`http://127.0.0.1:${mixed.port}/nope`)).toBe("wrong_path");
+      } finally {
+        spa.stop(true);
+        mixed.stop(true);
+      }
+    });
+
     it("GET /application-address-check gives only the verdict, to a Super Admin only", async () => {
       await AdminUserTest.delete();
       await MasterDataTest.delete();

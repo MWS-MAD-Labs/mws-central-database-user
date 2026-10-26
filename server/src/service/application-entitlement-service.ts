@@ -1,4 +1,4 @@
-import { addressTakenBy, originSharedWith } from "../utils/application-address";
+import { addressConflict, isLocalHost, originSharedWith } from "../utils/application-address";
 import { healthOf } from "./application-health";
 import { createHash, randomBytes } from "crypto";
 import {
@@ -291,11 +291,16 @@ async function resolveBaselineEntitlement(
   };
 }
 
-// A sign-in address belongs to one live application. A domain can be shared by path, an identical address cannot.
+// A sign-in address belongs to one live application. A domain can be shared by path, a port on a local host cannot.
 export async function assertAddressFree(address: string, selfId?: string) {
   const others = await prismaClient.application.findMany({ select: { application_id: true, name: true, launch_url: true, retired_at: true } });
-  const taken = addressTakenBy(address, others, selfId);
-  if (taken) throw new ResponseError(400, `${taken.name} already uses this sign-in address`);
+  const taken = addressConflict(address, others, selfId);
+  if (!taken) return;
+  const origin = new URL(address).host;
+  throw new ResponseError(
+    400,
+    isLocalHost(address) ? `${taken.name} already uses ${origin}. Each port on this machine belongs to one application` : `${taken.name} already uses this sign-in address`,
+  );
 }
 
 export class ApplicationEntitlementService {
