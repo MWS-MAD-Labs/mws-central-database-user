@@ -41,6 +41,8 @@ export type UpdateAcademicYearRequest = {
   confirm_unresolved_enrollments?: boolean;
   // Confirms that existing enrollment dates may fall outside the new range.
   confirm_date_range_change?: boolean;
+  // The full set of semesters. A row with an id is changed, one without is added, one left out is removed.
+  semesters?: { id?: string; name: string; start_date: string; end_date: string }[];
 };
 
 export type GetUnresolvedEnrollmentCountRequest = {

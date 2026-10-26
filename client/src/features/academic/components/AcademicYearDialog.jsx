@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
@@ -18,7 +19,7 @@ import {
 import { formatDate, formatStatus } from "../../../lib/format.js";
 import { LIMITS } from "../../../lib/limits.js";
 import { yearProblem, isValidYear } from "../utils/yearRange.js";
-import { academicYearStatuses } from "../api/academicApi.js";
+import { academicYearsApi, academicYearStatuses } from "../api/academicApi.js";
 import { parseAcademicYearStartYear } from "../utils/Pattern.js";
 
 const STATUS_TRANSITION_WINDOW_DAYS = 30;
@@ -89,15 +90,28 @@ export function AcademicYearDialog({
   );
   // Fields the user changed by hand, keyed by semester index. The rest follow the year dates.
   const [semesterEdits, setSemesterEdits] = useState({});
-  const semesters = computeDefaultSemesters(values.start_date, values.end_date).map((item, index) => ({
-    ...item,
-    ...semesterEdits[index],
+  const isEdit = dialog.mode === "edit";
+  const semestersQuery = useQuery({
+    queryKey: ["academic-year-semesters", dialog.record?.id],
+    queryFn: () => academicYearsApi.semesters(dialog.record.id),
+    enabled: isEdit && Boolean(dialog.record?.id),
+    gcTime: 0,
+  });
+  // Saved semesters stay as they are. A year with none gets the two halves, to be saved with the form.
+  const savedSemesters = (semestersQuery.data ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    start_date: dateInputFromIso(row.start_date),
+    end_date: dateInputFromIso(row.end_date),
   }));
+  let baseSemesters = computeDefaultSemesters(values.start_date, values.end_date);
+  if (isEdit) baseSemesters = !semestersQuery.isSuccess ? [] : savedSemesters.length > 0 ? savedSemesters : baseSemesters;
+  const semesters = baseSemesters.map((item, index) => ({ ...item, ...semesterEdits[index] }));
   function editSemester(index, field, value) {
     setSemesterEdits((current) => ({ ...current, [index]: { ...current[index], [field]: value } }));
   }
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const errors = hasAttemptedSubmit ? computeAcademicYearErrors(values, dialog.mode === "create" ? semesters : []) : {};
+  const errors = hasAttemptedSubmit ? computeAcademicYearErrors(values, semesters) : {};
 
   // Only a real year makes a name, so a half typed one does not show a made up name.
   const startYearNumber = isValidYear(values.startYear) ? optionalNumber(values.startYear) : null;
@@ -173,8 +187,7 @@ export function AcademicYearDialog({
   function submit(event) {
     event.preventDefault();
     setHasAttemptedSubmit(true);
-    const semesterList = dialog.mode === "create" ? semesters : [];
-    if (Object.keys(computeAcademicYearErrors(values, semesterList)).length > 0) return;
+    if (Object.keys(computeAcademicYearErrors(values, semesters)).length > 0) return;
     onSubmit(
       cleanPayload({
         name: computedName || undefined,
@@ -184,8 +197,9 @@ export function AcademicYearDialog({
         activate_classes:
           values.status === "ACTIVE" ? values.activateClasses : undefined,
         semesters:
-          dialog.mode === "create" && semesterList.length > 0
-            ? semesterList.map((item) => ({
+          semesters.length > 0
+            ? semesters.map((item) => ({
+                id: item.id,
                 name: item.name.trim(),
                 start_date: isoFromDateInput(item.start_date),
                 end_date: isoFromDateInput(item.end_date),
@@ -315,7 +329,7 @@ export function AcademicYearDialog({
             }}
           />
         </Field>
-        {dialog.mode === "create"
+        {semesters.length > 0
           ? semesters.map((item, index) => (
               <div key={index} className="grid gap-4 md:col-span-2 md:grid-cols-3">
                 <Field label={`Semester ${index + 1}`} error={errors[`semester_${index}`]}>

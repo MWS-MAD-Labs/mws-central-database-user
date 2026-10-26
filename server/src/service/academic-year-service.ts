@@ -12,6 +12,7 @@ import {
   assertSemesterSet,
   createSemestersForYear,
   defaultSemesterDates,
+  syncSemestersForYear,
   type SemesterInput,
 } from "./academic-semester-service";
 import { prismaClient } from "../lib/prisma";
@@ -480,8 +481,19 @@ export class AcademicYearService {
     if (nextStart && nextEnd && nextStart >= nextEnd) {
       throw new ResponseError(400, "start_date must be before end_date");
     }
+    const nextSemesters = updateRequest.semesters
+      ? assertSemesterSet(
+          { name: updateRequest.name ?? existing.name, start_date: nextStart, end_date: nextEnd },
+          updateRequest.semesters.map((item) => ({
+            id: item.id,
+            name: item.name,
+            start_date: new Date(item.start_date),
+            end_date: new Date(item.end_date),
+          })),
+        )
+      : null;
     // A semester has to stay inside its year, so the year cannot shrink past one.
-    if (updateRequest.start_date !== undefined || updateRequest.end_date !== undefined) {
+    if (!nextSemesters && (updateRequest.start_date !== undefined || updateRequest.end_date !== undefined)) {
       const outside = await prismaClient.academicSemester.findFirst({
         where: {
           academic_year_id: existing.id,
@@ -647,6 +659,9 @@ export class AcademicYearService {
             status: updateRequest.status,
           },
         });
+        if (nextSemesters) {
+          await syncSemestersForYear(tx, admin, updatedYear.id, nextSemesters, context);
+        }
 
         // Deactivate classes invalid for the resulting year status.
         let deactivatedClassCount = 0;

@@ -76,25 +76,6 @@ export const academicYearsApi = {
     return response.data
   },
 
-  async addSemester(id, payload) {
-    const response = await apiRequest(`/api/admin/academic-years/${id}/semesters`, { method: 'POST', body: payload })
-    return response.data
-  },
-
-  async addDefaultSemesters(id) {
-    const response = await apiRequest(`/api/admin/academic-years/${id}/semesters/defaults`, { method: 'POST', body: {} })
-    return response.data
-  },
-
-  async updateSemester(semesterId, payload) {
-    const response = await apiRequest(`/api/admin/academic-years/semesters/${semesterId}`, { method: 'PATCH', body: payload })
-    return response.data
-  },
-
-  async deleteSemester(semesterId) {
-    await apiRequest(`/api/admin/academic-years/semesters/${semesterId}`, { method: 'DELETE' })
-  },
-
   async getOutOfRangeEnrollmentCount(id, params) {
     const response = await apiRequest(
       `/api/admin/academic-years/${id}/out-of-range-enrollments${buildQuery(params)}`,
