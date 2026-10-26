@@ -21,6 +21,7 @@ import {
   pcActivitiesApi,
   unitsApi,
 } from '../api/masterDataApi.js'
+import { SupportCaseloadCard } from '../components/SupportCaseloadCard.jsx'
 import { ChildrenAllowanceCard } from '../components/ChildrenAllowanceCard.jsx'
 import { GoogleAccountsCard } from '../components/GoogleAccountsCard.jsx'
 import { GoogleReconciliationCard } from '../components/GoogleReconciliationCard.jsx'
@@ -159,6 +160,7 @@ const EMPLOYMENT_SECTIONS = [
   { id: 'job-levels', label: 'Job Levels' },
   { id: 'education', label: 'Education' },
   { id: 'children-allowance', label: 'Children Allowance' },
+  { id: 'special-ed-caseload', label: 'Special Ed Caseload' },
   { id: 'google-accounts', label: 'Google Accounts' },
 ]
 
@@ -174,6 +176,8 @@ function EmploymentTab({ section, onSection }) {
         </div>
       ) : active === 'children-allowance' ? (
         <ChildrenAllowanceCard />
+      ) : active === 'special-ed-caseload' ? (
+        <SupportCaseloadCard />
       ) : active === 'google-accounts' ? (
         <>
           <GoogleAccountsCard />

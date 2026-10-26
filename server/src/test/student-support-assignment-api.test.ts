@@ -74,6 +74,27 @@ describe("Student Support Assignment API (internal)", () => {
     await cleanup();
   });
 
+  describe("GET /api/internal/student-support-assignments/caseload-limit", () => {
+    it("tells an application the limit, and needs the read scope", async () => {
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [READ_SCOPE] });
+      const response = await TestRequest.get(
+        "/api/internal/student-support-assignments/caseload-limit",
+        undefined,
+        authHeader(token),
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).data).toEqual({ max_students: 2 });
+
+      const { token: noScope } = await ApiClientTest.createWithToken({ scopeNames: ["students:read"] });
+      const denied = await TestRequest.get(
+        "/api/internal/student-support-assignments/caseload-limit",
+        undefined,
+        authHeader(noScope),
+      );
+      expect(denied.status).toBe(403);
+    });
+  });
+
   describe("GET /api/internal/student-support-assignments", () => {
     it("should list active assignments with employee/student emails", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();

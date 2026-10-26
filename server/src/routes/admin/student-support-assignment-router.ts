@@ -9,6 +9,12 @@ export const studentSupportAssignmentRouter = new Hono<{
 studentSupportAssignmentRouter.get("/candidates", (c) =>
   StudentSupportAssignmentController.searchCandidates(c),
 );
+studentSupportAssignmentRouter.get("/caseload-limit", (c) =>
+  StudentSupportAssignmentController.getCaseloadLimit(c),
+);
+studentSupportAssignmentRouter.put("/caseload-limit", (c) =>
+  StudentSupportAssignmentController.updateCaseloadLimit(c),
+);
 studentSupportAssignmentRouter.get("/caseload", (c) =>
   StudentSupportAssignmentController.getCaseload(c),
 );

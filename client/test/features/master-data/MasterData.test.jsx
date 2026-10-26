@@ -279,6 +279,42 @@ describe('MasterData', () => {
     })
   })
 
+  describe('Special Ed Caseload tab', () => {
+    const limitRoutes = (extra = []) => [
+      { path: '/api/admin/support-assignments/caseload-limit', method: 'GET', response: jsonResponse({ data: { max_students: 2 } }) },
+      ...extra,
+    ]
+    const route = '/master-data?tab=employment&section=special-ed-caseload'
+
+    it('saves a new limit, and Save stays off until it changes or when it is out of range', async () => {
+      const { user, fetchMock } = renderPage({
+        route,
+        routes: limitRoutes([{ path: '/api/admin/support-assignments/caseload-limit', method: 'PUT', response: jsonResponse({ data: { max_students: 4 } }) }]),
+      })
+      const save = await screen.findByRole('button', { name: 'Save' })
+      expect(save).toBeDisabled()
+      const input = screen.getAllByRole('textbox')[0]
+      await user.clear(input)
+      await user.type(input, '4')
+      expect(save).toBeEnabled()
+      await user.clear(input)
+      await user.type(input, '21')
+      expect(screen.getByText('Use a number from 1 to 20.')).toBeVisible()
+      expect(save).toBeDisabled()
+      await user.clear(input)
+      await user.type(input, '4')
+      await user.click(save)
+      await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
+        String(url).endsWith('/caseload-limit') && options.method === 'PUT' && JSON.parse(options.body).max_students === 4)).toBe(true))
+    })
+
+    it('has no Save for an admin who is not a Super Admin', async () => {
+      renderPage({ user: { id: 'admin-2', type: 'admin', role: 'DATABASE_ADMIN' }, route, routes: limitRoutes() })
+      expect(await screen.findByText('Only a Super Admin can change this.')).toBeVisible()
+      expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
+    })
+  })
+
   describe('Google Accounts tab', () => {
     const preview = {
       applied: false,

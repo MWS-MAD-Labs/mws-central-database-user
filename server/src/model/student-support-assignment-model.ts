@@ -68,6 +68,9 @@ export type SupportAssignmentCaseloadEntry = {
   employee_id: string | null;
   intern_id: string | null;
   active_student_count: number;
+  // The most students one teacher can support, and whether this teacher is above it now.
+  limit: number;
+  over_limit: boolean;
 };
 
 export type SearchSupportAssignmentCandidatesRequest = {
