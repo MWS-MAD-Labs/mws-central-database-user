@@ -260,6 +260,9 @@ enum AuditAction {
   CREATE_ACADEMIC_YEAR
   UPDATE_ACADEMIC_YEAR
   DELETE_ACADEMIC_YEAR
+  CREATE_ACADEMIC_SEMESTER
+  UPDATE_ACADEMIC_SEMESTER
+  DELETE_ACADEMIC_SEMESTER
   CREATE_CLASS
   UPDATE_CLASS
   DELETE_CLASS
@@ -1422,6 +1425,7 @@ model AcademicYear {
   updated_at DateTime           @updatedAt
 
   classes                  Class[]
+  semesters                AcademicSemester[]
   enrollments              StudentClassEnrollment[]
   students_joined          Student[]                   @relation("StudentJoinAcademicYear")
   pc_activities            PassionConnectionActivity[]
@@ -1429,6 +1433,25 @@ model AcademicYear {
   student_mutation_history StudentMutationHistory[]    @relation("StudentMutationJoinAcademicYear")
 
   @@map("academic_years")
+}
+
+// A part of an academic year, like Semester 1. Applications that report on a part of the year (Learnspace) take them
+// from here. Nothing else in Central depends on them, so they are deleted for real, with the audit log as the record.
+model AcademicSemester {
+  id               String       @id @default(cuid())
+  academic_year_id String
+  academic_year    AcademicYear @relation(fields: [academic_year_id], references: [id], onDelete: Cascade)
+  name             String
+  // 1 for the first part of the year, then 2 and so on.
+  position         Int
+  start_date       DateTime
+  end_date         DateTime
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+
+  @@unique([academic_year_id, position])
+  @@unique([academic_year_id, name])
+  @@map("academic_semesters")
 }
 
 model Grade {

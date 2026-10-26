@@ -17,6 +17,7 @@ import { SearchBox } from "../../master-data/components/SearchBox.jsx";
 import { defaultPaging } from "../../master-data/utils/params.js";
 import { academicYearStatuses, academicYearsApi } from "../api/academicApi.js";
 import { AcademicYearBulkCreateDialog } from "./AcademicYearBulkCreateDialog.jsx";
+import { AcademicSemestersDialog } from "./AcademicSemestersDialog.jsx";
 import { AcademicYearDialog } from "./AcademicYearDialog.jsx";
 import { SelectFilter } from "./SelectFilter.jsx";
 import { nextAcademicYearStartYear } from "../utils/Format.js";
@@ -36,6 +37,7 @@ export function AcademicYearsPanel() {
   });
   const [dialog, setDialog] = useState(null);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [semestersYear, setSemestersYear] = useState(null);
 
   const yearsQuery = useQuery({
     queryKey: ["academic-years", params],
@@ -380,6 +382,9 @@ export function AcademicYearsPanel() {
                     </StatusBadge>
                   </td>
                   <td className="px-4 py-3">
+                    <Button type="button" size="sm" variant="secondary" className="mr-2" onClick={() => setSemestersYear(year)}>
+                      Semesters
+                    </Button>
                     <RowActions
                       disabled={!canWrite}
                       disableDelete={!canWrite || year.has_dependents}
@@ -415,6 +420,10 @@ export function AcademicYearsPanel() {
           onClose={() => setDialog(null)}
           onSubmit={handleSubmit}
         />
+      ) : null}
+
+      {semestersYear ? (
+        <AcademicSemestersDialog year={semestersYear} canWrite={canWrite} onClose={() => setSemestersYear(null)} />
       ) : null}
 
       {bulkDialogOpen ? (
