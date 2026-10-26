@@ -3,6 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
 import { Route, Routes } from 'react-router'
+import toast, { Toaster } from 'react-hot-toast'
 import { ApplicationAccessPage } from '../../../src/features/application-access/pages/ApplicationAccessPage.jsx'
 import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
@@ -66,10 +67,14 @@ function routes(extra = []) {
   ]
 }
 
+// The toast host asks for the reduced-motion setting, which the test window does not have.
+globalThis.matchMedia ??= () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
+
 function renderPage(user = { role: 'SUPER_ADMIN', is_protected: true }) {
   return renderWithProviders(
     <AuthContext.Provider value={{ user }}>
       <ConfirmProvider>
+        <Toaster />
         <Routes>
           <Route path="/application-access" element={<ApplicationAccessPage />} />
           <Route path="/application-access/apps/new" element={<div>New application page</div>} />
@@ -145,6 +150,37 @@ describe('ApplicationAccessPage', () => {
     await screen.findByText('Exima')
     expect(screen.getAllByText('Update Pending')).toHaveLength(1)
     applications[0].health = { status: 'check_token', detail: 'Still calling with an old token', since: '2026-10-23T08:00:00.000Z' }
+  })
+
+  it('marks a wrong path and a shared origin, and Check Now asks the address right away', async () => {
+    toast.remove()
+    const fetchMock = createFetchRouter(
+      routes([
+        {
+          path: '/api/admin/application-access/apps/exima/check',
+          method: 'POST',
+          response: () => jsonResponse({ data: { verdict: 'wrong_path' } }),
+        },
+      ]),
+    )
+    globalThis.fetch = fetchMock
+    applications[0].health = { status: 'wrong_path', detail: 'The sign-in address answers Not Found', since: null }
+    applications[0].shares_origin_with = ['Learnspace']
+    try {
+      const { user } = renderPage()
+      await screen.findByText('Exima')
+      expect(screen.getAllByText('Wrong Path')).toHaveLength(1)
+      expect(screen.getByText('Shared Origin')).toBeVisible()
+      await user.click(screen.getByRole('button', { name: 'Actions for exima' }))
+      await user.click(screen.getByRole('button', { name: 'Check Now' }))
+      await waitFor(() => {
+        expect(fetchMock.mock.calls.some(([url, options]) => url.endsWith('/apps/exima/check') && options?.method === 'POST')).toBe(true)
+      })
+      expect(await screen.findByText(/sign-in page does not exist/)).toBeInTheDocument()
+    } finally {
+      applications[0].health = { status: 'check_token', detail: 'Still calling with an old token', since: '2026-10-23T08:00:00.000Z' }
+      delete applications[0].shares_origin_with
+    }
   })
 
   it('marks an application that reads the shared Hub session', async () => {

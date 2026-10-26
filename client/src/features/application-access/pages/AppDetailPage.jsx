@@ -1,7 +1,7 @@
 import { appGuideHref } from "../utils/startGuide.js";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, BookOpen, Pencil, Plus, ShieldCheck } from "lucide-react";
+import { ArrowLeft, BookOpen, Pencil, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
@@ -26,6 +26,7 @@ import { DifferentDomainNote } from "../components/DifferentDomainNote.jsx";
 import { OrganizationCheck } from "../components/OrganizationCheck.jsx";
 import { HubSettingsCard } from "../components/HubSettingsCard.jsx";
 import { useApplicationManagement } from "../hooks/useApplicationManagement.js";
+import { useCheckNow } from "../hooks/useCheckNow.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { nameOf, useApplicationTaxonomy } from "../hooks/useApplicationTaxonomy.js";
 import { useInternalEndpoints } from "../hooks/useInternalEndpoints.js";
@@ -75,8 +76,9 @@ const HEALTH_LABEL = {
   token_pending: "Update Pending",
   sign_in_pending: "Update Pending",
   unreachable: "Unreachable",
+  wrong_path: "Wrong Path",
 };
-const ALERT_HEALTH = ["check_token", "token_pending", "sign_in_pending", "unreachable"];
+const ALERT_HEALTH = ["check_token", "token_pending", "sign_in_pending", "unreachable", "wrong_path"];
 
 export function AppDetailPage() {
   const { user } = useAuth();
@@ -112,6 +114,7 @@ export function AppDetailPage() {
   const roles = (useApplicationRoles().data || []).filter((role) => role.application_id === applicationId);
   const hasActiveRole = roles.some((role) => role.is_active);
   const mgmt = useApplicationManagement(applicationId, setupQuery.data);
+  const checkNow = useCheckNow();
   const { countFor, loaded: endpointsLoaded } = useInternalEndpoints();
   const taxonomy = useApplicationTaxonomy();
   const base = `/application-access/apps/${applicationId}`;
@@ -182,6 +185,11 @@ export function AppDetailPage() {
                 <Plus size={16} />
               </Button>
             ) : null}
+            {retired || setup.is_hub || link ? null : (
+              <Button type="button" variant="secondary" size="icon" aria-label="Check Now" title="Check Now" disabled={checkNow.isPending} onClick={() => checkNow.mutate(applicationId)}>
+                <RefreshCw size={16} />
+              </Button>
+            )}
             {retired ? null : (
               <Button type="button" size="icon" aria-label="Edit Details" title="Edit Details" onClick={() => setEditing(true)}>
                 <Pencil size={16} />
@@ -278,7 +286,9 @@ export function AppDetailPage() {
                   : `${health.detail}. Give it the newest token.`
                 : health.status === "sign_in_pending"
                   ? `${health.detail}. Open the app from the Hub to check. Changed ${timeAgo(health.since)} ago.`
-                  : `Not answering at its address${health.since ? ` since ${formatDateTime(health.since)}` : ""}. Check the app in Komodo.`}
+                  : health.status === "wrong_path"
+                    ? `Something answers at the address, but the sign-in page was not found${health.since ? ` since ${formatDateTime(health.since)}` : ""}. Fix the Sign-In Address in Edit Details.`
+                    : `Not answering at its address${health.since ? ` since ${formatDateTime(health.since)}` : ""}. Check the app in Komodo.`}
           </span>
           {health.status === "check_token" || health.status === "token_pending" ? (
             <span className="ml-auto">

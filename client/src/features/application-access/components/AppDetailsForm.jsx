@@ -61,6 +61,7 @@ const ADDRESS_TEXTS = {
   found: "The application answers.",
   anyway: "Used as typed, not checked.",
   unreachable: "Nothing answers at this address. Is the application running?",
+  wrong_path: "Something answers here, but this page does not exist. Check the end of the address.",
   refused: "This address cannot be checked.",
   failed: "The address could not be checked just now. Try again.",
   anywayTitle: "Use This Address Anyway",

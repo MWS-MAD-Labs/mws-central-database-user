@@ -22,6 +22,7 @@ describe('connectionState', () => {
   it('stays still for a problem, a plain link or no connection', () => {
     expect(connectionState({ link: false, health: { status: 'check_token' }, connection: { created: true, last_used_at: recent() } })).toMatchObject({ tone: 'amber', pulse: false, label: 'Check Token' })
     expect(connectionState({ link: false, health: { status: 'unreachable' }, connection: { created: true, last_used_at: recent() } })).toMatchObject({ tone: 'red', pulse: false, label: 'Unreachable' })
+    expect(connectionState({ link: false, health: { status: 'wrong_path' }, connection: { created: true, last_used_at: recent() } })).toMatchObject({ tone: 'amber', pulse: false, label: 'Wrong Path' })
     expect(connectionState({ link: true, health: null, connection: { created: false, last_used_at: null } })).toMatchObject({ tone: 'grey', label: 'Plain Link' })
     expect(connectionState({ link: false, health: null, connection: { created: false, last_used_at: null } })).toMatchObject({ tone: 'grey', pulse: false, label: 'Not Connected' })
   })

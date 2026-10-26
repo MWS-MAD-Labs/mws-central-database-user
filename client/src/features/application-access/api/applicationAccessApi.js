@@ -67,6 +67,12 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  // Asks the sign-in address of a saved application right now: 'ok', 'unreachable', 'wrong_path' or 'refused'.
+  async checkApplicationNow(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/check`, { method: 'POST', body: {} })
+    return response.data
+  },
+
   // Stops the application and keeps its data. Restore turns it back on.
   async retireApplication(applicationId) {
     const response = await apiRequest(`${ACCESS}/apps/${applicationId}/retire`, { method: 'POST', body: {} })
@@ -115,7 +121,7 @@ export const applicationAccessApi = {
     return response.data
   },
 
-  // Whether anything answers at the address of an application: 'ok', 'unreachable' or 'refused'.
+  // Whether the sign-in address of an application answers: 'ok', 'unreachable', 'wrong_path' or 'refused'.
   async checkApplicationAddress(url) {
     const response = await apiRequest(`${ACCESS}/application-address-check?url=${encodeURIComponent(url)}`)
     return response.data.verdict
