@@ -54,7 +54,9 @@ export type StudentLookupResponse = {
   email: string;
   gender: Gender;
   status: StudentStatus;
+  current_grade_id: string;
   current_grade: string;
+  current_class_id: string | null;
   current_class: string | null;
 };
 
@@ -82,7 +84,9 @@ export function toStudentLookupResponse(
     email: person.email,
     gender: person.gender,
     status: student.status,
+    current_grade_id: student.current_grade_id,
     current_grade: student.current_grade.name,
+    current_class_id: student.current_class_id,
     current_class: student.current_class?.name ?? null,
   };
 }

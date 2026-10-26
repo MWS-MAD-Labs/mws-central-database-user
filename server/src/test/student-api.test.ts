@@ -145,6 +145,9 @@ describe("Student internal API", () => {
       expect(body.data.nis).toBe("9500101");
       expect(body.data.current_grade).toBe("TEST_STUAPI_GRADE");
       expect(body.data.current_class).toBe("TEST_STUAPI_CLASS");
+      // Ids next to the names, so a consumer can match classes without the names.
+      expect(body.data.current_class_id).toBe(classId);
+      expect(body.data.current_grade_id).toBe(gradeId);
       expect(body.data.status).toBe(StudentStatus.ACTIVE);
       expect(body.data.gender).toBe(Gender.MALE);
 
