@@ -145,18 +145,40 @@ export async function checkHubSecret(address: string, secret: string): Promise<H
 // "unverifiable" is a server that answers every path with a page, so a wrong path cannot be told from a right one.
 export type ApplicationAddressVerdict = "ok" | "unreachable" | "wrong_path" | "unverifiable" | "refused";
 
+// Where an application usually keeps its sign-in entry.
+const ENTRY_PATHS = ["/auth/sso", "/api/v1/auth/sso", "/api/auth/sso", "/sso"];
+
+export type ApplicationAddressResult = { verdict: ApplicationAddressVerdict; suggestion: string | null };
+
+// A server that answers every path with a page: another path of it that answers with a redirect is likely the entry.
+async function findEntry(url: URL): Promise<string | null> {
+  for (const path of ENTRY_PATHS) {
+    if (path === url.pathname) continue;
+    try {
+      const response = await fetch(new URL(path, url.origin), { redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS) });
+      await response.body?.cancel();
+      if (response.status >= 300 && response.status < 400) return new URL(path, url.origin).toString();
+    } catch {
+      // The next one is tried.
+    }
+  }
+  return null;
+}
+
 // Whether the sign-in address of an application answers. The address is asked as saved, path included. A 404 means
 // something is running there but not at that path. A redirect to the sign-in page is still an application that is up.
-// A proxy with nothing behind it (502 to 504) is not.
-export async function checkApplicationAddress(address: string): Promise<ApplicationAddressVerdict> {
+// A proxy with nothing behind it (502 to 504) is not. A server that answers every path with a page says "unverifiable",
+// with the path that looks like its sign-in entry when there is one.
+export async function checkApplicationAddressDetailed(address: string): Promise<ApplicationAddressResult> {
+  const result = (verdict: ApplicationAddressVerdict, suggestion: string | null = null): ApplicationAddressResult => ({ verdict, suggestion });
   let url: URL;
   try {
     url = new URL(address);
   } catch {
-    return "refused";
+    return result("refused");
   }
   if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password || refusedHost(url.hostname)) {
-    return "refused";
+    return result("refused");
   }
   try {
     const response = await fetch(url, {
@@ -165,23 +187,27 @@ export async function checkApplicationAddress(address: string): Promise<Applicat
     });
     if (response.status >= 500) {
       await response.body?.cancel();
-      return "unreachable";
+      return result("unreachable");
     }
     if (response.status === 404) {
       await response.body?.cancel();
-      return "wrong_path";
+      return result("wrong_path");
     }
     const isPage = response.status === 200 && (response.headers.get("content-type") ?? "").toLowerCase().includes("text/html");
     await response.body?.cancel();
-    if (!isPage) return "ok";
+    if (!isPage) return result("ok");
     // A page may be the real sign-in page or a catch-all. A path that cannot exist tells which.
     const stray = await fetch(new URL(`/central-check-${crypto.randomUUID()}`, url.origin), { redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS) });
     await stray.body?.cancel();
     const answersEverything = stray.status === 200 && (stray.headers.get("content-type") ?? "").toLowerCase().includes("text/html");
-    return answersEverything ? "unverifiable" : "ok";
+    return answersEverything ? result("unverifiable", await findEntry(url)) : result("ok");
   } catch {
-    return "unreachable";
+    return result("unreachable");
   }
+}
+
+export async function checkApplicationAddress(address: string): Promise<ApplicationAddressVerdict> {
+  return (await checkApplicationAddressDetailed(address)).verdict;
 }
 
 // When the Hub last traded a sign-in code for this application, asked with the master secret. `known` is false when

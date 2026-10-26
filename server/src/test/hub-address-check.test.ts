@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { checkApplicationAddress, checkHubAddress, checkHubAddressDetailed, checkHubSecret } from "../service/hub-address-check";
+import { checkApplicationAddress, checkApplicationAddressDetailed, checkHubAddress, checkHubAddressDetailed, checkHubSecret } from "../service/hub-address-check";
 import { AdminUserTest, MasterDataTest, TestRequest } from "./test-utils";
 
 const ACCESS = "/api/admin/application-access";
@@ -278,6 +278,30 @@ describe("hub address check", () => {
       }
     });
 
+    it("points at the path that looks like the sign-in entry when a server answers every path with a page", async () => {
+      const html = () => new Response("<html>app</html>", { status: 200, headers: { "Content-Type": "text/html" } });
+      const withEntry = Bun.serve({
+        port: 0,
+        fetch(request) {
+          const path = new URL(request.url).pathname;
+          if (path === "/api/v1/auth/sso") return new Response("", { status: 302, headers: { Location: "http://hub/restore" } });
+          return html();
+        },
+      });
+      const plain = Bun.serve({ port: 0, fetch: html });
+      try {
+        expect(await checkApplicationAddressDetailed(`http://127.0.0.1:${withEntry.port}/auth/sso`)).toEqual({
+          verdict: "unverifiable",
+          suggestion: `http://127.0.0.1:${withEntry.port}/api/v1/auth/sso`,
+        });
+        expect(await checkApplicationAddressDetailed(`http://127.0.0.1:${plain.port}/auth/sso`)).toEqual({ verdict: "unverifiable", suggestion: null });
+        expect(await checkApplicationAddressDetailed(`http://127.0.0.1:${withEntry.port}/api/v1/auth/sso`)).toEqual({ verdict: "ok", suggestion: null });
+      } finally {
+        withEntry.stop(true);
+        plain.stop(true);
+      }
+    });
+
     it("GET /application-address-check gives only the verdict, to a Super Admin only", async () => {
       await AdminUserTest.delete();
       await MasterDataTest.delete();
@@ -285,10 +309,10 @@ describe("hub address check", () => {
       try {
         const { accessToken } = await AdminUserTest.createSuperAdmin();
         const ask = async (url: string, token = accessToken) => TestRequest.get(`${ACCESS}/application-address-check?url=${encodeURIComponent(url)}`, token);
-        expect((await (await ask(`${base()}/.well-known/jwks.json`)).json()).data).toEqual({ verdict: "ok" });
-        expect((await (await ask(`${base()}/nowhere`)).json()).data).toEqual({ verdict: "wrong_path" });
-        expect((await (await ask("http://app.example.com")).json()).data).toEqual({ verdict: "refused" });
-        expect((await (await ask("")).json()).data).toEqual({ verdict: "refused" });
+        expect((await (await ask(`${base()}/.well-known/jwks.json`)).json()).data).toEqual({ verdict: "ok", suggestion: null });
+        expect((await (await ask(`${base()}/nowhere`)).json()).data).toEqual({ verdict: "wrong_path", suggestion: null });
+        expect((await (await ask("http://app.example.com")).json()).data).toEqual({ verdict: "refused", suggestion: null });
+        expect((await (await ask("")).json()).data).toEqual({ verdict: "refused", suggestion: null });
         const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
         expect((await ask(base(), other)).status).toBe(403);
       } finally {
