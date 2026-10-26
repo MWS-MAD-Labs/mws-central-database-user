@@ -1,4 +1,4 @@
-import { checkApplicationAddress, checkHubAddressDetailed, checkHubSecret } from "../../service/hub-address-check";
+import { checkApplicationAddressDetailed, checkHubAddressDetailed, checkHubSecret } from "../../service/hub-address-check";
 import { keyReady } from "../../utils/secret-box";
 import { AUDIENCE_NAMES, audienceProblem, type AudienceName } from "../../utils/audience";
 import { ApplicationTaxonomyService } from "../../service/application-taxonomy-service";
@@ -407,8 +407,8 @@ export class ApplicationAccessController {
     if (c.var.admin.role !== "SUPER_ADMIN") throw new ResponseError(403, "Forbidden: Only Super Admin can manage applications");
     const address = (c.req.query("url") ?? "").trim();
     // The same rules as saving it, so only an address that could be kept is asked.
-    if (!address || addressProblem(address)) return c.json({ data: { verdict: "refused" } });
-    return c.json({ data: { verdict: await checkApplicationAddress(address) } });
+    if (!address || addressProblem(address)) return c.json({ data: { verdict: "refused", suggestion: null } });
+    return c.json({ data: await checkApplicationAddressDetailed(address) });
   }
 
   static async hubSecretCheck(c: Context<{ Variables: AdminVariables }>) {

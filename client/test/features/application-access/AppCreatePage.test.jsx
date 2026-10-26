@@ -182,6 +182,21 @@ describe('AppCreatePage', () => {
     expect(await screen.findByText(/Same domain as Daily/)).toBeVisible()
   })
 
+  it('offers the sign-in entry a check found, and fills it in with custom paths', async () => {
+    const SUGGEST = {
+      path: /\/api\/admin\/application-access\/application-address-check/,
+      response: () => jsonResponse({ data: { verdict: 'unverifiable', suggestion: 'http://localhost:3002/api/v1/auth/sso' } }),
+    }
+    globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, SUGGEST])
+    const { user } = await renderPage()
+    await user.click(screen.getByRole('radio', { name: 'Local HTTP' }))
+    await user.type(screen.getByLabelText('Application Address'), 'localhost:3002')
+    expect(await screen.findByText(/looks like its sign-in entry/)).toBeVisible()
+    expect(screen.getByText('localhost:3002/api/v1/auth/sso')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Use This Address' }))
+    expect(await screen.findByLabelText('Launch URL')).toHaveValue('localhost:3002/api/v1/auth/sso')
+  })
+
   it('uses the Hub URL configured for this staging Central', async () => {
     globalThis.fetch = createFetchRouter([
       SCOPES,

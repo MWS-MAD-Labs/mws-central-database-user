@@ -1,4 +1,4 @@
-import { checkOneApplication, confirmSignIn, healthOf, type ApplicationHealth, type HealthCredential } from "./application-health";
+import { checkOneApplicationDetailed, confirmSignIn, healthOf, type ApplicationHealth, type HealthCredential } from "./application-health";
 import { AdminRole, ApiCredentialStatus, HubSecretMode, ApplicationLaunchMode, ApplicationSessionMode, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
 import type { AdminUser } from "../generated/prisma/client";
 import type { HubCardStatus } from "../generated/prisma/client";
@@ -765,13 +765,13 @@ export class ApplicationOnboardingService {
   }
 
   // Asks the sign-in address of one application right now and keeps the answer. No second miss is waited for.
-  static async checkAddress(admin: AdminUser, applicationId: string): Promise<{ verdict: string }> {
+  static async checkAddress(admin: AdminUser, applicationId: string): Promise<{ verdict: string; suggestion: string | null }> {
     assertSuperAdmin(admin);
     const app = await findApplication(applicationId);
     if (applicationId === hubApplicationId() || app.launch_mode !== ApplicationLaunchMode.SSO || !app.launch_url) {
       throw new ResponseError(400, "This application has no sign-in address to check");
     }
-    return { verdict: await checkOneApplication(app, { immediate: true }) };
+    return checkOneApplicationDetailed(app, { immediate: true });
   }
 
   // The address people and applications reach the Hub at. The applications get it in their .env.

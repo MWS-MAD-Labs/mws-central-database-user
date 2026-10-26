@@ -3,7 +3,7 @@ import { ApplicationLaunchMode, ApplicationSessionMode } from "../generated/pris
 import { prismaClient } from "../lib/prisma";
 import { logger } from "../lib/logger";
 import { decryptSecret } from "../utils/secret-box";
-import { checkApplicationAddress, checkExchangeSeen } from "./hub-address-check";
+import { checkApplicationAddress, checkApplicationAddressDetailed, checkExchangeSeen } from "./hub-address-check";
 
 export type ApplicationHealthStatus = "healthy" | "pending" | "check_token" | "token_pending" | "sign_in_pending" | "unreachable" | "wrong_path";
 export type ApplicationHealth = { status: ApplicationHealthStatus; detail: string | null; since: string | null };
@@ -170,9 +170,19 @@ export async function checkOneApplication(
   options: { check?: (address: string) => Promise<string>; now?: Date; immediate?: boolean } = {},
 ): Promise<string> {
   const { check = checkApplicationAddress, now = new Date(), immediate = false } = options;
-  if (!application.launch_url) return "refused";
-  const verdict = await check(application.launch_url).catch(() => "unreachable");
-  if (verdict === "refused") return verdict;
+  return (await checkOneApplicationDetailed(application, { check: async (address) => ({ verdict: await check(address), suggestion: null }), now, immediate })).verdict;
+}
+
+// The same, and also the path of the application that looks like its sign-in entry when the address cannot be verified.
+export async function checkOneApplicationDetailed(
+  application: CheckedApplication,
+  options: { check?: (address: string) => Promise<{ verdict: string; suggestion: string | null }>; now?: Date; immediate?: boolean } = {},
+): Promise<{ verdict: string; suggestion: string | null }> {
+  const { check = checkApplicationAddressDetailed, now = new Date(), immediate = false } = options;
+  if (!application.launch_url) return { verdict: "refused", suggestion: null };
+  const answer = await check(application.launch_url).catch(() => ({ verdict: "unreachable", suggestion: null }));
+  const verdict = answer.verdict;
+  if (verdict === "refused") return answer;
   const wrongPath = verdict === "wrong_path";
   const down = verdict === "unreachable";
   const failures = down ? application.address_failures + 1 : 0;
@@ -187,7 +197,7 @@ export async function checkOneApplication(
       address_down_since: bad ? (application.address_down_since ?? now) : down ? application.address_down_since : null,
     },
   });
-  return verdict;
+  return answer;
 }
 
 // One pass over the applications that have an address: the result of each check is kept on the application.

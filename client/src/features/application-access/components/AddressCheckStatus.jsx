@@ -27,12 +27,20 @@ export function AddressCheckStatus({ state, texts }) {
       {!waiting && verdict && !accepted && !usedAnyway ? (
         <p className="text-[#a43c41]">
           {texts[verdict]}{" "}
+          {verdict === "unverifiable" && state.detail?.suggestion && texts.onSuggestion ? (
+            <>
+              {texts.suggest} <span className="font-mono">{state.detail.suggestion.replace(/^https?:\/\//, "")}</span>{" "}
+              <TextAction className="inline-flex" onClick={() => texts.onSuggestion(state.detail.suggestion)}>
+                Use This Address
+              </TextAction>{" "}
+            </>
+          ) : null}
           {texts.help?.[verdict] ? (
             <Link to={texts.help[verdict]} className="font-semibold underline">
               How To Fix
             </Link>
           ) : null}{" "}
-          {verdict === "unreachable" || verdict === "wrong_path" || verdict === "failed" ? (
+          {verdict === "unreachable" || verdict === "wrong_path" || verdict === "unverifiable" || verdict === "failed" ? (
             <TextAction className="ml-1 inline-flex" onClick={askAnyway}>
               Use It Anyway
             </TextAction>
