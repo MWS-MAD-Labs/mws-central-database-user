@@ -201,6 +201,7 @@ export type ApplicationSummary = {
   health: ApplicationHealth | null;
   // Names of other live applications whose sign-in address has the same origin.
   shares_origin_with: string[];
+  launch_url: string | null;
   permission_count: number;
   organization_id: string | null;
   role_count: number;

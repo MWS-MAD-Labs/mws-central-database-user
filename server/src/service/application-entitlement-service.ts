@@ -1879,6 +1879,7 @@ export class ApplicationAccessService {
           connection_last_used_at: null,
           health: null,
           shares_origin_with: [],
+          launch_url: app?.launch_url ?? null,
           permission_count: 0,
         };
       });
@@ -2043,6 +2044,7 @@ export class ApplicationAccessService {
       connection_last_used_at: null,
       health: null,
       shares_origin_with: [],
+      launch_url: app.launch_url,
       permission_count: 0,
       organization_id: organizationRow.organization_id,
       role_count: 0,
