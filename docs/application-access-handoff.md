@@ -92,6 +92,14 @@ After changing the sign-in settings use Copy Sign-in Lines on the same page. It 
 
 Every application tells Central which permissions its code knows. In production that belongs in the deploy pipeline, after Central is deployed (the Hub runs `bun run permissions:sync` there). On a local machine there is no pipeline, so run the sync by hand or let the application send it on start. The Setup Guide on an application's setup page (the Setup Guide link on its Connect step, or More actions) shows the exact names and commands for it, including a table of what to add in GitHub (Settings, Secrets and variables, Actions: the token and secrets as Secrets, the rest as Variables) and a workflow step that sends the permissions on every deploy.
 
+## Creating an application's roles from a file
+
+An application can ship the roles it wants as a JSON file (Learnspace has `role-presets.json`, kept in step with its code by a test). After its permissions are published, run in Central:
+
+`bun run seed:application-roles <file> --as <super admin email> --dry-run`, then the same without `--dry-run`.
+
+A role is made the way the Add Roles page makes it, as the Super Admin named in `--as`, so the same checks and the audit log apply. A role that already exists is skipped, and so is one whose permissions are not published yet or equal those of another role (Central keeps one role per set of permissions). Run it again after publishing more permissions and it creates what was left out.
+
 ## Scopes and categories
 
 Two lists live in Central under Master Data > Scopes & Categories. A **category** is the kind of tool (Reporting, Students, Workplace, Operations, Utilities). A **scope** is the product space (Safespace, Learnspace, Carespace, Shieldspace). An application has one category and may have one scope, both picked in its details. More can be added there at any time. A row's key is made from its name when it is created and never changes, so renaming is safe. A row that applications still use cannot be deleted.

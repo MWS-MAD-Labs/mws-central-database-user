@@ -4,6 +4,7 @@
     "dev": "bun run --hot src/index.ts",
     "secrets:key": "bun run scripts/make-secrets-key.ts",
     "import:hub-catalog": "bun run scripts/import-hub-catalog.ts",
+    "seed:application-roles": "bun run scripts/seed-application-roles.ts",
     "sync:hub-icons": "bun run scripts/sync-hub-icons.ts",
     "check:hub-icons": "bun run scripts/sync-hub-icons.ts --check",
     "seed:dev:employee": "bun run seed/dev-data-employee.ts",
