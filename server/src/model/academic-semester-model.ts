@@ -1,19 +1,5 @@
 import type { AcademicSemester } from "../generated/prisma/client";
 
-export type CreateAcademicSemesterRequest = {
-  academic_year_id: string;
-  name: string;
-  start_date: string;
-  end_date: string;
-};
-
-export type UpdateAcademicSemesterRequest = {
-  id: string;
-  name?: string;
-  start_date?: string;
-  end_date?: string;
-};
-
 export type AcademicSemesterResponse = {
   id: string;
   academic_year_id: string;

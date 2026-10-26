@@ -1,5 +1,4 @@
 import {
-  AdminRole,
   AuditAction,
   AuditSource,
   Prisma,
@@ -13,21 +12,11 @@ import {
   toAcademicSemesterAuditSnapshot,
   toAcademicSemesterResponse,
   type AcademicSemesterResponse,
-  type CreateAcademicSemesterRequest,
-  type UpdateAcademicSemesterRequest,
 } from "../model/academic-semester-model";
-import { AcademicSemesterValidation } from "../validation/academic-semester-validation";
-import { Validation } from "../validation/validation";
 import { AuditService } from "./audit-service";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_SEMESTERS = 4;
-
-function assertSuperAdmin(admin: AdminUser, action: string) {
-  if (admin.role !== AdminRole.SUPER_ADMIN) {
-    throw new ResponseError(403, `Forbidden: Only Super Admin can ${action}`);
-  }
-}
 
 const day = (value: Date) => value.toISOString().slice(0, 10);
 
@@ -67,15 +56,15 @@ function assertDatesFit(
 export type SemesterInput = { name: string; start_date: Date; end_date: Date };
 
 // Checks a whole set for a new year: names, order and dates inside the year, no overlap.
-export function assertSemesterSet(
+export function assertSemesterSet<T extends SemesterInput>(
   year: { name: string; start_date: Date; end_date: Date | null },
-  items: SemesterInput[],
-): SemesterInput[] {
+  items: T[],
+): T[] {
   if (items.length > MAX_SEMESTERS) {
     throw new ResponseError(400, `A year can have at most ${MAX_SEMESTERS} semesters`);
   }
   const sorted = [...items].sort((a, b) => a.start_date.getTime() - b.start_date.getTime());
-  const seen: SemesterInput[] = [];
+  const seen: T[] = [];
   for (const item of sorted) {
     if (seen.some((other) => other.name.toLowerCase() === item.name.toLowerCase())) {
       throw new ResponseError(400, "Semester names have to be different");
@@ -114,8 +103,70 @@ export async function createSemestersForYear(
   }
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+export type SemesterChange = SemesterInput & { id?: string };
+
+// Makes the semesters of a year match the list: change the ones with an id, add the rest, remove the others.
+export async function syncSemestersForYear(
+  tx: Prisma.TransactionClient,
+  admin: AdminUser,
+  yearId: string,
+  items: SemesterChange[],
+  context: AuditRequestContext = {},
+) {
+  const current = await tx.academicSemester.findMany({ where: { academic_year_id: yearId } });
+  const byId = new Map(current.map((row) => [row.id, row]));
+  for (const item of items) {
+    if (item.id && !byId.has(item.id)) throw new ResponseError(404, "Semester not found");
+  }
+  const keep = new Set(items.flatMap((item) => (item.id ? [item.id] : [])));
+  const audit = (
+    action: "CREATE_ACADEMIC_SEMESTER" | "UPDATE_ACADEMIC_SEMESTER" | "DELETE_ACADEMIC_SEMESTER",
+    id: string,
+    extra: { old_values?: ReturnType<typeof toAcademicSemesterAuditSnapshot>; new_values?: ReturnType<typeof toAcademicSemesterAuditSnapshot> },
+  ) =>
+    AuditService.record(
+      {
+        action,
+        source: AuditSource.UI,
+        entity_type: "AcademicSemester",
+        entity_id: id,
+        admin_id: admin.id,
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+        ...extra,
+      },
+      tx,
+    );
+
+  for (const row of current.filter((item) => !keep.has(item.id))) {
+    await tx.academicSemester.delete({ where: { id: row.id } });
+    await audit(AuditAction.DELETE_ACADEMIC_SEMESTER, row.id, { old_values: toAcademicSemesterAuditSnapshot(row) });
+  }
+  // Park the kept rows first so a swap of names or places does not hit the unique keys.
+  for (const [index, id] of [...keep].entries()) {
+    await tx.academicSemester.update({ where: { id }, data: { position: 100 + index, name: `~${id}` } });
+  }
+  for (const [index, item] of items.entries()) {
+    const data = { name: item.name, position: index + 1, start_date: item.start_date, end_date: item.end_date };
+    if (item.id) {
+      const before = byId.get(item.id)!;
+      const row = await tx.academicSemester.update({ where: { id: item.id }, data });
+      const changed =
+        before.name !== row.name ||
+        before.position !== row.position ||
+        before.start_date.getTime() !== row.start_date.getTime() ||
+        before.end_date.getTime() !== row.end_date.getTime();
+      if (changed) {
+        await audit(AuditAction.UPDATE_ACADEMIC_SEMESTER, row.id, {
+          old_values: toAcademicSemesterAuditSnapshot(before),
+          new_values: toAcademicSemesterAuditSnapshot(row),
+        });
+      }
+    } else {
+      const row = await tx.academicSemester.create({ data: { academic_year_id: yearId, ...data } });
+      await audit(AuditAction.CREATE_ACADEMIC_SEMESTER, row.id, { new_values: toAcademicSemesterAuditSnapshot(row) });
+    }
+  }
 }
 
 export class AcademicSemesterService {
@@ -127,163 +178,5 @@ export class AcademicSemesterService {
       orderBy: { position: "asc" },
     });
     return rows.map(toAcademicSemesterResponse);
-  }
-
-  static async create(
-    admin: AdminUser,
-    request: CreateAcademicSemesterRequest,
-    context: AuditRequestContext = {},
-  ): Promise<AcademicSemesterResponse> {
-    assertSuperAdmin(admin, "add a semester");
-    const input = Validation.validate(AcademicSemesterValidation.CREATE, request);
-    const year = await prismaClient.academicYear.findUnique({ where: { id: input.academic_year_id } });
-    if (!year) throw new ResponseError(404, "Academic year not found");
-    const existing = await prismaClient.academicSemester.findMany({ where: { academic_year_id: year.id } });
-    if (existing.length >= MAX_SEMESTERS) {
-      throw new ResponseError(400, `A year can have at most ${MAX_SEMESTERS} semesters`);
-    }
-    if (existing.some((row) => row.name.toLowerCase() === input.name.toLowerCase())) {
-      throw new ResponseError(400, "A semester with this name already exists in the year");
-    }
-    const start = new Date(input.start_date);
-    const end = new Date(input.end_date);
-    assertDatesFit(year, start, end, existing);
-    const position = Math.max(0, ...existing.map((row) => row.position)) + 1;
-    try {
-      const created = await prismaClient.$transaction(async (tx) => {
-        const row = await tx.academicSemester.create({
-          data: { academic_year_id: year.id, name: input.name, position, start_date: start, end_date: end },
-        });
-        await AuditService.record(
-          {
-            action: AuditAction.CREATE_ACADEMIC_SEMESTER,
-            source: AuditSource.UI,
-            entity_type: "AcademicSemester",
-            entity_id: row.id,
-            admin_id: admin.id,
-            new_values: toAcademicSemesterAuditSnapshot(row),
-            ip_address: context.ip_address,
-            user_agent: context.user_agent,
-          },
-          tx,
-        );
-        return row;
-      });
-      return toAcademicSemesterResponse(created);
-    } catch (error) {
-      if (isUniqueViolation(error)) throw new ResponseError(400, "Another change took this name or place. Reload and try again");
-      throw error;
-    }
-  }
-
-  // Semester 1 and Semester 2 for a year that has none yet, so the school does not type the dates twice.
-  static async createDefaults(
-    admin: AdminUser,
-    academicYearId: string,
-    context: AuditRequestContext = {},
-  ): Promise<AcademicSemesterResponse[]> {
-    assertSuperAdmin(admin, "add semesters");
-    const year = await prismaClient.academicYear.findUnique({ where: { id: academicYearId } });
-    if (!year) throw new ResponseError(404, "Academic year not found");
-    if (!year.end_date) throw new ResponseError(400, "Set an end date for the year first");
-    const have = await prismaClient.academicSemester.count({ where: { academic_year_id: year.id } });
-    if (have > 0) throw new ResponseError(400, "This year has semesters already");
-    const dates = defaultSemesterDates(year.start_date, year.end_date);
-    try {
-      const rows = await prismaClient.$transaction(async (tx) => {
-        const made: AcademicSemester[] = [];
-        for (const [index, item] of dates.entries()) {
-          const row = await tx.academicSemester.create({
-            data: { academic_year_id: year.id, position: index + 1, ...item },
-          });
-          await AuditService.record(
-            {
-              action: AuditAction.CREATE_ACADEMIC_SEMESTER,
-              source: AuditSource.UI,
-              entity_type: "AcademicSemester",
-              entity_id: row.id,
-              admin_id: admin.id,
-              new_values: toAcademicSemesterAuditSnapshot(row),
-              ip_address: context.ip_address,
-              user_agent: context.user_agent,
-            },
-            tx,
-          );
-          made.push(row);
-        }
-        return made;
-      });
-      return rows.map(toAcademicSemesterResponse);
-    } catch (error) {
-      if (isUniqueViolation(error)) throw new ResponseError(400, "This year has semesters already");
-      throw error;
-    }
-  }
-
-  static async update(
-    admin: AdminUser,
-    request: UpdateAcademicSemesterRequest,
-    context: AuditRequestContext = {},
-  ): Promise<AcademicSemesterResponse> {
-    assertSuperAdmin(admin, "change a semester");
-    const input = Validation.validate(AcademicSemesterValidation.UPDATE, request);
-    const current = await prismaClient.academicSemester.findUnique({ where: { id: input.id }, include: { academic_year: true } });
-    if (!current) throw new ResponseError(404, "Semester not found");
-    const siblings = await prismaClient.academicSemester.findMany({
-      where: { academic_year_id: current.academic_year_id, id: { not: current.id } },
-    });
-    const name = input.name ?? current.name;
-    if (siblings.some((row) => row.name.toLowerCase() === name.toLowerCase())) {
-      throw new ResponseError(400, "A semester with this name already exists in the year");
-    }
-    const start = input.start_date ? new Date(input.start_date) : current.start_date;
-    const end = input.end_date ? new Date(input.end_date) : current.end_date;
-    assertDatesFit(current.academic_year, start, end, siblings);
-    try {
-      const saved = await prismaClient.$transaction(async (tx) => {
-        const row = await tx.academicSemester.update({ where: { id: current.id }, data: { name, start_date: start, end_date: end } });
-        await AuditService.record(
-          {
-            action: AuditAction.UPDATE_ACADEMIC_SEMESTER,
-            source: AuditSource.UI,
-            entity_type: "AcademicSemester",
-            entity_id: row.id,
-            admin_id: admin.id,
-            old_values: toAcademicSemesterAuditSnapshot(current),
-            new_values: toAcademicSemesterAuditSnapshot(row),
-            ip_address: context.ip_address,
-            user_agent: context.user_agent,
-          },
-          tx,
-        );
-        return row;
-      });
-      return toAcademicSemesterResponse(saved);
-    } catch (error) {
-      if (isUniqueViolation(error)) throw new ResponseError(400, "A semester with this name already exists in the year");
-      throw error;
-    }
-  }
-
-  static async remove(admin: AdminUser, id: string, context: AuditRequestContext = {}): Promise<void> {
-    assertSuperAdmin(admin, "delete a semester");
-    const current = await prismaClient.academicSemester.findUnique({ where: { id } });
-    if (!current) throw new ResponseError(404, "Semester not found");
-    await prismaClient.$transaction(async (tx) => {
-      await tx.academicSemester.delete({ where: { id } });
-      await AuditService.record(
-        {
-          action: AuditAction.DELETE_ACADEMIC_SEMESTER,
-          source: AuditSource.UI,
-          entity_type: "AcademicSemester",
-          entity_id: id,
-          admin_id: admin.id,
-          old_values: toAcademicSemesterAuditSnapshot(current),
-          ip_address: context.ip_address,
-          user_agent: context.user_agent,
-        },
-        tx,
-      );
-    });
   }
 }

@@ -104,6 +104,37 @@ describe('AcademicYearsPanel', () => {
     )).toBe(true))
   })
 
+  it('edits the saved semesters together with the year', async () => {
+    const fetchMock = createFetchRouter([
+      {
+        path: /^\/api\/admin\/academic-years\/year-2026\/semesters$/,
+        response: jsonResponse({ data: [
+          { id: 'sem-1', academic_year_id: 'year-2026', name: 'Ganjil', position: 1, start_date: '2026-07-01T00:00:00.000Z', end_date: '2026-12-20T00:00:00.000Z' },
+          { id: 'sem-2', academic_year_id: 'year-2026', name: 'Genap', position: 2, start_date: '2027-01-05T00:00:00.000Z', end_date: '2027-06-30T00:00:00.000Z' },
+        ] }),
+      },
+      {
+        path: /^\/api\/admin\/academic-years(?:\/year-2026)?(?:\?.*)?$/,
+        response: ({ method }) => method === 'PATCH'
+          ? jsonResponse({ data: { id: 'year-2026' } })
+          : jsonResponse({ data: academicYears, paging }),
+      },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderPanel(<AcademicYearsPanel />)
+    await screen.findByText('2026/2027')
+    await user.click(screen.getAllByRole('button', { name: 'Edit' })[0])
+    const name = await screen.findByDisplayValue('Ganjil')
+    expect(screen.getByDisplayValue('Genap')).toBeInTheDocument()
+    await user.clear(name)
+    await user.type(name, 'Semester Satu')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(true))
+    const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
+    const sent = JSON.parse(patch[1].body)
+    expect(sent.semesters.map((item) => [item.id, item.name])).toEqual([['sem-1', 'Semester Satu'], ['sem-2', 'Genap']])
+  })
+
   it('creates and deletes an academic year', async () => {
     const fetchMock = createFetchRouter([
       {
