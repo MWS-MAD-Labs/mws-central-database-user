@@ -1,3 +1,4 @@
+import { addressTakenBy, originSharedWith } from "../utils/application-address";
 import { healthOf } from "./application-health";
 import { createHash, randomBytes } from "crypto";
 import {
@@ -288,6 +289,13 @@ async function resolveBaselineEntitlement(
     updated_at: stamp,
     is_default: true,
   };
+}
+
+// A sign-in address belongs to one live application. A domain can be shared by path, an identical address cannot.
+export async function assertAddressFree(address: string, selfId?: string) {
+  const others = await prismaClient.application.findMany({ select: { application_id: true, name: true, launch_url: true, retired_at: true } });
+  const taken = addressTakenBy(address, others, selfId);
+  if (taken) throw new ResponseError(400, `${taken.name} already uses this sign-in address`);
 }
 
 export class ApplicationEntitlementService {
@@ -1865,6 +1873,7 @@ export class ApplicationAccessService {
           connection_created: false,
           connection_last_used_at: null,
           health: null,
+          shares_origin_with: [],
           permission_count: 0,
         };
       });
@@ -1901,6 +1910,7 @@ export class ApplicationAccessService {
         .sort((left, right) => right.getTime() - left.getTime())[0];
       row.connection_last_used_at = used ? used.toISOString() : null;
       const appRow = catalog.find((item) => item.application_id === row.application_id);
+      row.shares_origin_with = row.retired || row.launch_mode === "link" ? [] : originSharedWith(appRow?.launch_url ?? null, catalog, row.application_id);
       row.health =
         row.is_hub || row.launch_mode === "link" || row.retired
           ? null
@@ -1967,6 +1977,7 @@ export class ApplicationAccessService {
       throw new ResponseError(400, "Add the Hub first. Every application is given its address");
     }
     await ApplicationTaxonomyService.assertKnown(input);
+    if (input.launch_url) await assertAddressFree(input.launch_url);
     await resolveOrganizationId(input.application_id);
     const organizationRow = await prismaClient.applicationOrganization.findUniqueOrThrow({
       where: { application_id: input.application_id },
@@ -2026,6 +2037,7 @@ export class ApplicationAccessService {
       connection_created: false,
       connection_last_used_at: null,
       health: null,
+      shares_origin_with: [],
       permission_count: 0,
       organization_id: organizationRow.organization_id,
       role_count: 0,

@@ -358,6 +358,10 @@ export class ApplicationAccessController {
     });
   }
 
+  static async checkAddress(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: await ApplicationOnboardingService.checkAddress(c.var.admin, requireApplicationId(c)) });
+  }
+
   static async updateHubAddress(c: Context<{ Variables: AdminVariables }>) {
     return c.json({
       data: await ApplicationOnboardingService.setHubAddress(c.var.admin, requireApplicationId(c), await c.req.json(), getAuditRequestContext(c)),

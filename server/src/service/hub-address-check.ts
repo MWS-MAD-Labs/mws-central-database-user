@@ -142,10 +142,11 @@ export async function checkHubSecret(address: string, secret: string): Promise<H
   }
 }
 
-export type ApplicationAddressVerdict = "ok" | "unreachable" | "refused";
+export type ApplicationAddressVerdict = "ok" | "unreachable" | "wrong_path" | "refused";
 
-// Whether anything answers at the address of an application. Any answer under 500 counts, a 404 or a redirect to
-// the sign-in page is still an application that is up. A proxy with nothing behind it (502 to 504) is not.
+// Whether the sign-in address of an application answers. The address is asked as saved, path included. A 404 means
+// something is running there but not at that path. A redirect to the sign-in page is still an application that is up.
+// A proxy with nothing behind it (502 to 504) is not.
 export async function checkApplicationAddress(address: string): Promise<ApplicationAddressVerdict> {
   let url: URL;
   try {
@@ -157,12 +158,13 @@ export async function checkApplicationAddress(address: string): Promise<Applicat
     return "refused";
   }
   try {
-    const response = await fetch(new URL("/", url.origin), {
+    const response = await fetch(url, {
       redirect: "manual",
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     await response.body?.cancel();
-    return response.status >= 500 ? "unreachable" : "ok";
+    if (response.status >= 500) return "unreachable";
+    return response.status === 404 ? "wrong_path" : "ok";
   } catch {
     return "unreachable";
   }

@@ -27,6 +27,7 @@ import {
   useApplicationTaxonomy,
 } from "../hooks/useApplicationTaxonomy.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
+import { useCheckNow } from "../hooks/useCheckNow.js";
 import { copyText } from "../utils/copyText.js";
 import { timeAgo } from "../utils/setupSteps.js";
 import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
@@ -46,6 +47,7 @@ export function ApplicationAccessPage() {
   const confirm = useConfirm();
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["application-access"] });
+  const checkNow = useCheckNow();
   const retireMutation = useMutation({
     mutationFn: (applicationId) =>
       applicationAccessApi.retireApplication(applicationId),
@@ -242,6 +244,14 @@ export function ApplicationAccessPage() {
                   {row.health?.status === "unreachable" ? (
                     <StatusBadge tone="red">Unreachable</StatusBadge>
                   ) : null}
+                  {row.health?.status === "wrong_path" ? (
+                    <StatusBadge tone="amber">Wrong Path</StatusBadge>
+                  ) : null}
+                  {row.shares_origin_with?.length ? (
+                    <span title={`Same address start as ${row.shares_origin_with.join(", ")}`}>
+                      <StatusBadge tone="neutral">Shared Origin</StatusBadge>
+                    </span>
+                  ) : null}
                   {row.launch_mode === "link" ? (
                     <StatusBadge tone="neutral">Plain Link</StatusBadge>
                   ) : null}
@@ -331,6 +341,16 @@ export function ApplicationAccessPage() {
                       >
                         Open
                       </ActionsMenuItem>
+                      {!row.is_hub && !row.retired && row.launch_mode !== "link" ? (
+                        <ActionsMenuItem
+                          onClick={() => {
+                            closeMenu();
+                            checkNow.mutate(row.application_id);
+                          }}
+                        >
+                          Check Now
+                        </ActionsMenuItem>
+                      ) : null}
                       {row.organization_id ? (
                         <ActionsMenuItem
                           onClick={() => {

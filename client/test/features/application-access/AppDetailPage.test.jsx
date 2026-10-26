@@ -442,6 +442,24 @@ describe("AppDetailPage", () => {
     expect(screen.queryByText(/old token, last seen/)).toBeNull();
   });
 
+  it("says a wrong path, and Check Now asks the address of this application", async () => {
+    const asked = [];
+    const { user } = renderPage(setup({ health: { status: "wrong_path", detail: "The sign-in address answers Not Found", since: "2026-10-23T08:00:00.000Z" } }), undefined, [
+      {
+        path: "/api/admin/application-access/apps/demo/check",
+        method: "POST",
+        response: () => {
+          asked.push(true);
+          return jsonResponse({ data: { verdict: "ok" } });
+        },
+      },
+    ]);
+    expect(await screen.findByText(/sign-in page was not found since/)).toBeVisible();
+    expect(screen.getByText(/Fix the Sign-In Address in Edit Details/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Check Now" }));
+    await waitFor(() => expect(asked).toHaveLength(1));
+  });
+
   it("does not offer to change the sign-in way for a plain link", async () => {
     renderPage(setup({ application: { ...APP, launch_mode: "link" } }));
     await screen.findByRole("heading", { name: "Demo App" });

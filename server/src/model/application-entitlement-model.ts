@@ -199,6 +199,8 @@ export type ApplicationSummary = {
   connection_last_used_at: string | null;
   // What Central can tell about it after setup. Null for the Hub and for a plain link.
   health: ApplicationHealth | null;
+  // Names of other live applications whose sign-in address has the same origin.
+  shares_origin_with: string[];
   permission_count: number;
   organization_id: string | null;
   role_count: number;

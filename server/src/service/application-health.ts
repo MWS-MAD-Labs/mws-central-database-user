@@ -5,7 +5,7 @@ import { logger } from "../lib/logger";
 import { decryptSecret } from "../utils/secret-box";
 import { checkApplicationAddress, checkExchangeSeen } from "./hub-address-check";
 
-export type ApplicationHealthStatus = "healthy" | "pending" | "check_token" | "token_pending" | "sign_in_pending" | "unreachable";
+export type ApplicationHealthStatus = "healthy" | "pending" | "check_token" | "token_pending" | "sign_in_pending" | "unreachable" | "wrong_path";
 export type ApplicationHealth = { status: ApplicationHealthStatus; detail: string | null; since: string | null };
 
 export type HealthCredential = {
@@ -44,6 +44,9 @@ export function healthOf(input: {
   now?: Date;
 }): ApplicationHealth {
   const now = input.now ?? new Date();
+  if (input.addressStatus === "wrong_path") {
+    return { status: "wrong_path", detail: "The sign-in address answers Not Found", since: input.addressDownSince ? input.addressDownSince.toISOString() : null };
+  }
   if (input.addressStatus === "unreachable") {
     return { status: "unreachable", detail: "Not answering at its address", since: input.addressDownSince ? input.addressDownSince.toISOString() : null };
   }
@@ -150,6 +153,43 @@ async function confirmPendingSignIns(): Promise<void> {
   for (const app of pending) await confirmSignIn(app).catch(() => undefined);
 }
 
+type CheckedApplication = {
+  id: string;
+  launch_url: string | null;
+  address_failures: number;
+  address_status: string | null;
+  address_down_since: Date | null;
+};
+
+const CHECK_SELECT = { id: true, launch_url: true, address_failures: true, address_status: true, address_down_since: true } as const;
+
+// Asks the address of one application and keeps the answer. A wrong path is a firm answer and is kept at once. An
+// address nothing answers at waits for a second miss, unless `immediate` says somebody is looking at it right now.
+export async function checkOneApplication(
+  application: CheckedApplication,
+  options: { check?: (address: string) => Promise<string>; now?: Date; immediate?: boolean } = {},
+): Promise<string> {
+  const { check = checkApplicationAddress, now = new Date(), immediate = false } = options;
+  if (!application.launch_url) return "refused";
+  const verdict = await check(application.launch_url).catch(() => "unreachable");
+  if (verdict === "refused") return verdict;
+  const wrongPath = verdict === "wrong_path";
+  const down = verdict === "unreachable";
+  const failures = down ? application.address_failures + 1 : 0;
+  const markedDown = down && (immediate || failures >= FAILURES_TO_MARK_DOWN);
+  const bad = wrongPath || markedDown;
+  await prismaClient.application.update({
+    where: { id: application.id },
+    data: {
+      address_checked_at: now,
+      address_failures: failures,
+      address_status: wrongPath ? "wrong_path" : markedDown ? "unreachable" : down ? application.address_status : "ok",
+      address_down_since: bad ? (application.address_down_since ?? now) : down ? application.address_down_since : null,
+    },
+  });
+  return verdict;
+}
+
 // One pass over the applications that have an address: the result of each check is kept on the application.
 export async function checkApplicationAddresses(
   check: (address: string) => Promise<string> = checkApplicationAddress,
@@ -158,24 +198,9 @@ export async function checkApplicationAddresses(
   await confirmPendingSignIns();
   const applications = await prismaClient.application.findMany({
     where: { retired_at: null, launch_mode: ApplicationLaunchMode.SSO, launch_url: { not: null } },
-    select: { id: true, launch_url: true, address_failures: true, address_status: true, address_down_since: true },
+    select: CHECK_SELECT,
   });
-  for (const application of applications) {
-    const verdict = await check(application.launch_url as string).catch(() => "unreachable");
-    if (verdict === "refused") continue;
-    const down = verdict === "unreachable";
-    const failures = down ? application.address_failures + 1 : 0;
-    const markedDown = down && failures >= FAILURES_TO_MARK_DOWN;
-    await prismaClient.application.update({
-      where: { id: application.id },
-      data: {
-        address_checked_at: now,
-        address_failures: failures,
-        address_status: markedDown ? "unreachable" : down ? application.address_status : "ok",
-        address_down_since: markedDown ? (application.address_down_since ?? now) : down ? application.address_down_since : null,
-      },
-    });
-  }
+  for (const application of applications) await checkOneApplication(application, { check, now });
 }
 
 declare global {

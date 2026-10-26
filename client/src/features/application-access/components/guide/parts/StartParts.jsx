@@ -411,6 +411,17 @@ const PROBLEMS = [
     ],
   },
   {
+    message: "Wrong Path or Unreachable on an application",
+    cause: [
+      "Wrong Path: something answers at the host and port, but not at the sign-in address saved here. Unreachable: nothing answers at all, or another application on that port is not running.",
+      "Wrong Path: ada yang menjawab di host dan port tersebut, namun tidak di alamat sign-in yang tersimpan di sini. Unreachable: tidak ada yang menjawab sama sekali, atau aplikasi lain di port tersebut sedang tidak berjalan.",
+    ],
+    fix: [
+      "Use Check Now on the application, open Edit Details and set the Sign-In Address to the page the application serves for sign-in. Two applications can share a domain only with different paths, and each port on your machine belongs to one application.",
+      "Gunakan Check Now pada aplikasi, buka Edit Details lalu isi Sign-In Address dengan halaman sign-in yang disajikan aplikasi. Dua aplikasi hanya dapat berbagi domain dengan path yang berbeda, dan setiap port di mesin Anda hanya milik satu aplikasi.",
+    ],
+  },
+  {
     message: "Add the Hub first",
     cause: ["An application was added before the Hub.", "Aplikasi didaftarkan sebelum Hub."],
     fix: ["Add the Hub, then add the application again.", "Daftarkan Hub terlebih dahulu, lalu daftarkan aplikasinya kembali."],

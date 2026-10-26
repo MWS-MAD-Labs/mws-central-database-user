@@ -224,13 +224,13 @@ describe("hub address check", () => {
   });
 
   describe("application address check", () => {
-    it("counts any answer under 500 as up, and a missing or broken one as not", async () => {
+    it("counts any answer under 500 as up, a 404 as a wrong path, and a missing or broken one as not", async () => {
       const app = Bun.serve({
         port: 0,
         fetch(request) {
           const path = new URL(request.url).pathname;
-          if (path === "/") return new Response("not here", { status: 404 });
-          return new Response("x", { status: 200 });
+          if (path === "/auth/sso") return new Response("x", { status: 200 });
+          return new Response("not here", { status: 404 });
         },
       });
       const redirecting = Bun.serve({ port: 0, fetch: () => new Response("", { status: 302, headers: { Location: "/auth/sso" } }) });
@@ -239,7 +239,8 @@ describe("hub address check", () => {
       const closedPort = closed.port;
       closed.stop(true);
       try {
-        expect(await checkApplicationAddress(`http://127.0.0.1:${app.port}`)).toBe("ok");
+        expect(await checkApplicationAddress(`http://127.0.0.1:${app.port}/auth/sso`)).toBe("ok");
+        expect(await checkApplicationAddress(`http://127.0.0.1:${app.port}/api/v1/auth/sso`)).toBe("wrong_path");
         expect(await checkApplicationAddress(`http://127.0.0.1:${redirecting.port}`)).toBe("ok");
         expect(await checkApplicationAddress(`http://127.0.0.1:${broken.port}`)).toBe("unreachable");
         expect(await checkApplicationAddress(`http://127.0.0.1:${closedPort}`)).toBe("unreachable");
@@ -259,7 +260,8 @@ describe("hub address check", () => {
       try {
         const { accessToken } = await AdminUserTest.createSuperAdmin();
         const ask = async (url: string, token = accessToken) => TestRequest.get(`${ACCESS}/application-address-check?url=${encodeURIComponent(url)}`, token);
-        expect((await (await ask(base())).json()).data).toEqual({ verdict: "ok" });
+        expect((await (await ask(`${base()}/.well-known/jwks.json`)).json()).data).toEqual({ verdict: "ok" });
+        expect((await (await ask(`${base()}/nowhere`)).json()).data).toEqual({ verdict: "wrong_path" });
         expect((await (await ask("http://app.example.com")).json()).data).toEqual({ verdict: "refused" });
         expect((await (await ask("")).json()).data).toEqual({ verdict: "refused" });
         const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
