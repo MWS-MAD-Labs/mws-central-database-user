@@ -9,6 +9,12 @@ export const studentSupportAssignmentApiRouter = new Hono<{
 }>();
 
 studentSupportAssignmentApiRouter.get(
+  "/caseload-limit",
+  requireScope(API_SCOPES.STUDENT_SUPPORT_ASSIGNMENTS_READ),
+  (c) => StudentSupportAssignmentApiController.caseloadLimit(c),
+);
+
+studentSupportAssignmentApiRouter.get(
   "/",
   requireScope(API_SCOPES.STUDENT_SUPPORT_ASSIGNMENTS_READ),
   (c) => StudentSupportAssignmentApiController.list(c),

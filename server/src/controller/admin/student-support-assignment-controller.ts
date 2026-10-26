@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type { AssignStudentSupportRequest } from "../../model/student-support-assignment-model";
 import { StudentSupportAssignmentService } from "../../service/student-support-assignment-service";
+import { SupportCaseloadRuleService, type SupportCaseloadRule } from "../../service/support-caseload-rule-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 
@@ -31,6 +32,16 @@ export class StudentSupportAssignmentController {
     });
 
     return c.json({ data: response });
+  }
+
+  static async getCaseloadLimit(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({ data: await SupportCaseloadRuleService.get() });
+  }
+
+  static async updateCaseloadLimit(c: Context<{ Variables: AdminVariables }>) {
+    const body = (await c.req.json().catch(() => ({}))) as SupportCaseloadRule;
+    const data = await SupportCaseloadRuleService.update(c.var.admin, body, getAuditRequestContext(c));
+    return c.json({ data });
   }
 
   static async getCaseload(c: Context<{ Variables: AdminVariables }>) {

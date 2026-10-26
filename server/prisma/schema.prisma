@@ -909,6 +909,15 @@ model ChildrenAllowanceRule {
   @@map("children_allowance_rules")
 }
 
+// The most students one Special Education teacher supports at once, set by a Super Admin. One row, with the fixed id "default".
+model SupportCaseloadRule {
+  id           String   @id @default("default")
+  max_students Int      @default(2)
+  updated_at   DateTime @updatedAt
+
+  @@map("support_caseload_rules")
+}
+
 model EmployeePcMentorUnit {
   employee_id String
   unit_id     String

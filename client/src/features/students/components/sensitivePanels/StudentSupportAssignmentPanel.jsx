@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, HeartHandshake, Plus, Repeat, RotateCcw, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
+import { useSupportCaseloadLimit } from '../../hooks/useSupportCaseloadLimit.js'
 import { Button } from '../../../../components/ui/Button.jsx'
 import { useConfirm } from '../../../../components/ui/useConfirm.js'
 import { CrudDialog } from '../../../../components/ui/CrudDialog.jsx'
@@ -283,7 +284,8 @@ export function SupportAssignmentDialog({ title, studentName, mode = 'create', u
     hasAttemptedSubmit && !values.workforce_target
       ? 'Special Education Teacher is required.'
       : undefined
-  const employeeOptions = employees.map(employeeOption)
+  const { limit } = useSupportCaseloadLimit()
+  const employeeOptions = employees.map((member) => employeeOption(member, limit))
 
   async function submit(event) {
     event.preventDefault()
@@ -357,16 +359,16 @@ export function SupportAssignmentDialog({ title, studentName, mode = 'create', u
   )
 }
 
-function employeeOption(member) {
+function employeeOption(member, limit) {
   return {
     value: workforceTargetValue(candidateType(member), member.id),
     label: `${candidateName(member)}${candidateType(member) === 'INTERN' ? ' (Intern)' : ''}`,
     description: candidateEmail(member),
-    badge: caseloadLabel(member.active_student_count),
-    tone: member.active_student_count > 0 ? 'amber' : 'green',
+    badge: caseloadLabel(member.active_student_count, limit),
+    tone: (member.active_student_count || 0) >= limit ? 'red' : member.active_student_count > 0 ? 'amber' : 'green',
   }
 }
 
-function caseloadLabel(count) {
-  return `${count || 0} Student${count === 1 ? '' : 's'}`
+function caseloadLabel(count, limit) {
+  return `${count || 0} of ${limit}`
 }

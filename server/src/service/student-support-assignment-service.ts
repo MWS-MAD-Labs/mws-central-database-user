@@ -47,7 +47,8 @@ import { AuditService } from "./audit-service";
 import { StudentSupportAssignmentValidation } from "../validation/student-support-assignment-validation";
 import { Validation } from "../validation/validation";
 import { assertCanWriteNow } from "../utils/office-hours";
-import { lockInternWorkforce } from "../utils/intern-workforce-lock";
+import { lockInternWorkforce, lockSupportCaseload } from "../utils/intern-workforce-lock";
+import { SupportCaseloadRuleService } from "./support-caseload-rule-service";
 
 const ASSIGNMENT_INCLUDE = {
   employee: { include: { person: true } },
@@ -162,6 +163,33 @@ async function assertWorkforceMemberIsEligible(
       intern_id: intern.id,
     },
   };
+}
+
+// A teacher cannot take more active students than the limit. Call it inside the transaction, after the lock.
+async function assertWithinCaseloadLimit(
+  tx: Prisma.TransactionClient,
+  target: SupportWorkforceTarget,
+  role: StudentSupportRole,
+  exceptAssignmentId?: string,
+): Promise<void> {
+  if (role !== StudentSupportRole.SPECIAL_ED) return;
+  const { max_students } = await SupportCaseloadRuleService.get(tx);
+  const active = await tx.studentSupportAssignment.count({
+    where: {
+      role,
+      end_date: null,
+      deleted_at: null,
+      employee_id: target.auditValues.employee_id,
+      intern_id: target.auditValues.intern_id,
+      ...(exceptAssignmentId ? { NOT: { id: exceptAssignmentId } } : {}),
+    },
+  });
+  if (active >= max_students) {
+    throw new ResponseError(
+      400,
+      `${target.auditValues.member_name} already supports ${active} student${active === 1 ? "" : "s"}. The limit is ${max_students}.`,
+    );
+  }
 }
 
 // Teacher and student units must match when both are known.
@@ -454,6 +482,7 @@ export class StudentSupportAssignmentService {
       },
       select: { employee_id: true, intern_id: true },
     });
+    const { max_students } = await SupportCaseloadRuleService.get();
     const counts = new Map<string, SupportAssignmentCaseloadEntry>();
     for (const assignment of assignments) {
       const memberType = assignment.employee_id ? "EMPLOYEE" : "INTERN";
@@ -466,6 +495,8 @@ export class StudentSupportAssignmentService {
         employee_id: assignment.employee_id,
         intern_id: assignment.intern_id,
         active_student_count: (current?.active_student_count ?? 0) + 1,
+        limit: max_students,
+        over_limit: (current?.active_student_count ?? 0) + 1 > max_students,
       });
     }
     return Array.from(counts.values());
@@ -550,6 +581,7 @@ export class StudentSupportAssignmentService {
       if (assignRequest.intern_id) {
         await lockInternWorkforce(tx, assignRequest.intern_id);
       }
+      await lockSupportCaseload(tx, assignRequest.employee_id ?? assignRequest.intern_id!);
       const workforceTarget = await assertWorkforceMemberIsEligible(
         tx,
         assignRequest.employee_id,
@@ -573,6 +605,7 @@ export class StudentSupportAssignmentService {
           "This workforce member already has an active assignment with this role for this student.",
         );
       }
+      await assertWithinCaseloadLimit(tx, workforceTarget, assignRequest.role);
       const created = await tx.studentSupportAssignment.create({
         data: {
           student_id: assignRequest.student_id,
@@ -723,6 +756,7 @@ export class StudentSupportAssignmentService {
       if (existing.intern_id) {
         await lockInternWorkforce(tx, existing.intern_id);
       }
+      await lockSupportCaseload(tx, existing.employee_id ?? existing.intern_id!);
       const workforceTarget = await assertWorkforceMemberIsEligible(
         tx,
         existing.employee_id ?? undefined,
@@ -747,6 +781,7 @@ export class StudentSupportAssignmentService {
           "This workforce member already has an active assignment with this role for this student.",
         );
       }
+      await assertWithinCaseloadLimit(tx, workforceTarget, existing.role, existing.id);
       await tx.studentSupportAssignment.update({
         where: { id: existing.id },
         data: { end_date: null },

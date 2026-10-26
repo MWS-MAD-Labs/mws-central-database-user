@@ -437,6 +437,8 @@ describe("Student Support Assignment", () => {
         employee_id: null,
         intern_id: intern.id,
         active_student_count: 1,
+        limit: 2,
+        over_limit: false,
       });
 
       const active = await TestRequest.get(
@@ -1395,5 +1397,125 @@ describe("GET /api/admin/support-assignments/active-student-ids", () => {
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+});
+
+describe("Special Education caseload limit", () => {
+  async function cleanup() {
+    await prismaClient.supportCaseloadRule.deleteMany();
+    await AuditLogTest.delete();
+    await StudentTest.delete();
+    await InternTest.delete();
+    await EmployeeTest.delete();
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  }
+
+  beforeEach(async () => {
+    await cleanup();
+    await MasterDataTest.create();
+  });
+
+  afterEach(cleanup);
+
+  async function students(count: number) {
+    const made: string[] = [];
+    for (let index = 0; index < count; index++) {
+      const student = await StudentTest.create({
+        email: `test_limit_student_${index}@millennia21.id`,
+        nis: `95001${index}0`,
+      });
+      made.push(student.student!.id);
+    }
+    return made;
+  }
+
+  const assign = (studentId: string, employeeId: string, token: string) =>
+    TestRequest.post(
+      `/api/admin/students/${studentId}/support-assignments`,
+      { employee_id: employeeId, role: StudentSupportRole.SPECIAL_ED },
+      token,
+    );
+
+  it("stops at 2 students by default, and a Super Admin can raise it", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const teacher = await createTeachingEmployee("test_limit_teacher@millennia21.id");
+    const [one, two, three, four] = await students(4);
+
+    expect((await assign(one, teacher.id, accessToken)).status).toBe(200);
+    expect((await assign(two, teacher.id, accessToken)).status).toBe(200);
+    const refused = await assign(three, teacher.id, accessToken);
+    expect(refused.status).toBe(400);
+    expect((await refused.json()).errors).toContain("The limit is 2");
+
+    const read = await TestRequest.get("/api/admin/support-assignments/caseload-limit", accessToken);
+    expect((await read.json()).data).toEqual({ max_students: 2 });
+    const raised = await TestRequest.put(
+      "/api/admin/support-assignments/caseload-limit",
+      { max_students: 3 },
+      accessToken,
+    );
+    expect(raised.status).toBe(200);
+    expect((await assign(three, teacher.id, accessToken)).status).toBe(200);
+    expect((await assign(four, teacher.id, accessToken)).status).toBe(400);
+
+    const audit = await prismaClient.auditLog.findFirst({ where: { entity_type: "SupportCaseloadRule" } });
+    expect(audit?.new_values).toMatchObject({ max_students: 3 });
+  });
+
+  it("does not drop assignments when the limit is lowered, but refuses new ones and flags the teacher", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const teacher = await createTeachingEmployee("test_limit_lowered@millennia21.id");
+    const [one, two, three] = await students(3);
+    await TestRequest.put("/api/admin/support-assignments/caseload-limit", { max_students: 3 }, accessToken);
+    for (const id of [one, two, three]) expect((await assign(id, teacher.id, accessToken)).status).toBe(200);
+
+    await TestRequest.put("/api/admin/support-assignments/caseload-limit", { max_students: 1 }, accessToken);
+    expect(await prismaClient.studentSupportAssignment.count({ where: { employee_id: teacher.id, end_date: null } })).toBe(3);
+    const caseload = await (await TestRequest.get("/api/admin/support-assignments/caseload", accessToken)).json();
+    expect(caseload.data.find((row: { employee_id: string }) => row.employee_id === teacher.id)).toMatchObject({
+      active_student_count: 3,
+      limit: 1,
+      over_limit: true,
+    });
+  });
+
+  it("applies to reactivating an ended assignment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const teacher = await createTeachingEmployee("test_limit_reactivate@millennia21.id");
+    const [one, two, three] = await students(3);
+    const first = await (await assign(one, teacher.id, accessToken)).json();
+    await TestRequest.patch(`/api/admin/students/${one}/support-assignments/${first.data.id}/end`, {}, accessToken);
+    expect((await assign(two, teacher.id, accessToken)).status).toBe(200);
+    expect((await assign(three, teacher.id, accessToken)).status).toBe(200);
+
+    const back = await TestRequest.patch(
+      `/api/admin/students/${one}/support-assignments/${first.data.id}/reactivate`,
+      {},
+      accessToken,
+    );
+    expect(back.status).toBe(400);
+  });
+
+  it("lets only one of two simultaneous assignments through when one place is left", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const teacher = await createTeachingEmployee("test_limit_race@millennia21.id");
+    const [one, two, three] = await students(3);
+    expect((await assign(one, teacher.id, accessToken)).status).toBe(200);
+    const results = await Promise.all([assign(two, teacher.id, accessToken), assign(three, teacher.id, accessToken)]);
+    expect(results.map((response) => response.status).sort()).toEqual([200, 400]);
+  });
+
+  it("is changed by a Super Admin only, within 1 to 20", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
+    const put = (value: unknown, token: string) =>
+      TestRequest.put("/api/admin/support-assignments/caseload-limit", { max_students: value }, token);
+    expect((await put(4, other)).status).toBe(403);
+    expect((await put(0, accessToken)).status).toBe(400);
+    expect((await put(21, accessToken)).status).toBe(400);
+    expect((await put(2.5, accessToken)).status).toBe(400);
+    expect((await put(4, accessToken)).status).toBe(200);
+    expect((await TestRequest.get("/api/admin/support-assignments/caseload-limit", other)).status).toBe(200);
   });
 });

@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { ApiClientVariables } from "../../type/hono-context";
 import { StudentSupportAssignmentApiService } from "../../service/student-support-assignment-api-service";
+import { SupportCaseloadRuleService } from "../../service/support-caseload-rule-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 
@@ -13,6 +14,10 @@ function clientFromContext(c: Context<{ Variables: ApiClientVariables }>) {
 }
 
 export class StudentSupportAssignmentApiController {
+  static async caseloadLimit(c: Context<{ Variables: ApiClientVariables }>) {
+    return c.json({ data: await SupportCaseloadRuleService.get() });
+  }
+
   static async list(c: Context<{ Variables: ApiClientVariables }>) {
     const page = c.req.query("page") ? Number(c.req.query("page")) : 1;
     const size = c.req.query("size") ? Number(c.req.query("size")) : 10;
