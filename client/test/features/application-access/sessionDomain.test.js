@@ -25,6 +25,11 @@ describe('sessionDomain', () => {
     expect(parentDomainOf('https://app.mws.web.id')).toBe('mws.web.id')
     expect(appHomeUrl('https://app.millenniaws.sch.id/daily-checkin/auth/sso')).toBe('https://app.millenniaws.sch.id/daily-checkin/')
     expect(appHomeUrl('https://exima.mws.web.id/auth/sso')).toBe('https://exima.mws.web.id/')
+    // A sign-in path that belongs to an API is not a page, so the page is the root of the host.
+    expect(appHomeUrl('http://localhost:3002/api/v1/auth/sso')).toBe('http://localhost:3002/')
+    expect(appHomeUrl('http://localhost:3002/api/auth/sso?x=1#y')).toBe('http://localhost:3002/')
+    expect(appHomeUrl('http://localhost:3001/auth/sso')).toBe('http://localhost:3001/')
+    expect(appHomeUrl('not a url')).toBe('')
     expect(appHomeUrl('')).toBe('')
   })
 
