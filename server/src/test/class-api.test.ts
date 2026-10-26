@@ -78,6 +78,10 @@ describe("Class API (internal)", () => {
     expect(found).toBeDefined();
     expect(found.class_name).toBe(klass.name);
     expect(found.unit_name).toBe(masterData.unit.name);
+    // Stable ids next to the names, so a consumer does not have to match on names.
+    expect(found.unit_id).toBe(masterData.unit.id);
+    expect(found.grade_id).toBe(klass.grade_id);
+    expect(found.additional_grade_ids).toEqual([]);
     expect(found.academic_year_id).toBe(klass.academic_year_id);
     expect(found.academic_year_start_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });

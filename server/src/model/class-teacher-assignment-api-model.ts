@@ -12,8 +12,8 @@ export type ClassTeacherAssignmentWithRelations = {
   class: {
     id: string;
     name: string;
-    grade: { name: string; unit: { name: string } | null };
-    additional_grades: { grade: { name: string } }[];
+    grade: { id: string; name: string; unit: { id: string; name: string } | null };
+    additional_grades: { grade: { id: string; name: string } }[];
     academic_year: { id: string; name: string; start_date: Date; end_date: Date | null };
   };
   employee: {
@@ -47,9 +47,12 @@ export type ClassTeacherWorkforceMemberResponse = {
 export type ClassTeacherAssignmentResponse = {
   class_id: string;
   class_name: string;
+  grade_id: string;
   grade_name: string;
   // Include every grade taught by mixed-age classes.
+  additional_grade_ids: string[];
   additional_grade_names: string[];
+  unit_id: string | null;
   unit_name: string | null;
   academic_year_id: string;
   academic_year: string;
@@ -91,10 +94,13 @@ export function toClassTeacherAssignmentResponse(
   return {
     class_id: assignment.class.id,
     class_name: assignment.class.name,
+    grade_id: assignment.class.grade.id,
     grade_name: assignment.class.grade.name,
+    additional_grade_ids: assignment.class.additional_grades.map((entry) => entry.grade.id),
     additional_grade_names: assignment.class.additional_grades.map(
       (entry) => entry.grade.name,
     ),
+    unit_id: assignment.class.grade.unit?.id ?? null,
     unit_name: assignment.class.grade.unit?.name ?? null,
     academic_year_id: assignment.class.academic_year.id,
     academic_year: assignment.class.academic_year.name,
