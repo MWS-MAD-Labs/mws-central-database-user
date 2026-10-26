@@ -65,6 +65,7 @@ const ADDRESS_TEXTS = {
   unreachable: "Nothing answers at this address. Is the application running?",
   wrong_path: "Something answers here, but this page does not exist. Check the end of the address.",
   unverifiable: "This server answers every path, so Central cannot tell if the page exists. Open the application from the Hub to confirm.",
+  suggest: "A page of this server looks like its sign-in entry:",
   refused: "This address cannot be checked.",
   failed: "The address could not be checked just now. Try again.",
   anywayTitle: "Use This Address Anyway",
@@ -156,18 +157,18 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     logout_url: hub ? undefined : (clash("logout") ?? addressProblem(environment, effectiveLogout) ?? undefined),
   };
   const valid = !Object.values(errors).some(Boolean) && !hubSettingsProblem;
-  // The address of the application itself, without the paths, is what gets asked.
+  // The sign-in address itself is what gets asked, path included.
   const checkedAddress = (() => {
     if (hub || errors.launch_url || !effectiveLaunch.trim()) return "";
     try {
-      return new URL(joinAddress(environment, effectiveLaunch)).origin;
+      return new URL(joinAddress(environment, effectiveLaunch)).toString();
     } catch {
       return "";
     }
   })();
   const [savedAddress] = useState(() => {
     try {
-      return initial?.launch_url ? new URL(initial.launch_url).origin : "";
+      return initial?.launch_url ? new URL(initial.launch_url).toString() : "";
     } catch {
       return "";
     }
@@ -213,6 +214,15 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     setLaunchRest(host ? host + STANDARD_PATHS.launch : "");
     setLogoutRest(host ? host + STANDARD_PATHS.logout : "");
     setCustomPaths(true);
+  }
+
+  // The address a check found for the sign-in entry goes in as the Launch URL, in the custom paths.
+  function applySuggestion(address) {
+    const next = readAddressInput(address, environment);
+    setLaunchRest(next.rest);
+    setLogoutRest((current) => current || (host ? host + STANDARD_PATHS.logout : ""));
+    setCustomPaths(true);
+    setNotes((current) => ({ ...current, launch: null }));
   }
 
   function switchToStandardPaths() {
@@ -471,7 +481,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
             )}
           </>
         )}
-        {hub ? null : <AddressCheckStatus state={addressCheck} texts={ADDRESS_TEXTS} />}
+        {hub ? null : <AddressCheckStatus state={addressCheck} texts={{ ...ADDRESS_TEXTS, onSuggestion: applySuggestion }} />}
         {clashError ? <p role="alert" className="text-xs text-[#a43c41]">{clashError}</p> : null}
         {clashWith?.type === "domain" ? <p className="text-xs text-(--mws-muted)">{`Same domain as ${clashWith.name}. That works when each application has its own path.`}</p> : null}
         {launchMode === "sso" ? (

@@ -13,9 +13,10 @@ export function useCheckNow() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (applicationId) => applicationAccessApi.checkApplicationNow(applicationId),
-    onSuccess: ({ verdict }) => {
+    onSuccess: ({ verdict, suggestion }) => {
       queryClient.invalidateQueries({ queryKey: ["application-access"] });
       if (verdict === "ok") showSuccessToast("The application answers at its sign-in address.");
+      else if (verdict === "unverifiable" && suggestion) showInfoToast(`${ANSWERS.unverifiable} A page that looks like the sign-in entry: ${suggestion.replace(/^https?:\/\//, "")}. Use it in Edit Details.`);
       else showInfoToast(ANSWERS[verdict] ?? "This address cannot be checked.");
     },
     onError: (error) => showErrorToast(error, "Could not check this application."),

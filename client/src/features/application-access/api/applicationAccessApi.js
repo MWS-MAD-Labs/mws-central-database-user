@@ -121,10 +121,11 @@ export const applicationAccessApi = {
     return response.data
   },
 
-  // Whether the sign-in address of an application answers: 'ok', 'unreachable', 'wrong_path' or 'refused'.
+  // Whether the sign-in address of an application answers: { verdict, suggestion }. The verdict is 'ok', 'unreachable',
+  // 'wrong_path', 'unverifiable' or 'refused'. The suggestion is the address of a page that looks like its sign-in entry.
   async checkApplicationAddress(url) {
     const response = await apiRequest(`${ACCESS}/application-address-check?url=${encodeURIComponent(url)}`)
-    return response.data.verdict
+    return response.data
   },
 
   // Whether the Hub accepts this secret: 'ok', 'wrong', 'unreachable', 'no_check' or 'refused'.
