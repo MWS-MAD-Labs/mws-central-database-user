@@ -150,9 +150,14 @@ async function assertOwnsApplication(clientId: string, applicationId: string) {
     where: { id: clientId },
     select: { profile: { select: { code: true } } },
   });
-  if (owner?.profile?.code !== applicationId) {
-    throw new ResponseError(403, `This API client may not use the permissions of ${applicationId}`);
-  }
+  const code = owner?.profile?.code;
+  if (code === applicationId) return;
+  throw new ResponseError(
+    403,
+    code
+      ? `This API client belongs to the profile "${code}". Only a client under a profile with the code "${applicationId}" may use the permissions of ${applicationId}.`
+      : `This API client has no integration profile. Make a profile with the code "${applicationId}" and create the client under it.`,
+  );
 }
 
 // The application an API client was made for. Lets an application call without naming itself, as "me".

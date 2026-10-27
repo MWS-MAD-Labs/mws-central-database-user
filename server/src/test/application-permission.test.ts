@@ -154,10 +154,16 @@ describe("application permission catalog", () => {
     const { token, profileCode } = await publisher("mine");
     const other = await sync(token, `${profileCode}-other`, [{ key: "tab.a" }]);
     expect(other.status).toBe(403);
+    expect((await other.json()).errors).toContain(`belongs to the profile "${profileCode}"`);
     appId = profileCode;
 
     const { token: readOnly } = await ApiClientTest.createWithToken({ scopeNames: [API_SCOPES.APPLICATION_ENTITLEMENTS_READ] });
     expect((await sync(readOnly, profileCode, [{ key: "tab.a" }])).status).toBe(403);
+
+    const { token: noProfile } = await ApiClientTest.createWithToken({ scopeNames: [API_SCOPES.APPLICATION_PERMISSIONS_WRITE] });
+    const unowned = await sync(noProfile, profileCode, [{ key: "tab.a" }]);
+    expect(unowned.status).toBe(403);
+    expect((await unowned.json()).errors).toContain("has no integration profile");
     expect((await sync(token, profileCode, [])).status).toBe(400);
   });
 

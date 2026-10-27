@@ -103,6 +103,8 @@ type Facts = {
   organizationId: string;
   publicUrl: string;
   token: string;
+  // Where people open the application. Written as APP_BASE_URL, which the application uses to send people back to itself.
+  appUrl?: string | null;
   isHub: boolean;
   hubSettings?: HubEnvSettings;
   // What the Hub shares with the applications. Missing until the Hub has its address and secret.
@@ -119,6 +121,16 @@ export type HubFacts = {
   // What the Hub calls the cookie of the shared session. Missing means the usual name.
   accessCookieName?: string;
 };
+
+// The address without a path or trailing slash, or nothing when it is not an address.
+function originOf(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
 
 // The lines every application that signs in through the Hub reads about the Hub.
 function hubLines(hub: HubFacts | undefined, group: number, secretHeading = HEADINGS.hubSecret): EnvItem[] {
@@ -160,8 +172,10 @@ export function buildEnvItems(facts: Facts): EnvItem[] {
     ];
   }
   // Every other application gets the same block, only its id, token and organization differ.
+  const appOrigin = originOf(facts.appUrl);
   return [
     item("HUB_SSO_APP_ID", facts.applicationId, 0, false, HEADINGS.application),
+    ...(appOrigin ? [item("APP_BASE_URL", appOrigin, 0)] : []),
     item("CENTRAL_API_BASE_URL", `${facts.publicUrl}/api/internal`, 1, false, HEADINGS.central),
     item("CENTRAL_API_TOKEN", facts.token, 1, true),
     item("CENTRAL_ORGANIZATION_ID", facts.organizationId, 1),

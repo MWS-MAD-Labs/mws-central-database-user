@@ -311,7 +311,7 @@ async function loadHubFacts(reveal = true): Promise<HubFacts> {
 
 // The .env of an application, made from what Central knows about it.
 async function envFor(
-  app: { application_id: string; env_settings: unknown; uses_hub?: boolean; hub_secret_mode?: HubSecretMode; hub_secret_version?: number; session_mode?: ApplicationSessionMode },
+  app: { application_id: string; env_settings: unknown; launch_url?: string | null; uses_hub?: boolean; hub_secret_mode?: HubSecretMode; hub_secret_version?: number; session_mode?: ApplicationSessionMode },
   organizationId: string,
   publicUrl: string,
   token: string,
@@ -335,6 +335,7 @@ async function envFor(
     organizationId,
     publicUrl,
     token,
+    appUrl: isHub ? null : app.launch_url,
     isHub,
     hubSettings: isHub ? resolveHubSettings(app.env_settings, adminEmail) : undefined,
     hub,
