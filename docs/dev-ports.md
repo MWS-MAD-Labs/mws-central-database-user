@@ -12,7 +12,7 @@ wrong app, or a proxy to another app's backend.
 | MTSS | 5176 | 3004 | `frontend/vite.config.js`, `backend/.env` `PORT` |
 | Hub | 5175 | 4001 | `frontend/vite.config.ts`, `backend/.env` `PORT` |
 | Woko | 5177 | 3011 | `.env` `WEB_ORIGIN` and `PORT` |
-| Learnspace | 3000 (to move to 5178) | 4000 | `apps/web/package.json` `dev` script, `.env` `PORT` |
+| Learnspace | 5178 | 4000 | `apps/web/vite.config.ts`, `.env` `PORT` |
 
 Rules:
 
@@ -24,6 +24,3 @@ Rules:
   changes, change the card's address too.
 - `APP_BASE_URL` in an app's `.env` is its own web address with this port. `mws-access doctor` checks that the app
   answers there.
-
-Learnspace's web dev server still uses 3000, which is Central's API port. Move it to 5178 by taking `--port=3000` out
-of the `dev` script and setting the port and `strictPort` in its Vite config.
