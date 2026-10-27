@@ -11,22 +11,22 @@ Mulai `mws-central-auth` 0.13.0 ada satu implementasi bersama (`definePermission
 | Aplikasi | Memakai access kit |
 | --- | --- |
 | Hub, Learnspace, Daily, Exima, MTSS v2 | Belum (punya salinan sendiri untuk sinkron dan entitlement) |
-| Woko | Ya, sebagian: `definePermissions`, `runPermissionsCli`, dan `mws-access check` (di CI). Belum memakai `createAccessResolver` karena belum login lewat Hub |
+| Woko | Ya: `definePermissions`, `runPermissionsCli`, `mws-access check` (di CI), dan `createAccessResolver` lewat login Hub (`AUTH_MODE=hub`, belum dicoba di staging) |
 
 ## Ringkasan
 
 | Aturan | Hub | Learnspace | Daily | Exima | MTSS v2 | Woko |
 | --- | --- | --- | --- | --- | --- | --- |
-| AS-1 Kepemilikan (tanpa role/akses lokal) | Ya | Sebagian | ? | Sebagian | ? | Tidak |
+| AS-1 Kepemilikan (tanpa role/akses lokal) | Ya | Sebagian | ? | Sebagian | ? | Sebagian (mode `hub`: ya, layar hanya-baca; mode `google` lama masih ada) |
 | AS-2 Hanya permission | Ya | Sebagian | ? | Tidak | ? | Ya |
 | AS-3 Format key | Ya | Tidak | ? | Ya | ? | Ya |
 | AS-4 Manifest dan sinkron | Ya | Ya | Ya | Ya | ? | Ya |
-| AS-5 Role hidup di Central | Ya | Ya | ? | Sebagian | ? | Tidak |
+| AS-5 Role hidup di Central | Ya | Ya | ? | Sebagian | ? | Ya (mode `hub`) |
 | AS-6 Gerbang tiap route | ? | ? | ? | ? | ? | Ya |
 | AS-8 Scope data | - | Ya | ? | ? | ? | Sebagian |
-| AS-10 Menerima entitlement | Ya | Ya | Ya | Ya | ? | Tidak |
-| AS-11 Kesegaran 60 detik | ? | Sebagian | Tidak | Ya | ? | Tidak |
-| AS-12 Admin pertama dan mode uji | ? | ? | ? | ? | ? | Tidak |
+| AS-10 Menerima entitlement | Ya | Ya | Ya | Ya | ? | Ya (mode `hub`) |
+| AS-11 Kesegaran 60 detik | ? | Sebagian | Tidak | Ya | ? | Ya (sesi: 60 detik; daftar orang: interval sinkron 5 menit) |
+| AS-12 Admin pertama dan mode uji | ? | ? | ? | ? | ? | Sebagian (mode `hub`: admin dari Central; aturan pengguna Google pertama masih ada di mode `google`) |
 | AS-13 Role bawaan lewat preset | ? | Ya | ? | ? | ? | Ya |
 | AS-15 Tes kesesuaian | Tidak | Tidak | Tidak | Sebagian | Tidak | Sebagian (dijalankan sekali dengan helper, belum jadi tes tetap) |
 
@@ -61,10 +61,10 @@ Mulai `mws-central-auth` 0.13.0 ada satu implementasi bersama (`definePermission
 - **AS-3 sesuai**: key berformat titik, `woko.use` ada dan ditegakkan di `authenticate`, `users`, `settings`, `work-list`, dan `facilities` punya pasangan `read`. Migrasi `0028` dan `0029` memperbarui data yang tersimpan.
 - **AS-4 sesuai**: manifest dengan deskripsi dan `requires` di `packages/domain/src/permissions.ts`, `npm run permissions:sync` dan `permissions:check` (memakai `fetch`, tanpa paket tambahan), serta layanan `permissions` Compose yang opsional (profil `central`). Sudah dijalankan terhadap kode Central yang sebenarnya pada database sementara: 28 permission diterima, format lama ditolak.
 - **AS-13 sesuai**: `role-presets.json` dibuat dari paket permission dan dijaga oleh tes. Sudah diterima `seed:application-roles` Central (5 role dibuat pada database sementara).
-- **AS-1 belum sesuai**: permission masih disimpan di tabel `user_permissions` milik Woko, dengan layar Akses Pengguna sendiri.
-- Belum ada login lewat Hub atau entitlement Central (AS-10, AS-11, AS-12); login Google dan mode uji lokal.
+- **Login Hub (`AUTH_MODE=hub`)**: sesi Hub memberi identitas (`users.central_person_id`, akun lama ditautkan sekali lewat email), entitlement Central memberi hak lewat `createAccessResolver` (aktif, organisasi, tanpa `woko.use` ditolak; 403 `NO_ACCESS`, 503 bila Central tidak terjangkau). `user_permissions` menjadi salinan yang disegarkan `entitlement-sync` tiap 5 menit, dan layar Akses Pengguna hanya-baca (tulis menjawab 409 `MANAGED_BY_CENTRAL`). Diuji dengan tes integrasi (13) dan sinkron terhadap kode Central yang sebenarnya pada database sementara: buat, ubah permission, cabut, pulihkan. Daftar entitlement di Central disimpan satu menit di memorinya. Belum dicoba dengan cookie Hub sungguhan di staging.
+- Mode `google` dan mode uji tetap ada sebagai jalan mundur; AS-1 dan AS-12 penuh setelah mode `hub` terbukti dan mode `google` dicabut.
 - `mws-access check` (dari `access.config.json`) berjalan di CI pull request Woko: manifest, preset, typo key, nama role, dan 74 route ditolak untuk orang tanpa permission. Hasil terakhir 0 masalah, 0 peringatan. Woko menjadi aplikasi acuan untuk bentuk berkas: `packages/domain/src/permissions.ts` (definisi), `apps/api/src/scripts/permissions-cli.ts` (tiga baris), `apps/api/src/scripts/access-probe.ts` (probe), `access.config.json`, `role-presets.json`.
-- Rencana ke Central: login Hub, `user_permissions` menjadi cache entitlement, hapus layar Akses Pengguna, pasang tes kesesuaian pustaka.
+- Sisa: coba di staging, cabut mode `google`, pasang tes kesesuaian pustaka.
 
 ### Central (panel admin)
 - Panel admin Central memakai `AdminRole` dan flag `can_*` sendiri. Itu bukan aplikasi penerima dan di luar cakupan v1.0. Bila nanti panel admin dipindah ke model ini, catat di sini.
