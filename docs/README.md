@@ -19,6 +19,7 @@ Dokumentasi ini melengkapi item MVP `Dokumentasi admin dan teknis`.
   Urutan menyambungkan aplikasi ke Hub dan Central, dengan contoh dan kesalahan umum.
 
 - [access-conformance.md](access-conformance.md)
+- [dev-ports.md](dev-ports.md)
   Status tiap aplikasi terhadap standar dan daftar periksa untuk PR.
 
 - [application-access-integration.md](application-access-integration.md)
