@@ -135,7 +135,7 @@ describe('Access role change summary', () => {
       )).toBe(true)
     })
 
-    await user.click(within(dialog).getByRole('radio', { name: /Beta Candidate/ }))
+    await user.click(within(dialog).getByRole('checkbox', { name: /Beta Candidate/ }))
     expect(within(dialog).getAllByText('Junior High')).toHaveLength(2)
     await user.click(within(dialog).getByRole('button', { name: 'Promote' }))
 
