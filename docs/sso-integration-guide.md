@@ -66,7 +66,7 @@ Jalankan `mws-access doctor` (dari kit `mws-central-auth` 0.14, memakai `access.
 
 ## Menghapus lalu menambah aplikasi lagi
 
-Organization ID milik Application ID, bukan milik "aplikasi sedang ada". Saat aplikasi dihapus, Central mengingat ID-nya, dan menambah aplikasi dengan Application ID yang sama mengembalikan ID yang sama, jadi `.env` dan pemetaan di database aplikasi tetap cocok. Kotak "Forget its Organization ID too" di dialog hapus membuang ingatan itu untuk mulai dari nol; setelah itu aplikasi harus dipetakan ulang ke ID baru. Aplikasi yang menyimpan pemetaan menolak start bila `CENTRAL_ORGANIZATION_ID` berubah, dan itu disengaja: jangan dilonggarkan.
+Organization ID milik Application ID, bukan milik "aplikasi sedang ada". Saat aplikasi dihapus, Central mengingat ID-nya, dan menambah aplikasi dengan Application ID yang sama mengembalikan ID yang sama, jadi `.env` dan pemetaan di database aplikasi tetap cocok. Kotak "Forget its Organization ID too" di dialog hapus membuang ingatan itu untuk mulai dari nol; setelah itu aplikasi harus dipetakan ulang ke ID baru. Aplikasi tidak pernah menolak start karena Organization ID (AS-10): ia hanya membandingkan `CENTRAL_ORGANIZATION_ID` dengan `organization_id` pada entitlement, dan pemetaan yang disimpan di database mengikuti `.env`. Bila nilainya berbeda, `mws-access doctor` menyebutnya.
 
 ## Kesalahan yang sering terjadi
 
