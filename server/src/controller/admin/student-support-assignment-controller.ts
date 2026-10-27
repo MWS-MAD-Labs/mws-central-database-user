@@ -12,9 +12,21 @@ export class StudentSupportAssignmentController {
     const size = c.req.query("size") ? Number(c.req.query("size")) : 10;
     if (Number.isNaN(page)) throw new ResponseError(400, "page must be a valid number");
     if (Number.isNaN(size)) throw new ResponseError(400, "size must be a valid number");
+    const slotsQuery = c.req.query("slots_needed");
+    const slotsNeeded = slotsQuery ? Number(slotsQuery) : undefined;
+    if (slotsNeeded !== undefined && Number.isNaN(slotsNeeded)) {
+      throw new ResponseError(400, "slots_needed must be a valid number");
+    }
     const response = await StudentSupportAssignmentService.searchCandidates(
       c.var.admin,
-      { page, size, search: c.req.query("search"), unit_id: c.req.query("unit_id") },
+      {
+        page,
+        size,
+        search: c.req.query("search"),
+        unit_id: c.req.query("unit_id"),
+        exclude_full: c.req.query("exclude_full") === "true" ? true : undefined,
+        slots_needed: slotsNeeded,
+      },
     );
     return c.json(response);
   }

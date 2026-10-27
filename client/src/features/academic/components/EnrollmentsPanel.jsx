@@ -29,7 +29,6 @@ import { HeaderCell } from "../../master-data/components/HeaderCell.jsx";
 import { LoadingRows } from "../../master-data/components/LoadingRows.jsx";
 import { PanelFrame } from "../../master-data/components/PanelFrame.jsx";
 import { defaultPaging } from "../../master-data/utils/params.js";
-import { studentSensitiveApi } from "../../students/api/studentSensitiveApi.js";
 import {
   academicYearsApi,
   classesApi,
@@ -38,6 +37,10 @@ import {
   gradesApi,
 } from "../api/academicApi.js";
 import { workforceTargetPayload } from "../utils/selectOptions.js";
+import {
+  assignSupportTeacher,
+  supportFailureMessage,
+} from "../utils/assignSupportTeacher.js";
 import {
   academicYearSelectOptions,
   classSelectOptions,
@@ -100,20 +103,22 @@ export function EnrollmentsPanel() {
           .filter((item) => item.status === "SUCCESS")
           .map((item) => item.id);
 
-        await Promise.allSettled(
-          successfulStudentIds.map((id) =>
-            studentSensitiveApi.createSupportAssignment(id, {
-              ...supportTarget,
-              role: "SPECIAL_ED",
-            }),
-          ),
+        const support = await assignSupportTeacher(
+          supportTarget,
+          successfulStudentIds,
         );
+        return {
+          ...result,
+          support_failed: support.failed,
+          support_reason: support.reason,
+        };
       }
 
       return result;
     },
     onSuccess: (data, { studentId, studentIds, students }) => {
       invalidateEnrollmentData(queryClient);
+      queryClient.invalidateQueries({ queryKey: ["support-assignment-candidates"] });
       const ids = studentIds || [studentId];
       ids.filter(Boolean).forEach((id) => {
         queryClient.invalidateQueries({
@@ -123,6 +128,9 @@ export function EnrollmentsPanel() {
       if (data?.success_count !== undefined) {
         if (data.success_count > 0) {
           showSuccessToast(`${data.success_count} student(s) enrolled.`);
+        }
+        if (data.support_failed > 0) {
+          showErrorToast(supportFailureMessage(data.support_failed, data.support_reason));
         }
         if (data.failed_count > 0) {
           setEnrollFailureResult({

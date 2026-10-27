@@ -522,6 +522,10 @@ export function EnrollmentDialog({
 
   function submitCreate(studentIdsOverride) {
     const studentIds = studentIdsOverride ?? selectedStudentIds;
+    if (supportRoomShort(studentIds.length)) {
+      showErrorToast(supportRoomMessage());
+      return;
+    }
     onSubmit({
       studentId: studentIds[0],
       studentIds,
@@ -541,6 +545,18 @@ export function EnrollmentDialog({
         ? undefined
         : values.special_education_employee_id || undefined,
     });
+  }
+
+  // The teacher was chosen with some room left. If more students are ticked afterwards, say so before sending.
+  function supportRoomShort(studentCount) {
+    if (values.is_legacy || !selectedSupportCandidate) return false;
+    const room = selectedSupportCandidate.remaining_slots;
+    return typeof room === "number" && studentCount > room;
+  }
+
+  function supportRoomMessage() {
+    const room = selectedSupportCandidate?.remaining_slots ?? 0;
+    return `${candidateName(selectedSupportCandidate)} has room for ${room} more student${room === 1 ? "" : "s"}. Untick some students or choose another teacher.`;
   }
 
   async function handleManualStep(entry, step, klass) {
@@ -1122,7 +1138,8 @@ export function EnrollmentDialog({
           <Field
             label="Special Education Teacher"
             className="md:col-span-2"
-            hint="Student count shown is each teacher's current active caseload."
+            error={supportRoomShort(selectedStudentIds.length) ? supportRoomMessage() : undefined}
+            hint="Student count shown is each teacher's current active caseload. Teachers with no room for the students ticked are not listed."
           >
             <div className="relative">
               <button
@@ -1376,6 +1393,7 @@ export function EnrollmentDialog({
         title="Choose Special Education Teacher"
         mode="select"
         unitId={selectedClass?.grade?.unit_id}
+        slotsNeeded={Math.max(selectedStudentIds.length, 1)}
         onClose={() => setSupportPickerOpen(false)}
         onSubmit={(payload, candidate) => {
           const value = payload.intern_id

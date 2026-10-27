@@ -49,6 +49,10 @@ import {
 } from "../../../lib/toast.js";
 import { workforceTargetPayload } from "../utils/selectOptions.js";
 import {
+  assignSupportTeacher,
+  supportFailureMessage,
+} from "../utils/assignSupportTeacher.js";
+import {
   canManageEnrollments,
   canManageTeacherAssignments,
   canViewStudents,
@@ -384,14 +388,15 @@ export function ClassDetailPage() {
           .filter((item) => item.status === "SUCCESS")
           .map((item) => item.id);
 
-        await Promise.allSettled(
-          successfulStudentIds.map((id) =>
-            studentSensitiveApi.createSupportAssignment(id, {
-              ...supportTarget,
-              role: "SPECIAL_ED",
-            }),
-          ),
+        const support = await assignSupportTeacher(
+          supportTarget,
+          successfulStudentIds,
         );
+        return {
+          ...result,
+          support_failed: support.failed,
+          support_reason: support.reason,
+        };
       }
 
       return result;
@@ -405,9 +410,13 @@ export function ClassDetailPage() {
         queryKey: ["support-assignments", "active-student-ids"],
       });
       queryClient.invalidateQueries({ queryKey: ["students"] });
+      queryClient.invalidateQueries({ queryKey: ["support-assignment-candidates"] });
       if (data?.success_count !== undefined) {
         if (data.success_count > 0) {
           showSuccessToast(`${data.success_count} student(s) enrolled.`);
+        }
+        if (data.support_failed > 0) {
+          showErrorToast(supportFailureMessage(data.support_failed, data.support_reason));
         }
         if (data.failed_count > 0) {
           setEnrollFailureResult({
