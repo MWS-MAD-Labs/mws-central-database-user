@@ -339,6 +339,7 @@ describe("application onboarding", () => {
       expect(data.connection.token).toMatch(/^[\w-]+\.[\w-]+$/);
       expect(data.connection.env.map((item: { key: string }) => item.key)).toEqual([
         "HUB_SSO_APP_ID",
+        "APP_BASE_URL",
         "CENTRAL_API_BASE_URL",
         "CENTRAL_API_TOKEN",
         "CENTRAL_ORGANIZATION_ID",
@@ -1381,7 +1382,7 @@ describe("application onboarding", () => {
         const body = (await made.json()).data;
         expect(body.connection.hub_lines_missing).toBe(false);
         const keys = body.connection.env.map((item: { key: string }) => item.key);
-        expect(keys).toEqual(["HUB_SSO_APP_ID", "CENTRAL_API_BASE_URL", "CENTRAL_API_TOKEN", "CENTRAL_ORGANIZATION_ID", "HUB_BASE_URL", "HUB_ACCESS_COOKIE_NAME"]);
+        expect(keys).toEqual(["HUB_SSO_APP_ID", "APP_BASE_URL", "CENTRAL_API_BASE_URL", "CENTRAL_API_TOKEN", "CENTRAL_ORGANIZATION_ID", "HUB_BASE_URL", "HUB_ACCESS_COOKIE_NAME"]);
         expect(keys).not.toContain("HUB_INTERNAL_SECRET");
         expect(keys).not.toContain("HUB_SSO_JWKS_URL");
 

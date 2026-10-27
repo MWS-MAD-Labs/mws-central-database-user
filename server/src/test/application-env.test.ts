@@ -62,6 +62,15 @@ describe("application env", () => {
     expect(quoteEnv('a"b\\c')).toBe('"a\\"b\\\\c"');
   });
 
+  it("writes the address people open the application at as APP_BASE_URL, without a path", () => {
+    const withUrl = buildEnvItems({ ...facts, applicationId: "woko", isHub: false, appUrl: "https://woko.example.org/sso/enter/" });
+    expect(withUrl.map((item) => item.line)).toContain('APP_BASE_URL="https://woko.example.org"');
+    for (const appUrl of [null, undefined, "not an address"]) {
+      expect(buildEnvItems({ ...facts, applicationId: "woko", isHub: false, appUrl }).map((item) => item.key)).not.toContain("APP_BASE_URL");
+    }
+    expect(buildEnvItems({ ...facts, applicationId: "hub", isHub: true, appUrl: "https://hub.example.org" }).map((item) => item.key)).not.toContain("APP_BASE_URL");
+  });
+
   it("gives an application the names the applications read, all in quotes", () => {
     const items = buildEnvItems({ ...facts, applicationId: "exima", isHub: false });
     expect(envText(items)).toBe(
