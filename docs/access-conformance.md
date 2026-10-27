@@ -6,7 +6,7 @@ Tanggal pemeriksaan: 2026-10-27. Isi tabel diambil dari pembacaan kode dan dokum
 
 Lambang: **Ya** sesuai, **Sebagian** ada yang belum, **Tidak** belum, **?** belum diperiksa, **-** tidak berlaku.
 
-Mulai `mws-central-auth` 0.13.0 ada satu implementasi bersama (`definePermissions`, `runPermissionsCli`, `createAccessResolver`, `mws-access check`, dan sejak 0.14.0 `mws-access doctor`). Aplikasi yang memakainya tidak perlu salinan sendiri; kolom "Kit" di bawah mencatat siapa yang sudah.
+Mulai `mws-central-auth` 0.13.0 ada satu implementasi bersama (`definePermissions`, `runPermissionsCli`, `createAccessResolver`, `mws-access check`, dan sejak 0.14.0 `mws-access doctor`; versi yang dipakai app sekarang 0.14.1). Aplikasi yang memakainya tidak perlu salinan sendiri; kolom "Kit" di bawah mencatat siapa yang sudah.
 
 | Aplikasi | Memakai access kit |
 | --- | --- |
