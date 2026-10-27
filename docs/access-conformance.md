@@ -11,7 +11,7 @@ Mulai `mws-central-auth` 0.13.0 ada satu implementasi bersama (`definePermission
 | Aplikasi | Memakai access kit |
 | --- | --- |
 | Hub, Learnspace, Daily, Exima, MTSS v2 | Belum (punya salinan sendiri untuk sinkron dan entitlement) |
-| Woko | Belum; `permissions-sync.ts` dan `permissions-cli.ts` Woko menjadi dasar `runPermissionsCli` dan akan diganti pustaka |
+| Woko | Ya, sebagian: `definePermissions`, `runPermissionsCli`, dan `mws-access check` (di CI). Belum memakai `createAccessResolver` karena belum login lewat Hub |
 
 ## Ringkasan
 
@@ -63,7 +63,7 @@ Mulai `mws-central-auth` 0.13.0 ada satu implementasi bersama (`definePermission
 - **AS-13 sesuai**: `role-presets.json` dibuat dari paket permission dan dijaga oleh tes. Sudah diterima `seed:application-roles` Central (5 role dibuat pada database sementara).
 - **AS-1 belum sesuai**: permission masih disimpan di tabel `user_permissions` milik Woko, dengan layar Akses Pengguna sendiri.
 - Belum ada login lewat Hub atau entitlement Central (AS-10, AS-11, AS-12); login Google dan mode uji lokal.
-- Helper kesesuaian pustaka dijalankan sekali (74 route): 0 masalah, 1 peringatan (satu permission hanya dipakai di kode web). Belum dipasang sebagai tes tetap karena menunggu rilis 0.12.0 pustaka.
+- `mws-access check` (dari `access.config.json`) berjalan di CI pull request Woko: manifest, preset, typo key, nama role, dan 74 route ditolak untuk orang tanpa permission. Hasil terakhir 0 masalah, 0 peringatan. Woko menjadi aplikasi acuan untuk bentuk berkas: `packages/domain/src/permissions.ts` (definisi), `apps/api/src/scripts/permissions-cli.ts` (tiga baris), `apps/api/src/scripts/access-probe.ts` (probe), `access.config.json`, `role-presets.json`.
 - Rencana ke Central: login Hub, `user_permissions` menjadi cache entitlement, hapus layar Akses Pengguna, pasang tes kesesuaian pustaka.
 
 ### Central (panel admin)
