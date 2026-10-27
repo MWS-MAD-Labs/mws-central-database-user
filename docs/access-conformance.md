@@ -12,15 +12,15 @@ Lambang: **Ya** sesuai, **Sebagian** ada yang belum, **Tidak** belum, **?** belu
 | --- | --- | --- | --- | --- | --- | --- |
 | AS-1 Kepemilikan (tanpa role/akses lokal) | Ya | Sebagian | ? | Sebagian | ? | Tidak |
 | AS-2 Hanya permission | Ya | Sebagian | ? | Tidak | ? | Ya |
-| AS-3 Format key | Ya | Tidak | ? | Ya | ? | Sebagian |
-| AS-4 Manifest dan sinkron | Ya | Ya | Ya | Ya | ? | Tidak |
+| AS-3 Format key | Ya | Tidak | ? | Ya | ? | Ya |
+| AS-4 Manifest dan sinkron | Ya | Ya | Ya | Ya | ? | Ya |
 | AS-5 Role hidup di Central | Ya | Ya | ? | Sebagian | ? | Tidak |
 | AS-6 Gerbang tiap route | ? | ? | ? | ? | ? | Ya |
 | AS-8 Scope data | - | Ya | ? | ? | ? | Sebagian |
 | AS-10 Menerima entitlement | Ya | Ya | Ya | Ya | ? | Tidak |
 | AS-11 Kesegaran 60 detik | ? | Sebagian | Tidak | Ya | ? | Tidak |
 | AS-12 Admin pertama dan mode uji | ? | ? | ? | ? | ? | Tidak |
-| AS-13 Role bawaan lewat preset | ? | Ya | ? | ? | ? | Tidak |
+| AS-13 Role bawaan lewat preset | ? | Ya | ? | ? | ? | Ya |
 | AS-15 Tes kesesuaian | Tidak | Tidak | Tidak | Sebagian | Tidak | Sebagian (dijalankan sekali dengan helper, belum jadi tes tetap) |
 
 ## Catatan per aplikasi
@@ -50,13 +50,14 @@ Lambang: **Ya** sesuai, **Sebagian** ada yang belum, **Tidak** belum, **?** belu
 - `docs/architecture.md` menyebut SSO, sesi, dan permission dari Central, tetapi belum ada kode permission yang saya temukan. Belum diperiksa lebih jauh.
 
 ### Woko
-- Tidak ada nama role di kode; setiap route digerbang oleh permission (`requirePermission`, `requireAnyPermission` di `apps/api/src/auth.ts`).
-- **AS-1 tidak sesuai**: permission disimpan di tabel `user_permissions` milik Woko, dengan layar Akses Pengguna sendiri.
-- **AS-3 sebagian**: key sudah berformat titik (`work-order.create`, migrasi `0028` mengganti nama yang tersimpan). Belum ada `woko.use`, dan permission `*.manage` belum punya pasangan `*.read` (helper `checkManifest` menandainya).
-- **AS-4 tidak ada**: belum ada manifest yang dikirim ke Central.
-- Belum ada login lewat Hub atau entitlement Central; login Google dan mode uji lokal.
-- Hasil menjalankan helper `mws-central-auth/conformance` (2026-10-27, 74 route): semua route di luar daftar terbuka menolak orang tanpa permission (AS-6 lulus), setelah satu perbaikan: hook `/work-orders/:id` menjawab 404 sebelum gerbang, sehingga orang tanpa hak bisa menebak apakah sebuah work order ada. Temuan format key (22 key berformat titik dua dan tidak ada `.use`) sudah ditangani sebagian: key diganti ke format titik; `.use` dan pasangan `.read` menyusul. Helper belum dipasang sebagai tes tetap karena Woko menunggu rilis 0.12.0 pustaka.
-- Rencana ke Central: `permissions:sync`, `role-presets.json` dari bundel `permissionBundles`, login Hub, `user_permissions` menjadi cache entitlement, hapus layar Akses Pengguna.
+- Tidak ada nama role di kode; setiap route digerbang oleh permission (`requirePermission`, `requireAnyPermission` di `apps/api/src/auth.ts`). Kemungkinan akses tanpa gerbang diuji otomatis (tes integrasi dan helper `mws-central-auth/conformance`).
+- **AS-3 sesuai**: key berformat titik, `woko.use` ada dan ditegakkan di `authenticate`, `users`, `settings`, `work-list`, dan `facilities` punya pasangan `read`. Migrasi `0028` dan `0029` memperbarui data yang tersimpan.
+- **AS-4 sesuai**: manifest dengan deskripsi dan `requires` di `packages/domain/src/permissions.ts`, `npm run permissions:sync` dan `permissions:check` (memakai `fetch`, tanpa paket tambahan), serta layanan `permissions` Compose yang opsional (profil `central`). Sudah dijalankan terhadap kode Central yang sebenarnya pada database sementara: 28 permission diterima, format lama ditolak.
+- **AS-13 sesuai**: `role-presets.json` dibuat dari paket permission dan dijaga oleh tes. Sudah diterima `seed:application-roles` Central (5 role dibuat pada database sementara).
+- **AS-1 belum sesuai**: permission masih disimpan di tabel `user_permissions` milik Woko, dengan layar Akses Pengguna sendiri.
+- Belum ada login lewat Hub atau entitlement Central (AS-10, AS-11, AS-12); login Google dan mode uji lokal.
+- Helper kesesuaian pustaka dijalankan sekali (74 route): 0 masalah, 1 peringatan (satu permission hanya dipakai di kode web). Belum dipasang sebagai tes tetap karena menunggu rilis 0.12.0 pustaka.
+- Rencana ke Central: login Hub, `user_permissions` menjadi cache entitlement, hapus layar Akses Pengguna, pasang tes kesesuaian pustaka.
 
 ### Central (panel admin)
 - Panel admin Central memakai `AdminRole` dan flag `can_*` sendiri. Itu bukan aplikasi penerima dan di luar cakupan v1.0. Bila nanti panel admin dipindah ke model ini, catat di sini.
