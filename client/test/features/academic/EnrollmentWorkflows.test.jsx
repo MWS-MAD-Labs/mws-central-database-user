@@ -173,7 +173,7 @@ describe("EnrollmentDialog", () => {
 
     await user.click(screen.getByRole("button", { name: "Choose SE Teacher" }));
     await user.click(
-      await screen.findByRole("radio", { name: /Flat SE Teacher/ }),
+      await screen.findByRole("checkbox", { name: /Flat SE Teacher/ }),
     );
     const picker = screen.getByRole("dialog", {
       name: "Choose Special Education Teacher",
@@ -191,6 +191,76 @@ describe("EnrollmentDialog", () => {
     expect(
       screen.queryByRole("button", { name: "Clear SE Teacher" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("asks only for teachers with room for the students ticked, and holds the form back when more are ticked later", async () => {
+    const candidates = ["Ana", "Bela"].map((name, index) => ({
+      ...studentCandidate,
+      id: `student-${index + 20}`,
+      identity: { full_name: `${name} Student` },
+    }));
+    const asked = [];
+    globalThis.fetch = createFetchRouter([
+      {
+        path: /^\/api\/admin\/classes\/[^/]+\/enrollment-candidates(?:\?.*)?$/,
+        response: () => jsonResponse({ data: candidates, paging: { ...paging, total_item: 2 } }),
+      },
+      {
+        path: /^\/api\/admin\/support-assignments\/candidates(?:\?.*)?$/,
+        response: ({ url }) => {
+          asked.push(url);
+          return jsonResponse({
+            data: [
+              {
+                id: "employee-7",
+                type: "EMPLOYEE",
+                employee_id: "EMP-7",
+                full_name: "One Slot Teacher",
+                email: "slot@millennia21.id",
+                unit_id: "u1",
+                job_position: "Special Education Teacher",
+                active_student_count: 2,
+                remaining_slots: 1,
+              },
+            ],
+            paging,
+          });
+        },
+      },
+    ]);
+    let submitted = null;
+    const { user } = renderAcademic(
+      <EnrollmentDialog
+        dialog={{ mode: "create" }}
+        options={options}
+        isSubmitting={false}
+        onClose={() => {}}
+        onSubmit={(value) => {
+          submitted = value;
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Select Class" }));
+    await user.click(screen.getByRole("option", { name: /Grade 1A/ }));
+    await screen.findByText("Ana Student");
+    await user.click(screen.getByText("Ana Student"));
+
+    // One student is ticked: the list is asked for teachers with one free place, and full teachers are left out.
+    await user.click(screen.getByRole("button", { name: "Choose SE Teacher" }));
+    await user.click(await screen.findByRole("checkbox", { name: /One Slot Teacher/ }));
+    const picker = screen.getByRole("dialog", { name: "Choose Special Education Teacher" });
+    await user.click(within(picker).getByRole("button", { name: "Save" }));
+    expect(asked.at(-1)).toContain("exclude_full=true");
+    expect(asked.at(-1)).toContain("slots_needed=1");
+
+    // A second student is ticked after the teacher was chosen: the teacher only has room for one.
+    await user.click(screen.getByText("Bela Student"));
+    expect(await screen.findByText(/One Slot Teacher has room for 1 more student\./)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    const confirm = await screen.findByRole("dialog", { name: /Enroll 2 students/ });
+    await user.click(within(confirm).getByRole("button", { name: "Enroll" }));
+    expect(submitted).toBeNull();
   });
 
   it("stops selecting students once the class has no free seats left", async () => {

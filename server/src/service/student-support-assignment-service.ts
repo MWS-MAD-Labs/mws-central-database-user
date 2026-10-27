@@ -258,6 +258,7 @@ export class StudentSupportAssignmentService {
       ? [searchRequest.unit_id]
       : unitScope;
     const search = searchRequest.search?.trim();
+    const { max_students } = await SupportCaseloadRuleService.get();
     const [employees, interns, groups] = await Promise.all([
       prismaClient.employee.findMany({
         where: {
@@ -325,6 +326,10 @@ export class StudentSupportAssignmentService {
         unit_id: employee.unit_id,
         job_position: employee.job_position.name,
         active_student_count: counts.get(`EMPLOYEE:${employee.id}`) ?? 0,
+        remaining_slots: Math.max(
+          max_students - (counts.get(`EMPLOYEE:${employee.id}`) ?? 0),
+          0,
+        ),
       })),
       ...interns.map((intern) => ({
         id: intern.id,
@@ -335,8 +340,19 @@ export class StudentSupportAssignmentService {
         unit_id: intern.unit_id,
         job_position: intern.job_position.name,
         active_student_count: counts.get(`INTERN:${intern.id}`) ?? 0,
+        remaining_slots: Math.max(
+          max_students - (counts.get(`INTERN:${intern.id}`) ?? 0),
+          0,
+        ),
       })),
-    ].sort((a, b) =>
+    ]
+      // Before paging, so the page count and total are the ones of the list the person sees.
+      .filter(
+        (candidate) =>
+          !(searchRequest.exclude_full || searchRequest.slots_needed) ||
+          candidate.remaining_slots >= (searchRequest.slots_needed ?? 1),
+      )
+      .sort((a, b) =>
       a.full_name.localeCompare(b.full_name, undefined, { sensitivity: "base" }),
     );
     const start = (searchRequest.page - 1) * searchRequest.size;

@@ -78,12 +78,16 @@ export type SearchSupportAssignmentCandidatesRequest = {
   size: number;
   search?: string;
   unit_id?: string;
+  exclude_full?: boolean;
+  slots_needed?: number;
 };
 
 export type SupportAssignmentCandidateResponse = SupportWorkforceMemberResponse & {
   unit_id: string;
   job_position: string;
   active_student_count: number;
+  // How many more students the caseload limit lets this teacher take.
+  remaining_slots: number;
 };
 
 export type StudentSupportAssignmentWithEmployee = StudentSupportAssignment & {

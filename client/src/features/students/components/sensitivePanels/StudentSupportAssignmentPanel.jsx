@@ -259,7 +259,8 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
   )
 }
 
-export function SupportAssignmentDialog({ title, studentName, mode = 'create', unitId, unitName, excludeWorkforceMemberIds = [], isSubmitting, onClose, onSubmit }) {
+// slotsNeeded: how many students are being given this teacher at once. A teacher without that much room is not offered.
+export function SupportAssignmentDialog({ title, studentName, mode = 'create', unitId, unitName, slotsNeeded = 1, excludeWorkforceMemberIds = [], isSubmitting, onClose, onSubmit }) {
   const confirm = useConfirm()
   const [values, setValues] = useState({ workforce_target: '', notes: '' })
   const [search, setSearch] = useState('')
@@ -267,14 +268,19 @@ export function SupportAssignmentDialog({ title, studentName, mode = 'create', u
   const [pageSize, setPageSize] = useState(10)
   const [selectedCandidate, setSelectedCandidate] = useState(null)
   const candidatesQuery = useQuery({
-    queryKey: ['support-assignment-candidates', { page, pageSize, search, unitId, unitName }],
+    queryKey: ['support-assignment-candidates', { page, pageSize, search, unitId, unitName, slotsNeeded }],
     queryFn: () => studentSensitiveApi.listSupportAssignmentCandidates({
       page,
       size: pageSize,
       search: search || undefined,
       unit_id: unitId || undefined,
       unit_name: unitName || undefined,
+      exclude_full: true,
+      slots_needed: slotsNeeded,
     }),
+    // The counts change whenever anyone is assigned, so they are asked for again each time the list is opened.
+    staleTime: 0,
+    refetchOnMount: 'always',
   })
   const employees = (candidatesQuery.data?.data || []).filter(
     (candidate) => !excludeWorkforceMemberIds.includes(candidate.id),

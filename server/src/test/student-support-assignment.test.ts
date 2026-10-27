@@ -1463,6 +1463,52 @@ describe("Special Education caseload limit", () => {
     expect(audit?.new_values).toMatchObject({ max_students: 3 });
   });
 
+  it("lists how many slots a teacher has left, and can hide teachers who are full or lack room", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const full = await createTeachingEmployee("test_cap_full@millennia21.id");
+    const one = await createTeachingEmployee("test_cap_one@millennia21.id");
+    await createTeachingEmployee("test_cap_empty@millennia21.id");
+    const [first, second, third] = await students(3);
+    expect((await assign(first, full.id, accessToken)).status).toBe(200);
+    expect((await assign(second, full.id, accessToken)).status).toBe(200);
+    expect((await assign(third, one.id, accessToken)).status).toBe(200);
+
+    const list = async (query: string) => {
+      const response = await TestRequest.get(
+        `/api/admin/support-assignments/candidates?search=test_cap_&size=10${query}`,
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    const slots = (body: { data: { email: string; remaining_slots: number }[] }) =>
+      Object.fromEntries(body.data.map((row) => [row.email, row.remaining_slots]));
+
+    // The limit is 2 by default. Without a filter everyone is there, with the room that is left.
+    expect(slots(await list(""))).toEqual({
+      "test_cap_full@millennia21.id": 0,
+      "test_cap_one@millennia21.id": 1,
+      "test_cap_empty@millennia21.id": 2,
+    });
+    // A full teacher is not offered.
+    const open = await list("&exclude_full=true");
+    expect(slots(open)).toEqual({ "test_cap_one@millennia21.id": 1, "test_cap_empty@millennia21.id": 2 });
+    expect(open.paging.total_item).toBe(2);
+    // Enrolling two students needs a teacher with two free places.
+    const needsTwo = await list("&slots_needed=2");
+    expect(slots(needsTwo)).toEqual({ "test_cap_empty@millennia21.id": 2 });
+    expect(needsTwo.paging.total_item).toBe(1);
+    // The total and the page count belong to the list left after the filter.
+    const paged = await TestRequest.get(
+      "/api/admin/support-assignments/candidates?search=test_cap_&size=1&page=2&exclude_full=true",
+      accessToken,
+    );
+    const pagedBody = await paged.json();
+    expect(pagedBody.data).toHaveLength(1);
+    expect(pagedBody.paging).toMatchObject({ total_item: 2, total_page: 2, current_page: 2 });
+    expect((await TestRequest.get("/api/admin/support-assignments/candidates?slots_needed=abc", accessToken)).status).toBe(400);
+  });
+
   it("does not drop assignments when the limit is lowered, but refuses new ones and flags the teacher", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const teacher = await createTeachingEmployee("test_limit_lowered@millennia21.id");

@@ -58,5 +58,8 @@ export class StudentSupportAssignmentValidation {
     size: z.number().min(1).positive().max(100).default(10),
     search: z.string().optional(),
     unit_id: z.string().optional(),
+    // Only teachers who can still take `slots_needed` more students (the limit is the caseload rule).
+    exclude_full: z.boolean().optional(),
+    slots_needed: z.number().int().min(1).max(500).optional(),
   });
 }
