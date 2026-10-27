@@ -280,8 +280,9 @@ describe('MasterData', () => {
   })
 
   describe('Academic tab', () => {
-    const limitRoute = { path: '/api/admin/support-assignments/caseload-limit', method: 'GET', response: jsonResponse({ data: { max_students: 2 } }) }
-    const pcRoute = { path: /^\/api\/admin\/pc-activities-master\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'pc-1', name: 'Robotics' }])) }
+    // A Response body can be read once, so each request gets a fresh one.
+    const limitRoute = { path: '/api/admin/support-assignments/caseload-limit', method: 'GET', response: () => jsonResponse({ data: { max_students: 2 } }) }
+    const pcRoute = { path: /^\/api\/admin\/pc-activities-master\?.*$/, response: () => jsonResponse(listPayload([{ ...unit, id: 'pc-1', name: 'Robotics' }])) }
 
     it('opens PC Activities first and moves to Special Ed Caseload', async () => {
       const { user } = renderPage({ route: '/master-data?tab=academic', routes: [pcRoute, limitRoute] })
