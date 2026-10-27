@@ -19,8 +19,10 @@ Dokumentasi ini melengkapi item MVP `Dokumentasi admin dan teknis`.
   Urutan menyambungkan aplikasi ke Hub dan Central, dengan contoh dan kesalahan umum.
 
 - [access-conformance.md](access-conformance.md)
-- [dev-ports.md](dev-ports.md)
   Status tiap aplikasi terhadap standar dan daftar periksa untuk PR.
+
+- [dev-ports.md](dev-ports.md)
+  Port dev tiap aplikasi dalam satu tabel, supaya semua bisa jalan bersamaan tanpa port yang berpindah.
 
 - [application-access-integration.md](application-access-integration.md)
   Referensi API dan operasi Application Access (lookup, token, group, sinkron permission).
