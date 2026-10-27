@@ -15,7 +15,7 @@ Goal: clicking a card, for example Daily Check-in, feels like the app lives insi
 | --- | --- | --- | --- |
 | Frame headers | `helmet()` is global, so every page sends `X-Frame-Options: SAMEORIGIN`. Only `/logout-silent` removes it and allows the Hub. | No frame header is set in `next.config.ts` or `proxy.ts`, so the browser allows framing. Only `/auth/logout-silent` names the Hub in `frame-ancestors`. | Not checked (MTSS, Woko, the plain links). Plain links to outside tools such as Google Apps Script usually refuse framing. |
 | Session cookie | `SameSite=Lax` | `SameSite=Lax` | Unknown |
-| Domain | Separate host | `exima.mws.web.id`, the Hub is `app.mws.web.id`, Central is `db.mws.web.id` | Varies |
+| Domain | Separate host | `exima.example.org`, the Hub is `hub.example.org`, Central is `central.example.org` | Varies |
 
 Two things decide whether an iframe can work:
 

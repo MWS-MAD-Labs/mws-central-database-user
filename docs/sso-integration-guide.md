@@ -56,6 +56,10 @@ Aplikasi tidak pernah menentukan siapa boleh masuk atau melakukan apa dengan dat
 
 Aplikasi boleh punya mode login uji untuk pengembangan lokal (contoh Woko `AUTH_MODE=test`), dengan syarat ditolak saat `NODE_ENV=production`, dan pengguna ujinya membawa daftar permission dari fixture. Jangan menambah tabel role untuk ini.
 
+## Dokumen di repo publik
+
+Semua repo MWS publik. Contoh alamat, nama stack, jaringan gateway, host Komodo, dan URL webhook di dokumen harus berupa placeholder (`hub.example.org`, `central.example.org`, `<staging-stack>`, `<gateway-network-production>`, `<komodo-host>`). Nilai sebenarnya hanya ada di Komodo dan di GitHub Environments.
+
 ## Kesalahan yang sering terjadi
 
 - Memeriksa `role === 'ADMIN'` karena "cuma satu tempat". Selalu tambahkan permission-nya di manifest.
