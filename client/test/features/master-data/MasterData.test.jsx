@@ -279,12 +279,41 @@ describe('MasterData', () => {
     })
   })
 
+  describe('Academic tab', () => {
+    const limitRoute = { path: '/api/admin/support-assignments/caseload-limit', method: 'GET', response: jsonResponse({ data: { max_students: 2 } }) }
+    const pcRoute = { path: /^\/api\/admin\/pc-activities-master\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'pc-1', name: 'Robotics' }])) }
+
+    it('opens PC Activities first and moves to Special Ed Caseload', async () => {
+      const { user } = renderPage({ route: '/master-data?tab=academic', routes: [pcRoute, limitRoute] })
+      expect(await screen.findByText('Robotics')).toBeVisible()
+      expect(screen.getByRole('tab', { name: 'PC Activities' })).toHaveAttribute('aria-selected', 'true')
+      await user.click(screen.getByRole('tab', { name: 'Special Ed Caseload' }))
+      expect(await screen.findByText('Maximum Students Per Teacher')).toBeVisible()
+    })
+
+    it('keeps the old links working', async () => {
+      const first = renderPage({ route: '/master-data?tab=pc-activities', routes: [pcRoute, limitRoute] })
+      expect(await screen.findByText('Robotics')).toBeVisible()
+      expect(screen.getByRole('tab', { name: 'PC Activities' })).toHaveAttribute('aria-selected', 'true')
+      first.unmount()
+      renderPage({ route: '/master-data?tab=employment&section=special-ed-caseload', routes: [pcRoute, limitRoute] })
+      expect(await screen.findByText('Maximum Students Per Teacher')).toBeVisible()
+      expect(screen.getByRole('tab', { name: 'Special Ed Caseload' })).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('is no longer a sub tab of Employment', async () => {
+      renderPage({ route: '/master-data?tab=employment', routes: [{ path: /^\/api\/admin\/units\?.*$/, response: jsonResponse(listPayload([unit])) }] })
+      expect(await screen.findByText('Elementary')).toBeVisible()
+      expect(screen.queryByRole('tab', { name: 'Special Ed Caseload' })).not.toBeInTheDocument()
+    })
+  })
+
   describe('Special Ed Caseload tab', () => {
     const limitRoutes = (extra = []) => [
       { path: '/api/admin/support-assignments/caseload-limit', method: 'GET', response: jsonResponse({ data: { max_students: 2 } }) },
       ...extra,
     ]
-    const route = '/master-data?tab=employment&section=special-ed-caseload'
+    const route = '/master-data?tab=academic&section=special-ed-caseload'
 
     it('saves a new limit, and Save stays off until it changes or when it is out of range', async () => {
       const { user, fetchMock } = renderPage({

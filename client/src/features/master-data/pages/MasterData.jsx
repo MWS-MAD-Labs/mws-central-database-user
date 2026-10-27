@@ -160,7 +160,6 @@ const EMPLOYMENT_SECTIONS = [
   { id: 'job-levels', label: 'Job Levels' },
   { id: 'education', label: 'Education' },
   { id: 'children-allowance', label: 'Children Allowance' },
-  { id: 'special-ed-caseload', label: 'Special Ed Caseload' },
   { id: 'google-accounts', label: 'Google Accounts' },
 ]
 
@@ -176,8 +175,6 @@ function EmploymentTab({ section, onSection }) {
         </div>
       ) : active === 'children-allowance' ? (
         <ChildrenAllowanceCard />
-      ) : active === 'special-ed-caseload' ? (
-        <SupportCaseloadCard />
       ) : active === 'google-accounts' ? (
         <>
           <GoogleAccountsCard />
@@ -190,14 +187,39 @@ function EmploymentTab({ section, onSection }) {
   )
 }
 
+// Master data about students and classes: the PC Activities list and the Special Ed caseload limit.
+const ACADEMIC_SECTIONS = [
+  { id: 'pc-activities', label: 'PC Activities' },
+  { id: 'special-ed-caseload', label: 'Special Ed Caseload' },
+]
+
+function AcademicTab({ section, onSection }) {
+  const active = ACADEMIC_SECTIONS.some((item) => item.id === section) ? section : 'pc-activities'
+  return (
+    <div className="space-y-6">
+      <Tabs label="Academic master data" tabs={ACADEMIC_SECTIONS} active={active} onChange={onSection} />
+      {active === 'special-ed-caseload' ? (
+        <SupportCaseloadCard />
+      ) : (
+        <MasterResourcePanel resource={resources.find((resource) => resource.id === 'pc-activities')} />
+      )}
+    </div>
+  )
+}
+
 export default function MasterData() {
   const [searchParams, setSearchParams] = useSearchParams()
   const rawTab = searchParams.get('tab')
+  const rawSection = searchParams.get('section')
   // Employment is the first tab, so a bare /master-data opens it, and the old links (?tab=units and so on) open
-  // their sub tab.
-  const isPcActivities = rawTab === 'pc-activities'
-  const section = rawTab === 'employment' ? searchParams.get('section') : rawTab
+  // their sub tab. PC Activities and the Special Ed caseload moved to Academic; their old links still land there.
+  const isAcademic =
+    rawTab === 'academic' ||
+    rawTab === 'pc-activities' ||
+    (rawTab === 'employment' && rawSection === 'special-ed-caseload')
   const isScopesTab = rawTab === 'scopes'
+  const academicSection = rawTab === 'pc-activities' ? 'pc-activities' : rawSection
+  const employmentSection = rawTab === 'employment' ? rawSection : rawTab
 
   return (
     <div className="min-w-0">
@@ -206,10 +228,10 @@ export default function MasterData() {
         description="Manage reusable data lists that are stored in the database and referenced across employee and admin workflows."
       />
 
-      {!isPcActivities && !isScopesTab ? (
-        <EmploymentTab
-          section={section}
-          onSection={(next) => setSearchParams({ tab: 'employment', section: next })}
+      {isAcademic ? (
+        <AcademicTab
+          section={academicSection}
+          onSection={(next) => setSearchParams({ tab: 'academic', section: next })}
         />
       ) : isScopesTab ? (
         <div className="space-y-6">
@@ -217,7 +239,10 @@ export default function MasterData() {
           <MasterResourcePanel resource={categoryResource} />
         </div>
       ) : (
-        <MasterResourcePanel resource={resources.find((resource) => resource.id === 'pc-activities')} />
+        <EmploymentTab
+          section={employmentSection}
+          onSection={(next) => setSearchParams({ tab: 'employment', section: next })}
+        />
       )}
     </div>
   )

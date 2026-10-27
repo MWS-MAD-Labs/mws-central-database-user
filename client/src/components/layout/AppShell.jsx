@@ -8,6 +8,7 @@ import {
   DoorOpen,
   FileClock,
   GraduationCap,
+  School,
   Tags,
   KeyRound,
   Layers3,
@@ -15,7 +16,6 @@ import {
   LogOut,
   Menu,
   PanelLeftClose,
-  Puzzle,
   ShieldCheck,
   UserRound,
   UserRoundPlus,
@@ -139,9 +139,9 @@ export function AppShell() {
               icon: BriefcaseBusiness,
             },
             {
-              to: "/master-data?tab=pc-activities",
-              label: "PC Activities",
-              icon: Puzzle,
+              to: "/master-data?tab=academic",
+              label: "Academic",
+              icon: School,
             },
             {
               to: "/master-data?tab=scopes",
