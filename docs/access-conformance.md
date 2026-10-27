@@ -6,6 +6,13 @@ Tanggal pemeriksaan: 2026-10-27. Isi tabel diambil dari pembacaan kode dan dokum
 
 Lambang: **Ya** sesuai, **Sebagian** ada yang belum, **Tidak** belum, **?** belum diperiksa, **-** tidak berlaku.
 
+Mulai `mws-central-auth` 0.13.0 ada satu implementasi bersama (`definePermissions`, `runPermissionsCli`, `createAccessResolver`, `mws-access check`). Aplikasi yang memakainya tidak perlu salinan sendiri; kolom "Kit" di bawah mencatat siapa yang sudah.
+
+| Aplikasi | Memakai access kit |
+| --- | --- |
+| Hub, Learnspace, Daily, Exima, MTSS v2 | Belum (punya salinan sendiri untuk sinkron dan entitlement) |
+| Woko | Belum; `permissions-sync.ts` dan `permissions-cli.ts` Woko menjadi dasar `runPermissionsCli` dan akan diganti pustaka |
+
 ## Ringkasan
 
 | Aturan | Hub | Learnspace | Daily | Exima | MTSS v2 | Woko |

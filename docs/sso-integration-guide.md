@@ -27,7 +27,7 @@ Aplikasi tidak pernah menentukan siapa boleh masuk atau melakukan apa dengan dat
 ## Urutan kerja
 
 1. **Daftarkan aplikasi di Central** (Super Admin): Application Access, Add application. Catat Application ID dan Organization ID. Beri aplikasi API client dengan scope `application_entitlements:read` dan `application_permissions:write`. Langkah rinci: bagian "Cara menambah aplikasi baru" di `application-access-integration.md`.
-2. **Tulis manifest permission di kode** (AS-3, AS-4). Satu konstanta, dipakai ulang oleh route dan menu:
+2. **Tulis manifest permission di kode** (AS-3, AS-4) dengan `definePermissions` dari `mws-central-auth/access`. Satu konstanta, dipakai ulang oleh route dan menu, dan diperiksa saat dimuat:
    ```ts
    export const PERMISSIONS = [
      { key: 'inventory.use', description: 'Sign in to the app' },
@@ -35,11 +35,11 @@ Aplikasi tidak pernah menentukan siapa boleh masuk atau melakukan apa dengan dat
      { key: 'inventory.manage', description: 'Add, edit and delete items', requires: ['inventory.read'] },
    ] as const;
    ```
-3. **Sinkronkan saat deploy**: `permissions:sync` (gagal keras) dan `permissions:check` di CI. Jangan di dalam boot aplikasi.
+3. **Sinkronkan saat deploy**: skrip tiga baris yang memanggil `runPermissionsCli` (`mws-central-auth/access/cli`) memberi `permissions:sync` (gagal keras) dan `permissions:check` di CI. Jangan di dalam boot aplikasi.
 4. **Buat role di Central** (AS-5): lewat UI, atau tulis `role-presets.json` di repo aplikasi lalu jalankan `bun run seed:application-roles role-presets.json --as <email super admin>` dari repo Central.
 5. **Buat group akses** di Central: siapa mendapat role apa (audience, unit, posisi, level). Exception untuk perkecualian.
 6. **Verifikasi sesi**: baca cookie Hub dengan `createHubSession` dari `mws-central-auth` (`hub.fromCookieHeader(...)`). Hasilnya klaim `{ sub, email, source, tags, sid }`; `sub` adalah `person_id`. Lalu `hub.step(...)` menjawab `ok`, `restore` (arahkan ke `hub.restoreUrl`), atau `hub` (arahkan ke `hub.homeUrl`). Di browser, `keepFresh` menjaga token tetap segar.
-7. **Ambil entitlement** (AS-10): `lookupApplicationEntitlement({ person_id, application_id })`. 404 berarti ditolak. Periksa `is_active`, `organization_id`, dan bahwa semua permission ada di manifest.
+7. **Ambil entitlement** (AS-10) dengan `createAccessResolver` (`mws-central-auth/access`), bukan kode sendiri: `lookupApplicationEntitlement({ person_id, application_id })`. 404 berarti ditolak. Periksa `is_active`, `organization_id`, dan bahwa semua permission ada di manifest.
 8. **Bentuk pengguna sesi** dari entitlement dan pasang di request: `{ id, permissions, ... }`. Tidak ada `role` yang dipakai untuk keputusan.
 9. **Gerbang route** (AS-6). Contoh Fastify:
    ```ts
@@ -50,7 +50,7 @@ Aplikasi tidak pernah menentukan siapa boleh masuk atau melakukan apa dengan dat
 10. **Menu dan tombol** (AS-7): `can(user.permissions, 'inventory.manage')` dengan konstanta yang sama.
 11. **Scope data** (AS-8): permission `scope.*` menentukan filter kueri; baris yang terjangkau tetap di database aplikasi. Tanpa permission scope, default sempit.
 12. **Segarkan dan cabut** (AS-11): simpan cache entitlement paling lama 60 detik; jika `is_active` false atau 404, putus akses pada penyegaran berikutnya.
-13. **Tes kesesuaian** (AS-15): pakai helper `mws-central-auth/conformance` (manifest, preset, probe gerbang route, typo key, nama role), lalu perbarui [access-conformance.md](access-conformance.md).
+13. **Tes kesesuaian** (AS-15): tulis `access.config.json` dan jalankan `mws-access check` di CI (manifest, preset, probe gerbang route, typo key, nama role), lalu perbarui [access-conformance.md](access-conformance.md). Contoh lengkap ada di README `mws-central-auth`.
 
 ## Mode uji lokal (AS-12)
 
