@@ -43,7 +43,7 @@ Contoh benar: `work-order.create`, `work-order.read-all`, `iep.submit`, `facilit
 
 ### AS-4 Manifest dan sinkron
 - Manifest MUST ditulis sebagai satu konstanta di kode dan dipakai ulang untuk menjaga route, menu, dan API.
-- Aplikasi MUST menyediakan `permissions:sync` dan `permissions:check`, dijalankan di deploy (gagal keras) dan di CI.
+- Aplikasi MUST menyediakan `permissions:sync` dan `permissions:check`, dijalankan di deploy (gagal keras) dan di CI. Implementasinya satu untuk semua: `runPermissionsCli` dari `mws-central-auth/access/cli` (sejak 0.13.0). Manifest ditulis dengan `definePermissions` dari `mws-central-auth/access`, yang memeriksa dirinya saat dimuat.
 - Sinkron MUST NOT dijalankan di dalam proses boot aplikasi.
 - Kirim daftar lengkap. Permission yang hilang ditandai dropped, tidak dihapus. Daftar yang membuang lebih dari separuh ditolak kecuali `confirm_removals`.
 - Central menolak key **baru** yang tidak sesuai AS-3 (manual dan lewat sinkron). Key yang sudah terdaftar sebelum aturan ini tetap diterima dan ditandai `standard_key: false` sampai aplikasinya mengganti nama (AS-14).
@@ -73,7 +73,7 @@ Contoh benar: `work-order.create`, `work-order.read-all`, `iep.submit`, `facilit
 - Bentuk: gerbang `be-*` atau aksi di route, lalu cek keanggotaan di handler.
 
 ### AS-10 Menerima entitlement
-- Sumber: `GET /api/internal/application-entitlements/lookup` atau token SSO dari Hub.
+- Sumber: `GET /api/internal/application-entitlements/lookup` atau token SSO dari Hub. Aturan di bawah diterapkan satu kali oleh `createAccessResolver` (`mws-central-auth/access`); aplikasi memakainya, tidak menulis ulang.
 - Aplikasi MUST menolak permission yang tidak ada di manifestnya (dan MUST NOT menganggapnya sebagai hak).
 - Aplikasi MUST memeriksa `is_active` dan `organization_id` (harus sama dengan Organization ID aplikasi di Central).
 - 404 berarti tidak punya akses. Jangan cache 404 lebih lama dari beberapa menit.
@@ -97,6 +97,7 @@ Contoh benar: `work-order.create`, `work-order.read-all`, `iep.submit`, `facilit
 
 ### AS-15 Kesesuaian
 - Setiap aplikasi MUST punya tes otomatis yang memastikan: (a) semua route terdaftar punya gerbang, (b) manifest di kode sama dengan yang dikirim `permissions:sync`, (c) `role-presets.json` hanya memakai key manifest, (d) tidak ada konstanta nama role dalam logika (`grep`).
+- Perintah `mws-access check` (dari `access.config.json` di root aplikasi) menjalankan pemeriksaan yang sama di semua aplikasi, jadi kesesuaian dua aplikasi dibandingkan dengan menjalankan perintah yang sama, bukan membaca berkas.
 - Pemeriksaan (a) sampai (d) sudah tersedia sebagai helper di `mws-central-auth/conformance` (sejak 0.12.0): `checkManifest`, `checkPresets`, `probeRoutes` (dengan `trackFastifyRoutes`), `checkPermissionUsage`, dan `checkNoRoleNames`. Contoh pemakaian ada di README pustaka.
 - Status tiap aplikasi dicatat di [access-conformance.md](access-conformance.md) dengan versi standar yang dipatuhi.
 
