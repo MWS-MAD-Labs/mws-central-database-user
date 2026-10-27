@@ -471,7 +471,7 @@ const permissionKey = z
   .max(128, "Permission is too long")
   .regex(
     /^[a-z][a-z0-9_]*([.:-][a-z0-9_]+)*$/,
-    "Permission must be lowercase letters, numbers and underscores, joined by dots",
+    "Permission must be lowercase words joined by dots (domain.action), like work-order.create",
   );
 
 export class ApplicationPermissionValidation {
