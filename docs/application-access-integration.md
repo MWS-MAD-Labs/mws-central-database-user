@@ -108,6 +108,7 @@ Authorization: Bearer <token API client aplikasi>
 ```
 
 - Token harus dari API client yang profilnya sama dengan `<application_id>` dan punya scope `application_permissions:write`.
+- Key baru harus berformat `domain.aksi` (AS-3): huruf kecil, kata dipisah `-`, tingkat dipisah titik, paling panjang 64 karakter, misalnya `work-order.create` atau `scope.grade`. Key baru yang menyimpang ditolak dengan 400 yang menyebut key-nya. Key yang sudah terdaftar sebelum aturan ini tetap diterima, ditandai `standard_key: false` (badge Old Format di tab Permissions) dan dilaporkan di `legacy_keys` pada respons sinkron, sampai diganti nama dengan alur tambah-pindah-hapus.
 - Kirim daftar lengkap. Yang baru didaftarkan, yang hilang dari daftar ditandai dropped (tidak dihapus), yang muncul lagi dihidupkan kembali. Mengirim ulang daftar yang sama aman.
 - Role lama tetap boleh membawa permission yang sudah dropped dan tetap bisa disimpan. Role baru tidak bisa memilihnya. Tab Permissions di halaman aplikasi menunjukkan permission mana yang dropped dan berapa role yang masih membawanya.
 - Sebelum aplikasi pernah mengirim daftar, permission bisa ditambah dari form role di Central. Setelah itu penambahan manual ditolak, permission baru datang dari kode aplikasi.

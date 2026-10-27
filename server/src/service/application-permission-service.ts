@@ -6,6 +6,7 @@ import {
   type AdminUser,
 } from "../generated/prisma/client";
 import { ResponseError } from "../error/response-error";
+import { isStandardPermissionKey, nonStandardKeys, standardKeyMessage } from "../utils/permission-key";
 import { prismaClient } from "../lib/prisma";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import type { ApiClientVariables } from "../type/hono-context";
@@ -19,6 +20,8 @@ export type ApplicationPermissionResponse = {
   requires: string[];
   source: "MANIFEST" | "MANUAL";
   deprecated: boolean;
+  // False for a key registered before the standard format; it keeps working until the application renames it.
+  standard_key: boolean;
   role_count: number;
 };
 
@@ -195,6 +198,7 @@ export class ApplicationPermissionService {
         requires: row.requires,
         source: row.source,
         deprecated: Boolean(row.deprecated_at),
+        standard_key: isStandardPermissionKey(row.key),
         role_count: roles.filter((role) => role.permissions.includes(row.key)).length,
       })),
     };
@@ -223,6 +227,7 @@ export class ApplicationPermissionService {
     if (existing) {
       throw new ResponseError(400, `Permission ${input.key} already exists for ${input.application_id}`);
     }
+    if (!isStandardPermissionKey(input.key)) throw new ResponseError(400, standardKeyMessage([input.key]));
     const created = await prismaClient.$transaction(async (tx) => {
       const saved = await tx.applicationPermission.create({
         data: { application_id: input.application_id, key: input.key, description: input.description ?? null },
@@ -242,7 +247,7 @@ export class ApplicationPermissionService {
       );
       return saved;
     });
-    return { key: created.key, description: created.description, requires: [], source: created.source, deprecated: false, role_count: 0 };
+    return { key: created.key, description: created.description, requires: [], source: created.source, deprecated: false, standard_key: true, role_count: 0 };
   }
 
   // An application publishes what its code understands. The client has to be the one made for it.
@@ -266,6 +271,11 @@ export class ApplicationPermissionService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`application-permissions:${input.application_id}`}))`;
       const existing = await tx.applicationPermission.findMany({ where: { application_id: input.application_id } });
       const byKey = new Map(existing.map((row) => [row.key, row]));
+      // Keys that are new have to follow the standard format; ones registered earlier may keep their old shape.
+      const newKeys = keys.filter((key) => !byKey.has(key));
+      const badNew = nonStandardKeys(newKeys);
+      if (badNew.length > 0) throw new ResponseError(400, standardKeyMessage(badNew));
+      const legacyKeys = nonStandardKeys(keys.filter((key) => byKey.has(key)));
       let added = 0;
       for (const row of input.permissions) {
         const current = byKey.get(row.key);
@@ -326,13 +336,13 @@ export class ApplicationPermissionService {
           api_client_id: client.clientId,
           entity_type: "ApplicationPermission",
           entity_id: input.application_id,
-          new_values: { application_id: input.application_id, total: keys.length, added, deprecated: droppedKeys, affected_roles: affectedRoles },
+          new_values: { application_id: input.application_id, total: keys.length, added, deprecated: droppedKeys, affected_roles: affectedRoles, legacy_keys: legacyKeys },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
         tx,
       );
-      return { added, deprecated: droppedKeys, affected_roles: affectedRoles };
+      return { added, deprecated: droppedKeys, affected_roles: affectedRoles, legacy_keys: legacyKeys };
     });
     return { application_id: input.application_id, total: keys.length, ...result };
   }
@@ -360,6 +370,7 @@ export class ApplicationPermissionService {
       requires: row.requires,
       source: row.source,
       deprecated: Boolean(row.deprecated_at),
+      standard_key: isStandardPermissionKey(row.key),
     }));
   }
 }

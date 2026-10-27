@@ -68,7 +68,7 @@ describe("application permission catalog", () => {
     const body = await (await TestRequest.get(`${PERMISSIONS}?application_id=${appId}`, accessToken)).json();
     expect(body.data.has_manifest).toBe(false);
     expect(body.data.permissions).toEqual([
-      { key: "tab.a", description: "Opens tab A", requires: [], source: "MANUAL", deprecated: false, role_count: 0 },
+      { key: "tab.a", description: "Opens tab A", requires: [], source: "MANUAL", deprecated: false, standard_key: true, role_count: 0 },
     ]);
     expect(await prismaClient.auditLog.count({ where: { action: AuditAction.APPLICATION_PERMISSION_CREATE } })).toBeGreaterThan(0);
 
@@ -274,7 +274,7 @@ describe("application permission catalog", () => {
       await sync(token, appId, [{ key: "a.1", description: "One" }]);
       const own = await TestRequest.get(`/api/internal/application-permissions/${appId}`, undefined, { Authorization: `Bearer ${token}` });
       expect((await own.json()).data).toEqual([
-        { key: "a.1", description: "One", requires: [], source: "MANIFEST", deprecated: false },
+        { key: "a.1", description: "One", requires: [], source: "MANIFEST", deprecated: false, standard_key: true },
       ]);
 
       const other = await publisher("other2");
@@ -282,6 +282,61 @@ describe("application permission catalog", () => {
       expect(foreign.status).toBe(403);
       const foreignUsage = await TestRequest.get(`/api/internal/application-permissions/${appId}/usage`, undefined, { Authorization: `Bearer ${other.token}` });
       expect(foreignUsage.status).toBe(403);
+    });
+  });
+
+  describe("key format (Access Standard AS-3)", () => {
+    it("accepts domain.action keys and refuses new keys in any other shape, naming them", async () => {
+      const { token, profileCode } = await publisher("fmt");
+      appId = profileCode;
+      const good = await sync(token, appId, [
+        { key: "work-order.create" },
+        { key: "work-order.read-all", requires: ["work-order.create"] },
+        { key: "scope.grade" },
+        { key: "iep.coordinator.approve" },
+      ]);
+      expect(good.status).toBe(200);
+
+      for (const key of ["journey:write", "Work.Create", "work_order.create", "create", "a.b.c.d", "work-order.", "9work.create", "tab..a", `a.${"x".repeat(70)}`]) {
+        const bad = await sync(token, appId, [{ key: "work-order.create" }, { key }]);
+        expect([key, bad.status]).toEqual([key, 400]);
+        expect(JSON.stringify(await bad.json())).toContain("domain.action");
+      }
+    });
+
+    it("lets a key registered earlier keep its old shape, but not a new one beside it", async () => {
+      const { token, profileCode } = await publisher("legacy");
+      appId = profileCode;
+      await prismaClient.applicationPermission.create({
+        data: { application_id: appId, key: "journey:write", source: "MANIFEST", synced_at: new Date() },
+      });
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const kept = await sync(token, appId, [{ key: "journey:write" }, { key: "journey.read" }]);
+      expect(kept.status).toBe(200);
+      expect((await kept.json()).data).toMatchObject({ added: 1, legacy_keys: ["journey:write"] });
+
+      const alongside = await sync(token, appId, [{ key: "journey:write" }, { key: "journey:read" }]);
+      expect(alongside.status).toBe(400);
+
+      // Renaming: the new key goes in next to the old one, then the old one is dropped in a later release.
+      const rename = await sync(token, appId, [{ key: "journey:write" }, { key: "journey.read" }, { key: "journey.write" }]);
+      expect(rename.status).toBe(200);
+      const done = await sync(token, appId, [{ key: "journey.read" }, { key: "journey.write" }], { confirm_removals: true });
+      expect((await done.json()).data).toMatchObject({ deprecated: ["journey:write"], legacy_keys: [] });
+
+      const listed = await (await TestRequest.get(`${PERMISSIONS}?application_id=${appId}`, accessToken)).json();
+      const flags = Object.fromEntries(listed.data.permissions.map((p: { key: string; standard_key: boolean }) => [p.key, p.standard_key]));
+      expect(flags).toEqual({ "journey:write": false, "journey.read": true, "journey.write": true });
+
+      const registered = await TestRequest.get(`/api/internal/application-permissions/${appId}`, undefined, { Authorization: `Bearer ${token}` });
+      expect((await registered.json()).data.find((p: { key: string }) => p.key === "journey:write").standard_key).toBe(false);
+    });
+
+    it("applies to hand registration too", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      expect((await TestRequest.post(PERMISSIONS, { application_id: appId, key: "tab:a" }, accessToken)).status).toBe(400);
+      expect((await TestRequest.post(PERMISSIONS, { application_id: appId, key: "tab.a" }, accessToken)).status).toBe(200);
     });
   });
 });

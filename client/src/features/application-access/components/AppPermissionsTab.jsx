@@ -92,7 +92,17 @@ export function AppPermissionsTab({ applicationId }) {
         >
           {visible.map((permission) => (
             <tr key={permission.key} className={denseRowClass}>
-              <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>{permission.key}</td>
+              <td className={`${denseCellClass} font-semibold text-(--mws-charcoal)`}>
+                {permission.key}
+                {permission.standard_key === false ? (
+                  <span
+                    className="ml-2 align-middle"
+                    title="Registered before the standard format (domain.action). It keeps working until the application renames it."
+                  >
+                    <StatusBadge tone="amber">Old Format</StatusBadge>
+                  </span>
+                ) : null}
+              </td>
               <td className={denseCellClass}>{permission.description || "-"}</td>
               <td className={denseCellClass}>
                 <NameList

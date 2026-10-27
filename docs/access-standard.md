@@ -31,7 +31,7 @@ Aturan satu-satunya untuk role, permission, dan akses di semua aplikasi MWS. Dok
 - Alasan: "ADMIN" di satu aplikasi tidak sama dengan "ADMIN" di aplikasi lain, dan role baru bisa ditambah di Central tanpa deploy.
 
 ### AS-3 Format key
-- Pola: `^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*){1,2}$`, paling panjang 64 karakter. Huruf kecil, kata dipisah `-`, tingkat dipisah titik: `domain.aksi` atau `domain.sub.aksi`.
+- Pola: `^[a-z][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*){1,2}$`, paling panjang 64 karakter. Huruf kecil, kata dipisah `-`, tingkat dipisah titik: `domain.aksi` atau `domain.sub.aksi`. Tingkat pertama diawali huruf.
 - Aksi baku: `read`, `create`, `update`, `delete`, `manage`, `approve`, `export`, `use`, `admin`. Aksi lain boleh bila jelas (`reopen`, `cancel`).
 - `<aplikasi>.use` MUST ada untuk hak masuk ke aplikasi, `<aplikasi>.admin` untuk hak administrasi aplikasi (contoh Hub: `hub.use`, `hub.admin`).
 - Awalan khusus:
@@ -46,6 +46,7 @@ Contoh benar: `work-order.create`, `work-order.read-all`, `iep.submit`, `facilit
 - Aplikasi MUST menyediakan `permissions:sync` dan `permissions:check`, dijalankan di deploy (gagal keras) dan di CI.
 - Sinkron MUST NOT dijalankan di dalam proses boot aplikasi.
 - Kirim daftar lengkap. Permission yang hilang ditandai dropped, tidak dihapus. Daftar yang membuang lebih dari separuh ditolak kecuali `confirm_removals`.
+- Central menolak key **baru** yang tidak sesuai AS-3 (manual dan lewat sinkron). Key yang sudah terdaftar sebelum aturan ini tetap diterima dan ditandai `standard_key: false` sampai aplikasinya mengganti nama (AS-14).
 - Detail panggilan: bagian "Mendaftarkan permission" di `application-access-integration.md`.
 
 ### AS-5 Role hidup di Central
