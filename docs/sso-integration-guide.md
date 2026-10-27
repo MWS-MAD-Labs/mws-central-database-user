@@ -50,7 +50,7 @@ Aplikasi tidak pernah menentukan siapa boleh masuk atau melakukan apa dengan dat
 10. **Menu dan tombol** (AS-7): `can(user.permissions, 'inventory.manage')` dengan konstanta yang sama.
 11. **Scope data** (AS-8): permission `scope.*` menentukan filter kueri; baris yang terjangkau tetap di database aplikasi. Tanpa permission scope, default sempit.
 12. **Segarkan dan cabut** (AS-11): simpan cache entitlement paling lama 60 detik; jika `is_active` false atau 404, putus akses pada penyegaran berikutnya.
-13. **Tes kesesuaian** (AS-15) dan perbarui [access-conformance.md](access-conformance.md).
+13. **Tes kesesuaian** (AS-15): pakai helper `mws-central-auth/conformance` (manifest, preset, probe gerbang route, typo key, nama role), lalu perbarui [access-conformance.md](access-conformance.md).
 
 ## Mode uji lokal (AS-12)
 

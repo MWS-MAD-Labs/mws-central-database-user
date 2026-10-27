@@ -21,7 +21,7 @@ Lambang: **Ya** sesuai, **Sebagian** ada yang belum, **Tidak** belum, **?** belu
 | AS-11 Kesegaran 60 detik | ? | Sebagian | Tidak | Ya | ? | Tidak |
 | AS-12 Admin pertama dan mode uji | ? | ? | ? | ? | ? | Tidak |
 | AS-13 Role bawaan lewat preset | ? | Ya | ? | ? | ? | Tidak |
-| AS-15 Tes kesesuaian | Tidak | Tidak | Tidak | Sebagian | Tidak | Sebagian |
+| AS-15 Tes kesesuaian | Tidak | Tidak | Tidak | Sebagian | Tidak | Sebagian (dijalankan sekali dengan helper, belum jadi tes tetap) |
 
 ## Catatan per aplikasi
 
@@ -55,6 +55,7 @@ Lambang: **Ya** sesuai, **Sebagian** ada yang belum, **Tidak** belum, **?** belu
 - **AS-3 tidak sesuai**: key berformat titik dua (`work-order:create`).
 - **AS-4 tidak ada**: belum ada manifest yang dikirim ke Central.
 - Belum ada login lewat Hub atau entitlement Central; login Google dan mode uji lokal.
+- Hasil menjalankan helper `mws-central-auth/conformance` (2026-10-27, 74 route): semua route di luar daftar terbuka menolak orang tanpa permission (AS-6 lulus), setelah satu perbaikan: hook `/work-orders/:id` menjawab 404 sebelum gerbang, sehingga orang tanpa hak bisa menebak apakah sebuah work order ada. Sisa temuan: 22 key berformat titik dua (AS-3) dan tidak ada `work-order.use`. Helper belum dipasang sebagai tes tetap karena Woko menunggu rilis 0.12.0 pustaka.
 - Rencana ke Central: ganti nama key ke format titik, `permissions:sync`, `role-presets.json` dari bundel `permissionBundles`, login Hub, `user_permissions` menjadi cache entitlement, hapus layar Akses Pengguna.
 
 ### Central (panel admin)

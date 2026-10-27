@@ -97,6 +97,7 @@ Contoh benar: `work-order.create`, `work-order.read-all`, `iep.submit`, `facilit
 
 ### AS-15 Kesesuaian
 - Setiap aplikasi MUST punya tes otomatis yang memastikan: (a) semua route terdaftar punya gerbang, (b) manifest di kode sama dengan yang dikirim `permissions:sync`, (c) `role-presets.json` hanya memakai key manifest, (d) tidak ada konstanta nama role dalam logika (`grep`).
+- Pemeriksaan (a) sampai (d) sudah tersedia sebagai helper di `mws-central-auth/conformance` (sejak 0.12.0): `checkManifest`, `checkPresets`, `probeRoutes` (dengan `trackFastifyRoutes`), `checkPermissionUsage`, dan `checkNoRoleNames`. Contoh pemakaian ada di README pustaka.
 - Status tiap aplikasi dicatat di [access-conformance.md](access-conformance.md) dengan versi standar yang dipatuhi.
 
 ## Perubahan standar
