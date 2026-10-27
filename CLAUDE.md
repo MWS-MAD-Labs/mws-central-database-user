@@ -17,6 +17,10 @@ This is the source-of-truth requirements doc (repo root, ~2000 lines) field list
 - Skip it for mechanical work that doesn't touch product decisions: refactors, bug fixes, test writing, typo fixes, pure code cleanup.
 - Only fall back to reading actual line ranges of the .md file if graphify's scoped answer doesn't surface enough same escalation path as source code.
 
+## Access, roles and permissions
+
+Any work on roles, permissions, SSO or Application Access follows `docs/access-standard.md`. It is the one normative source: apps check permissions only, never role names, and Central owns roles and entitlements. Use `docs/sso-integration-guide.md` to connect an app and update `docs/access-conformance.md` in the same commit when an app's access handling changes. Do not restate the rules in other docs, link to the rule number.
+
 ## Prisma: never combine a write with a nested `include`
 
 Don't call `create()`/`update()` with an `include` that has its own nested `include` (e.g. `include: { student: { include: { current_grade: true } } }`), whether inside `$transaction` or not. This races on the `@prisma/adapter-pg` client's single connection and throws "Calling client.query() when the client is already executing a query is deprecated". It's silent tests still pass, only a stray warning shows up, sometimes not even every run.

@@ -1,5 +1,7 @@
 # Application Access: panduan integrasi aplikasi
 
+> Aturan (apa yang wajib) ada di [access-standard.md](access-standard.md). Urutan kerja dari awal ada di [sso-integration-guide.md](sso-integration-guide.md). Dokumen ini adalah referensi API dan operasi Central.
+
 Untuk tim yang menghubungkan aplikasi (Hub, Daily Check-in, Exima, atau aplikasi baru) ke registry role di Central. Fitur ini ada di branch `feat/role-registry`.
 
 ## Cara menambah aplikasi baru
@@ -55,20 +57,13 @@ Respons 200:
 
 ## Aturan untuk aplikasi penerima
 
-- Otorisasi memakai `permissions`, bukan nama role. Nama role case-sensitive dan hanya untuk tampilan.
-- Setiap permission yang dipakai di Central harus dikenal aplikasi lebih dulu. Aplikasi yang memvalidasi ketat (seperti Daily Check-in) menolak login bila ada permission yang tidak dikenal. Urutannya: tambahkan permission di aplikasi, deploy, baru pakai di role Central.
-- `organization_id` harus cocok dengan Organization ID aplikasi itu di Central. Untuk aplikasi lama, Central mempertahankan ID yang sudah dipakai.
-- Orang tanpa akses (404) tidak boleh masuk. Jangan meng-cache 404 lebih lama dari beberapa menit.
+Diatur di [access-standard.md](access-standard.md): AS-2 (hanya permission), AS-10 (menerima entitlement, `organization_id`, 404), dan AS-11 (kesegaran dan pencabutan). Urutan menambah permission: tambahkan di aplikasi, deploy, sinkron, baru pakai di role Central (AS-14).
 
 ## Role atau permission
 
-Yang berwenang adalah `permissions`. Field `role` hanya key stabil (`UPPER_SNAKE`, huruf besar kecil dibedakan) untuk tampilan atau pencatatan. Label role tidak dikirim.
+Yang berwenang adalah `permissions` (AS-2). Field `role` hanya key stabil (`UPPER_SNAKE`, huruf besar kecil dibedakan) untuk tampilan atau pencatatan; label role tidak dikirim. Role juga punya audience (Employees, Students, atau keduanya), dan group murid hanya bisa memakai role yang mengizinkan murid.
 
-Aplikasi penerima mengotorisasi dari permission, misalnya Hub memakai `hub.admin`, bukan `role === "ADMIN"`. "ADMIN" di satu aplikasi tidak sama artinya dengan "ADMIN" di aplikasi lain, dan role baru bisa ditambah di Central tanpa mengubah kode aplikasi selama permission yang dipakai sudah dikenal.
-
-Saat membuat role baru, pastikan setiap permission-nya sudah dikenal aplikasi penerima. Role juga punya audience (Employees, Students, atau keduanya). Group murid hanya bisa memakai role yang mengizinkan murid.
-
-Kode: Hub di `backend/src/lib/hub-access-gate.ts` (`userHasHubPermission`) dan `lib/admin-access.ts` (`isHubAdmin`). Daily Check-in memakai `PERMISSION_SET`.
+Contoh kode: Hub di `backend/src/lib/hub-access-gate.ts` (`userHasHubPermission`) dan `lib/admin-access.ts`. Daily Check-in memakai `PERMISSION_SET`.
 
 ## Exception untuk murid
 

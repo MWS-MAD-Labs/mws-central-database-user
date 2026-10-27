@@ -10,6 +10,20 @@ Dokumentasi ini melengkapi item MVP `Dokumentasi admin dan teknis`.
 - [Technical Guide](technical-guide.md)
   Panduan teknis untuk developer dan tim internal: arsitektur, environment, local setup, deployment notes, role/access model, internal API, storage, import/export, audit, backup, dan troubleshooting.
 
+## Akses aplikasi (role dan permission)
+
+- [access-standard.md](access-standard.md)
+  Aturan satu-satunya untuk role, permission, dan akses di semua aplikasi MWS (v1.0). Sumber normatif.
+
+- [sso-integration-guide.md](sso-integration-guide.md)
+  Urutan menyambungkan aplikasi ke Hub dan Central, dengan contoh dan kesalahan umum.
+
+- [access-conformance.md](access-conformance.md)
+  Status tiap aplikasi terhadap standar dan daftar periksa untuk PR.
+
+- [application-access-integration.md](application-access-integration.md)
+  Referensi API dan operasi Application Access (lookup, token, group, sinkron permission).
+
 ## Referensi Tambahan
 
 - [Centralized User Database.md](../Centralized%20User%20Database.md)
