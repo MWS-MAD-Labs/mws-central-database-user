@@ -166,10 +166,15 @@ export async function resolveOrganizationId(applicationId: string): Promise<stri
     where: { application_id: applicationId },
   });
   if (existing) return existing.organization_id;
+  // An application added again gets the ID it had when it was removed.
+  const remembered = await prismaClient.applicationOrganizationTombstone.findUnique({
+    where: { application_id: applicationId },
+  });
   try {
     const created = await prismaClient.applicationOrganization.create({
-      data: { application_id: applicationId, organization_id: generateOrganizationId(applicationId) },
+      data: { application_id: applicationId, organization_id: remembered?.organization_id ?? generateOrganizationId(applicationId) },
     });
+    if (remembered) await prismaClient.applicationOrganizationTombstone.deleteMany({ where: { application_id: applicationId } });
     return created.organization_id;
   } catch {
     // Another request created it first.

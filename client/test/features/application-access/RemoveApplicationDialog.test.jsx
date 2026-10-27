@@ -65,6 +65,45 @@ describe('RemoveApplicationDialog', () => {
     await waitFor(() => expect(onRemoved).toHaveBeenCalled())
     expect(calls).toEqual(['delete'])
   })
+  const organizationRoutes = (urls) => [
+    {
+      path: REMOVAL,
+      response: () =>
+        jsonResponse({
+          data: { can_remove: true, blockers: [], will_delete: { roles: 0, groups: 0, permissions: 0, clients: 0, people: 0 }, organization_id: 'org_demo_abc' },
+        }),
+    },
+    {
+      path: /^\/api\/admin\/application-access\/apps\/demo(\?.*)?$/,
+      method: 'DELETE',
+      response: ({ url }) => {
+        urls.push(url)
+        return jsonResponse({ data: true })
+      },
+    },
+  ]
+
+  it('keeps the Organization ID unless it is told to forget it', async () => {
+    const urls = []
+    const { user } = renderDialog(organizationRoutes(urls))
+    const checkbox = await screen.findByRole('checkbox', { name: /Forget its Organization ID too/ })
+    expect(checkbox).not.toBeChecked()
+    expect(screen.getByText(/The Organization ID is kept/)).toBeVisible()
+    await user.type(screen.getByRole('textbox'), 'demo')
+    await user.click(screen.getByRole('button', { name: 'Delete Application' }))
+    await waitFor(() => expect(urls).toEqual([DELETE]))
+  })
+
+  it('forgets the Organization ID when the box is ticked', async () => {
+    const urls = []
+    const { user } = renderDialog(organizationRoutes(urls))
+    await user.click(await screen.findByRole('checkbox', { name: /Forget its Organization ID too/ }))
+    expect(screen.getByText(/makes a new Organization ID/)).toBeVisible()
+    await user.type(screen.getByRole('textbox'), 'demo')
+    await user.click(screen.getByRole('button', { name: 'Delete Application' }))
+    await waitFor(() => expect(urls).toEqual([`${DELETE}?forget_organization_id=true`]))
+  })
+
   it('offers Retire when it is blocked, and retires it', async () => {
     const retired = []
     const onClose = mock()

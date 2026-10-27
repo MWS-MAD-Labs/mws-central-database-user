@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { TextAction } from "../../../components/ui/TextAction.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
-import { TextInput } from "../../../components/ui/FormControls.jsx";
+import { CheckboxField, TextInput } from "../../../components/ui/FormControls.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { CopyableId } from "./CopyableId.jsx";
@@ -17,6 +17,7 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
   const [typed, setTyped] = useState("");
   const [done, setDone] = useState(false);
   const [guide, setGuide] = useState(false);
+  const [forgetOrganizationId, setForgetOrganizationId] = useState(false);
   const query = useQuery({
     queryKey: ["application-access", "removal", applicationId],
     queryFn: () => applicationAccessApi.getRemoval(applicationId),
@@ -24,7 +25,7 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
     enabled: !done,
   });
   const mutation = useMutation({
-    mutationFn: () => applicationAccessApi.removeApplication(applicationId),
+    mutationFn: () => applicationAccessApi.removeApplication(applicationId, { forgetOrganizationId }),
     onSuccess: () => {
       setDone(true);
       showSuccessToast("Application removed.");
@@ -107,6 +108,18 @@ export function RemoveApplicationDialog({ applicationId, onClose, onRemoved }) {
               Only the application itself.
             </p>
           )}
+          {plan.organization_id ? (
+            <CheckboxField
+              label="Forget its Organization ID too"
+              description={
+                forgetOrganizationId
+                  ? "Adding this application again makes a new Organization ID, and the apps that stored the old one have to be mapped again."
+                  : "The Organization ID is kept, so adding this application again gives it the same ID and the apps keep working."
+              }
+              checked={forgetOrganizationId}
+              onChange={(event) => setForgetOrganizationId(event.target.checked)}
+            />
+          ) : null}
           <div>
             <label
               htmlFor="confirm-application-id"

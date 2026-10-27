@@ -64,6 +64,10 @@ Semua repo MWS publik. Contoh alamat, nama stack, jaringan gateway, host Komodo,
 
 Jalankan `mws-access doctor` (dari kit `mws-central-auth` 0.14, memakai `access.config.json` yang sama dengan `mws-access check`), dengan `--url` alamat API aplikasi yang sedang berjalan. Ia memeriksa baris `.env`, Hub, token Central beserta profile-nya, daftar permission, siapa yang punya akses, dan apakah aplikasi yang berjalan benar-benar menolak pengunjung tanpa cookie. Setiap kegagalan mencetak baris `Fix:`. Blok `.env` dari Central (saat aplikasi ditambah atau token diputar) sudah memuat `APP_BASE_URL` dari alamat masuk aplikasi. Setelah mengubah `.env`, aplikasi harus di-restart.
 
+## Menghapus lalu menambah aplikasi lagi
+
+Organization ID milik Application ID, bukan milik "aplikasi sedang ada". Saat aplikasi dihapus, Central mengingat ID-nya, dan menambah aplikasi dengan Application ID yang sama mengembalikan ID yang sama, jadi `.env` dan pemetaan di database aplikasi tetap cocok. Kotak "Forget its Organization ID too" di dialog hapus membuang ingatan itu untuk mulai dari nol; setelah itu aplikasi harus dipetakan ulang ke ID baru. Aplikasi yang menyimpan pemetaan menolak start bila `CENTRAL_ORGANIZATION_ID` berubah, dan itu disengaja: jangan dilonggarkan.
+
 ## Kesalahan yang sering terjadi
 
 - Memeriksa `role === 'ADMIN'` karena "cuma satu tempat". Selalu tambahkan permission-nya di manifest.
