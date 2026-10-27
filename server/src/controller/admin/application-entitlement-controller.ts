@@ -441,7 +441,9 @@ export class ApplicationAccessController {
   }
 
   static async removeApplication(c: Context<{ Variables: AdminVariables }>) {
-    await ApplicationOnboardingService.remove(c.var.admin, requireApplicationId(c), getAuditRequestContext(c));
+    await ApplicationOnboardingService.remove(c.var.admin, requireApplicationId(c), getAuditRequestContext(c), {
+      forgetOrganizationId: c.req.query("forget_organization_id") === "true",
+    });
     return c.json({ data: true });
   }
 

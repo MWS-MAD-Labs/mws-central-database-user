@@ -1653,13 +1653,17 @@ expect(movedData.env_changes.remove).toEqual(["HUB_ACCESS_COOKIE_NAME"]);
 
       const plan = (await (await removal(accessToken)).json()).data;
       expect(plan.will_delete).toEqual({ roles: 1, groups: 1, permissions: 1, clients: 1, people: 0 });
+      const organizationBefore = (await prismaClient.applicationOrganization.findUniqueOrThrow({ where: { application_id: appId } })).organization_id;
+      expect(plan.organization_id).toBe(organizationBefore);
       expect((await remove(accessToken)).status).toBe(200);
 
       expect(await prismaClient.application.count({ where: { application_id: appId } })).toBe(0);
       expect(await prismaClient.applicationRole.count({ where: { application_id: appId } })).toBe(0);
       expect(await prismaClient.applicationAccessRule.count({ where: { application_id: appId } })).toBe(0);
       expect(await prismaClient.applicationPermission.count({ where: { application_id: appId } })).toBe(0);
+      // The application is gone from the live table, and its Organization ID is remembered for when it is added again.
       expect(await prismaClient.applicationOrganization.count({ where: { application_id: appId } })).toBe(0);
+      expect((await prismaClient.applicationOrganizationTombstone.findUniqueOrThrow({ where: { application_id: appId } })).organization_id).toBe(organizationBefore);
       const clients = await prismaClient.apiClient.findMany({ where: { profile: { code: appId } } });
       expect(clients).toHaveLength(1);
       expect(clients[0]!.is_active).toBe(false);
@@ -1671,9 +1675,27 @@ expect(movedData.env_changes.remove).toEqual(["HUB_ACCESS_COOKIE_NAME"]);
       const list = (await (await TestRequest.get(`${ACCESS}/applications?search=${appId}`, accessToken)).json()).data;
       expect(list).toHaveLength(0);
 
-      // Same id again, with a new connection.
-      expect((await create(accessToken)).status).toBe(200);
+      // Same id again, with a new connection, and the same Organization ID.
+      const again = await create(accessToken);
+      expect(again.status).toBe(200);
+      expect((await again.json()).data.organization_id).toBe(organizationBefore);
+      expect(await prismaClient.applicationOrganizationTombstone.count({ where: { application_id: appId } })).toBe(0);
       expect((await TestRequest.post(`${ACCESS}/apps/${appId}/connect`, {}, accessToken)).status).toBe(200);
+    });
+
+    it("forgets the Organization ID only when asked, and then adding it again makes a new one", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await create(accessToken);
+      const before = (await prismaClient.applicationOrganization.findUniqueOrThrow({ where: { application_id: appId } })).organization_id;
+      const forgotten = await TestRequest.delete(`${ACCESS}/apps/${appId}?forget_organization_id=true`, accessToken);
+      expect(forgotten.status).toBe(200);
+      expect(await prismaClient.applicationOrganization.count({ where: { application_id: appId } })).toBe(0);
+      expect(await prismaClient.applicationOrganizationTombstone.count({ where: { application_id: appId } })).toBe(0);
+      const again = await create(accessToken);
+      expect(again.status).toBe(200);
+      const after = (await again.json()).data.organization_id;
+      expect(after).not.toBe(before);
+      expect(after).toMatch(new RegExp(`^org_${appId.replace(/-/g, "_")}_[a-z2-7]{20}$`));
     });
   });
 });

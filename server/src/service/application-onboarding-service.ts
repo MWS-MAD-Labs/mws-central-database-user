@@ -216,6 +216,8 @@ export type RemovalPlan = {
   retired: boolean;
   is_hub: boolean;
   will_delete: { roles: number; groups: number; permissions: number; clients: number; people: number };
+  // Kept when the application is removed, unless the person asks to forget it.
+  organization_id: string | null;
 };
 
 export type ConnectResponse = {
@@ -992,6 +994,7 @@ export class ApplicationOnboardingService {
       retired,
       is_hub: isHub,
       will_delete: { roles, groups, permissions, clients: clients.length, people },
+      organization_id: (await prismaClient.applicationOrganization.findUnique({ where: { application_id: applicationId }, select: { organization_id: true } }))?.organization_id ?? null,
     };
   }
 
@@ -1054,7 +1057,14 @@ export class ApplicationOnboardingService {
   }
 
   // Deletes the application and what only belongs to it. Its API clients are revoked, not deleted, so the audit trail stays.
-  static async remove(admin: AdminUser, applicationId: string, context: AuditRequestContext = {}): Promise<void> {
+  // The Organization ID belongs to the application id, not to the application being there: it is kept, so adding the same
+  // application again gets the same ID and the apps that stored it keep working. `forgetOrganizationId` makes a fresh start.
+  static async remove(
+    admin: AdminUser,
+    applicationId: string,
+    context: AuditRequestContext = {},
+    options: { forgetOrganizationId?: boolean } = {},
+  ): Promise<void> {
     const plan = await this.removalPlan(admin, applicationId);
     if (!plan.can_remove) throw new ResponseError(400, plan.blockers.join(" "));
     const app = await findApplication(applicationId);
@@ -1077,6 +1087,17 @@ export class ApplicationOnboardingService {
       await tx.applicationAccessRule.deleteMany({ where: { application_id: applicationId } });
       await tx.applicationRole.deleteMany({ where: { application_id: applicationId } });
       await tx.applicationPermission.deleteMany({ where: { application_id: applicationId } });
+      const organization = await tx.applicationOrganization.findUnique({ where: { application_id: applicationId } });
+      if (organization && !options.forgetOrganizationId) {
+        await tx.applicationOrganizationTombstone.upsert({
+          where: { application_id: applicationId },
+          update: { organization_id: organization.organization_id, removed_at: new Date() },
+          create: { application_id: applicationId, organization_id: organization.organization_id },
+        });
+      }
+      if (options.forgetOrganizationId) {
+        await tx.applicationOrganizationTombstone.deleteMany({ where: { application_id: applicationId } });
+      }
       await tx.applicationOrganization.deleteMany({ where: { application_id: applicationId } });
       await tx.application.delete({ where: { id: app.id } });
       await AuditService.record(
@@ -1086,7 +1107,7 @@ export class ApplicationOnboardingService {
           entity_type: "Application",
           entity_id: app.id,
           admin_id: admin.id,
-          old_values: { ...toDetail(app), ...plan.will_delete, revoked_clients: clients.filter((client) => client.is_active).map((client) => client.name) },
+          old_values: { ...toDetail(app), ...plan.will_delete, organization_id_kept: !options.forgetOrganizationId, revoked_clients: clients.filter((client) => client.is_active).map((client) => client.name) },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },

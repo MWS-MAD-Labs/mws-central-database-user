@@ -1762,6 +1762,17 @@ model ApplicationOrganization {
   @@map("application_organizations")
 }
 
+// The Organization ID of an application that was removed. Adding the same application id again gets the same ID back,
+// so the apps that stored it keep working. It is not a live application, so no list reads it.
+model ApplicationOrganizationTombstone {
+  id              String   @id @default(cuid())
+  application_id  String   @unique
+  organization_id String
+  removed_at      DateTime @default(now())
+
+  @@map("application_organization_tombstones")
+}
+
 enum ApplicationLaunchMode {
   SSO
   LINK

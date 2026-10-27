@@ -84,8 +84,9 @@ export const applicationAccessApi = {
     return response.data
   },
 
-  async removeApplication(applicationId) {
-    const response = await apiRequest(`${ACCESS}/apps/${applicationId}`, { method: 'DELETE' })
+  async removeApplication(applicationId, { forgetOrganizationId = false } = {}) {
+    const query = forgetOrganizationId ? '?forget_organization_id=true' : ''
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}${query}`, { method: 'DELETE' })
     return response.data
   },
 
