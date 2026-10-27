@@ -579,6 +579,30 @@ describe('Access role change summary', () => {
     expect(screen.queryByText('No approver for employee data changes yet.')).not.toBeInTheDocument()
   })
 
+  it('promote dialog lists employees like the student list in a class: name, email and id, unit badge, and a link to their page', async () => {
+    globalThis.fetch = createFetchRouter([
+      ...accessRoutes([{ ...baseAdmin }]),
+      {
+        path: /^\/api\/admin\/admin-users\/promotable-employees\?.*/,
+        response: () =>
+          jsonResponse({
+            data: [{ id: 'emp-1', full_name: 'Ari', email: 'ari@millennia21.id', employee_id: '12.34.567', unit: 'Elementary' }],
+            paging: { current_page: 1, total_page: 1, total_item: 1, size: 10 },
+          }),
+      },
+    ])
+    const { user } = renderAccess({ role: 'SUPER_ADMIN' })
+    await screen.findByText('dummystaff@millennia21.id')
+    await user.click(screen.getByRole('button', { name: /Promote/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Promote Employee' })
+    expect(await within(dialog).findByText('Ari')).toBeVisible()
+    expect(within(dialog).getByText('ari@millennia21.id · 12.34.567')).toBeVisible()
+    expect(within(dialog).getByText('Elementary')).toBeVisible()
+    const link = within(dialog).getByRole('link', { name: 'Open Ari in a new tab' })
+    expect(link).toHaveAttribute('href', '/employees/emp-1')
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
   it('promote dialog has no go-to-page jump, keeps rows while paging, and debounces search', async () => {
     const promotable = (name) => ({ id: name, full_name: name, email: `${name}@millennia21.id`, employee_id: '12.34.567', unit: 'Elementary' })
     const fetchMock = createFetchRouter([
