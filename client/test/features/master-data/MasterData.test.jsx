@@ -230,6 +230,67 @@ describe('MasterData', () => {
       expect(await screen.findByRole('button', { name: 'Save' })).toBeDisabled()
     })
 
+    it('keeps the old links working', async () => {
+      const routes = [
+        { path: /^\/api\/admin\/job-levels\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'jl-1', name: 'Supervisor' }])) },
+        { path: /^\/api\/admin\/units\?.*$/, response: jsonResponse(listPayload([unit])) },
+      ]
+      renderPage({ route: '/master-data?tab=job-levels', routes })
+      expect(await screen.findByText('Supervisor')).toBeVisible()
+      expect(screen.getByRole('tab', { name: 'Job Levels' })).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('saves a changed allowance rule, and Save stays off until something changes', async () => {
+      const saved = { ...rule, max_children: 2 }
+      const { user, fetchMock } = renderPage({
+        route: '/master-data?tab=employment&section=children-allowance',
+        routes: ruleRoutes([{ path: '/api/admin/employee-settings/children-allowance', method: 'PUT', response: jsonResponse({ data: saved }) }]),
+      })
+      const save = await screen.findByRole('button', { name: 'Save' })
+      expect(save).toBeDisabled()
+      const max = screen.getAllByRole('textbox')[0]
+      await user.clear(max)
+      await user.type(max, '2')
+      expect(save).toBeEnabled()
+      await user.click(save)
+      await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
+        String(url).endsWith('/children-allowance') && options.method === 'PUT' && JSON.parse(options.body).max_children === 2)).toBe(true))
+    })
+
+    it('refuses a rule with no kind of child, and shows it read only to anyone but a Super Admin', async () => {
+      const { user } = renderPage({
+        route: '/master-data?tab=employment&section=children-allowance',
+        routes: ruleRoutes(),
+      })
+      await screen.findByRole('button', { name: 'Save' })
+      for (const name of ['Biological', 'Adopted', 'Step']) await user.click(screen.getByRole('checkbox', { name }))
+      expect(screen.getByText('Pick at least one kind of child.')).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    })
+
+    it('has no Save for an admin who is not a Super Admin', async () => {
+      renderPage({
+        user: { id: 'admin-2', type: 'admin', role: 'DATABASE_ADMIN' },
+        route: '/master-data?tab=employment&section=children-allowance',
+        routes: ruleRoutes(),
+      })
+      expect(await screen.findByText('Only a Super Admin can change this.')).toBeVisible()
+      expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Academic tab', () => {
+    const limitRoute = { path: '/api/admin/support-assignments/caseload-limit', method: 'GET', response: jsonResponse({ data: { max_students: 2 } }) }
+    const pcRoute = { path: /^\/api\/admin\/pc-activities-master\?.*$/, response: jsonResponse(listPayload([{ ...unit, id: 'pc-1', name: 'Robotics' }])) }
+
+    it('opens PC Activities first and moves to Special Ed Caseload', async () => {
+      const { user } = renderPage({ route: '/master-data?tab=academic', routes: [pcRoute, limitRoute] })
+      expect(await screen.findByText('Robotics')).toBeVisible()
+      expect(screen.getByRole('tab', { name: 'PC Activities' })).toHaveAttribute('aria-selected', 'true')
+      await user.click(screen.getByRole('tab', { name: 'Special Ed Caseload' }))
+      expect(await screen.findByText('Maximum Students Per Teacher')).toBeVisible()
+    })
+
     it('keeps the old PC Activities link working', async () => {
       renderPage({ route: '/master-data?tab=pc-activities', routes: [pcRoute, limitRoute] })
       expect(await screen.findByText('Robotics')).toBeVisible()
