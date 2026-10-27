@@ -12,7 +12,7 @@ Lambang: **Ya** sesuai, **Sebagian** ada yang belum, **Tidak** belum, **?** belu
 | --- | --- | --- | --- | --- | --- | --- |
 | AS-1 Kepemilikan (tanpa role/akses lokal) | Ya | Sebagian | ? | Sebagian | ? | Tidak |
 | AS-2 Hanya permission | Ya | Sebagian | ? | Tidak | ? | Ya |
-| AS-3 Format key | Ya | Tidak | ? | Ya | ? | Tidak |
+| AS-3 Format key | Ya | Tidak | ? | Ya | ? | Sebagian |
 | AS-4 Manifest dan sinkron | Ya | Ya | Ya | Ya | ? | Tidak |
 | AS-5 Role hidup di Central | Ya | Ya | ? | Sebagian | ? | Tidak |
 | AS-6 Gerbang tiap route | ? | ? | ? | ? | ? | Ya |
@@ -52,11 +52,11 @@ Lambang: **Ya** sesuai, **Sebagian** ada yang belum, **Tidak** belum, **?** belu
 ### Woko
 - Tidak ada nama role di kode; setiap route digerbang oleh permission (`requirePermission`, `requireAnyPermission` di `apps/api/src/auth.ts`).
 - **AS-1 tidak sesuai**: permission disimpan di tabel `user_permissions` milik Woko, dengan layar Akses Pengguna sendiri.
-- **AS-3 tidak sesuai**: key berformat titik dua (`work-order:create`).
+- **AS-3 sebagian**: key sudah berformat titik (`work-order.create`, migrasi `0028` mengganti nama yang tersimpan). Belum ada `woko.use`, dan permission `*.manage` belum punya pasangan `*.read` (helper `checkManifest` menandainya).
 - **AS-4 tidak ada**: belum ada manifest yang dikirim ke Central.
 - Belum ada login lewat Hub atau entitlement Central; login Google dan mode uji lokal.
-- Hasil menjalankan helper `mws-central-auth/conformance` (2026-10-27, 74 route): semua route di luar daftar terbuka menolak orang tanpa permission (AS-6 lulus), setelah satu perbaikan: hook `/work-orders/:id` menjawab 404 sebelum gerbang, sehingga orang tanpa hak bisa menebak apakah sebuah work order ada. Sisa temuan: 22 key berformat titik dua (AS-3) dan tidak ada `work-order.use`. Helper belum dipasang sebagai tes tetap karena Woko menunggu rilis 0.12.0 pustaka.
-- Rencana ke Central: ganti nama key ke format titik, `permissions:sync`, `role-presets.json` dari bundel `permissionBundles`, login Hub, `user_permissions` menjadi cache entitlement, hapus layar Akses Pengguna.
+- Hasil menjalankan helper `mws-central-auth/conformance` (2026-10-27, 74 route): semua route di luar daftar terbuka menolak orang tanpa permission (AS-6 lulus), setelah satu perbaikan: hook `/work-orders/:id` menjawab 404 sebelum gerbang, sehingga orang tanpa hak bisa menebak apakah sebuah work order ada. Temuan format key (22 key berformat titik dua dan tidak ada `.use`) sudah ditangani sebagian: key diganti ke format titik; `.use` dan pasangan `.read` menyusul. Helper belum dipasang sebagai tes tetap karena Woko menunggu rilis 0.12.0 pustaka.
+- Rencana ke Central: `permissions:sync`, `role-presets.json` dari bundel `permissionBundles`, login Hub, `user_permissions` menjadi cache entitlement, hapus layar Akses Pengguna.
 
 ### Central (panel admin)
 - Panel admin Central memakai `AdminRole` dan flag `can_*` sendiri. Itu bukan aplikasi penerima dan di luar cakupan v1.0. Bila nanti panel admin dipindah ke model ini, catat di sini.
