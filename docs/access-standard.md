@@ -76,6 +76,7 @@ Contoh benar: `work-order.create`, `work-order.read-all`, `iep.submit`, `facilit
 - Sumber: `GET /api/internal/application-entitlements/lookup` atau token SSO dari Hub. Aturan di bawah diterapkan satu kali oleh `createAccessResolver` (`mws-central-auth/access`); aplikasi memakainya, tidak menulis ulang.
 - Aplikasi MUST menolak permission yang tidak ada di manifestnya (dan MUST NOT menganggapnya sebagai hak).
 - Aplikasi MUST memeriksa `is_active` dan `organization_id` (harus sama dengan Organization ID aplikasi di Central).
+- Organization ID hanya dibandingkan dengan `CENTRAL_ORGANIZATION_ID`; ketidakcocokan menolak entitlement itu, tidak pernah menghentikan start aplikasi. Pemetaan yang disimpan aplikasi di database MUST mengikuti `CENTRAL_ORGANIZATION_ID` di `.env`. `mws-access doctor` menunjukkan bila nilai di `.env` bukan yang dipakai Central.
 - 404 berarti tidak punya akses. Jangan cache 404 lebih lama dari beberapa menit.
 - `version` hanya dibandingkan bila `id` sama.
 
