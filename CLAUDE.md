@@ -21,6 +21,10 @@ This is the source-of-truth requirements doc (repo root, ~2000 lines) field list
 
 Any work on roles, permissions, SSO or Application Access follows `docs/access-standard.md`. It is the one normative source: apps check permissions only, never role names, and Central owns roles and entitlements. Use `docs/sso-integration-guide.md` to connect an app and update `docs/access-conformance.md` in the same commit when an app's access handling changes. Do not restate the rules in other docs, link to the rule number.
 
+## Public repositories: no infrastructure names in docs
+
+Every MWS repository is public. Docs, READMEs, ADRs, runbooks and examples must not contain real Komodo stack names or ids, container names, gateway network names, the Komodo host or webhook URLs, server addresses, tokens or keys. Use placeholders: `<staging-stack>`, `<production-stack>`, `<gateway-network-staging>`, `<komodo-host>`, `hub.example.org`, `central.example.org`. The real values live in Komodo and in GitHub Environments. Check with `git grep` before committing a deployment doc.
+
 ## Prisma: never combine a write with a nested `include`
 
 Don't call `create()`/`update()` with an `include` that has its own nested `include` (e.g. `include: { student: { include: { current_grade: true } } }`), whether inside `$transaction` or not. This races on the `@prisma/adapter-pg` client's single connection and throws "Calling client.query() when the client is already executing a query is deprecated". It's silent tests still pass, only a stray warning shows up, sometimes not even every run.
