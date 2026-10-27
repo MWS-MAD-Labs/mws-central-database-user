@@ -8,7 +8,8 @@ import { TextInput } from './FormControls.jsx'
 const ROW_HEIGHT_PX = 52
 const MAX_ROWS_FOR_MIN_HEIGHT = 10
 
-// Pick one item from a server-paged list, laid out like the students in Enroll Student: a search box, a box with one
+// Pick one item from a server-paged list, laid out like the students in Enroll Student (a checkbox per row, but only
+// one can be on: checking another moves the pick, unchecking clears it): a search box, a box with one
 // row per item (name, a muted line under it, an optional badge and an eye that opens the item in a new tab when it has
 // an `href`) and the page bar inside the box. No inner scroll; the list keeps its height while the next page loads so
 // a dialog around it does not jump.
@@ -66,7 +67,7 @@ export function PaginatedSingleSelect({
       <div className="overflow-hidden rounded-xl border border-(--mws-line) bg-white">
         <div
           className="divide-y divide-(--mws-line)"
-          role="radiogroup"
+          role="group"
           aria-label={itemLabel}
           style={{ minHeight }}
         >
@@ -83,10 +84,9 @@ export function PaginatedSingleSelect({
               >
                 <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
                   <input
-                    type="radio"
-                    name={`pick-${itemLabel}`}
+                    type="checkbox"
                     checked={value === option.value}
-                    onChange={() => onChange(option.value, option)}
+                    onChange={(event) => (event.target.checked ? onChange(option.value, option) : onChange('', null))}
                     className="h-4 w-4 shrink-0 accent-(--mws-burgundy)"
                   />
                   <span className="min-w-0">

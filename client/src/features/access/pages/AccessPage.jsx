@@ -1249,6 +1249,7 @@ function PromoteDialog({ isSubmitting, onClose, onSubmit }) {
             onChange={(employeeId) => {
               const employee = employees.find((e) => e.id === employeeId);
               if (employee) setSelectedEmployee(employee);
+              else if (!employeeId) setSelectedEmployee(null);
               setValues({ ...values, employee_id: employeeId });
             }}
             onSearchChange={(search) => {

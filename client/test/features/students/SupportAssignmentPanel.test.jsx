@@ -61,9 +61,9 @@ describe('StudentSupportAssignmentPanel', () => {
     expect(await screen.findByText('No Special Education teacher assigned yet.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Assign' }))
 
-    expect(await screen.findByRole('radio', { name: /Taylor SE Teacher/ })).toBeVisible()
-    expect(screen.queryByRole('radio', { name: /Jordan SE Teacher/ })).not.toBeInTheDocument()
-    await user.click(await screen.findByRole('radio', { name: /Taylor SE Teacher/ }))
+    expect(await screen.findByRole('checkbox', { name: /Taylor SE Teacher/ })).toBeVisible()
+    expect(screen.queryByRole('checkbox', { name: /Jordan SE Teacher/ })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('checkbox', { name: /Taylor SE Teacher/ }))
     await user.type(screen.getByPlaceholderText(/Weekly reading support/), 'Reading support')
     await user.click(screen.getByRole('button', { name: 'Save' }))
     const confirmDialog = screen.getByRole('dialog', { name: 'Confirm teacher assignment' })
@@ -84,7 +84,7 @@ describe('StudentSupportAssignmentPanel', () => {
     )
     await screen.findByText('No Special Education teacher assigned yet.')
     await user.click(screen.getByRole('button', { name: 'Assign' }))
-    await user.click(await screen.findByRole('radio', { name: /Rina SE Intern/ }))
+    await user.click(await screen.findByRole('checkbox', { name: /Rina SE Intern/ }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await user.click(
       within(screen.getByRole('dialog', { name: 'Confirm teacher assignment' })).getByRole('button', { name: 'Assign teacher' }),
@@ -121,10 +121,10 @@ describe('StudentSupportAssignmentPanel', () => {
     )
     await screen.findByText('No Special Education teacher assigned yet.')
     await user.click(screen.getByRole('button', { name: 'Assign' }))
-    expect(await screen.findByRole('radio', { name: /Flat SE Teacher/ })).toBeVisible()
-    expect(screen.getByRole('radio', { name: /Flat SE Intern \(Intern\)/ })).toBeVisible()
+    expect(await screen.findByRole('checkbox', { name: /Flat SE Teacher/ })).toBeVisible()
+    expect(screen.getByRole('checkbox', { name: /Flat SE Intern \(Intern\)/ })).toBeVisible()
 
-    await user.click(screen.getByRole('radio', { name: /Flat SE Intern/ }))
+    await user.click(screen.getByRole('checkbox', { name: /Flat SE Intern/ }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
     const confirmDialog = screen.getByRole('dialog', { name: 'Confirm teacher assignment' })
     expect(within(confirmDialog).getByText(/Assign Flat SE Intern as Special Education Teacher/)).toBeVisible()
