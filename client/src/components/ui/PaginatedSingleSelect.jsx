@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { X } from 'lucide-react'
+import { Eye, X } from 'lucide-react'
+import { Link } from 'react-router'
 import { PaginationBar } from './PaginationBar.jsx'
 import { StatusBadge } from './StatusBadge.jsx'
 import { TextInput } from './FormControls.jsx'
 
-const ROW_HEIGHT_PX = 40
+const ROW_HEIGHT_PX = 52
 const MAX_ROWS_FOR_MIN_HEIGHT = 10
 
-// Pick one item from a server-paged list. Rows are single-line radios with no
-// inner scroll; the list keeps its height while the next page loads so a
-// dialog around it does not jump.
+// Pick one item from a server-paged list, laid out like the students in Enroll Student: a search box, a box with one
+// row per item (name, a muted line under it, an optional badge and an eye that opens the item in a new tab when it has
+// an `href`) and the page bar inside the box. No inner scroll; the list keeps its height while the next page loads so
+// a dialog around it does not jump.
 export function PaginatedSingleSelect({
   options,
   value,
@@ -61,7 +63,7 @@ export function PaginatedSingleSelect({
           </button>
         ) : null}
       </div>
-      <div className="overflow-hidden rounded-xl border border-(--mws-line)">
+      <div className="overflow-hidden rounded-xl border border-(--mws-line) bg-white">
         <div
           className="divide-y divide-(--mws-line)"
           role="radiogroup"
@@ -74,28 +76,40 @@ export function PaginatedSingleSelect({
             </p>
           ) : (
             options.map((option) => (
-              <label
+              <div
                 key={option.value}
-                title={option.description}
-                className="flex h-10 cursor-pointer items-center gap-3 px-3 hover:bg-(--mws-soft)"
+                className="flex min-w-0 items-center gap-3 px-3 py-2 hover:bg-(--mws-soft)"
+                style={{ minHeight: ROW_HEIGHT_PX }}
               >
-                <input
-                  type="radio"
-                  name={`pick-${itemLabel}`}
-                  checked={value === option.value}
-                  onChange={() => onChange(option.value, option)}
-                  className="h-4 w-4 shrink-0 accent-(--mws-burgundy)"
-                />
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="font-semibold text-(--mws-charcoal)">{option.label}</span>
-                  {option.description ? (
-                    <span className="ml-2 text-xs text-(--mws-muted)">{option.description}</span>
-                  ) : null}
-                </span>
-                {option.badge ? (
-                  <StatusBadge tone={option.tone}>{option.badge}</StatusBadge>
+                <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                  <input
+                    type="radio"
+                    name={`pick-${itemLabel}`}
+                    checked={value === option.value}
+                    onChange={() => onChange(option.value, option)}
+                    className="h-4 w-4 shrink-0 accent-(--mws-burgundy)"
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate font-display text-sm font-bold text-(--mws-charcoal)">{option.label}</span>
+                    {option.description ? (
+                      <span className="block truncate text-xs text-(--mws-muted)">{option.description}</span>
+                    ) : null}
+                  </span>
+                </label>
+                {option.badge ? <StatusBadge tone={option.tone}>{option.badge}</StatusBadge> : null}
+                {option.href ? (
+                  <Link
+                    to={option.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={`Open ${option.label} in a new tab`}
+                    aria-label={`Open ${option.label} in a new tab`}
+                    className="shrink-0 rounded-lg p-1.5 text-(--mws-muted) hover:bg-white hover:text-(--mws-burgundy)"
+                  >
+                    <Eye size={15} />
+                  </Link>
                 ) : null}
-              </label>
+              </div>
             ))
           )}
         </div>

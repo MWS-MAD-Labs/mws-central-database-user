@@ -1194,6 +1194,7 @@ function PromoteDialog({ isSubmitting, onClose, onSubmit }) {
     label: employee.full_name,
     description: `${employee.email} · ${employee.employee_id}`,
     badge: employee.unit,
+    href: `/employees/${employee.id}`,
   }));
   function handleSubmit(event) {
     event.preventDefault();
