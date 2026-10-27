@@ -60,6 +60,10 @@ Aplikasi boleh punya mode login uji untuk pengembangan lokal (contoh Woko `AUTH_
 
 Semua repo MWS publik. Contoh alamat, nama stack, jaringan gateway, host Komodo, dan URL webhook di dokumen harus berupa placeholder (`hub.example.org`, `central.example.org`, `<staging-stack>`, `<gateway-network-production>`, `<komodo-host>`). Nilai sebenarnya hanya ada di Komodo dan di GitHub Environments.
 
+## Kalau tidak bisa masuk
+
+Jalankan `mws-access doctor` (dari kit `mws-central-auth` 0.14, memakai `access.config.json` yang sama dengan `mws-access check`), dengan `--url` alamat API aplikasi yang sedang berjalan. Ia memeriksa baris `.env`, Hub, token Central beserta profile-nya, daftar permission, siapa yang punya akses, dan apakah aplikasi yang berjalan benar-benar menolak pengunjung tanpa cookie. Setiap kegagalan mencetak baris `Fix:`. Blok `.env` dari Central (saat aplikasi ditambah atau token diputar) sudah memuat `APP_BASE_URL` dari alamat masuk aplikasi. Setelah mengubah `.env`, aplikasi harus di-restart.
+
 ## Kesalahan yang sering terjadi
 
 - Memeriksa `role === 'ADMIN'` karena "cuma satu tempat". Selalu tambahkan permission-nya di manifest.
