@@ -46,7 +46,7 @@ describe('importFieldsConfig', () => {
   })
 
   it('keeps employee and student required, preview, and editable fields entity-specific', () => {
-    expect(entityLabels).toEqual({ students: 'students', employees: 'employees' })
+    expect(entityLabels).toEqual({ students: 'students', employees: 'employees', interns: 'interns' })
     expect(requiredImportFields.employees).toContain('employee_id')
     expect(requiredImportFields.employees).toContain('employment_type')
     expect(requiredImportFields.employees).not.toContain('current_grade')
@@ -68,6 +68,23 @@ describe('importFieldsConfig', () => {
       options: OVERRIDE_REASON_TEMPLATES,
     })
     expect(studentFields.has('employee_id')).toBe(false)
+  })
+
+  it('keeps the intern fields apart from the employee ones', () => {
+    expect(requiredImportFields.interns).toEqual(
+      expect.arrayContaining(['email', 'unit', 'job_position', 'building', 'join_date', 'end_date']),
+    )
+    expect(requiredImportFields.interns).not.toContain('employee_id')
+    expect(requiredImportFields.interns).not.toContain('job_level')
+    expect(requiredImportFields.interns).not.toContain('birth_date')
+    expect(defaultPreviewFields.interns).toContain('end_date')
+
+    const internFields = new Map(importFields.interns.map((field) => [field.key, field]))
+    expect(internFields.get('end_date')).toMatchObject({ type: 'date' })
+    expect(internFields.get('unit')).toMatchObject({ optionSource: 'units' })
+    expect(internFields.get('status').options).toContain('COMPLETED')
+    expect(internFields.has('nik')).toBe(false)
+    expect(internFields.has('job_level')).toBe(false)
   })
 
   it('exports label mappings and import-safe keystroke filters', () => {

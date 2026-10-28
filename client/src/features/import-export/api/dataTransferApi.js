@@ -4,6 +4,7 @@ import { compactSearchParams } from '../../../lib/url.js'
 const entityPath = {
   students: 'students',
   employees: 'employees',
+  interns: 'interns',
 }
 
 export const dataTransferApi = {

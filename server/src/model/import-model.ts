@@ -702,3 +702,147 @@ export function toEmployeeImportJobResponse(
     completed_at: job.completed_at ? job.completed_at.toISOString() : null,
   };
 }
+
+// Interns have no ID of their own, so their email is the key that matches a row to an existing intern.
+export const IMPORT_INTERN_FIELDS = [
+  { key: "full_name", label: "Full Name", required: true },
+  { key: "nick_name", label: "Nick", required: true },
+  { key: "email", label: "Email", required: true },
+  { key: "gender", label: "Gender", required: true },
+  { key: "religion", label: "Religion", required: true },
+  { key: "religion_other", label: "Religion (Other)", required: false },
+  { key: "birth_place", label: "Birth Place", required: false },
+  { key: "birth_date", label: "Birth Date", required: false },
+  { key: "unit", label: "Unit", required: true },
+  { key: "job_position", label: "Job Position", required: true },
+  { key: "building", label: "Building", required: true },
+  { key: "join_date", label: "Join Date", required: true },
+  { key: "end_date", label: "End Date", required: true },
+  { key: "status", label: "Status", required: false },
+  { key: "notes", label: "Notes", required: false },
+  // Contact details are personal data and need the permission to write it.
+  { key: "mobile_phone", label: "Mobile Phone", required: false },
+  {
+    key: "residential_address",
+    label: "Residential Address",
+    required: false,
+  },
+  { key: "education_level", label: "Education Level", required: false },
+  { key: "institution_name", label: "Institution Name", required: false },
+  { key: "major", label: "Major", required: false },
+  { key: "graduation_year", label: "Graduation Year", required: false },
+] as const;
+
+export type ImportInternFieldKey = (typeof IMPORT_INTERN_FIELDS)[number]["key"];
+
+export const DEFAULT_INTERN_HEADER_ALIASES: Record<string, ImportInternFieldKey> =
+  {
+    "full name": "full_name",
+    "nama lengkap": "full_name",
+    nick: "nick_name",
+    "nick name": "nick_name",
+    nickname: "nick_name",
+    email: "email",
+    gender: "gender",
+    "jenis kelamin": "gender",
+    religion: "religion",
+    agama: "religion",
+    "religion (other)": "religion_other",
+    "religion other": "religion_other",
+    "religion detail": "religion_other",
+    "birth place": "birth_place",
+    "birth date": "birth_date",
+    unit: "unit",
+    "job position": "job_position",
+    building: "building",
+    "join date": "join_date",
+    "start date": "join_date",
+    "end date": "end_date",
+    "internship end date": "end_date",
+    status: "status",
+    "intern status": "status",
+    notes: "notes",
+    "mobile phone": "mobile_phone",
+    "residential address": "residential_address",
+    "education level": "education_level",
+    "institution name": "institution_name",
+    major: "major",
+    "graduation year": "graduation_year",
+  };
+
+export type StagedInternRow = {
+  row_number: number;
+  raw: Record<string, string>;
+  source_raw?: Record<string, string>;
+  action: StagedRowAction | null;
+  matched_intern_id: string | null;
+  errors: string[];
+  warnings: string[];
+  committed_intern_id: string | null;
+  previous_values: Record<string, string | number | boolean | null> | null;
+};
+
+export type PreviewInternImportRequest = {
+  mapping?: Partial<Record<string, ImportInternFieldKey>>;
+  sheet_name?: string;
+  sheet_index?: number;
+};
+
+export type PreviewInternImportResponse = {
+  job_id: string;
+  status: ImportStatus;
+  type: ImportType;
+  field_mapping: Record<string, ImportInternFieldKey>;
+  unmapped_headers: string[];
+  summary: ImportSummary;
+  rows: StagedInternRow[];
+  sheet_name: string;
+  source_headers: string[];
+  other_sheets: string[];
+};
+
+export type CommitInternImportResponse = {
+  job_id: string;
+  status: ImportStatus;
+  summary: ImportSummary;
+  // Rows are batch-local; the summary remains cumulative.
+  rows: StagedInternRow[];
+  // Continue committing batches while true.
+  has_more: boolean;
+};
+
+export type RollbackInternImportResponse = {
+  job_id: string;
+  status: ImportStatus;
+  summary: RollbackSummary;
+  rows: StagedInternRow[];
+};
+
+export type InternImportJobResponse = {
+  id: string;
+  type: ImportType;
+  status: ImportStatus;
+  file_name: string | null;
+  field_mapping: Record<string, ImportInternFieldKey> | null;
+  summary: ImportSummary | null;
+  rows: StagedInternRow[];
+  created_by: string;
+  created_at: string;
+  completed_at: string | null;
+};
+
+export function toInternImportJobResponse(job: ImportJob): InternImportJobResponse {
+  return {
+    id: job.id,
+    type: job.type,
+    status: job.status,
+    file_name: job.file_name,
+    field_mapping:
+      (job.field_mapping as Record<string, ImportInternFieldKey> | null) ?? null,
+    summary: (job.result_summary as ImportSummary | null) ?? null,
+    rows: (job.staged_rows as StagedInternRow[] | null) ?? [],
+    created_by: job.created_by,
+    created_at: job.created_at.toISOString(),
+    completed_at: job.completed_at ? job.completed_at.toISOString() : null,
+  };
+}

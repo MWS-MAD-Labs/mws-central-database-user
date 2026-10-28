@@ -7,6 +7,7 @@ import {
   EmployeeStatus,
   EmploymentType,
   Gender,
+  InternStatus,
   MaritalStatus,
   Religion,
   StudentStatus,
@@ -17,6 +18,7 @@ import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import type {
   ExportEmployeeRequest,
+  ExportInternRequest,
   ExportStudentRequest,
   WorkforceTeacherAssignmentExportRow,
 } from "../model/export-model";
@@ -26,6 +28,8 @@ import {
   toEmployeeResponse,
   type EmployeeExportRow,
 } from "../model/employee-model";
+import { toInternExportRow, type InternExportRow } from "../model/intern-model";
+import { buildInternOrderBy, buildInternSearchWhere } from "./intern-service";
 import {
   buildStudentOrderBy,
   toStudentDetailResponse,
@@ -249,6 +253,39 @@ const EMPLOYEE_SENSITIVE_COLUMNS: ExportColumn<EmployeeExportRow>[] = [
   { header: "BPJS Kesehatan Number", key: "bpjs_number" },
   { header: "BPJS Ketenagakerjaan Number", key: "bpjs_employment_number" },
   { header: "KPJ Number", key: "kpj_number" },
+  {
+    header: "Education Level",
+    key: "education_level",
+    options: Object.keys(EducationLevel),
+  },
+  { header: "Institution Name", key: "institution_name" },
+  { header: "Major", key: "major" },
+  { header: "Graduation Year", key: "graduation_year" },
+];
+
+const INTERN_BASE_COLUMNS: ExportColumn<InternExportRow>[] = [
+  { header: "ID", key: "id" },
+  { header: "Full Name", key: "full_name" },
+  { header: "Nick Name", key: "nick_name" },
+  { header: "Email", key: "email" },
+  { header: "Unit", key: "unit" },
+  { header: "Job Position", key: "job_position" },
+  { header: "Building", key: "building" },
+  { header: "Join Date", key: "join_date" },
+  { header: "End Date", key: "end_date" },
+  { header: "Status", key: "status", options: Object.keys(InternStatus) },
+  { header: "Created At", key: "created_at" },
+];
+
+const INTERN_SENSITIVE_COLUMNS: ExportColumn<InternExportRow>[] = [
+  { header: "Mobile Phone", key: "mobile_phone" },
+  { header: "Residential Address", key: "residential_address" },
+  { header: "Gender", key: "gender", options: Object.keys(Gender) },
+  { header: "Religion", key: "religion", options: Object.keys(Religion) },
+  { header: "Religion (Other)", key: "religion_other" },
+  { header: "Birth Place", key: "birth_place" },
+  { header: "Birth Date", key: "birth_date" },
+  { header: "Notes", key: "notes" },
   {
     header: "Education Level",
     key: "education_level",
@@ -685,6 +722,86 @@ export class ExportService {
     return {
       buffer,
       fileName: exportFileName("employees", exportRequest.format),
+      mimeType: exportMimeType(exportRequest.format),
+    };
+  }
+
+  static async exportInterns(
+    admin: AdminUserWithEmployeeScope,
+    request: ExportInternRequest,
+    context: AuditRequestContext = {},
+  ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
+    // Intern exports follow the employee rules: employee-domain write permission, and PII only for who may see it.
+    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_write_employee_data) {
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to write employee data",
+      );
+    }
+
+    const exportRequest = Validation.validate(ExportValidation.INTERN, request);
+    const includeSensitive = exportRequest.export_mode === "sensitive";
+    if (
+      includeSensitive &&
+      !(admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii)
+    ) {
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to export sensitive intern data",
+      );
+    }
+
+    const [interns, units, jobPositions, buildings] = await Promise.all([
+      prismaClient.intern.findMany({
+        where: buildInternSearchWhere(admin, exportRequest),
+        orderBy: buildInternOrderBy(
+          exportRequest.sort_by || "created_at",
+          exportRequest.sort_order || "desc",
+        ),
+        include: { unit: true, job_position: true, building: true },
+      }),
+      prismaClient.masterUnit.findMany({ select: { name: true } }),
+      prismaClient.masterJobPosition.findMany({ select: { name: true } }),
+      prismaClient.masterBuilding.findMany({ select: { name: true } }),
+    ]);
+    const rows = interns.map((intern) => toInternExportRow(intern, includeSensitive));
+
+    // Build dropdown options from current master data.
+    const masterDataOptions: Partial<Record<keyof InternExportRow, string[]>> = {
+      unit: units.map((u) => u.name).sort(),
+      job_position: jobPositions.map((j) => j.name).sort(),
+      building: buildings.map((b) => b.name).sort(),
+    };
+    const baseColumns = INTERN_BASE_COLUMNS.map((column) => {
+      const options = masterDataOptions[column.key];
+      return options ? { ...column, options } : column;
+    });
+    const columns = includeSensitive
+      ? [...baseColumns, ...INTERN_SENSITIVE_COLUMNS]
+      : baseColumns;
+
+    const buffer = await generateExportFile(rows, columns, exportRequest.format, "Interns");
+
+    await AuditService.record({
+      action: AuditAction.EXPORT_DATA,
+      source: AuditSource.UI,
+      admin_id: admin.id,
+      new_values: {
+        entity: "Intern",
+        format: exportRequest.format,
+        row_count: rows.length,
+        included_sensitive_data: includeSensitive,
+        export_mode: exportRequest.export_mode || "standard",
+        included_columns: columns.map((column) => column.header),
+        filters: exportAuditFilters(exportRequest as unknown as Record<string, unknown>),
+      },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
+    return {
+      buffer,
+      fileName: exportFileName("interns", exportRequest.format),
       mimeType: exportMimeType(exportRequest.format),
     };
   }

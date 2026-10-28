@@ -649,3 +649,166 @@ describe("GET /api/admin/employees/export", () => {
     });
   });
 });
+
+describe("GET /api/admin/interns/export", () => {
+  let secondUnitId: string;
+
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await InternTest.delete();
+    await prismaClient.masterUnit.deleteMany({
+      where: { id: "unit_2_intern_export_test" },
+    });
+    await MasterDataTest.delete();
+
+    const masterData = await MasterDataTest.create();
+    const unit2 = await prismaClient.masterUnit.create({
+      data: { id: "unit_2_intern_export_test", name: "Second Intern Export Unit" },
+    });
+    secondUnitId = unit2.id;
+
+    await InternTest.create({
+      email: "test_intern_export_unit1@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+      mobilePhone: "+6281234567890",
+      residentialAddress: "Jl. Magang 1",
+    });
+    await InternTest.create({
+      email: "test_intern_export_unit2@millennia21.id",
+      unitId: secondUnitId,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await InternTest.delete();
+    await prismaClient.masterUnit.deleteMany({
+      where: { id: "unit_2_intern_export_test" },
+    });
+    await MasterDataTest.delete();
+  });
+
+  it("should reject an unauthenticated request with 401", async () => {
+    const response = await TestRequest.get("/api/admin/interns/export?format=csv");
+    expect(response.status).toBe(401);
+  });
+
+  it("should reject an unsupported format with 400", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const response = await TestRequest.get(
+      "/api/admin/interns/export?format=pdf",
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("lets a Super Admin export every unit, with personal columns only in the sensitive mode", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const standard = await (
+      await TestRequest.get(
+        "/api/admin/interns/export?format=csv&search=test_intern_export",
+        accessToken,
+      )
+    ).text();
+    expect(standard.trim().split("\n").length).toBe(3);
+    expect(standard.split("\n")[0]).not.toContain("Mobile Phone");
+    expect(standard).not.toContain("Jl. Magang 1");
+    expect(standard).toContain("End Date");
+
+    const sensitive = await (
+      await TestRequest.get(
+        "/api/admin/interns/export?format=csv&export_mode=sensitive&search=test_intern_export",
+        accessToken,
+      )
+    ).text();
+    expect(sensitive.split("\n")[0]).toContain("Mobile Phone");
+    expect(sensitive.split("\n")[0]).toContain("Education Level");
+    expect(sensitive).toContain("Jl. Magang 1");
+  });
+
+  it("scopes a Database Admin to their own unit and refuses the sensitive mode without PII access", async () => {
+    const unit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: { startsWith: "TEST_" } },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(unit.id);
+
+    const response = await TestRequest.get(
+      "/api/admin/interns/export?format=csv&search=test_intern_export",
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+    const csv = await response.text();
+    expect(csv.trim().split("\n").length).toBe(2);
+    expect(csv).toContain("test_intern_export_unit1@millennia21.id");
+    expect(csv).not.toContain("test_intern_export_unit2@millennia21.id");
+
+    const sensitive = await TestRequest.get(
+      "/api/admin/interns/export?format=csv&export_mode=sensitive",
+      accessToken,
+    );
+    expect(sensitive.status).toBe(403);
+  });
+
+  it("should reject (403) a VIEWER and a Database Admin without can_write_employee_data", async () => {
+    const viewer = await AdminUserTest.createViewer();
+    const denied = await TestRequest.get(
+      "/api/admin/interns/export?format=csv",
+      viewer.accessToken,
+    );
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).errors).toContain("write employee data");
+
+    const dba = await AdminUserTest.createDatabaseAdmin(undefined, {
+      canWriteEmployeeData: false,
+    });
+    const alsoDenied = await TestRequest.get(
+      "/api/admin/interns/export?format=csv",
+      dba.accessToken,
+    );
+    expect(alsoDenied.status).toBe(403);
+  });
+
+  it("should generate a valid xlsx with unit and status dropdown options", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const response = await TestRequest.get(
+      "/api/admin/interns/export?format=xlsx&search=test_intern_export",
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("spreadsheetml");
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await response.arrayBuffer());
+    const sheet = workbook.getWorksheet("Interns");
+    expect(sheet).toBeDefined();
+    expect(sheet!.rowCount).toBe(3);
+  });
+
+  it("should record an EXPORT_DATA audit log entry", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await TestRequest.get(
+      "/api/admin/interns/export?format=csv&search=test_intern_export&export_mode=sensitive",
+      accessToken,
+    );
+
+    const admin = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.EXPORT_DATA, admin_id: admin.id },
+    });
+    expect(auditLog.new_values).toMatchObject({
+      entity: "Intern",
+      format: "csv",
+      row_count: 2,
+      included_sensitive_data: true,
+    });
+  });
+});

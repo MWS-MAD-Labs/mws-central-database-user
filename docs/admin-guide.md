@@ -372,7 +372,7 @@ Audit log dipakai untuk:
 
 ## 11. Import dan Export
 
-Import dan export tidak memakai halaman terpisah. Tombol tersedia langsung di page Students dan Employees.
+Import dan export tidak memakai halaman terpisah. Tombol tersedia langsung di page Students, Employees, dan Interns.
 
 ### Import
 
@@ -399,9 +399,19 @@ Employee import:
 - Employee ID wajib.
 - Unit, job position, job level, building, join date, employment type, dan marital status perlu sesuai master data atau enum.
 
+Intern import:
+
+- Email menjadi kunci pencocokan. Email yang sudah ada berarti update, email baru berarti intern baru. Import tidak mengubah email.
+- Full name, nick, email, gender, religion, unit, job position, building, join date, dan end date wajib. Birth place dan birth date boleh kosong.
+- End date harus setelah join date. Status ACTIVE dengan end date yang sudah lewat otomatis menjadi COMPLETED.
+- Unit, job position, dan building perlu sesuai master data, dan job position harus boleh dipakai di unit itu.
+- Intern yang sudah di-remove tidak diimpor lagi. Restore dulu dari halaman Interns.
+- Import tidak membuat akun Google dan tidak mengatur mentor PC. Dua hal itu diatur dari halaman intern.
+- Import hanya untuk Super Admin, sama seperti employee. Rollback membuang intern yang dibuat dan mengembalikan kolom yang diubah. Kolom yang tadinya kosong tidak bisa dikosongkan lagi oleh rollback.
+
 ### Export
 
-Export tersedia dari page Students dan Employees.
+Export tersedia dari page Students, Employees, dan Interns.
 
 Format:
 
@@ -409,6 +419,8 @@ Format:
 - Excel.
 
 Export mengikuti filter yang sedang dipakai di halaman.
+
+Intern export memakai aturan yang sama dengan employee. Perlu izin tulis data employee. Mode sensitif (nomor telepon, alamat, gender, agama, tanggal lahir, catatan, dan data pendidikan) hanya untuk Super Admin atau admin dengan akses PII employee. File export mode sensitif bisa diimpor ulang tanpa perubahan; kolom ID dan Created At diabaikan.
 
 ## 12. Error Umum
 

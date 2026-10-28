@@ -2,17 +2,23 @@ import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import { ExportService } from "../../service/export-service";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
-import type { ExportEmployeeRequest, ExportStudentRequest } from "../../model/export-model";
+import type {
+  ExportEmployeeRequest,
+  ExportInternRequest,
+  ExportStudentRequest,
+} from "../../model/export-model";
 import type {
   ConsentStatus,
   EmployeeStatus,
   Gender,
+  InternStatus,
   PCDay,
   Religion,
   StudentStatus,
 } from "../../generated/prisma/client";
 import type { StudentSortField } from "../../model/student-model";
 import type { EmployeeSortField } from "../../model/employee-model";
+import type { InternSortField } from "../../model/intern-model";
 
 export class ExportController {
   static async exportStudents(c: Context<{ Variables: AdminVariables }>) {
@@ -91,6 +97,40 @@ export class ExportController {
         request,
         getAuditRequestContext(c),
       );
+
+    return c.body(new Uint8Array(buffer), 200, {
+      "Content-Type": mimeType,
+      "Content-Disposition": `attachment; filename="${fileName}"`,
+    });
+  }
+
+  static async exportInterns(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+
+    const request: ExportInternRequest = {
+      format: c.req.query("format") as ExportInternRequest["format"],
+      export_mode: c.req.query("export_mode") as ExportInternRequest["export_mode"],
+      search: c.req.query("search"),
+      status: c.req.query("status") as InternStatus | undefined,
+      unit_id: c.req.query("unit_id"),
+      job_position_id: c.req.query("job_position_id"),
+      building_id: c.req.query("building_id"),
+      gender: c.req.query("gender") as Gender | undefined,
+      religion: c.req.query("religion") as Religion | undefined,
+      join_date_start: c.req.query("join_date_start"),
+      join_date_end: c.req.query("join_date_end"),
+      is_deleted: c.req.query("is_deleted")
+        ? c.req.query("is_deleted") === "true"
+        : undefined,
+      sort_by: c.req.query("sort_by") as InternSortField | undefined,
+      sort_order: c.req.query("sort_order") as "asc" | "desc" | undefined,
+    };
+
+    const { buffer, fileName, mimeType } = await ExportService.exportInterns(
+      admin,
+      request,
+      getAuditRequestContext(c),
+    );
 
     return c.body(new Uint8Array(buffer), 200, {
       "Content-Type": mimeType,

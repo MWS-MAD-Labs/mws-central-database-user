@@ -17,12 +17,14 @@ import {
   maritalStatuses,
   religionOptions,
 } from "../../employees/api/employeesApi.js";
+import { internStatuses } from "../../interns/api/internsApi.js";
 import { studentEntryTypes, studentStatuses } from "../../students/api/studentsApi.js";
 import { vaccineTypes } from "../../students/api/studentSensitiveApi.js";
 
 export const entityLabels = {
   students: "students",
   employees: "employees",
+  interns: "interns",
 };
 
 export const GENDER_VALUE_ALIASES = {
@@ -166,6 +168,18 @@ export const requiredImportFields = {
     "employment_type",
     "marital_status",
   ],
+  interns: [
+    "full_name",
+    "nick_name",
+    "email",
+    "gender",
+    "religion",
+    "unit",
+    "job_position",
+    "building",
+    "join_date",
+    "end_date",
+  ],
   students: [
     "full_name",
     "nick_name",
@@ -197,6 +211,21 @@ export const defaultPreviewFields = {
     "employment_type",
     "contract_end_date",
     "marital_status",
+    "status",
+  ],
+  interns: [
+    "full_name",
+    "nick_name",
+    "email",
+    "gender",
+    "religion",
+    "birth_place",
+    "birth_date",
+    "unit",
+    "job_position",
+    "building",
+    "join_date",
+    "end_date",
     "status",
   ],
   students: [
@@ -276,6 +305,37 @@ export const importFields = {
     { key: "bpjs_number", label: "BPJS Kesehatan Number" },
     { key: "bpjs_employment_number", label: "BPJS Ketenagakerjaan Number" },
     { key: "kpj_number", label: "KPJ Number" },
+    {
+      key: "education_level",
+      label: "Education Level",
+      options: educationLevels,
+    },
+    { key: "institution_name", label: "Institution Name" },
+    { key: "major", label: "Major" },
+    { key: "graduation_year", label: "Graduation Year" },
+  ],
+  interns: [
+    { key: "full_name", label: "Full Name" },
+    { key: "nick_name", label: "Nick" },
+    { key: "email", label: "Email" },
+    { key: "gender", label: "Gender", options: genderOptions },
+    { key: "religion", label: "Religion", options: religionOptions },
+    { key: "religion_other", label: "Religion (Other)" },
+    { key: "birth_place", label: "Birth Place" },
+    { key: "birth_date", label: "Birth Date", type: "date" },
+    { key: "unit", label: "Unit", optionSource: "units" },
+    {
+      key: "job_position",
+      label: "Job Position",
+      optionSource: "jobPositions",
+    },
+    { key: "building", label: "Building", optionSource: "buildings" },
+    { key: "join_date", label: "Join Date", type: "date" },
+    { key: "end_date", label: "End Date", type: "date" },
+    { key: "status", label: "Status", options: internStatuses },
+    { key: "notes", label: "Notes" },
+    { key: "mobile_phone", label: "Mobile Phone" },
+    { key: "residential_address", label: "Residential Address" },
     {
       key: "education_level",
       label: "Education Level",
@@ -390,7 +450,7 @@ export const FIELD_KEYSTROKE_FILTERS = {
 };
 
 export const IMPORT_FIELD_LABEL_TO_KEY = Object.fromEntries(
-  [...importFields.employees, ...importFields.students].map((field) => [
+  [...importFields.employees, ...importFields.interns, ...importFields.students].map((field) => [
     field.label,
     field.key,
   ]),

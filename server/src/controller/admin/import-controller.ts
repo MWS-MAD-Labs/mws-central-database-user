@@ -6,8 +6,10 @@ import { getAuditRequestContext } from "../../utils/audit-request-context";
 import { AdminRole, ImportMode } from "../../generated/prisma/client";
 import {
   IMPORT_EMPLOYEE_FIELDS,
+  IMPORT_INTERN_FIELDS,
   IMPORT_STUDENT_FIELDS,
   type ImportEmployeeFieldKey,
+  type ImportInternFieldKey,
   type ImportStudentFieldKey,
 } from "../../model/import-model";
 import type { SheetSelector } from "../../utils/import-file";
@@ -255,6 +257,99 @@ export class ImportController {
     }
 
     const response = await ImportService.getEmployeeJob(
+      jobId,
+      c.var.admin,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async previewInterns(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+
+    const body = await c.req.parseBody();
+    const file = body["file"];
+    if (!(file instanceof File)) {
+      throw new ResponseError(400, "A file is required under the 'file' field");
+    }
+
+    let mapping: Partial<Record<string, ImportInternFieldKey>> | undefined;
+    const mappingField = body["mapping"];
+    if (typeof mappingField === "string" && mappingField.length > 0) {
+      try {
+        mapping = JSON.parse(mappingField);
+      } catch {
+        throw new ResponseError(400, "mapping must be valid JSON");
+      }
+    }
+
+    const response = await ImportService.previewInterns(
+      admin,
+      file,
+      mapping,
+      resolveSheetSelector(body),
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async commitInterns(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const jobId = c.req.param("jobId");
+    if (!jobId) {
+      throw new ResponseError(400, "Import job ID is required in parameter");
+    }
+
+    const body = (await c.req.json().catch(() => ({}))) as {
+      offset?: number;
+      limit?: number;
+    };
+    const batch =
+      body.offset !== undefined && body.limit !== undefined
+        ? { offset: Number(body.offset), limit: Number(body.limit) }
+        : undefined;
+
+    const response = await ImportService.commitInterns(
+      admin,
+      jobId,
+      getAuditRequestContext(c),
+      undefined,
+      batch,
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async rollbackInterns(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const jobId = c.req.param("jobId");
+    if (!jobId) {
+      throw new ResponseError(400, "Import job ID is required in parameter");
+    }
+
+    const response = await ImportService.rollbackInterns(
+      admin,
+      jobId,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static getInternFields(c: Context<{ Variables: AdminVariables }>) {
+    assertSuperAdminForFieldList(c.var.admin);
+    return c.json({ data: IMPORT_INTERN_FIELDS });
+  }
+
+  static async getInternJob(c: Context<{ Variables: AdminVariables }>) {
+    const jobId = c.req.param("jobId");
+    if (!jobId) {
+      throw new ResponseError(400, "Import job ID is required in parameter");
+    }
+
+    const response = await ImportService.getInternJob(
       jobId,
       c.var.admin,
       getAuditRequestContext(c),

@@ -24,7 +24,9 @@ import {
 import {
   toImportJobResponse,
   toEmployeeImportJobResponse,
+  toInternImportJobResponse,
   IMPORT_EMPLOYEE_FIELDS,
+  IMPORT_INTERN_FIELDS,
   normalizeBloodType,
   normalizeGender,
   normalizeReligion,
@@ -32,18 +34,24 @@ import {
   parseBoolean,
   type CommitStudentImportResponse,
   type CommitEmployeeImportResponse,
+  type CommitInternImportResponse,
   type EmployeeImportJobResponse,
   type ImportEmployeeFieldKey,
+  type ImportInternFieldKey,
+  type InternImportJobResponse,
   type ImportJobResponse,
   type ImportStudentFieldKey,
   type ImportSummary,
   type PreviewEmployeeImportResponse,
+  type PreviewInternImportResponse,
   type PreviewStudentImportResponse,
   type RollbackEmployeeImportResponse,
+  type RollbackInternImportResponse,
   type RollbackStudentImportResponse,
   type RollbackSummary,
   type StagedConsent,
   type StagedEmployeeRow,
+  type StagedInternRow,
   type StagedHealthNote,
   type StagedHealthRecord,
   type StagedParentGuardian,
@@ -62,6 +70,10 @@ import type {
   UpdateEmployeeRequest,
 } from "../model/employee-model";
 import type {
+  CreateInternRequest,
+  UpdateInternRequest,
+} from "../model/intern-model";
+import type {
   ConsentStatus,
   ConsentType,
   HealthNoteCategory,
@@ -73,6 +85,7 @@ import type {
 import { AuditService } from "./audit-service";
 import { StudentService } from "./student-service";
 import { EmployeeService } from "./employee-service";
+import { InternService } from "./intern-service";
 import { ParentGuardianService } from "./parent-guardian-service";
 import { HealthRecordService } from "./health-record-service";
 import { HealthNoteService } from "./health-note-service";
@@ -108,6 +121,7 @@ import {
   normalizeIndonesianPhone,
   yearsBetweenDates,
 } from "../validation/validation";
+import { InternValidation } from "../validation/intern-validation";
 import {
   EmployeeValidation,
   normalizeAlphanumeric,
@@ -2835,6 +2849,406 @@ function buildEmployeeRevertRequest(
   };
 }
 
+type ResolvedInternRows = {
+  rows: StagedInternRow[];
+  unitIdByName: Map<string, string>;
+  jobPositionIdByName: Map<string, string>;
+  buildingIdByName: Map<string, string>;
+};
+
+const nameKey = (value: string) => value.trim().toLowerCase();
+
+// An intern has no ID of its own, so the email in the file picks the record.
+async function resolveInternStagedRows(
+  inputs: MappedRowInput[],
+): Promise<ResolvedInternRows> {
+  const shapeErrors = new Map<number, string[]>();
+  for (const { row_number, mapped } of inputs) {
+    shapeErrors.set(row_number, ImportValidation.validateInternRowShape(mapped));
+  }
+
+  const emailValues = [
+    ...new Set(inputs.map((r) => r.mapped.email?.trim().toLowerCase()).filter(Boolean)),
+  ] as string[];
+
+  const [existingInterns, existingPersons, units, jobPositions, buildings] =
+    await Promise.all([
+      prismaClient.intern.findMany({ where: { email: { in: emailValues } } }),
+      prismaClient.person.findMany({
+        where: { email: { in: emailValues } },
+        select: { id: true, email: true },
+      }),
+      prismaClient.masterUnit.findMany(),
+      prismaClient.masterJobPosition.findMany(),
+      prismaClient.masterBuilding.findMany(),
+    ]);
+
+  const internByEmail = new Map(existingInterns.map((i) => [i.email.toLowerCase(), i]));
+  const personByEmail = new Map(existingPersons.map((p) => [p.email.toLowerCase(), p]));
+  const unitIdByName = new Map(units.map((u) => [nameKey(u.name), u.id]));
+  const jobPositionIdByName = new Map(jobPositions.map((p) => [nameKey(p.name), p.id]));
+  const buildingIdByName = new Map(buildings.map((b) => [nameKey(b.name), b.id]));
+  const unitNameById = new Map(units.map((u) => [u.id, u.name]));
+  const jobPositionNameById = new Map(jobPositions.map((p) => [p.id, p.name]));
+  const buildingNameById = new Map(buildings.map((b) => [b.id, b.name]));
+
+  const emailCounts = new Map<string, number>();
+  for (const { mapped } of inputs) {
+    const email = mapped.email?.trim().toLowerCase();
+    if (email) emailCounts.set(email, (emailCounts.get(email) ?? 0) + 1);
+  }
+
+  // Compare normalized import fields to suppress no-op intern updates.
+  function describeInternChanges(
+    mapped: Record<string, string>,
+    matched: (typeof existingInterns)[number],
+  ): { label: string; from: string; to: string }[] {
+    const formatDate = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
+    const currentValues: Partial<Record<ImportInternFieldKey, string>> = {
+      full_name: matched.full_name,
+      nick_name: matched.nick_name,
+      gender: matched.gender,
+      religion: matched.religion,
+      religion_other: matched.religion_other ?? "",
+      birth_place: matched.birth_place ?? "",
+      birth_date: formatDate(matched.birth_date),
+      unit: unitNameById.get(matched.unit_id) ?? "",
+      job_position: jobPositionNameById.get(matched.job_position_id) ?? "",
+      building: buildingNameById.get(matched.building_id) ?? "",
+      join_date: formatDate(matched.join_date),
+      end_date: formatDate(matched.end_date),
+      status: matched.status,
+      notes: matched.notes ?? "",
+      mobile_phone: matched.mobile_phone ?? "",
+      residential_address: matched.residential_address ?? "",
+      education_level: matched.education_level ?? "",
+      institution_name: matched.institution_name ?? "",
+      major: matched.major ?? "",
+      graduation_year:
+        matched.graduation_year != null ? String(matched.graduation_year) : "",
+    };
+
+    const comparableMappedValue = (field: ImportInternFieldKey): string | undefined => {
+      const raw = mapped[field];
+      if (!raw) return undefined;
+      switch (field) {
+        case "gender":
+          return normalizeGender(raw);
+        case "religion":
+          return normalizeReligion(raw);
+        case "religion_other":
+          return resolveReligionOtherDetail(mapped.religion, mapped.religion_other) ?? "";
+        case "birth_date":
+        case "join_date":
+        case "end_date":
+          try {
+            return parseFlexibleDate(raw).toISOString().slice(0, 10);
+          } catch {
+            return raw.trim();
+          }
+        case "status":
+        case "education_level":
+          return raw.toUpperCase();
+        case "graduation_year":
+          return Number.isNaN(Number(raw)) ? raw.trim() : String(Number(raw));
+        case "unit":
+        case "job_position":
+        case "building":
+          return nameKey(raw);
+        case "mobile_phone":
+          return normalizeIndonesianPhone(raw);
+        default:
+          return raw.trim();
+      }
+    };
+    const comparableCurrentValue = (field: ImportInternFieldKey): string | undefined => {
+      const current = currentValues[field];
+      if (current === undefined) return undefined;
+      if (field === "unit" || field === "job_position" || field === "building") {
+        return nameKey(current);
+      }
+      return field === "mobile_phone" && current ? normalizeIndonesianPhone(current) : current;
+    };
+
+    const changes: { label: string; from: string; to: string }[] = [];
+    for (const { key, label } of IMPORT_INTERN_FIELDS) {
+      if (currentValues[key] === undefined) continue; // email picks the record, it is not diffed
+      const mappedValue = comparableMappedValue(key);
+      if (mappedValue === undefined) continue; // blank or unmapped in this file, so not changed
+      if (mappedValue === comparableCurrentValue(key)) continue;
+      changes.push({ label, from: currentValues[key] || "", to: mapped[key]!.trim() });
+    }
+    return changes;
+  }
+
+  const rows: StagedInternRow[] = await Promise.all(
+    inputs.map(async ({ row_number, mapped, source_raw }) => {
+      const errors = [...(shapeErrors.get(row_number) ?? [])];
+      const warnings: string[] = [];
+      const email = mapped.email?.trim().toLowerCase() ?? "";
+
+      if (email && (emailCounts.get(email) ?? 0) > 1) {
+        errors.push(`Duplicate email within the file: ${mapped.email}`);
+      }
+
+      const matched = email ? internByEmail.get(email) : undefined;
+      let action: StagedInternRow["action"] = !email ? null : matched ? "UPDATE" : "CREATE";
+
+      if (matched?.deleted_at) {
+        errors.push(
+          `This intern was removed: ${mapped.email}. Restore the intern instead of importing it again.`,
+        );
+        action = null;
+      } else if (email && !matched && personByEmail.has(email)) {
+        errors.push(`Email already registered to another person: ${mapped.email}`);
+      }
+
+      if (action === "UPDATE" && matched) {
+        const changes = describeInternChanges(mapped, matched);
+        if (changes.length === 0) {
+          action = null;
+          warnings.push("No changes detected for this intern, already up to date.");
+        } else {
+          for (const change of changes) {
+            warnings.push(`${change.label}: "${change.from}" -> "${change.to}"`);
+          }
+        }
+      }
+
+      if (mapped.unit && !unitIdByName.get(nameKey(mapped.unit))) {
+        errors.push(`Unit not recognized: ${mapped.unit}`);
+      }
+      if (mapped.job_position && !jobPositionIdByName.get(nameKey(mapped.job_position))) {
+        errors.push(`Job position not recognized: ${mapped.job_position}`);
+      }
+      if (mapped.building && !buildingIdByName.get(nameKey(mapped.building))) {
+        errors.push(`Building not recognized: ${mapped.building}`);
+      }
+
+      // The position has to be allowed in the unit the intern ends up in.
+      const resultingUnitId = mapped.unit
+        ? unitIdByName.get(nameKey(mapped.unit))
+        : matched?.unit_id;
+      const resultingPositionId = mapped.job_position
+        ? jobPositionIdByName.get(nameKey(mapped.job_position))
+        : matched?.job_position_id;
+      if (
+        (action === "CREATE" || action === "UPDATE") &&
+        resultingUnitId &&
+        resultingPositionId
+      ) {
+        try {
+          await assertJobPositionUnitCompatibleByIds(resultingPositionId, resultingUnitId);
+        } catch (error) {
+          const message =
+            error instanceof ResponseError
+              ? error.message
+              : "Could not validate the job position and unit combination";
+          if (!errors.includes(message)) errors.push(message);
+        }
+      }
+
+      const stagedRow: StagedInternRow = {
+        row_number,
+        raw: mapped,
+        source_raw: source_raw ?? mapped,
+        action,
+        matched_intern_id: matched?.id ?? null,
+        errors,
+        warnings,
+        committed_intern_id: null,
+        previous_values: null,
+      };
+
+      // Preview with the same schema used at commit.
+      if (action === "CREATE" || action === "UPDATE") {
+        try {
+          const zodResult =
+            action === "CREATE"
+              ? InternValidation.CREATE.safeParse(
+                  buildInternCreateRequest(
+                    stagedRow,
+                    unitIdByName,
+                    jobPositionIdByName,
+                    buildingIdByName,
+                  ),
+                )
+              : InternValidation.UPDATE.safeParse(
+                  buildInternUpdateRequest(
+                    stagedRow,
+                    unitIdByName,
+                    jobPositionIdByName,
+                    buildingIdByName,
+                  ),
+                );
+          if (!zodResult.success) {
+            for (const issue of zodResult.error.issues) {
+              const alreadyReported = errors.some(
+                (existing) => existing.toLowerCase() === issue.message.toLowerCase(),
+              );
+              if (!alreadyReported) errors.push(issue.message);
+            }
+          }
+        } catch {
+          // Best-effort: an earlier check already covers any shape problem that would make the builders throw.
+        }
+      }
+
+      return stagedRow;
+    }),
+  );
+
+  return { rows, unitIdByName, jobPositionIdByName, buildingIdByName };
+}
+
+function buildInternCreateRequest(
+  row: StagedInternRow,
+  unitIdByName: Map<string, string>,
+  jobPositionIdByName: Map<string, string>,
+  buildingIdByName: Map<string, string>,
+): CreateInternRequest {
+  const mapped = row.raw;
+  return {
+    full_name: mapped.full_name,
+    nick_name: mapped.nick_name,
+    email: mapped.email.trim().toLowerCase(),
+    gender: normalizeGender(mapped.gender) as CreateInternRequest["gender"],
+    religion: normalizeReligion(mapped.religion) as CreateInternRequest["religion"],
+    religion_other: resolveReligionOtherDetail(mapped.religion, mapped.religion_other),
+    birth_place: mapped.birth_place || undefined,
+    birth_date: mapped.birth_date
+      ? parseFlexibleDate(mapped.birth_date).toISOString()
+      : undefined,
+    status: (mapped.status?.toUpperCase() as CreateInternRequest["status"]) || undefined,
+    unit_id: unitIdByName.get(nameKey(mapped.unit))!,
+    job_position_id: jobPositionIdByName.get(nameKey(mapped.job_position))!,
+    building_id: buildingIdByName.get(nameKey(mapped.building))!,
+    join_date: parseFlexibleDate(mapped.join_date).toISOString(),
+    end_date: parseFlexibleDate(mapped.end_date).toISOString(),
+    notes: mapped.notes || undefined,
+    mobile_phone: mapped.mobile_phone || undefined,
+    residential_address: mapped.residential_address || undefined,
+    education_level:
+      (mapped.education_level?.toUpperCase() as CreateInternRequest["education_level"]) ||
+      undefined,
+    institution_name: mapped.institution_name || undefined,
+    major: mapped.major || undefined,
+    graduation_year: mapped.graduation_year ? Number(mapped.graduation_year) : undefined,
+  };
+}
+
+function buildInternUpdateRequest(
+  row: StagedInternRow,
+  unitIdByName: Map<string, string>,
+  jobPositionIdByName: Map<string, string>,
+  buildingIdByName: Map<string, string>,
+): UpdateInternRequest {
+  const mapped = row.raw;
+  return {
+    id: row.matched_intern_id!,
+    full_name: mapped.full_name || undefined,
+    nick_name: mapped.nick_name || undefined,
+    gender: mapped.gender
+      ? (normalizeGender(mapped.gender) as UpdateInternRequest["gender"])
+      : undefined,
+    religion: mapped.religion
+      ? (normalizeReligion(mapped.religion) as UpdateInternRequest["religion"])
+      : undefined,
+    religion_other: resolveReligionOtherDetail(mapped.religion, mapped.religion_other),
+    birth_place: mapped.birth_place || undefined,
+    birth_date: mapped.birth_date
+      ? parseFlexibleDate(mapped.birth_date).toISOString()
+      : undefined,
+    status: (mapped.status?.toUpperCase() as UpdateInternRequest["status"]) || undefined,
+    unit_id: mapped.unit ? unitIdByName.get(nameKey(mapped.unit)) : undefined,
+    job_position_id: mapped.job_position
+      ? jobPositionIdByName.get(nameKey(mapped.job_position))
+      : undefined,
+    building_id: mapped.building
+      ? buildingIdByName.get(nameKey(mapped.building))
+      : undefined,
+    join_date: mapped.join_date
+      ? parseFlexibleDate(mapped.join_date).toISOString()
+      : undefined,
+    end_date: mapped.end_date
+      ? parseFlexibleDate(mapped.end_date).toISOString()
+      : undefined,
+    notes: mapped.notes || undefined,
+    mobile_phone: mapped.mobile_phone || undefined,
+    residential_address: mapped.residential_address || undefined,
+    education_level: mapped.education_level
+      ? (mapped.education_level.toUpperCase() as UpdateInternRequest["education_level"])
+      : undefined,
+    institution_name: mapped.institution_name || undefined,
+    major: mapped.major || undefined,
+    graduation_year: mapped.graduation_year ? Number(mapped.graduation_year) : undefined,
+  };
+}
+
+async function captureInternUpdateSnapshot(
+  internId: string,
+  mapped: Record<string, string>,
+): Promise<Record<string, string | number | boolean | null> | null> {
+  const intern = await prismaClient.intern.findUnique({ where: { id: internId } });
+  if (!intern) return null;
+
+  const snapshot: Record<string, string | number | boolean | null> = {};
+  if (mapped.full_name) snapshot.full_name = intern.full_name;
+  if (mapped.nick_name) snapshot.nick_name = intern.nick_name;
+  if (mapped.gender) snapshot.gender = intern.gender;
+  if (mapped.religion) {
+    snapshot.religion = intern.religion;
+    snapshot.religion_other = intern.religion_other;
+  }
+  if (mapped.birth_place) snapshot.birth_place = intern.birth_place;
+  if (mapped.birth_date) {
+    snapshot.birth_date = intern.birth_date ? intern.birth_date.toISOString() : null;
+  }
+  if (mapped.status) snapshot.status = intern.status;
+  if (mapped.unit) snapshot.unit_id = intern.unit_id;
+  if (mapped.job_position) snapshot.job_position_id = intern.job_position_id;
+  if (mapped.building) snapshot.building_id = intern.building_id;
+  if (mapped.join_date) snapshot.join_date = intern.join_date.toISOString();
+  if (mapped.end_date) snapshot.end_date = intern.end_date.toISOString();
+  if (mapped.notes) snapshot.notes = intern.notes;
+  if (mapped.mobile_phone) snapshot.mobile_phone = intern.mobile_phone;
+  if (mapped.residential_address) snapshot.residential_address = intern.residential_address;
+  if (mapped.education_level) snapshot.education_level = intern.education_level;
+  if (mapped.institution_name) snapshot.institution_name = intern.institution_name;
+  if (mapped.major) snapshot.major = intern.major;
+  if (mapped.graduation_year) snapshot.graduation_year = intern.graduation_year;
+  return snapshot;
+}
+
+// A field that was empty before cannot be emptied again by a rollback, same as the employee rollback.
+function buildInternRevertRequest(row: StagedInternRow): UpdateInternRequest {
+  const previous = row.previous_values!;
+  return {
+    id: row.committed_intern_id!,
+    full_name: previous.full_name as string | undefined,
+    nick_name: previous.nick_name as string | undefined,
+    gender: previous.gender as UpdateInternRequest["gender"],
+    religion: previous.religion as UpdateInternRequest["religion"],
+    religion_other: previous.religion_other as string | null | undefined,
+    birth_place: (previous.birth_place as string | null) ?? undefined,
+    birth_date: (previous.birth_date as string | null) ?? undefined,
+    status: previous.status as UpdateInternRequest["status"],
+    unit_id: previous.unit_id as string | undefined,
+    job_position_id: previous.job_position_id as string | undefined,
+    building_id: previous.building_id as string | undefined,
+    join_date: previous.join_date as string | undefined,
+    end_date: previous.end_date as string | undefined,
+    notes: (previous.notes as string | null) ?? undefined,
+    mobile_phone: (previous.mobile_phone as string | null) ?? undefined,
+    residential_address: (previous.residential_address as string | null) ?? undefined,
+    education_level:
+      (previous.education_level as UpdateInternRequest["education_level"]) ?? undefined,
+    institution_name: (previous.institution_name as string | null) ?? undefined,
+    major: (previous.major as string | null) ?? undefined,
+    graduation_year: (previous.graduation_year as number | null) ?? undefined,
+  };
+}
+
 const MAX_EXPOSED_RECORDS = 50;
 
 // Opening a staged job exposes every row's raw data. Record who, for rows
@@ -3632,6 +4046,328 @@ export class ImportService {
     }
 
     return toEmployeeImportJobResponse(job);
+  }
+
+  static async previewInterns(
+    admin: AdminUser,
+    file: File,
+    mapping: Partial<Record<string, ImportInternFieldKey>> | undefined,
+    sheet: SheetSelector | undefined,
+    context: AuditRequestContext = {},
+  ): Promise<PreviewInternImportResponse> {
+    await assertSuperAdminImport(admin, "preview", context);
+
+    const {
+      headers,
+      rows: rawRows,
+      sheet_name,
+      other_sheets,
+    } = await parseImportFile(file, sheet);
+    const { mapping: resolvedMapping, unmappedHeaders } =
+      ImportValidation.resolveInternFieldMapping(headers, mapping);
+
+    const inputs: MappedRowInput[] = rawRows
+      .map((values) => ({
+        mapped: ImportValidation.mapInternRow(headers, values, resolvedMapping),
+        source_raw: buildSourceRaw(headers, values),
+      }))
+      .filter(({ mapped }) => !isPhantomRow(mapped, ["full_name", "email"]))
+      .map((input, index) => ({ ...input, row_number: index + 1 }));
+
+    const { rows } = await resolveInternStagedRows(inputs);
+    const summary = summarize(rows);
+
+    const job = await prismaClient.importJob.create({
+      data: {
+        type: ImportType.INTERN,
+        status: ImportStatus.PENDING,
+        file_name: file.name,
+        total_rows: summary.total_rows,
+        valid_rows: summary.valid_rows,
+        error_rows: summary.error_rows,
+        field_mapping: resolvedMapping,
+        staged_rows: rows,
+        result_summary: summary,
+        created_by: admin.id,
+      },
+    });
+
+    // The response echoes contact details, so the preview is audited like the employee one.
+    await AuditService.record({
+      action: AuditAction.IMPORT_DATA,
+      entity_type: "ImportJob",
+      entity_id: job.id,
+      source: AuditSource.UI,
+      admin_id: admin.id,
+      new_values: {
+        entity: "Intern",
+        phase: "preview",
+        job_id: job.id,
+        file_name: file.name,
+        sheet_name,
+        ...summary,
+      },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
+    return {
+      job_id: job.id,
+      status: job.status,
+      type: job.type,
+      field_mapping: resolvedMapping as Record<string, ImportInternFieldKey>,
+      unmapped_headers: unmappedHeaders,
+      summary,
+      rows,
+      sheet_name,
+      source_headers: headers,
+      other_sheets,
+    };
+  }
+
+  static async commitInterns(
+    admin: AdminUser,
+    jobId: string,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+    batch?: { offset: number; limit: number },
+  ): Promise<CommitInternImportResponse> {
+    await assertSuperAdminImport(admin, "commit", context);
+
+    const job = await prismaClient.importJob.findUnique({ where: { id: jobId } });
+    if (!job || job.type !== ImportType.INTERN) {
+      throw new ResponseError(404, "Import job not found");
+    }
+    if (
+      job.status !== ImportStatus.PENDING &&
+      job.status !== ImportStatus.PROCESSING
+    ) {
+      throw new ResponseError(
+        400,
+        `Import job already ${job.status.toLowerCase()} - it can only be committed once`,
+      );
+    }
+
+    const stagedRows = (job.staged_rows as StagedInternRow[] | null) ?? [];
+    const batchStart = batch ? Math.max(batch.offset, 0) : 0;
+    const batchEnd = batch
+      ? Math.min(batch.offset + batch.limit, stagedRows.length)
+      : stagedRows.length;
+    const hasMore = batchEnd < stagedRows.length;
+
+    const batchInputs: MappedRowInput[] = stagedRows
+      .slice(batchStart, batchEnd)
+      .map((row) => ({
+        row_number: row.row_number,
+        mapped: row.raw,
+        source_raw: row.source_raw,
+      }));
+
+    const { rows: batchRows, unitIdByName, jobPositionIdByName, buildingIdByName } =
+      await resolveInternStagedRows(batchInputs);
+
+    for (const row of batchRows) {
+      if (row.errors.length > 0 || row.action === null) continue;
+
+      try {
+        if (row.action === "CREATE") {
+          const created = await InternService.create(
+            admin,
+            buildInternCreateRequest(row, unitIdByName, jobPositionIdByName, buildingIdByName),
+            context,
+            now,
+          );
+          row.committed_intern_id = created.id;
+        } else {
+          row.previous_values = await captureInternUpdateSnapshot(
+            row.matched_intern_id!,
+            row.raw,
+          );
+          await InternService.update(
+            admin,
+            buildInternUpdateRequest(row, unitIdByName, jobPositionIdByName, buildingIdByName),
+            context,
+          );
+          row.committed_intern_id = row.matched_intern_id;
+        }
+      } catch (error) {
+        row.errors.push(describeCommitError(error));
+      }
+    }
+
+    const mergedRows = stagedRows.slice();
+    for (let i = 0; i < batchRows.length; i++) {
+      mergedRows[batchStart + i] = batchRows[i];
+    }
+
+    const summary = summarize(mergedRows);
+    const status = hasMore
+      ? ImportStatus.PROCESSING
+      : summary.error_rows === 0
+        ? ImportStatus.COMPLETED
+        : summary.valid_rows === 0
+          ? ImportStatus.FAILED
+          : ImportStatus.PARTIAL;
+
+    await prismaClient.importJob.update({
+      where: { id: job.id },
+      data: {
+        status,
+        valid_rows: summary.valid_rows,
+        error_rows: summary.error_rows,
+        staged_rows: mergedRows,
+        result_summary: summary,
+        completed_at: hasMore ? null : now,
+      },
+    });
+
+    await AuditService.record({
+      action: AuditAction.IMPORT_DATA,
+      entity_type: "ImportJob",
+      entity_id: job.id,
+      source: AuditSource.UI,
+      admin_id: admin.id,
+      new_values: {
+        entity: "Intern",
+        phase: "commit",
+        job_id: job.id,
+        file_name: job.file_name,
+        batch_offset: batchStart,
+        batch_size: batchRows.length,
+        has_more: hasMore,
+        ...summary,
+      },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
+    return { job_id: job.id, status, summary, rows: batchRows, has_more: hasMore };
+  }
+
+  // Same tier as rollbackEmployees: InternService.remove() is already SUPER_ADMIN-only.
+  static async rollbackInterns(
+    admin: AdminUser,
+    jobId: string,
+    context: AuditRequestContext = {},
+  ): Promise<RollbackInternImportResponse> {
+    await assertSuperAdminImport(admin, "rollback", context);
+
+    const job = await prismaClient.importJob.findUnique({ where: { id: jobId } });
+    if (!job || job.type !== ImportType.INTERN) {
+      throw new ResponseError(404, "Import job not found");
+    }
+    if (
+      job.status !== ImportStatus.COMPLETED &&
+      job.status !== ImportStatus.PARTIAL
+    ) {
+      throw new ResponseError(
+        400,
+        `Import job is ${job.status.toLowerCase()} - only a COMPLETED or PARTIAL job can be rolled back`,
+      );
+    }
+
+    const rows = (job.staged_rows as StagedInternRow[] | null) ?? [];
+    let revertedCount = 0;
+    let failedCount = 0;
+
+    for (const row of rows) {
+      if (!row.committed_intern_id) continue;
+
+      try {
+        if (row.action === "CREATE") {
+          await InternService.remove(admin, { id: row.committed_intern_id }, context);
+        } else if (row.action === "UPDATE" && row.previous_values) {
+          await InternService.update(admin, buildInternRevertRequest(row), context);
+        }
+        row.committed_intern_id = null;
+        revertedCount++;
+      } catch (error) {
+        row.errors.push(`Rollback failed: ${describeCommitError(error)}`);
+        failedCount++;
+      }
+    }
+
+    const summary: RollbackSummary = {
+      reverted_count: revertedCount,
+      failed_count: failedCount,
+    };
+    const rollbackStatus =
+      failedCount > 0 ? ImportStatus.PARTIAL : ImportStatus.ROLLED_BACK;
+
+    await prismaClient.importJob.update({
+      where: { id: job.id },
+      data: {
+        status: rollbackStatus,
+        staged_rows: rows,
+        result_summary: {
+          ...(job.result_summary as Record<string, unknown> | null),
+          rollback: summary,
+        },
+      },
+    });
+
+    await AuditService.record({
+      action: AuditAction.ROLLBACK_IMPORT,
+      entity_type: "ImportJob",
+      entity_id: job.id,
+      source: AuditSource.UI,
+      admin_id: admin.id,
+      new_values: {
+        entity: "Intern",
+        job_id: job.id,
+        file_name: job.file_name,
+        ...summary,
+      },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
+    return { job_id: job.id, status: rollbackStatus, summary, rows };
+  }
+
+  // Reading a staged intern import requires an audited Super Admin gate.
+  static async getInternJob(
+    id: string,
+    admin: AdminUser,
+    context: AuditRequestContext = {},
+  ): Promise<InternImportJobResponse> {
+    await assertSuperAdminImport(admin, "view job", context);
+
+    const job = await prismaClient.importJob.findUnique({ where: { id } });
+    if (!job || job.type !== ImportType.INTERN) {
+      throw new ResponseError(404, "Import job not found");
+    }
+
+    const { cached } = await withLookupCache(
+      "import-job-pii-access",
+      [admin.id, id],
+      async () => true,
+    );
+    if (!cached) {
+      await AuditService.record({
+        action: AuditAction.ACCESS_EMPLOYEE_PII,
+        source: AuditSource.UI,
+        entity_type: "ImportJob",
+        entity_id: id,
+        admin_id: admin.id,
+        new_values: {
+          resource: "InternImportJob",
+          entity: "Intern",
+          job_id: id,
+          file_name: job.file_name,
+          ...summarizeJobExposure(
+            ((job.staged_rows as StagedInternRow[] | null) ?? []).map((row) => ({
+              id: row.matched_intern_id ?? row.committed_intern_id,
+              name: row.raw?.full_name,
+            })),
+          ),
+        },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
+    }
+
+    return toInternImportJobResponse(job);
   }
 
   static async cleanupJobs(

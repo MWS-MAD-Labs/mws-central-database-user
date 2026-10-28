@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
+import { DataTransferActions } from "../../import-export/components/DataTransferActions.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import {
@@ -133,6 +134,7 @@ export function InternsPage() {
     user?.role === "SUPER_ADMIN" ||
     (user?.role === "DATABASE_ADMIN" && Boolean(user?.can_write_employee_data));
   const canRestore = user?.role === "SUPER_ADMIN";
+  const canImport = user?.role === "SUPER_ADMIN";
   const interns = useMemo(
     () => internsQuery.data?.data || [],
     [internsQuery.data?.data],
@@ -192,15 +194,27 @@ export function InternsPage() {
         title="Interns"
         description="Manage intern records: unit, position, and internship period."
         actions={
-          canWrite ? (
-            <Button asChild size="icon" aria-label="New Intern" title="New Intern">
-              <Link to="/interns/new"><Plus size={16} /></Link>
-            </Button>
-          ) : (
-            <Button type="button" disabled size="icon" aria-label="New Intern" title="New Intern">
-              <Plus size={16} />
-            </Button>
-          )
+          <>
+            <DataTransferActions
+              entity="interns"
+              exportParams={queryParams}
+              canImport={canImport}
+              canExport={canWrite}
+              canExportSensitive={
+                user?.role === "SUPER_ADMIN" ||
+                Boolean(user?.can_view_employee_pii)
+              }
+            />
+            {canWrite ? (
+              <Button asChild size="icon" aria-label="New Intern" title="New Intern">
+                <Link to="/interns/new"><Plus size={16} /></Link>
+              </Button>
+            ) : (
+              <Button type="button" disabled size="icon" aria-label="New Intern" title="New Intern">
+                <Plus size={16} />
+              </Button>
+            )}
+          </>
         }
       />
 

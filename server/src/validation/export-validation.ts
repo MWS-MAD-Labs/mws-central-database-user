@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { EmployeeValidation } from "./employee-validation";
+import { InternValidation } from "./intern-validation";
 import { StudentValidation } from "./student-validation";
 
 const FORMAT = z.enum(["csv", "xlsx"], {
@@ -14,6 +15,11 @@ export class ExportValidation {
     }).extend({ format: FORMAT, export_mode: EXPORT_MODE, roster_academic_year_id: z.string().optional() });
 
   static readonly EMPLOYEE = EmployeeValidation.SEARCH.omit({
+    page: true,
+    size: true,
+  }).extend({ format: FORMAT, export_mode: EXPORT_MODE });
+
+  static readonly INTERN = InternValidation.SEARCH.omit({
     page: true,
     size: true,
   }).extend({ format: FORMAT, export_mode: EXPORT_MODE });

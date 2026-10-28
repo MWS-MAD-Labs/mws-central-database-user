@@ -83,7 +83,39 @@ function employeePreview(overrides = {}) {
   }
 }
 
+function internPreview(overrides = {}) {
+  return {
+    job_id: 'intern-job-1',
+    status: 'PENDING',
+    type: 'INTERN',
+    summary: summary(),
+    field_mapping: { 'Full Name': 'full_name', Email: 'email', 'End Date': 'end_date' },
+    rows: [
+      {
+        row_number: 2,
+        action: 'CREATE',
+        raw: {
+          full_name: 'Sari Intern',
+          email: 'sari.intern@example.com',
+          end_date: '2027-02-01',
+        },
+        errors: [],
+        warnings: [],
+      },
+    ],
+    ...overrides,
+  }
+}
+
 function optionRoutes(entity) {
+  if (entity === 'interns') {
+    return [
+      '/api/admin/units?page=1&size=100&sort_by=name&sort_order=asc',
+      '/api/admin/job-positions?page=1&size=100&sort_by=name&sort_order=asc',
+      '/api/admin/buildings?page=1&size=100&sort_by=name&sort_order=asc',
+    ].map((path) => ({ path, response: jsonResponse({ data: [] }) }))
+  }
+
   if (entity === 'employees') {
     return [
       '/api/admin/units?page=1&size=100&sort_by=name&sort_order=asc',
@@ -705,6 +737,24 @@ describe('ImportDialog', () => {
     expect(fetchMock.mock.calls.some(([url]) => url.startsWith('/api/admin/grades?'))).toBe(false)
     expect(screen.queryByRole('radio', { name: /Full Registration/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('radio', { name: /Attach to Existing Student/ })).not.toBeInTheDocument()
+  })
+
+  it('loads intern options without job levels or grades and shows the end date column', async () => {
+    const { fetchMock } = renderDialog('interns', [
+      {
+        path: '/api/admin/interns/import/intern-job-1',
+        response: jsonResponse({ data: internPreview({ id: 'intern-job-1', job_id: undefined }) }),
+      },
+    ], { initialJobId: 'intern-job-1' })
+
+    await screen.findByText('Job intern-job-1')
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.startsWith('/api/admin/units?'))).toBe(true))
+    expect(fetchMock.mock.calls.some(([url]) => url.startsWith('/api/admin/buildings?'))).toBe(true)
+    expect(fetchMock.mock.calls.some(([url]) => url.startsWith('/api/admin/job-levels?'))).toBe(false)
+    expect(fetchMock.mock.calls.some(([url]) => url.startsWith('/api/admin/grades?'))).toBe(false)
+    expect(screen.getByText('End Date')).toBeVisible()
+    expect(screen.queryByText('Employee ID')).not.toBeInTheDocument()
+    expect(screen.queryByText('Contract End Date')).not.toBeInTheDocument()
   })
 
   it('loads student-specific options and exposes student import modes', async () => {
