@@ -140,6 +140,22 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
+    path: "/api/internal/student-support-assignments/caseload-limit",
+    scope: API_SCOPES.STUDENT_SUPPORT_ASSIGNMENTS_READ,
+    title: "Support teacher caseload limit",
+    group: "Classes and Teachers",
+    purpose: "Gets how many students one special education teacher can look after at the same time.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/academic-years",
+    scope: API_SCOPES.CLASSES_READ,
+    title: "List academic years",
+    group: "Classes and Teachers",
+    purpose: "Gets the academic years, including the active one that the classes belong to.",
+  },
+  {
+    method: "GET",
     path: "/api/internal/applications",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
     title: "Applications shown in the Hub",
