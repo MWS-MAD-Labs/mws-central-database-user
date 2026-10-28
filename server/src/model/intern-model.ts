@@ -360,3 +360,65 @@ export function toInternAuditSnapshot(
     graduation_year: intern.graduation_year,
   };
 }
+
+export type InternExportRow = {
+  id: string;
+  full_name: string;
+  nick_name: string;
+  email: string;
+  unit: string;
+  job_position: string;
+  building: string;
+  join_date: string;
+  end_date: string;
+  status: InternStatus;
+  created_at: string;
+  // Personal data, only filled in a sensitive export.
+  mobile_phone: string | null;
+  residential_address: string | null;
+  gender: Gender | null;
+  religion: Religion | null;
+  religion_other: string | null;
+  birth_place: string | null;
+  birth_date: string | null;
+  notes: string | null;
+  education_level: EducationLevel | null;
+  institution_name: string | null;
+  major: string | null;
+  graduation_year: number | null;
+};
+
+export function toInternExportRow(
+  intern: Intern & {
+    unit: { name: string };
+    job_position: { name: string };
+    building: { name: string };
+  },
+  includeSensitive: boolean,
+): InternExportRow {
+  return {
+    id: intern.id,
+    full_name: intern.full_name,
+    nick_name: intern.nick_name,
+    email: intern.email,
+    unit: intern.unit.name,
+    job_position: intern.job_position.name,
+    building: intern.building.name,
+    join_date: intern.join_date.toISOString(),
+    end_date: intern.end_date.toISOString(),
+    status: intern.status,
+    created_at: intern.created_at.toISOString(),
+    mobile_phone: includeSensitive ? intern.mobile_phone : null,
+    residential_address: includeSensitive ? intern.residential_address : null,
+    gender: includeSensitive ? intern.gender : null,
+    religion: includeSensitive ? intern.religion : null,
+    religion_other: includeSensitive ? intern.religion_other : null,
+    birth_place: includeSensitive ? intern.birth_place : null,
+    birth_date: includeSensitive ? (intern.birth_date?.toISOString() ?? null) : null,
+    notes: includeSensitive ? intern.notes : null,
+    education_level: includeSensitive ? intern.education_level : null,
+    institution_name: includeSensitive ? intern.institution_name : null,
+    major: includeSensitive ? intern.major : null,
+    graduation_year: includeSensitive ? intern.graduation_year : null,
+  };
+}

@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { EmailChangeController } from "../../controller/admin/email-change-controller";
 import { InternController } from "../../controller/admin/intern-controller";
+import { ExportController } from "../../controller/admin/export-controller";
+import { ImportController } from "../../controller/admin/import-controller";
 import { GoogleAccountController } from "../../controller/admin/google-account-controller";
 import type { AdminVariables } from "../../type/hono-context";
 import { InternMutationHistoryController } from "../../controller/admin/intern-mutation-history-controller";
@@ -9,6 +11,14 @@ export const internRouter = new Hono<{ Variables: AdminVariables }>();
 
 internRouter.post("/", (c) => InternController.create(c));
 internRouter.get("/", InternController.search);
+// Must come before /:id - otherwise Hono matches "export"/"import" as the :id param.
+internRouter.get("/export", (c) => ExportController.exportInterns(c));
+internRouter.post("/import/preview", (c) => ImportController.previewInterns(c));
+internRouter.post("/import/:jobId/commit", (c) => ImportController.commitInterns(c));
+internRouter.post("/import/:jobId/rollback", (c) => ImportController.rollbackInterns(c));
+// Must come before /import/:jobId - otherwise Hono matches "fields" as jobId.
+internRouter.get("/import/fields", (c) => ImportController.getInternFields(c));
+internRouter.get("/import/:jobId", (c) => ImportController.getInternJob(c));
 internRouter.get("/count-total", (c) => InternController.countTotal(c));
 internRouter.get("/version", (c) => InternController.getVersion(c));
 internRouter.patch("/bulk/delete", (c) => InternController.bulkRemove(c));

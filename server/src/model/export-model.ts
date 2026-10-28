@@ -1,5 +1,6 @@
 import type { ExportFormat } from "../utils/export-file";
 import type { SearchEmployeeRequest } from "./employee-model";
+import type { SearchInternRequest } from "./intern-model";
 import type { SearchStudentRequest } from "./student-model";
 import type { ClassTeacherRole } from "../generated/prisma/client";
 
@@ -17,6 +18,11 @@ export type ExportEmployeeRequest = Omit<
   SearchEmployeeRequest,
   "page" | "size"
 > & {
+  format: ExportFormat;
+  export_mode?: ExportMode;
+};
+
+export type ExportInternRequest = Omit<SearchInternRequest, "page" | "size"> & {
   format: ExportFormat;
   export_mode?: ExportMode;
 };
