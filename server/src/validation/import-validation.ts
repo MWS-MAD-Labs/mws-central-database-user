@@ -7,6 +7,7 @@ import {
   Gender,
   HealthNoteCategory,
   HealthNoteStatus,
+  InternStatus,
   MaritalStatus,
   ParentType,
   PCDay,
@@ -16,14 +17,17 @@ import {
 import {
   BIRTH_PLACE_DATE_HEADER_ALIASES,
   DEFAULT_EMPLOYEE_HEADER_ALIASES,
+  DEFAULT_INTERN_HEADER_ALIASES,
   DEFAULT_RELATION_HEADER_ALIASES,
   DEFAULT_STUDENT_HEADER_ALIASES,
   IMPORT_EMPLOYEE_FIELDS,
+  IMPORT_INTERN_FIELDS,
   IMPORT_STUDENT_FIELDS,
   normalizeGender,
   normalizeReligion,
   normalizeStudentStatus,
   type ImportEmployeeFieldKey,
+  type ImportInternFieldKey,
   type ImportRelationFieldKey,
   type ImportStudentFieldKey,
 } from "../model/import-model";
@@ -38,6 +42,10 @@ const REQUIRED_STUDENT_FIELDS = IMPORT_STUDENT_FIELDS.filter(
   (f) => f.required,
 ).map((f) => f.key);
 const REQUIRED_EMPLOYEE_FIELDS = IMPORT_EMPLOYEE_FIELDS.filter(
+  (f) => f.required,
+).map((f) => f.key);
+
+const REQUIRED_INTERN_FIELDS = IMPORT_INTERN_FIELDS.filter(
   (f) => f.required,
 ).map((f) => f.key);
 
@@ -70,6 +78,8 @@ const EMPLOYEE_ID_RE = /^\d{2}\.\d{2}\.\d{3}$/;
 
 // Broad age bounds catch obvious date-entry errors.
 const MIN_EMPLOYEE_AGE_YEARS = 18;
+// Keep in step with MIN_INTERN_AGE_YEARS in the intern service.
+const MIN_INTERN_AGE_YEARS = 15;
 const MIN_GRADUATION_AGE_YEARS = 12;
 
 // Keep this local to avoid a circular import with import-service.
@@ -492,6 +502,111 @@ export class ImportValidation {
 
     errors.push(...checkMultiValueCells(mapped, IMPORT_STUDENT_FIELDS));
 
+    return errors;
+  }
+
+  static resolveInternFieldMapping(
+    headers: string[],
+    override?: Partial<Record<string, ImportInternFieldKey>>,
+  ) {
+    return resolveMapping(headers, DEFAULT_INTERN_HEADER_ALIASES, override);
+  }
+
+  static mapInternRow(
+    headers: string[],
+    values: string[],
+    mapping: Record<string, MappingTarget<ImportInternFieldKey>>,
+  ): Record<string, string> {
+    return mapRowValues(headers, values, mapping);
+  }
+
+  static validateInternRowShape(mapped: Record<string, string>): string[] {
+    const errors: string[] = [];
+
+    for (const field of REQUIRED_INTERN_FIELDS) {
+      if (!mapped[field]) {
+        const label =
+          IMPORT_INTERN_FIELDS.find((f) => f.key === field)?.label ?? field;
+        errors.push(`${label} is required`);
+      }
+    }
+
+    if (mapped.email && !EMAIL_RE.test(mapped.email)) {
+      errors.push(`Invalid email: ${mapped.email}`);
+    } else if (
+      mapped.email &&
+      !mapped.email.endsWith(`@${process.env.ALLOWED_DOMAIN}`)
+    ) {
+      errors.push(
+        `Email must use an allowed organization domain: ${mapped.email}`,
+      );
+    }
+
+    if (mapped.birth_date && !isValidDateString(mapped.birth_date)) {
+      errors.push(`Invalid birth date format: ${mapped.birth_date}`);
+    } else if (mapped.birth_date) {
+      const birthDate = toAgeCheckDate(mapped.birth_date);
+      if (birthDate) {
+        const iso = birthDate.toISOString();
+        if (!isBirthDateNotFuture(iso)) {
+          errors.push(`Birth date is in the future: ${mapped.birth_date}`);
+        } else if (!isBirthDateNotTooOld(iso)) {
+          errors.push(`Birth date is implausibly old: ${mapped.birth_date}`);
+        } else if (mapped.join_date && isValidDateString(mapped.join_date)) {
+          const joinDate = toAgeCheckDate(mapped.join_date);
+          if (
+            joinDate &&
+            yearsBetweenDates(iso, joinDate.toISOString()) < MIN_INTERN_AGE_YEARS
+          ) {
+            errors.push(
+              `Intern must be at least ${MIN_INTERN_AGE_YEARS} years old on their join date (born ${mapped.birth_date})`,
+            );
+          }
+        }
+      }
+    }
+    if (mapped.join_date && !isValidDateString(mapped.join_date)) {
+      errors.push(`Invalid join date format: ${mapped.join_date}`);
+    }
+    if (mapped.end_date && !isValidDateString(mapped.end_date)) {
+      errors.push(`Invalid end date format: ${mapped.end_date}`);
+    }
+    if (
+      mapped.join_date &&
+      mapped.end_date &&
+      isValidDateString(mapped.join_date) &&
+      isValidDateString(mapped.end_date)
+    ) {
+      const joinDate = toAgeCheckDate(mapped.join_date);
+      const endDate = toAgeCheckDate(mapped.end_date);
+      if (joinDate && endDate && endDate <= joinDate) {
+        errors.push("End date must be after join date");
+      }
+    }
+
+    if (mapped.gender && !(normalizeGender(mapped.gender) in Gender)) {
+      errors.push(`Unrecognized gender: ${mapped.gender}`);
+    }
+    if (mapped.religion && !(normalizeReligion(mapped.religion) in Religion)) {
+      errors.push(`Unrecognized religion: ${mapped.religion}`);
+    }
+    if (mapped.status && !(mapped.status.toUpperCase() in InternStatus)) {
+      errors.push(`Unrecognized status: ${mapped.status}`);
+    }
+    if (
+      mapped.education_level &&
+      !(mapped.education_level.toUpperCase() in EducationLevel)
+    ) {
+      errors.push(`Unrecognized education level: ${mapped.education_level}`);
+    }
+    if (mapped.graduation_year) {
+      const year = Number(mapped.graduation_year);
+      if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+        errors.push(`Invalid graduation year: ${mapped.graduation_year}`);
+      }
+    }
+
+    errors.push(...checkMultiValueCells(mapped, IMPORT_INTERN_FIELDS));
     return errors;
   }
 

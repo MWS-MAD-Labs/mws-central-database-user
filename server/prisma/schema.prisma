@@ -380,6 +380,7 @@ enum AuditSource {
 enum ImportType {
   STUDENT
   EMPLOYEE
+  INTERN
 }
 
 enum ImportMode {
