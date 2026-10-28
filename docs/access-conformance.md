@@ -47,7 +47,7 @@ Mulai `mws-central-auth` 0.13.0 ada satu implementasi bersama (`definePermission
 ### Daily Check-in
 - `permissions:sync` ada di `backend/package.json`. Menolak permission yang tidak ada di `PERMISSION_SET`.
 - Model Person (satu koleksi untuk karyawan dan murid) dan sinkron 60 detik belum selesai (tahap 4).
-- Format key dan gerbang route belum diperiksa.
+- Format key: `student_checkins.read`, `student_checkins.scope.*`, `support_requests.manage` dan `dev_topology.read` belum sesuai AS-3 (memakai `_`). Diterima Central selama `PERMISSION_KEY_FORMAT=warn`; harus diganti sebelum `enforce`. Gerbang route belum diperiksa.
 
 ### Exima
 - `permissions:sync` dan `permissions:check` ada. Key berformat titik (`pos.checkout`, `inventory.export`).

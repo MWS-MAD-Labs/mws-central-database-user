@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { randomBytes } from "crypto";
 import { API_SCOPES } from "../constants/api-scopes";
 import { AuditAction } from "../generated/prisma/client";
@@ -292,6 +292,15 @@ describe("application permission catalog", () => {
   });
 
   describe("key format (Access Standard AS-3)", () => {
+    const previousMode = process.env.PERMISSION_KEY_FORMAT;
+    beforeAll(() => {
+      process.env.PERMISSION_KEY_FORMAT = "enforce";
+    });
+    afterAll(() => {
+      if (previousMode === undefined) delete process.env.PERMISSION_KEY_FORMAT;
+      else process.env.PERMISSION_KEY_FORMAT = previousMode;
+    });
+
     it("accepts domain.action keys and refuses new keys in any other shape, naming them", async () => {
       const { token, profileCode } = await publisher("fmt");
       appId = profileCode;
@@ -343,6 +352,26 @@ describe("application permission catalog", () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       expect((await TestRequest.post(PERMISSIONS, { application_id: appId, key: "tab:a" }, accessToken)).status).toBe(400);
       expect((await TestRequest.post(PERMISSIONS, { application_id: appId, key: "tab.a" }, accessToken)).status).toBe(200);
+    });
+  });
+
+  describe("key format in warn mode (default)", () => {
+    it("accepts a new key in the old shape and lists it as a legacy key", async () => {
+      const { token, profileCode } = await publisher("warn");
+      appId = profileCode;
+      const res = await sync(token, appId, [{ key: "student_checkins.read" }, { key: "journey:write" }, { key: "work-order.create" }]);
+      expect(res.status).toBe(200);
+      expect((await res.json()).data).toMatchObject({ added: 3, legacy_keys: ["student_checkins.read", "journey:write"] });
+
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const listed = await (await TestRequest.get(`${PERMISSIONS}?application_id=${appId}`, accessToken)).json();
+      const flags = Object.fromEntries(listed.data.permissions.map((p: { key: string; standard_key: boolean }) => [p.key, p.standard_key]));
+      expect(flags).toEqual({ "student_checkins.read": false, "journey:write": false, "work-order.create": true });
+    });
+
+    it("accepts a hand-registered key in the old shape", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      expect((await TestRequest.post(PERMISSIONS, { application_id: appId, key: "tab:b" }, accessToken)).status).toBe(200);
     });
   });
 });

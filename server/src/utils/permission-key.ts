@@ -15,3 +15,8 @@ export function nonStandardKeys(keys: string[]): string[] {
 export function standardKeyMessage(keys: string[]): string {
   return `New permission ${keys.map((key) => `"${key}"`).join(", ")} must be lowercase words joined by dots, like "work-order.create" or "scope.grade" (domain.action, up to 3 levels, 64 characters, "-" inside a word, no ":" or "_"). See docs/access-standard.md AS-3.`;
 }
+
+// "warn" (default) accepts keys that are not in the standard format and flags them; "enforce" rejects new ones.
+export function permissionKeyMode(): "warn" | "enforce" {
+  return process.env.PERMISSION_KEY_FORMAT === "enforce" ? "enforce" : "warn";
+}
