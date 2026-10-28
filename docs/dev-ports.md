@@ -12,7 +12,7 @@ wrong app, or a proxy to another app's backend.
 | MTSS | 5176 | 3004 | `frontend/vite.config.js`, `backend/.env` `PORT` |
 | Hub | 5175 | 4001 | `frontend/vite.config.ts`, `backend/.env` `PORT` |
 | Woko | 5177 | 3011 | `.env` `WEB_ORIGIN` and `PORT` |
-| Learnspace | 5178 | 4000 | `apps/web/vite.config.ts`, `.env` `PORT` |
+| Learnspace | 5178 | 4002 (Docker Compose publishes 4000) | `apps/web/vite.config.ts`, `.env` `PORT` |
 
 Rules:
 
