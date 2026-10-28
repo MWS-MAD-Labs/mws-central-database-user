@@ -171,4 +171,30 @@ describe('dataTransferApi', () => {
     expect(document.querySelector('a')).toBeNull()
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:export-1')
   })
+
+  it('sends intern imports to the intern routes', async () => {
+    const calls = []
+    globalThis.fetch = createFetchRouter([
+      {
+        path: '/api/admin/interns/import/job-9/commit',
+        method: 'POST',
+        response: () => {
+          calls.push('commit')
+          return jsonResponse({ data: { has_more: false } })
+        },
+      },
+      {
+        path: '/api/admin/interns/import/job-9/rollback',
+        method: 'POST',
+        response: () => {
+          calls.push('rollback')
+          return jsonResponse({ data: { status: 'ROLLED_BACK' } })
+        },
+      },
+    ])
+
+    await dataTransferApi.commit('interns', 'job-9', { offset: 0, limit: 25 })
+    await dataTransferApi.rollback('interns', 'job-9')
+    expect(calls).toEqual(['commit', 'rollback'])
+  })
 })

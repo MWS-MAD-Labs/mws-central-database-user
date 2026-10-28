@@ -21,6 +21,7 @@ import {
 } from "../../../lib/form.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
+import { loadInternFormOptions } from "../../interns/api/internFormOptions.js";
 import { loadStudentFormOptions } from "../../students/api/studentFormOptions.js";
 import { dataTransferApi, downloadBlob } from "../api/dataTransferApi.js";
 import {
@@ -33,6 +34,20 @@ import {
   parseDateStringToISO,
   requiredImportFields,
 } from "./importFieldsConfig.js";
+
+// Master data the preview needs to fill its dropdowns, per entity.
+const FORM_OPTIONS = {
+  employees: { queryKey: "employee-form-options", load: loadEmployeeFormOptions },
+  interns: { queryKey: "intern-form-options", load: loadInternFormOptions },
+  students: { queryKey: "student-form-options", load: loadStudentFormOptions },
+};
+
+// The import job reports its type in the singular.
+const ENTITY_BY_JOB_TYPE = {
+  employee: "employees",
+  intern: "interns",
+  student: "students",
+};
 
 export function DataTransferActions({
   entity,
@@ -390,11 +405,8 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
     return getEditableFields(entity, preview, draftRows);
   }, [draftRows, entity, preview]);
   const optionDataQuery = useQuery({
-    queryKey: [
-      entity === "employees" ? "employee-form-options" : "student-form-options",
-    ],
-    queryFn:
-      entity === "employees" ? loadEmployeeFormOptions : loadStudentFormOptions,
+    queryKey: [FORM_OPTIONS[entity].queryKey],
+    queryFn: FORM_OPTIONS[entity].load,
     enabled: Boolean(preview),
   });
   const joinDateKey = editableColumns.find(
@@ -536,9 +548,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
 
   async function refreshReferenceData() {
     await queryClient.invalidateQueries({
-      queryKey: [
-        entity === "employees" ? "employee-form-options" : "student-form-options",
-      ],
+      queryKey: [FORM_OPTIONS[entity].queryKey],
     });
     await revalidateDraft();
   }
@@ -1530,7 +1540,7 @@ function buildDraftRows(preview) {
   return (preview.rows || []).map((row) => {
     const draft = {};
     importFields[
-      preview.type?.toLowerCase() === "employee" ? "employees" : "students"
+      ENTITY_BY_JOB_TYPE[preview.type?.toLowerCase()] || "students"
     ].forEach((field) => {
       const source = sourceByField[field.key];
       const value = source
