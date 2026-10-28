@@ -46,7 +46,7 @@ Contoh benar: `work-order.create`, `work-order.read-all`, `iep.submit`, `facilit
 - Aplikasi MUST menyediakan `permissions:sync` dan `permissions:check`, dijalankan di deploy (gagal keras) dan di CI. Implementasinya satu untuk semua: `runPermissionsCli` dari `mws-central-auth/access/cli` (sejak 0.13.0). Manifest ditulis dengan `definePermissions` dari `mws-central-auth/access`, yang memeriksa dirinya saat dimuat.
 - Sinkron MUST NOT dijalankan di dalam proses boot aplikasi.
 - Kirim daftar lengkap. Permission yang hilang ditandai dropped, tidak dihapus. Daftar yang membuang lebih dari separuh ditolak kecuali `confirm_removals`.
-- Central menolak key **baru** yang tidak sesuai AS-3 (manual dan lewat sinkron). Key yang sudah terdaftar sebelum aturan ini tetap diterima dan ditandai `standard_key: false` sampai aplikasinya mengganti nama (AS-14).
+- Key **baru** MUST sesuai AS-3. Selama `PERMISSION_KEY_FORMAT=warn` (bawaan), Central masih menerima key lama atau yang tidak sesuai dan menandainya `standard_key: false` (sinkron mengembalikannya di `legacy_keys`). Dengan `PERMISSION_KEY_FORMAT=enforce`, key baru yang tidak sesuai ditolak (manual dan lewat sinkron); key yang sudah terdaftar tetap diterima sampai aplikasinya mengganti nama (AS-14). `enforce` dinyalakan setelah semua aplikasi memakai format AS-3.
 - Detail panggilan: bagian "Mendaftarkan permission" di `application-access-integration.md`.
 
 ### AS-5 Role hidup di Central

@@ -6,7 +6,7 @@ import {
   type AdminUser,
 } from "../generated/prisma/client";
 import { ResponseError } from "../error/response-error";
-import { isStandardPermissionKey, nonStandardKeys, standardKeyMessage } from "../utils/permission-key";
+import { isStandardPermissionKey, nonStandardKeys, permissionKeyMode, standardKeyMessage } from "../utils/permission-key";
 import { prismaClient } from "../lib/prisma";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import type { ApiClientVariables } from "../type/hono-context";
@@ -232,7 +232,7 @@ export class ApplicationPermissionService {
     if (existing) {
       throw new ResponseError(400, `Permission ${input.key} already exists for ${input.application_id}`);
     }
-    if (!isStandardPermissionKey(input.key)) throw new ResponseError(400, standardKeyMessage([input.key]));
+    if (permissionKeyMode() === "enforce" && !isStandardPermissionKey(input.key)) throw new ResponseError(400, standardKeyMessage([input.key]));
     const created = await prismaClient.$transaction(async (tx) => {
       const saved = await tx.applicationPermission.create({
         data: { application_id: input.application_id, key: input.key, description: input.description ?? null },
@@ -276,11 +276,11 @@ export class ApplicationPermissionService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`application-permissions:${input.application_id}`}))`;
       const existing = await tx.applicationPermission.findMany({ where: { application_id: input.application_id } });
       const byKey = new Map(existing.map((row) => [row.key, row]));
-      // Keys that are new have to follow the standard format; ones registered earlier may keep their old shape.
+      // In enforce mode new keys have to follow the standard format. In warn mode they are accepted and listed with the old ones.
       const newKeys = keys.filter((key) => !byKey.has(key));
       const badNew = nonStandardKeys(newKeys);
-      if (badNew.length > 0) throw new ResponseError(400, standardKeyMessage(badNew));
-      const legacyKeys = nonStandardKeys(keys.filter((key) => byKey.has(key)));
+      if (permissionKeyMode() === "enforce" && badNew.length > 0) throw new ResponseError(400, standardKeyMessage(badNew));
+      const legacyKeys = nonStandardKeys(keys.filter((key) => byKey.has(key) || permissionKeyMode() === "warn"));
       let added = 0;
       for (const row of input.permissions) {
         const current = byKey.get(row.key);
