@@ -49,6 +49,7 @@ import {
   toApplicationAccessRuleResponse,
   type ApplicationEntitlementResponse,
   type ApplicationRoleResponse,
+  type ChangeApplicationRoleKeyRequest,
   type CreateApplicationRoleRequest,
   type ListApplicationRolesRequest,
   type ReorderApplicationRolesRequest,
@@ -1323,6 +1324,72 @@ export class ApplicationRoleService {
     const requires = await loadRequires(updated.application_id);
     return toApplicationRoleResponse(updated, activeCount, activeGroups, [
       ...new Set(missingDependencies(updated.permissions, requires).map(([, needed]) => needed)),
+    ]);
+  }
+
+  // The key is what every entitlement and group stores, so all of them move to the new key in one step. Apps keep
+  // the role as text that comes from Central and read the new key on their next lookup.
+  static async changeKey(
+    admin: AdminUser,
+    request: ChangeApplicationRoleKeyRequest,
+    context: AuditRequestContext = {},
+  ): Promise<ApplicationRoleResponse> {
+    assertSuperAdmin(admin);
+    const input = Validation.validate(ApplicationRoleValidation.CHANGE_KEY, request);
+    const existing = await prismaClient.applicationRole.findUnique({ where: { id: input.id } });
+    if (!existing) throw new ResponseError(404, "Application role not found");
+    if (input.key === existing.key) throw new ResponseError(400, "The role already has this key");
+
+    const taken = await prismaClient.applicationRole.findUnique({
+      where: { application_id_key: { application_id: existing.application_id, key: input.key } },
+      select: { id: true },
+    });
+    if (taken) throw new ResponseError(409, `Role ${input.key} already exists in this application`);
+
+    const moved = await prismaClient.$transaction(async (tx) => {
+      const saved = await tx.applicationRole.update({ where: { id: existing.id }, data: { key: input.key } });
+      // Every row, active or not, so nothing is left pointing at a key that no longer exists.
+      const entitlements = await tx.applicationEntitlement.updateMany({
+        where: { application_id: existing.application_id, role: existing.key },
+        data: { role: input.key, version: { increment: 1 } },
+      });
+      const groups = await tx.applicationAccessRule.updateMany({
+        where: { application_id: existing.application_id, default_role_key: existing.key },
+        data: { default_role_key: input.key },
+      });
+      await AuditService.record(
+        {
+          action: AuditAction.APPLICATION_ROLE_UPDATE,
+          source: AuditSource.UI,
+          entity_type: "ApplicationRole",
+          entity_id: saved.id,
+          admin_id: admin.id,
+          old_values: roleAuditSnapshot(existing),
+          new_values: {
+            ...roleAuditSnapshot(saved),
+            key_changed_from: existing.key,
+            moved_entitlements: entitlements.count,
+            moved_groups: groups.count,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+      return saved;
+    });
+
+    const [activeCount, activeGroups, requires] = await Promise.all([
+      prismaClient.applicationEntitlement.count({
+        where: { application_id: moved.application_id, role: moved.key, is_active: true },
+      }),
+      prismaClient.applicationAccessRule.count({
+        where: { application_id: moved.application_id, default_role_key: moved.key, is_active: true },
+      }),
+      loadRequires(moved.application_id),
+    ]);
+    return toApplicationRoleResponse(moved, activeCount, activeGroups, [
+      ...new Set(missingDependencies(moved.permissions, requires).map(([, needed]) => needed)),
     ]);
   }
 }

@@ -448,6 +448,11 @@ export class ApplicationRoleValidation {
       { message: "Provide a label, permissions, who the role is for, or is_active to update" },
     );
 
+  static readonly CHANGE_KEY = z.object({
+    id: nonemptyId("Role ID"),
+    key: roleKey,
+  });
+
   static readonly LIST = z.object({
     application_id: applicationId.optional(),
     is_active: z.boolean().optional(),

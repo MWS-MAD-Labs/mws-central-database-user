@@ -363,6 +363,11 @@ export type UpdateApplicationRoleRequest = {
   is_active?: boolean;
 };
 
+export type ChangeApplicationRoleKeyRequest = {
+  id: string;
+  key: string;
+};
+
 export type ReorderApplicationRolesRequest = {
   application_id: string;
   role_ids: string[];

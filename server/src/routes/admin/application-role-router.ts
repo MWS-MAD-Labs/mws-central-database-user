@@ -13,6 +13,7 @@ export const applicationRoleRouter = new Hono<{ Variables: AdminVariables }>();
 applicationRoleRouter.get("/", (c) => ApplicationRoleController.list(c));
 applicationRoleRouter.post("/", (c) => ApplicationRoleController.create(c));
 applicationRoleRouter.patch("/order", (c) => ApplicationRoleController.reorder(c));
+applicationRoleRouter.patch("/:id/key", (c) => ApplicationRoleController.changeKey(c));
 applicationRoleRouter.patch("/:id", (c) => ApplicationRoleController.update(c));
 applicationRoleRouter.delete("/:id", (c) => ApplicationRoleController.remove(c));
 

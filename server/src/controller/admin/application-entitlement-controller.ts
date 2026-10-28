@@ -14,6 +14,7 @@ import type {
   GrantApplicationEntitlementRequest,
   UpdateApplicationEntitlementRequest,
   ReorderApplicationRolesRequest,
+  ChangeApplicationRoleKeyRequest,
   UpdateApplicationRoleRequest,
 } from "../../model/application-entitlement-model";
 import { ApplicationPermissionService } from "../../service/application-permission-service";
@@ -198,6 +199,18 @@ export class ApplicationRoleController {
     if (!id) throw new ResponseError(400, "Role ID is required");
     const body = (await c.req.json()) as Omit<UpdateApplicationRoleRequest, "id">;
     const response = await ApplicationRoleService.update(
+      c.var.admin,
+      { id, ...body },
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
+  static async changeKey(c: Context<{ Variables: AdminVariables }>) {
+    const id = c.req.param("id");
+    if (!id) throw new ResponseError(400, "Role ID is required");
+    const body = (await c.req.json()) as Omit<ChangeApplicationRoleKeyRequest, "id">;
+    const response = await ApplicationRoleService.changeKey(
       c.var.admin,
       { id, ...body },
       getAuditRequestContext(c),
