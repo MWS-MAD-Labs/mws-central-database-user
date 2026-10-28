@@ -4436,10 +4436,13 @@ describe("GET /api/admin/employees", () => {
     expect(body.paging.total_item).toBe(2);
   });
 
-  it("should enforce UNIT SCOPE for DATABASE_ADMIN (Fraud Protection)", async () => {
+  it("should return no records when a DATABASE_ADMIN filters outside their employee unit scope", async () => {
     const superAdmin = await AdminUserTest.createSuperAdmin();
     await populateDummyEmployees(superAdmin.accessToken);
-    const dbAdmin = await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin(masterData.unit.id, {
+      canViewAllStudentUnits: true,
+      canViewAllEmployeeUnits: false,
+    });
 
     const response = await TestRequest.get(
       `/api/admin/employees?unit_id=${secondUnitId}`,
@@ -4449,8 +4452,8 @@ describe("GET /api/admin/employees", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.length).toBe(1);
-    expect(body.data[0].identity.full_name).toContain("John");
+    expect(body.data).toEqual([]);
+    expect(body.paging.total_item).toBe(0);
   });
 
   it("should bypass employee unit scoping for a DATABASE_ADMIN with all-employee-units scope", async () => {

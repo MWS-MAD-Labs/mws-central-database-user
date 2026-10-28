@@ -4,7 +4,7 @@ import {
   ImagePlus,
   Plus,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import {
@@ -40,6 +40,7 @@ import { useEmployeesSearchParams } from "../hooks/useEmployeesSearchParams.js";
 import { formatStatus } from "../../../lib/format.js";
 import { useBulkSelection } from "../../../lib/useBulkSelection.js";
 import { showBulkFailureToast, showSuccessToast } from "../../../lib/toast.js";
+import { canViewEmployeeUnit } from "../../../lib/capabilities.js";
 
 export function EmployeesPage() {
   const { params, updateParams, resetPageAndUpdate } =
@@ -78,6 +79,26 @@ export function EmployeesPage() {
     queryKey: ["employee-form-options"],
     queryFn: loadEmployeeFormOptions,
   });
+
+  useEffect(() => {
+    const availableUnits = optionsQuery.data?.units || [];
+    const selectedUnitExists = availableUnits.some(
+      (unit) => unit.id === params.unit_id,
+    );
+    if (
+      optionsQuery.isSuccess &&
+      params.unit_id &&
+      (!selectedUnitExists || !canViewEmployeeUnit(user, params.unit_id))
+    ) {
+      resetPageAndUpdate({ unit_id: "" });
+    }
+  }, [
+    optionsQuery.data?.units,
+    optionsQuery.isSuccess,
+    params.unit_id,
+    resetPageAndUpdate,
+    user,
+  ]);
 
   const restoreMutation = useMutation({
     meta: { successMessage: "Employee restored." },
@@ -416,7 +437,7 @@ export function EmployeesPage() {
               onChange={(value) => resetPageAndClearSelection({ unit_id: value })}
               options={[
                 { value: "", label: "All Units" },
-                ...unitOptions(optionsQuery.data?.units || []),
+                ...unitOptions(optionsQuery.data?.units || [], user),
               ]}
             />
             <FilterSelect
@@ -636,11 +657,13 @@ function buildingOptions(buildings) {
   }));
 }
 
-function unitOptions(units) {
-  return units.map((unit) => ({
-    value: unit.id,
-    label: unit.name,
-  }));
+function unitOptions(units, user) {
+  return units
+    .filter((unit) => canViewEmployeeUnit(user, unit.id))
+    .map((unit) => ({
+      value: unit.id,
+      label: unit.name,
+    }));
 }
 
 function statusOptions(statuses) {

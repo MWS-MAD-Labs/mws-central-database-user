@@ -88,6 +88,57 @@ describe('EmployeesPage', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.includes('unit_id=unit-elementary'))).toBe(true))
   })
 
+  it('limits unit filters to the employee scope even when student access covers all units', async () => {
+    const { user } = renderPage({
+      user: {
+        ...elementaryDatabaseAdmin,
+        can_view_student_data: true,
+        can_view_all_student_units: true,
+      },
+    })
+    await screen.findByText('Ari Employee')
+
+    await user.click(screen.getByRole('button', { name: 'All Units' }))
+    expect(screen.getByRole('option', { name: 'Elementary' })).toBeVisible()
+    expect(screen.queryByRole('option', { name: 'Secondary' })).not.toBeInTheDocument()
+  })
+
+  it('uses custom employee unit scope instead of the admin own unit', async () => {
+    const { user } = renderPage({
+      user: {
+        ...elementaryDatabaseAdmin,
+        employee_view_unit_ids: ['unit-secondary'],
+      },
+    })
+    await screen.findByText('Ari Employee')
+
+    await user.click(screen.getByRole('button', { name: 'All Units' }))
+    expect(screen.getByRole('option', { name: 'Secondary' })).toBeVisible()
+    expect(screen.queryByRole('option', { name: 'Elementary' })).not.toBeInTheDocument()
+  })
+
+  it('clears an out-of-scope unit from a bookmarked URL', async () => {
+    renderPage({
+      user: elementaryDatabaseAdmin,
+      route: '/employees?unit_id=unit-secondary',
+    })
+    await screen.findByText('Ari Employee')
+
+    await waitFor(() => expect(window.location.search).not.toContain('unit_id'))
+    expect(screen.getByRole('button', { name: 'All Units' })).toBeVisible()
+  })
+
+  it('clears a nonexistent unit from a super admin bookmarked URL', async () => {
+    renderPage({
+      user: superAdminUser,
+      route: '/employees?unit_id=unit-removed',
+    })
+    await screen.findByText('Ari Employee')
+
+    await waitFor(() => expect(window.location.search).not.toContain('unit_id'))
+    expect(screen.getByRole('button', { name: 'All Units' })).toBeVisible()
+  })
+
   it('keeps a read-only database admin away from write and bulk entry points', async () => {
     renderPage({
       user: {

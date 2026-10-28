@@ -1851,11 +1851,23 @@ describe("GET /api/admin/classes/:id", () => {
     const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin(
       gradeOne.unit_id ?? undefined,
     );
+    const { accessToken: workforceOnlyToken } =
+      await AdminUserTest.createDatabaseAdmin(gradeOne.unit_id ?? undefined, {
+        canViewStudentData: false,
+        canViewEmployeeData: true,
+        id: "test-workforce-only-class-detail",
+        email: "test_workforce_only_class_detail@millennia21.id",
+      });
     const { accessToken: viewerToken } = await AdminUserTest.createViewer(
       gradeOne.unit_id ?? undefined,
     );
 
-    for (const token of [superAdminToken, dbAdminToken, viewerToken]) {
+    for (const token of [
+      superAdminToken,
+      dbAdminToken,
+      workforceOnlyToken,
+      viewerToken,
+    ]) {
       const response = await TestRequest.get(
         `/api/admin/classes/${klass.id}`,
         token,
@@ -1864,7 +1876,7 @@ describe("GET /api/admin/classes/:id", () => {
     }
   });
 
-  it("should reject (404) a DATABASE_ADMIN viewing a class outside their unit", async () => {
+  it("should reject a class outside student scope even with all-unit employee access", async () => {
     const kindergartenGrade = await GradeTest.getByName("Kindergarten K1");
     const klass = await ClassTest.create({
       name: "TEST_OutOfUnit",
@@ -1873,6 +1885,10 @@ describe("GET /api/admin/classes/:id", () => {
     });
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       kindergartenGrade.unit_id ?? undefined,
+      {
+        canViewAllStudentUnits: false,
+        canViewAllEmployeeUnits: true,
+      },
     );
 
     const response = await TestRequest.get(
@@ -2024,7 +2040,7 @@ describe("GET /api/admin/classes", () => {
     expect(body.data[0].name).toBe("TEST_Mixed");
   });
 
-  it("should only show a DATABASE_ADMIN their own unit's classes", async () => {
+  it("should use student scope for classes when employee access covers all units", async () => {
     const elementaryGrade = await GradeTest.getByName("Grade 1");
     const kindergartenGrade = await GradeTest.getByName("Kindergarten K1");
     await ClassTest.create({
@@ -2040,6 +2056,10 @@ describe("GET /api/admin/classes", () => {
 
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       elementaryGrade.unit_id ?? undefined,
+      {
+        canViewAllStudentUnits: false,
+        canViewAllEmployeeUnits: true,
+      },
     );
 
     const response = await TestRequest.get(
@@ -2052,6 +2072,40 @@ describe("GET /api/admin/classes", () => {
     expect(response.status).toBe(200);
     expect(body.data.length).toBe(1);
     expect(body.data[0].name).toBe("TEST_Elementary");
+  });
+
+  it("should fall back to employee scope for workforce-only class access", async () => {
+    const elementaryGrade = await GradeTest.getByName("Grade 1");
+    const kindergartenGrade = await GradeTest.getByName("Kindergarten K1");
+    await ClassTest.create({
+      name: "TEST_WorkforceElementary",
+      gradeId: elementaryGrade.id,
+      academicYearId,
+    });
+    await ClassTest.create({
+      name: "TEST_WorkforceKindergarten",
+      gradeId: kindergartenGrade.id,
+      academicYearId,
+    });
+
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryGrade.unit_id ?? undefined,
+      {
+        canViewStudentData: false,
+        canViewEmployeeData: true,
+      },
+    );
+
+    const response = await TestRequest.get(
+      "/api/admin/classes?search=TEST_Workforce",
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.map((klass: { name: string }) => klass.name)).toEqual([
+      "TEST_WorkforceElementary",
+    ]);
   });
 
   it("should filter by academic_year_id", async () => {

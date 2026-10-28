@@ -11,6 +11,7 @@ import {
   canViewStudentData,
   isUnitWritable,
   resolveAcademicUnitScope,
+  resolveClassUnitScope,
   resolveEmployeeUnitScope,
   resolveStudentUnitScope,
   resolveWriteUnitScope,
@@ -219,6 +220,7 @@ describe("admin domain permissions", () => {
     expect(resolveStudentUnitScope(scopedAdmin)).toEqual(["own-unit"]);
     expect(resolveEmployeeUnitScope(scopedAdmin)).toBeUndefined();
     expect(resolveAcademicUnitScope(scopedAdmin)).toBeUndefined();
+    expect(resolveClassUnitScope(scopedAdmin)).toEqual(["own-unit"]);
   });
 
   it("ignores an unrestricted disabled domain in the academic union", () => {
@@ -249,6 +251,22 @@ describe("admin domain permissions", () => {
     };
 
     expect(resolveAcademicUnitScope(scopedAdmin)).toBeUndefined();
+    expect(resolveClassUnitScope(scopedAdmin)).toBeUndefined();
+  });
+
+  it("falls back to employee scope for workforce-only class access", () => {
+    const scopedAdmin = {
+      role: AdminRole.VIEWER,
+      unit_id: "own-unit",
+      can_view_student_data: false,
+      can_view_employee_data: true,
+      can_view_all_student_units: true,
+      can_view_all_employee_units: false,
+      student_view_units: [],
+      employee_view_units: [{ unit_id: "employee-unit" }],
+    };
+
+    expect(resolveClassUnitScope(scopedAdmin)).toEqual(["employee-unit"]);
   });
 });
 

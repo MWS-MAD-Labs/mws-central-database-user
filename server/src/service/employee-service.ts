@@ -489,13 +489,15 @@ export function buildEmployeeSearchWhere(
 
   const employeeUnitScope = resolveEmployeeUnitScope(admin);
   // Unrestricted: honor whatever unit_id was requested (or none). Restricted:
-  // a requested unit still narrows further as long as it's in scope,
-  // otherwise fall back to the full scope rather than erroring.
+  // a requested unit narrows further only when it is in scope. An out-of-scope
+  // unit must return no records rather than silently widening the filter.
   const unitIdFilter: string | { in: string[] } | undefined =
     employeeUnitScope === undefined
       ? searchRequest.unit_id
-      : searchRequest.unit_id && employeeUnitScope.includes(searchRequest.unit_id)
-        ? searchRequest.unit_id
+      : searchRequest.unit_id
+        ? employeeUnitScope.includes(searchRequest.unit_id)
+          ? searchRequest.unit_id
+          : { in: [] }
         : { in: employeeUnitScope };
 
   if (searchRequest.search) {

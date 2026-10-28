@@ -18,7 +18,10 @@ describe('loadEmployeeFormOptions', () => {
     }
     const fetchMock = mock(async (url) => {
       const path = Object.keys(responses).find((candidate) => url.startsWith(candidate))
-      return jsonResponse({ data: responses[path] })
+      return jsonResponse({
+        data: responses[path],
+        paging: { current_page: 1, total_page: 1, total_item: 1, size: 100 },
+      })
     })
     globalThis.fetch = fetchMock
 
@@ -45,5 +48,25 @@ describe('loadEmployeeFormOptions', () => {
       jobLevels: [],
       buildings: [],
     })
+  })
+
+  it('loads unit options across every available page', async () => {
+    globalThis.fetch = mock(async (url) => {
+      if (url.startsWith('/api/admin/units')) {
+        const page = new URL(url, 'http://localhost').searchParams.get('page')
+        return jsonResponse({
+          data: [{ id: `unit-${page}`, name: `Unit ${page}` }],
+          paging: { current_page: Number(page), total_page: 2, total_item: 2, size: 100 },
+        })
+      }
+      return jsonResponse({ data: [] })
+    })
+
+    const result = await loadEmployeeFormOptions()
+
+    expect(result.units).toEqual([
+      { id: 'unit-1', name: 'Unit 1' },
+      { id: 'unit-2', name: 'Unit 2' },
+    ])
   })
 })

@@ -60,7 +60,7 @@ import {
   assertCanViewAcademicData,
   assertCanViewEmployeeData,
   canViewEmployeeData,
-  resolveAcademicUnitScope,
+  resolveClassUnitScope,
   resolveEmployeeUnitScope,
   type AdminUserWithAcademicScope,
   type AdminUserWithEmployeeScope,
@@ -1114,7 +1114,7 @@ export class ClassService {
       throw new ResponseError(404, "Class not found");
     }
 
-    const unitScope = resolveAcademicUnitScope(admin);
+    const unitScope = resolveClassUnitScope(admin);
     if (unitScope !== undefined && !unitScope.includes(klass.grade.unit_id)) {
       throw new ResponseError(404, "Class not found");
     }
@@ -2357,7 +2357,7 @@ export class ClassService {
     assertCanViewAcademicData(admin);
     const searchRequest = Validation.validate(ClassValidation.SEARCH, request);
 
-    const unitScope = resolveAcademicUnitScope(admin);
+    const unitScope = resolveClassUnitScope(admin);
 
     const skip = (searchRequest.page - 1) * searchRequest.size;
     // Grade filtering matches primary and additional grades.
