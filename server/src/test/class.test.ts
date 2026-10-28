@@ -5153,10 +5153,10 @@ describe("Class enrollment history counts", () => {
     });
   });
 
-  it("should mark has_dependents true even for a soft-deleted enrollment the visible counts don't show", async () => {
+  it("should not block deleting a class whose only enrollment was dropped and removed, and remove that row with it", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const klass = await ClassTest.create({
-      name: "TEST_SoftDeletedBlocker",
+      name: "TEST_SoftDeletedLeaves",
       gradeId: gradeOneId,
       academicYearId,
     });
@@ -5166,7 +5166,7 @@ describe("Class enrollment history counts", () => {
       joinGradeId: gradeOneId,
       joinAcademicYearId: academicYearId,
     });
-    await EnrollmentTest.create({
+    const enrollment = await EnrollmentTest.create({
       studentId: student.student!.id,
       classId: klass.id,
       academicYearId,
@@ -5180,35 +5180,165 @@ describe("Class enrollment history counts", () => {
       accessToken,
     );
     const body = await response.json();
-    logger.debug(body);
-
     expect(response.status).toBe(200);
-    // Soft-deleted, so it's invisible in the display breakdown...
     expect(body.data.active_enrollment_count).toBe(0);
-    expect(body.data.enrollment_history_counts).toEqual({
-      transferred: 0,
-      withdrawn: 0,
-      completed: 0,
+    expect(body.data.has_dependents).toBe(false);
+    expect(body.data.removable_history).toEqual({
+      enrollments: 1,
+      teacher_assignments: 0,
     });
-    // ...but it still holds the class_id FK, so a real delete would still 400.
-    expect(body.data.has_dependents).toBe(true);
-
-    const deleteResponse = await TestRequest.delete(
-      `/api/admin/classes/${klass.id}`,
-      accessToken,
-    );
-    expect(deleteResponse.status).toBe(400);
 
     const searchResponse = await TestRequest.get(
-      `/api/admin/classes?search=TEST_SoftDeletedBlocker`,
+      `/api/admin/classes?search=TEST_SoftDeletedLeaves`,
       accessToken,
     );
     const searchBody = await searchResponse.json();
     const found = searchBody.data.find(
       (item: { id: string }) => item.id === klass.id,
     );
-    expect(found.has_dependents).toBe(true);
+    expect(found.has_dependents).toBe(false);
+    expect(found.removable_history.enrollments).toBe(1);
+
+    const deleteResponse = await TestRequest.delete(
+      `/api/admin/classes/${klass.id}`,
+      accessToken,
+    );
+    expect(deleteResponse.status).toBe(200);
+    expect(
+      await prismaClient.class.findUnique({ where: { id: klass.id } }),
+    ).toBeNull();
+    expect(
+      await prismaClient.studentClassEnrollment.findUnique({
+        where: { id: enrollment.id },
+      }),
+    ).toBeNull();
+    const audit = await prismaClient.auditLog.findFirst({
+      where: { action: "DELETE_CLASS", entity_id: klass.id },
+    });
+    expect(audit).not.toBeNull();
   });
+
+  it("should let a class go when a student was dropped from it and the teacher assignment was removed", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await startYearInPast(academicYearId);
+    const klass = await ClassTest.create({
+      name: "TEST_DroppedAndRemoved",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_class_delete_dropped@millennia21.id",
+      currentGradeId: gradeOneId,
+      joinGradeId: gradeOneId,
+      joinAcademicYearId: academicYearId,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "Grade 1",
+      status: EnrollmentStatus.WITHDRAWN,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_class_delete_removed_teacher@millennia21.id",
+    );
+    const assignment = await prismaClient.classTeacherAssignment.create({
+      data: {
+        class_id: klass.id,
+        start_date: new Date(),
+        employee_id: teacher.id,
+        role: ClassTeacherRole.HOMEROOM,
+        deleted_at: new Date(),
+      },
+    });
+
+    const deleteResponse = await TestRequest.delete(
+      `/api/admin/classes/${klass.id}`,
+      accessToken,
+    );
+    expect(deleteResponse.status).toBe(200);
+    expect(
+      await prismaClient.classTeacherAssignment.findUnique({
+        where: { id: assignment.id },
+      }),
+    ).toBeNull();
+    expect(
+      await prismaClient.studentClassEnrollment.count({
+        where: { class_id: klass.id },
+      }),
+    ).toBe(0);
+    // The student itself stays.
+    expect(
+      await prismaClient.student.findUnique({
+        where: { id: student.student!.id },
+      }),
+    ).not.toBeNull();
+  });
+
+  it("should still block deleting a class that a student transfer was recorded against", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_HasTransferRecord",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_class_delete_transfer_record@millennia21.id",
+      currentGradeId: gradeOneId,
+      joinGradeId: gradeOneId,
+      joinAcademicYearId: academicYearId,
+    });
+    await prismaClient.studentMutationHistory.create({
+      data: {
+        student_id: student.student!.id,
+        field: "CURRENT_CLASS",
+        class_id: klass.id,
+        start_date: new Date(),
+      },
+    });
+
+    const deleteResponse = await TestRequest.delete(
+      `/api/admin/classes/${klass.id}`,
+      accessToken,
+    );
+    expect(deleteResponse.status).toBe(400);
+    expect((await deleteResponse.json()).errors).toContain("transfer(s)");
+  });
+
+  it.each([EnrollmentStatus.COMPLETED, EnrollmentStatus.TRANSFERRED])(
+    "should still block deleting a class that has a %s enrollment",
+    async (status) => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const klass = await ClassTest.create({
+        name: `TEST_Real_${status}`,
+        gradeId: gradeOneId,
+        academicYearId,
+      });
+      const student = await StudentTest.create({
+        email: `test_class_delete_real_${status.toLowerCase()}@millennia21.id`,
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: academicYearId,
+      });
+      await EnrollmentTest.create({
+        studentId: student.student!.id,
+        classId: klass.id,
+        academicYearId,
+        gradeLevel: "Grade 1",
+        status,
+      });
+
+      const deleteResponse = await TestRequest.delete(
+        `/api/admin/classes/${klass.id}`,
+        accessToken,
+      );
+      expect(deleteResponse.status).toBe(400);
+      expect((await deleteResponse.json()).errors).toContain("enrollment(s)");
+      expect(
+        await prismaClient.class.findUnique({ where: { id: klass.id } }),
+      ).not.toBeNull();
+    },
+  );
 
   it("should mark has_dependents false for a class with no students or enrollments", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
