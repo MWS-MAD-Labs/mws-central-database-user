@@ -50,6 +50,9 @@ export type AdminResponse = {
   can_manage_enrollments?: boolean;
   can_manage_teacher_assignments?: boolean;
   after_hours_write_until?: string | null;
+  // Set on the admin list: a deactivated admin with no trace can be deleted.
+  can_delete?: boolean;
+  delete_trace_count?: number;
 };
 
 export type EmployeeAuthResponse = EmployeeDetailResponse & {

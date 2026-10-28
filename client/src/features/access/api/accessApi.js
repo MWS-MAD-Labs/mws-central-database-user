@@ -39,6 +39,13 @@ export const adminUsersApi = {
     return response.data
   },
 
+  async remove(id) {
+    const response = await apiRequest(`/api/admin/admin-users/${id}`, {
+      method: 'DELETE',
+    })
+    return response.data
+  },
+
   async changeRole(id, role) {
     const response = await apiRequest(
       `/api/admin/admin-users/change-role/${id}`,

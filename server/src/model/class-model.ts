@@ -124,8 +124,10 @@ export type ClassResponse = {
   capacity: number | null;
   active_enrollment_count: number;
   enrollment_history_counts: ClassEnrollmentHistoryCounts;
-  // Any current student or enrollment history blocks class deletion.
+  // A current student, an enrollment that stands, a teacher assignment, or a recorded transfer blocks class deletion.
   has_dependents: boolean;
+  // What leaves together with the class when it is deleted: removed or dropped enrollments, removed teacher assignments.
+  removable_history: { enrollments: number; teacher_assignments: number };
   created_at: string;
   updated_at: string;
 };
@@ -139,6 +141,7 @@ export function toClassResponse(
     completed: 0,
   },
   hasDependents = false,
+  removableHistory = { enrollments: 0, teacher_assignments: 0 },
 ): ClassResponse {
   const now = new Date();
   const currentAssignments = klass.teacher_assignments.filter(
@@ -192,6 +195,7 @@ export function toClassResponse(
     active_enrollment_count: activeEnrollmentCount,
     enrollment_history_counts: enrollmentHistoryCounts,
     has_dependents: hasDependents,
+    removable_history: removableHistory,
     created_at: klass.created_at.toISOString(),
     updated_at: klass.updated_at.toISOString(),
   };

@@ -134,6 +134,23 @@ export class AdminUserController {
     return c.json({ data: response });
   }
 
+  static async remove(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const targetAdminId = c.req.param("id");
+
+    if (!targetAdminId) {
+      throw new ResponseError(400, "Admin ID is required in parameter");
+    }
+
+    await AdminUserService.remove(
+      admin,
+      targetAdminId,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: true });
+  }
+
   static async changeRole(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const targetAdminId = c.req.param("id");

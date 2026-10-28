@@ -2722,3 +2722,152 @@ describe("GET /api/admin/admin-users/:id", () => {
     expect(body.errors).toBeDefined();
   });
 });
+
+describe("DELETE /api/admin/admin-users/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+    building: MasterBuilding;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  async function deactivatedViewer() {
+    await AdminUserTest.createViewer(masterData.unit.id);
+    return prismaClient.adminUser.update({
+      where: { email: "test_viewer@millennia21.id" },
+      data: { is_active: false },
+    });
+  }
+
+  it("deletes a deactivated admin that left no trace, and records who did it", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const target = await deactivatedViewer();
+
+    const response = await TestRequest.delete(
+      `/api/admin/admin-users/${target.id}`,
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+    expect(
+      await prismaClient.adminUser.findUnique({ where: { id: target.id } }),
+    ).toBeNull();
+
+    const requester = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+    const audit = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: "DELETE_ADMIN_USER", entity_id: target.id },
+    });
+    expect(audit.admin_id).toBe(requester.id);
+    expect((audit.old_values as { email?: string }).email).toBe(
+      "test_viewer@millennia21.id",
+    );
+  });
+
+  it("refuses an admin that is still active", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createViewer(masterData.unit.id);
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_viewer@millennia21.id" },
+    });
+
+    const response = await TestRequest.delete(
+      `/api/admin/admin-users/${target.id}`,
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+    expect(
+      await prismaClient.adminUser.findUnique({ where: { id: target.id } }),
+    ).not.toBeNull();
+  });
+
+  it("keeps an admin that appears in the history", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const target = await deactivatedViewer();
+    await prismaClient.auditLog.create({
+      data: {
+        action: "LOGIN",
+        source: "UI",
+        admin_id: target.id,
+        entity_type: "AdminUser",
+        entity_id: target.id,
+      },
+    });
+
+    const response = await TestRequest.delete(
+      `/api/admin/admin-users/${target.id}`,
+      accessToken,
+    );
+    expect(response.status).toBe(409);
+    expect((await response.json()).errors).toContain("1 record(s)");
+    expect(
+      await prismaClient.adminUser.findUnique({ where: { id: target.id } }),
+    ).not.toBeNull();
+  });
+
+  it("is only for a Super Admin, and not for yourself", async () => {
+    await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const target = await deactivatedViewer();
+    const dba = await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+    const forbidden = await TestRequest.delete(
+      `/api/admin/admin-users/${target.id}`,
+      dba.accessToken,
+    );
+    expect(forbidden.status).toBe(403);
+
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+      { id: "second-super-admin-id", email: "second_superadmin@millennia21.id" },
+    );
+    const self = await TestRequest.delete(
+      "/api/admin/admin-users/second-super-admin-id",
+      accessToken,
+    );
+    expect(self.status).toBe(400);
+  });
+
+  it("tells the admin list which deactivated admins can be deleted", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const clean = await deactivatedViewer();
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+    const withTrace = await prismaClient.adminUser.update({
+      where: { email: "test_dbadmin@millennia21.id" },
+      data: { is_active: false },
+    });
+    await prismaClient.auditLog.create({
+      data: {
+        action: "LOGIN",
+        source: "UI",
+        admin_id: withTrace.id,
+        entity_type: "AdminUser",
+        entity_id: withTrace.id,
+      },
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?is_active=false",
+      accessToken,
+    );
+    const body = await response.json();
+    const byId = (id: string) =>
+      body.data.find((row: { id: string }) => row.id === id);
+    expect(byId(clean.id).can_delete).toBe(true);
+    expect(byId(withTrace.id).can_delete).toBe(false);
+    expect(byId(withTrace.id).delete_trace_count).toBe(1);
+  });
+});

@@ -579,6 +579,97 @@ export class AdminUserService {
     return await toAdminResponse(updatedAdmin);
   }
 
+  // Rows that still point at an admin account. An admin with any of them keeps its record for the history.
+  static async traceCounts(adminIds: string[]): Promise<Map<string, number>> {
+    const counts = new Map<string, number>(adminIds.map((id) => [id, 0]));
+    if (adminIds.length === 0) return counts;
+    const [audit, discipline, requested, decided] = await Promise.all([
+      prismaClient.auditLog.groupBy({
+        by: ["admin_id"],
+        where: { admin_id: { in: adminIds } },
+        _count: { _all: true },
+      }),
+      prismaClient.employeeDisciplinaryAction.groupBy({
+        by: ["issued_by_admin_id"],
+        where: { issued_by_admin_id: { in: adminIds } },
+        _count: { _all: true },
+      }),
+      prismaClient.identifierChangeRequest.groupBy({
+        by: ["requested_by"],
+        where: { requested_by: { in: adminIds } },
+        _count: { _all: true },
+      }),
+      prismaClient.identifierChangeRequest.groupBy({
+        by: ["decided_by"],
+        where: { decided_by: { in: adminIds } },
+        _count: { _all: true },
+      }),
+    ]);
+    const add = (id: string | null, n: number) => {
+      if (id && counts.has(id)) counts.set(id, counts.get(id)! + n);
+    };
+    for (const row of audit) add(row.admin_id, row._count._all);
+    for (const row of discipline) add(row.issued_by_admin_id, row._count._all);
+    for (const row of requested) add(row.requested_by, row._count._all);
+    for (const row of decided) add(row.decided_by, row._count._all);
+    return counts;
+  }
+
+  // Deleting is only for a deactivated admin that never did anything, such as one made by mistake or for a test.
+  static async remove(
+    admin: AdminUser,
+    targetAdminId: string,
+    context: AuditRequestContext = {},
+  ): Promise<void> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedAdminUserAction(admin, "delete", context, targetAdminId);
+      throw new ResponseError(403, "Forbidden: Only Super Admin can delete an admin");
+    }
+    if (admin.id === targetAdminId) {
+      throw new ResponseError(400, "You cannot delete your own admin account");
+    }
+
+    const targetAdmin = await prismaClient.adminUser.findUnique({
+      where: { id: targetAdminId },
+    });
+    if (!targetAdmin) {
+      throw new ResponseError(404, "Admin not found");
+    }
+    await assertNotProtectedAdmin(admin, targetAdmin, "delete", context);
+    if (targetAdmin.is_active) {
+      throw new ResponseError(400, "Deactivate this admin before deleting it");
+    }
+
+    const trace = (await AdminUserService.traceCounts([targetAdmin.id])).get(targetAdmin.id)!;
+    if (trace > 0) {
+      throw new ResponseError(
+        409,
+        `Cannot delete: this admin account appears in ${trace} record(s) of the history. It stays deactivated instead.`,
+      );
+    }
+
+    await prismaClient.$transaction(async (tx) => {
+      await tx.adminUser.delete({ where: { id: targetAdmin.id } });
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_ADMIN_USER,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: targetAdmin.id,
+          admin_id: admin.id,
+          old_values: {
+            email: targetAdmin.email,
+            full_name: targetAdmin.full_name,
+            role: targetAdmin.role,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+  }
+
   // Viewer demotion clears both domain write permissions.
   static async changeRole(
     admin: AdminUser,
@@ -1596,13 +1687,26 @@ export class AdminUserService {
             const headOfCare = await headOfCarePersonIds(
               admins.map((admin) => admin.person_id),
             );
+            const inactiveIds = admins
+              .filter((admin) => !admin.is_active)
+              .map((admin) => admin.id);
+            const traces = await AdminUserService.traceCounts(inactiveIds);
             return Promise.all(
-              admins.map((admin) =>
-                toAdminResponse(
+              admins.map(async (admin) => {
+                const response = await toAdminResponse(
                   admin,
                   admin.person_id ? headOfCare.has(admin.person_id) : false,
-                ),
-              ),
+                );
+                const trace = traces.get(admin.id) ?? 0;
+                return {
+                  ...response,
+                  delete_trace_count: trace,
+                  can_delete:
+                    !admin.is_active &&
+                    trace === 0 &&
+                    !isProtectedSuperAdminEmail(admin.email),
+                };
+              }),
             );
           }),
     });

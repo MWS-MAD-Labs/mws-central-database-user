@@ -189,6 +189,20 @@ describe('ClassesPanel', () => {
     )).toBe(true)
   })
 
+  it('tells what leaves together with a class when it is deleted', async () => {
+    const klass = classFixture({
+      has_dependents: false,
+      removable_history: { enrollments: 2, teacher_assignments: 1 },
+    })
+    globalThis.fetch = createFetchRouter(classRoutes([klass]))
+    const { user } = renderPanel(<ClassesPanel />)
+    await screen.findAllByText('Grade 1A')
+
+    await user.click(screen.getAllByRole('button', { name: 'Delete' })[0])
+    const dialog = screen.getByRole('dialog', { name: 'Delete class' })
+    expect(within(dialog).getByText(/This also removes 2 dropped or removed enrollment\(s\) and 1 removed teacher assignment\(s\) of this class\./)).toBeVisible()
+  })
+
   it('shows the teachers of a class in one line that opens their names by role', async () => {
     const teacher = (id, name, extra = {}) => ({ id, workforce_member: { id: `emp-${id}`, type: 'EMPLOYEE', full_name: name }, ...extra })
     const klass = classFixture({

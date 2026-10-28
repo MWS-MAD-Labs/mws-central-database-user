@@ -305,12 +305,25 @@ async function getClassEnrollmentCounts(
 
 type ClassDeleteBlockers = {
   currentStudentCount: number;
+  // Enrollments that still stand for real class history: not removed, and not dropped.
   enrollmentCount: number;
   teacherAssignmentCount: number;
   roomScopeCount: number;
+  // Transfers that were recorded against this class.
+  mutationHistoryCount: number;
+  // Rows that go away together with the class: removed ones, and enrollments that were dropped.
+  droppedEnrollmentCount: number;
+  removedAssignmentCount: number;
 };
 
-// Count all enrollment FKs and teacher history before delete.
+const REAL_ENROLLMENT_STATUSES = [
+  EnrollmentStatus.ACTIVE,
+  EnrollmentStatus.COMPLETED,
+  EnrollmentStatus.TRANSFERRED,
+];
+
+// Only a trace of real use stops a class from being deleted. An enrollment that was removed or dropped, and a
+// teacher assignment that was removed, count as a mistake that was put right and leave with the class.
 async function getClassDeleteBlockers(
   classIds: string[],
 ): Promise<Map<string, ClassDeleteBlockers>> {
@@ -321,33 +334,68 @@ async function getClassDeleteBlockers(
       enrollmentCount: 0,
       teacherAssignmentCount: 0,
       roomScopeCount: 0,
+      mutationHistoryCount: 0,
+      droppedEnrollmentCount: 0,
+      removedAssignmentCount: 0,
     });
   }
   if (classIds.length === 0) return map;
 
-  const [studentGroups, enrollmentGroups, teacherAssignmentGroups, roomScopeGroups] =
-    await Promise.all([
-      prismaClient.student.groupBy({
-        by: ["current_class_id"],
-        where: { current_class_id: { in: classIds } },
-        _count: { _all: true },
-      }),
-      prismaClient.studentClassEnrollment.groupBy({
-        by: ["class_id"],
-        where: { class_id: { in: classIds } },
-        _count: { _all: true },
-      }),
-      prismaClient.classTeacherAssignment.groupBy({
-        by: ["class_id"],
-        where: { class_id: { in: classIds } },
-        _count: { _all: true },
-      }),
-      prismaClient.pcActivityRoomClass.groupBy({
-        by: ["class_id"],
-        where: { class_id: { in: classIds }, room: { deleted_at: null } },
-        _count: { _all: true },
-      }),
-    ]);
+  const [
+    studentGroups,
+    enrollmentGroups,
+    droppedEnrollmentGroups,
+    teacherAssignmentGroups,
+    removedAssignmentGroups,
+    roomScopeGroups,
+    mutationGroups,
+  ] = await Promise.all([
+    prismaClient.student.groupBy({
+      by: ["current_class_id"],
+      where: { current_class_id: { in: classIds } },
+      _count: { _all: true },
+    }),
+    prismaClient.studentClassEnrollment.groupBy({
+      by: ["class_id"],
+      where: {
+        class_id: { in: classIds },
+        deleted_at: null,
+        enrollment_status: { in: REAL_ENROLLMENT_STATUSES },
+      },
+      _count: { _all: true },
+    }),
+    prismaClient.studentClassEnrollment.groupBy({
+      by: ["class_id"],
+      where: {
+        class_id: { in: classIds },
+        OR: [
+          { deleted_at: { not: null } },
+          { enrollment_status: EnrollmentStatus.WITHDRAWN },
+        ],
+      },
+      _count: { _all: true },
+    }),
+    prismaClient.classTeacherAssignment.groupBy({
+      by: ["class_id"],
+      where: { class_id: { in: classIds }, deleted_at: null },
+      _count: { _all: true },
+    }),
+    prismaClient.classTeacherAssignment.groupBy({
+      by: ["class_id"],
+      where: { class_id: { in: classIds }, deleted_at: { not: null } },
+      _count: { _all: true },
+    }),
+    prismaClient.pcActivityRoomClass.groupBy({
+      by: ["class_id"],
+      where: { class_id: { in: classIds }, room: { deleted_at: null } },
+      _count: { _all: true },
+    }),
+    prismaClient.studentMutationHistory.groupBy({
+      by: ["class_id"],
+      where: { class_id: { in: classIds }, deleted_at: null },
+      _count: { _all: true },
+    }),
+  ]);
 
   for (const group of studentGroups) {
     if (!group.current_class_id) continue;
@@ -356,13 +404,40 @@ async function getClassDeleteBlockers(
   for (const group of enrollmentGroups) {
     map.get(group.class_id)!.enrollmentCount = group._count._all;
   }
+  for (const group of droppedEnrollmentGroups) {
+    map.get(group.class_id)!.droppedEnrollmentCount = group._count._all;
+  }
   for (const group of teacherAssignmentGroups) {
     map.get(group.class_id)!.teacherAssignmentCount = group._count._all;
+  }
+  for (const group of removedAssignmentGroups) {
+    map.get(group.class_id)!.removedAssignmentCount = group._count._all;
   }
   for (const group of roomScopeGroups) {
     map.get(group.class_id)!.roomScopeCount = group._count._all;
   }
+  for (const group of mutationGroups) {
+    if (!group.class_id) continue;
+    map.get(group.class_id)!.mutationHistoryCount = group._count._all;
+  }
   return map;
+}
+
+function classHasDependents(blockers: ClassDeleteBlockers): boolean {
+  return (
+    blockers.currentStudentCount > 0 ||
+    blockers.enrollmentCount > 0 ||
+    blockers.teacherAssignmentCount > 0 ||
+    blockers.roomScopeCount > 0 ||
+    blockers.mutationHistoryCount > 0
+  );
+}
+
+function removableHistory(blockers: ClassDeleteBlockers) {
+  return {
+    enrollments: blockers.droppedEnrollmentCount,
+    teacher_assignments: blockers.removedAssignmentCount,
+  };
 }
 
 function classEnrollmentCountsFromGroups(
@@ -1019,10 +1094,8 @@ export class ClassService {
       klass,
       counts.active,
       counts.history,
-      blockers.currentStudentCount > 0 ||
-        blockers.enrollmentCount > 0 ||
-        blockers.teacherAssignmentCount > 0 ||
-        blockers.roomScopeCount > 0,
+      classHasDependents(blockers),
+      removableHistory(blockers),
     );
     if (!canViewEmployeeData(admin)) {
       response.homeroom_teachers = [];
@@ -1053,22 +1126,25 @@ export class ClassService {
       throw new ResponseError(404, "Class not found");
     }
 
-    const { currentStudentCount, enrollmentCount, teacherAssignmentCount, roomScopeCount } = (
-      await getClassDeleteBlockers([deleteRequest.id])
-    ).get(deleteRequest.id)!;
+    const blockers = (await getClassDeleteBlockers([deleteRequest.id])).get(
+      deleteRequest.id,
+    )!;
 
     const usages: string[] = [];
-    if (currentStudentCount > 0) {
-      usages.push(`${currentStudentCount} student(s) currently assigned`);
+    if (blockers.currentStudentCount > 0) {
+      usages.push(`${blockers.currentStudentCount} student(s) currently assigned`);
     }
-    if (enrollmentCount > 0) {
-      usages.push(`${enrollmentCount} enrollment(s)`);
+    if (blockers.enrollmentCount > 0) {
+      usages.push(`${blockers.enrollmentCount} enrollment(s)`);
     }
-    if (teacherAssignmentCount > 0) {
-      usages.push(`${teacherAssignmentCount} teacher assignment(s)`);
+    if (blockers.teacherAssignmentCount > 0) {
+      usages.push(`${blockers.teacherAssignmentCount} teacher assignment(s)`);
     }
-    if (roomScopeCount > 0) {
-      usages.push(`${roomScopeCount} PC activity room(s) scoped to this class`);
+    if (blockers.roomScopeCount > 0) {
+      usages.push(`${blockers.roomScopeCount} PC activity room(s) scoped to this class`);
+    }
+    if (blockers.mutationHistoryCount > 0) {
+      usages.push(`${blockers.mutationHistoryCount} recorded student transfer(s)`);
     }
 
     if (usages.length > 0) {
@@ -1079,6 +1155,31 @@ export class ClassService {
     }
 
     await prismaClient.$transaction(async (tx) => {
+      // Enrollments that were removed or dropped, and teacher assignments that were removed, leave with the class.
+      const leaving = await tx.studentClassEnrollment.findMany({
+        where: {
+          class_id: deleteRequest.id,
+          OR: [
+            { deleted_at: { not: null } },
+            { enrollment_status: EnrollmentStatus.WITHDRAWN },
+          ],
+        },
+        select: { id: true },
+      });
+      const leavingIds = leaving.map((row) => row.id);
+      if (leavingIds.length > 0) {
+        await tx.studentClassEnrollment.updateMany({
+          where: { promoted_from_enrollment_id: { in: leavingIds } },
+          data: { promoted_from_enrollment_id: null },
+        });
+        await tx.studentClassEnrollment.deleteMany({
+          where: { id: { in: leavingIds } },
+        });
+      }
+      await tx.classTeacherAssignment.deleteMany({
+        where: { class_id: deleteRequest.id, deleted_at: { not: null } },
+      });
+
       await tx.class.delete({
         where: { id: deleteRequest.id },
       });
@@ -1090,7 +1191,11 @@ export class ClassService {
           entity_type: "Class",
           entity_id: existing.id,
           admin_id: admin.id,
-          old_values: toClassAuditSnapshot(existing),
+          old_values: {
+            ...toClassAuditSnapshot(existing),
+            removed_enrollments: blockers.droppedEnrollmentCount,
+            removed_teacher_assignments: blockers.removedAssignmentCount,
+          },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -1125,10 +1230,8 @@ export class ClassService {
       klass,
       counts.active,
       counts.history,
-      blockers.currentStudentCount > 0 ||
-        blockers.enrollmentCount > 0 ||
-        blockers.teacherAssignmentCount > 0 ||
-        blockers.roomScopeCount > 0,
+      classHasDependents(blockers),
+      removableHistory(blockers),
     );
   }
 
@@ -2426,10 +2529,8 @@ export class ClassService {
             klass,
             counts.active,
             counts.history,
-            blockers.currentStudentCount > 0 ||
-              blockers.enrollmentCount > 0 ||
-              blockers.teacherAssignmentCount > 0 ||
-        blockers.roomScopeCount > 0,
+            classHasDependents(blockers),
+            removableHistory(blockers),
           );
         });
       },

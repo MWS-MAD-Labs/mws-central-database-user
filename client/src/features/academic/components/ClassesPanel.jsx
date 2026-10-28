@@ -101,11 +101,25 @@ export function ClassesPanel() {
       params.status !== "ACTIVE",
   );
 
+  function deleteDescription(klass) {
+    const enrollments = klass.removable_history?.enrollments ?? 0;
+    const assignments = klass.removable_history?.teacher_assignments ?? 0;
+    const parts = [];
+    if (enrollments > 0) {
+      parts.push(`${enrollments} dropped or removed enrollment(s)`);
+    }
+    if (assignments > 0) {
+      parts.push(`${assignments} removed teacher assignment(s)`);
+    }
+    const base = `"${klass.name}" will be deleted.`;
+    return parts.length > 0 ? `${base} This also removes ${parts.join(" and ")} of this class.` : base;
+  }
+
   async function handleDelete(klass) {
     if (
       await confirm({
         title: "Delete class",
-        description: `"${klass.name}" will be deleted.`,
+        description: deleteDescription(klass),
         confirmLabel: "Delete",
         tone: "danger",
       })
