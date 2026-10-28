@@ -10,6 +10,7 @@ adminUserRouter.get("/promotable-employees", (c) =>
 );
 adminUserRouter.post("/promote", (c) => AdminUserController.promote(c));
 adminUserRouter.patch("/demote/:id", (c) => AdminUserController.demote(c));
+adminUserRouter.delete("/:id", (c) => AdminUserController.remove(c));
 adminUserRouter.patch("/change-role/:id", (c) =>
   AdminUserController.changeRole(c),
 );

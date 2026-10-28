@@ -130,6 +130,7 @@ export const ENTITY_AUDIT_ACTIONS = [
   "IMPORT_DATA",
   "ROLLBACK_IMPORT",
   "ROLE_CHANGE",
+  "DELETE_ADMIN_USER",
   "PERMISSION_CHANGE",
   // API client mutations always identify an existing client.
   "API_TOKEN_CREATE",
