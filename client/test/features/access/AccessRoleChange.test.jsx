@@ -482,6 +482,44 @@ describe('Access role change summary', () => {
     expect(screen.getByRole('button', { name: /Demote/ })).toBeVisible()
   })
 
+  it('offers Delete only for a deactivated admin with no trace, and sends the delete', async () => {
+    const fetchMock = createFetchRouter([
+      {
+        path: '/api/admin/admin-users/admin-clean',
+        method: 'DELETE',
+        response: jsonResponse({ data: true }),
+      },
+      ...accessRoutes([
+        { ...baseAdmin, id: 'admin-clean', email: 'clean@millennia21.id', is_active: false, can_delete: true, delete_trace_count: 0 },
+        { ...baseAdmin, id: 'admin-trace', email: 'trace@millennia21.id', is_active: false, can_delete: false, delete_trace_count: 3 },
+        { ...baseAdmin, id: 'admin-live', email: 'live@millennia21.id', is_active: true },
+      ]),
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderAccess({ role: 'SUPER_ADMIN' })
+    await screen.findByText('clean@millennia21.id')
+
+    await user.click(screen.getByRole('button', { name: 'Actions for live@millennia21.id' }))
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
+    await user.keyboard('{Escape}')
+
+    await user.click(screen.getByRole('button', { name: 'Actions for trace@millennia21.id' }))
+    const blocked = screen.getByRole('button', { name: 'Delete' })
+    expect(blocked).toBeDisabled()
+    expect(blocked).toHaveAttribute('title', 'Cannot delete: appears in 3 record(s) of the history')
+    await user.keyboard('{Escape}')
+
+    await user.click(screen.getByRole('button', { name: 'Actions for clean@millennia21.id' }))
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete admin' })
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url, options]) =>
+        url === '/api/admin/admin-users/admin-clean' && options.method === 'DELETE',
+      )).toBe(true)
+    })
+  })
+
   it('pages through the access history ten at a time instead of cutting it off', async () => {
     const log = (n) => ({
       id: `log-${n}`,

@@ -185,6 +185,13 @@ function AdminUsersPanel() {
       showSuccessToast("Admin access deactivated.");
     },
   });
+  const deleteMutation = useMutation({
+    mutationFn: adminUsersApi.remove,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      showSuccessToast("Admin deleted.");
+    },
+  });
   const reactivateMutation = useMutation({
     mutationFn: async (admin) => {
       const response = await employeesApi.list({
@@ -378,6 +385,19 @@ function AdminUsersPanel() {
       })
     ) {
       demoteMutation.mutate(admin.id);
+    }
+  }
+
+  async function handleDelete(admin) {
+    if (
+      await confirm({
+        title: "Delete admin",
+        description: `Delete the admin account of ${admin.email}? The employee record is not touched. This cannot be undone.`,
+        confirmLabel: "Delete",
+        tone: "danger",
+      })
+    ) {
+      deleteMutation.mutate(admin.id);
     }
   }
 
@@ -952,6 +972,27 @@ function AdminUsersPanel() {
                                 </span>
                               </ActionsMenuItem>
                             )}
+                            {!admin.is_active ? (
+                              <ActionsMenuItem
+                                tone="danger"
+                                disabled={
+                                  !admin.can_delete || deleteMutation.isPending
+                                }
+                                title={
+                                  admin.can_delete
+                                    ? undefined
+                                    : `Cannot delete: appears in ${admin.delete_trace_count ?? 0} record(s) of the history`
+                                }
+                                onClick={() => {
+                                  closeMenu();
+                                  handleDelete(admin);
+                                }}
+                              >
+                                <span className="flex items-center gap-2">
+                                  Delete
+                                </span>
+                              </ActionsMenuItem>
+                            ) : null}
                           </>
                         )}
                       </ActionsMenu>
