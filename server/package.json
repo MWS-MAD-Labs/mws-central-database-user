@@ -22,6 +22,7 @@
     "fix:employee-identifier-set-at": "bun run seed/fix-employee-identifier-set-at.ts",
     "seed:dev:admin": "bun run seed/dev-admin-user.ts",
     "seed:dev:employee-user": "bun run seed/dev-employee-user.ts",
+    "seed:dev:proofpoint": "bun run seed/dev-data-proofpoint.ts",
     "test": "NODE_ENV=test bun test",
     "typecheck": "tsc --noEmit"
   },
