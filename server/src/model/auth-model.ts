@@ -1,4 +1,8 @@
-import { AdminRole, type AdminUser } from "../generated/prisma/client";
+import {
+  AdminRole,
+  type AdminUser,
+  type EducationLevel,
+} from "../generated/prisma/client";
 import { generateAdminId } from "../utils/generate-id";
 import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
 import {
@@ -21,6 +25,11 @@ export type AdminResponse = {
   role: AdminRole;
   avatar_url: string | null;
   unit_id: string;
+  job_position: string | null;
+  job_position_id: string | null;
+  job_level_id: string | null;
+  building_id: string | null;
+  education_level: EducationLevel | null;
   is_active: boolean;
   last_login: string | null;
   created_at: string;
@@ -52,6 +61,14 @@ export type AdminResponse = {
   after_hours_write_until?: string | null;
 };
 
+export type AdminEmployeeProfile = {
+  job_position: { name: string };
+  job_position_id: string;
+  job_level_id: string;
+  building_id: string;
+  education_level: EducationLevel | null;
+};
+
 export type EmployeeAuthResponse = EmployeeDetailResponse & {
   type: "employee";
 };
@@ -77,25 +94,37 @@ export async function toAdminResponse(
   },
   // Lists pass this from one batch query instead of one lookup per admin.
   headOfCare?: boolean,
+  employeeProfile?: AdminEmployeeProfile | null,
 ): Promise<AdminResponse> {
   const isSuperAdmin = admin.role === AdminRole.SUPER_ADMIN;
   const isHeadOfCareValue = headOfCare ?? (await isHeadOfCare(admin));
-
-  // Most callers fetch a single admin without including these relations -
-  // self-fetch here rather than pushing an include onto every call site.
-  // search()'s findMany includes them directly, skipping this query.
-  const [studentViewUnits, employeeViewUnits] = await Promise.all([
-    admin.student_view_units ??
-      prismaClient.adminUserStudentViewUnit.findMany({
-        where: { admin_id: admin.id },
-        select: { unit_id: true },
-      }),
-    admin.employee_view_units ??
-      prismaClient.adminUserEmployeeViewUnit.findMany({
-        where: { admin_id: admin.id },
-        select: { unit_id: true },
-      }),
-  ]);
+  const [studentViewUnits, employeeViewUnits, linkedEmployeeProfile] =
+    await Promise.all([
+      admin.student_view_units ??
+        prismaClient.adminUserStudentViewUnit.findMany({
+          where: { admin_id: admin.id },
+          select: { unit_id: true },
+        }),
+      admin.employee_view_units ??
+        prismaClient.adminUserEmployeeViewUnit.findMany({
+          where: { admin_id: admin.id },
+          select: { unit_id: true },
+        }),
+      employeeProfile !== undefined
+        ? employeeProfile
+        : admin.person_id
+          ? prismaClient.employee.findFirst({
+              where: { person_id: admin.person_id, deleted_at: null },
+              select: {
+                job_position: { select: { name: true } },
+                job_position_id: true,
+                job_level_id: true,
+                building_id: true,
+                education_level: true,
+              },
+            })
+          : null,
+    ]);
 
   const response: AdminResponse = {
     id: admin.id,
@@ -111,6 +140,11 @@ export async function toAdminResponse(
       admin.avatar_url,
     ),
     unit_id: admin.unit_id,
+    job_position: linkedEmployeeProfile?.job_position.name ?? null,
+    job_position_id: linkedEmployeeProfile?.job_position_id ?? null,
+    job_level_id: linkedEmployeeProfile?.job_level_id ?? null,
+    building_id: linkedEmployeeProfile?.building_id ?? null,
+    education_level: linkedEmployeeProfile?.education_level ?? null,
     is_active: admin.is_active,
     last_login: admin.last_login ? admin.last_login.toISOString() : null,
     created_at: admin.created_at.toISOString(),
