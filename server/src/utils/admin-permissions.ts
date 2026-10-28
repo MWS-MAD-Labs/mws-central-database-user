@@ -152,6 +152,16 @@ export function resolveAcademicUnitScope(
   return [...new Set(enabledScopes.flatMap((scope) => scope ?? []))];
 }
 
+// Classes lead into the student roster, so student scope takes precedence
+// whenever student access is enabled. Employee scope remains the fallback for
+// workforce-only admins.
+export function resolveClassUnitScope(
+  admin: AdminWithAcademicViewScope,
+): string[] | undefined {
+  if (admin.can_view_student_data) return resolveStudentUnitScope(admin);
+  return resolveEmployeeUnitScope(admin);
+}
+
 // ---------------------------------------------------------------------------
 // Write scope. The Employee Units / Student Units setting gates writes the
 // same way it gates reads: a DATABASE_ADMIN may write in any unit inside their

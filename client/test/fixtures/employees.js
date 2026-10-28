@@ -13,6 +13,8 @@ export const elementaryDatabaseAdmin = {
   can_write_employee_data: true,
   can_view_employee_pii: true,
   can_view_employee_data: true,
+  can_view_all_employee_units: false,
+  employee_view_unit_ids: [],
   can_view_employee_disciplinary_data: true,
   after_hours_write_until: '2099-01-01T00:00:00.000Z',
 }
