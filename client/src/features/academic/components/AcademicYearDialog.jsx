@@ -34,19 +34,28 @@ function computeDefaultEndDate(startDateInput) {
   return end.toISOString().slice(0, 10);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const dayText = (date) => date.toISOString().slice(0, 10);
+
+// The middle day of a range, where the first half ends until it is picked by hand.
+function midpointInput(startInput, endInput) {
+  const start = new Date(`${startInput}T00:00:00.000Z`);
+  const end = new Date(`${endInput}T00:00:00.000Z`);
+  if (!startInput || !endInput || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return "";
+  const days = Math.floor((end - start) / DAY_MS);
+  return dayText(new Date(start.getTime() + Math.floor(days / 2) * DAY_MS));
+}
+
 // Two halves of the year, the second starting the day after the first ends.
 function computeDefaultSemesters(startInput, endInput) {
   const start = new Date(`${startInput}T00:00:00.000Z`);
   const end = new Date(`${endInput}T00:00:00.000Z`);
   if (!startInput || !endInput || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start >= end) return [];
-  const dayMs = 24 * 60 * 60 * 1000;
-  const days = Math.floor((end - start) / dayMs);
-  const firstEnd = new Date(start.getTime() + Math.floor(days / 2) * dayMs);
-  const secondStart = new Date(firstEnd.getTime() + dayMs);
-  const day = (date) => date.toISOString().slice(0, 10);
+  const firstEnd = midpointInput(startInput, endInput);
+  const secondStart = dayText(new Date(new Date(`${firstEnd}T00:00:00.000Z`).getTime() + DAY_MS));
   return [
-    { name: "Semester 1", start_date: startInput, end_date: day(firstEnd) },
-    { name: "Semester 2", start_date: day(secondStart), end_date: endInput },
+    { name: "Semester 1", start_date: startInput, end_date: firstEnd, half_end_date: midpointInput(startInput, firstEnd) },
+    { name: "Semester 2", start_date: secondStart, end_date: endInput, half_end_date: midpointInput(secondStart, endInput) },
   ];
 }
 
@@ -103,10 +112,17 @@ export function AcademicYearDialog({
     name: row.name,
     start_date: dateInputFromIso(row.start_date),
     end_date: dateInputFromIso(row.end_date),
+    half_end_date: dateInputFromIso(row.half_end_date),
   }));
   let baseSemesters = computeDefaultSemesters(values.start_date, values.end_date);
   if (isEdit) baseSemesters = !semestersQuery.isSuccess ? [] : savedSemesters.length > 0 ? savedSemesters : baseSemesters;
-  const semesters = baseSemesters.map((item, index) => ({ ...item, ...semesterEdits[index] }));
+  // A half nobody picked follows the dates of its semester. A saved one stays until it is changed.
+  const semesters = baseSemesters.map((item, index) => {
+    const edits = semesterEdits[index] ?? {};
+    const merged = { ...item, ...edits };
+    if (!item.id && edits.half_end_date === undefined) merged.half_end_date = midpointInput(merged.start_date, merged.end_date);
+    return merged;
+  });
   function editSemester(index, field, value) {
     setSemesterEdits((current) => ({ ...current, [index]: { ...current[index], [field]: value } }));
   }
@@ -203,6 +219,7 @@ export function AcademicYearDialog({
                 name: item.name.trim(),
                 start_date: isoFromDateInput(item.start_date),
                 end_date: isoFromDateInput(item.end_date),
+                half_end_date: isoFromDateInput(item.half_end_date),
               }))
             : undefined,
       }),
@@ -331,7 +348,7 @@ export function AcademicYearDialog({
         </Field>
         {semesters.length > 0
           ? semesters.map((item, index) => (
-              <div key={index} className="grid gap-4 md:col-span-2 md:grid-cols-3">
+              <div key={index} className="grid gap-4 md:col-span-2 md:grid-cols-4">
                 <Field label={`Semester ${index + 1}`} error={errors[`semester_${index}`]}>
                   <TextInput
                     value={item.name}
@@ -348,6 +365,12 @@ export function AcademicYearDialog({
                   <DateField
                     value={item.end_date}
                     onChange={(event) => editSemester(index, "end_date", event.target.value)}
+                  />
+                </Field>
+                <Field label="First Half Ends" error={errors[`half_${index}`]}>
+                  <DateField
+                    value={item.half_end_date}
+                    onChange={(event) => editSemester(index, "half_end_date", event.target.value)}
                   />
                 </Field>
               </div>
@@ -424,6 +447,11 @@ function computeAcademicYearErrors(values, semesters = []) {
       errors[`semester_${index}`] = "Keep the dates inside the academic year.";
     else if (index > 0 && item.start_date <= semesters[index - 1].end_date)
       errors[`semester_${index}`] = "Start after the previous semester ends.";
+    if (!errors[`semester_${index}`]) {
+      if (!item.half_end_date) errors[`half_${index}`] = "Pick where the first half ends.";
+      else if (item.half_end_date < item.start_date || item.half_end_date >= item.end_date)
+        errors[`half_${index}`] = "End the first half inside the semester, before its last day.";
+    }
   });
   return errors;
 }
