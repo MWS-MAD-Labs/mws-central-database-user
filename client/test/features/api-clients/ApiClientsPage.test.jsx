@@ -121,6 +121,43 @@ describe('ApiClientsPage as a reference', () => {
     await waitFor(() => expect(revoked).toEqual(['legacy-1']))
   })
 
+  it('deletes a revoked client after confirming, and offers no delete for an active one', async () => {
+    const deleted = []
+    const revokedClient = {
+      ...legacyClient,
+      id: 'legacy-revoked',
+      name: 'Retired Importer',
+      status: 'REVOKED',
+      is_active: false,
+      credentials: [{ id: 'c1', status: 'REVOKED', token_prefix: 'mws_old1' }, { id: 'c2', status: 'REVOKED', token_prefix: 'mws_old2' }],
+    }
+    const { user } = renderPage(
+      [
+        {
+          path: '/api/admin/api-clients/legacy-revoked',
+          method: 'DELETE',
+          response: () => {
+            deleted.push('legacy-revoked')
+            return jsonResponse({ data: { id: 'legacy-revoked', deleted_credentials: 2 } })
+          },
+        },
+      ],
+      { profiles: [hubProfile], clients: [legacyClient, revokedClient] },
+    )
+    expect(await screen.findByText('Retired Importer')).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: /Actions for Old Reporting Tool/ }))
+    expect(screen.queryByRole('button', { name: 'Delete Client' })).not.toBeInTheDocument()
+    await user.keyboard('{Escape}')
+
+    await user.click(screen.getByRole('button', { name: /Actions for Retired Importer/ }))
+    await user.click(await screen.findByRole('button', { name: 'Delete Client' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete API Client' })
+    expect(within(dialog).getByText(/and its 2 credentials will be deleted/)).toBeVisible()
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(deleted).toEqual(['legacy-revoked']))
+  })
+
   it('lets the rotation mode be chosen and says what happens', async () => {
     const rotations = []
     const { user } = renderPage(
