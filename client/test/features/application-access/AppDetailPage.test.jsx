@@ -99,7 +99,8 @@ describe("AppDetailPage", () => {
     const { user } = renderPage(setup());
     expect(await screen.findByRole("heading", { name: "Demo App" })).toBeVisible();
     expect(screen.getByText("Shown in the Hub")).toBeVisible();
-    expect(screen.getByText("Connected")).toBeVisible();
+    expect(screen.getByText("Working")).toBeVisible();
+    expect(screen.getByText("Calls Central: Connected")).toBeVisible();
     expect(screen.getByText(/Last Call/)).toBeVisible();
     expect(screen.getByText(/Groups? · \d+ Exceptions? · \d+ Blocked/)).toBeVisible();
     expect(screen.getByText("128 People With Access")).toBeVisible();
@@ -112,9 +113,9 @@ describe("AppDetailPage", () => {
     expect(screen.queryByRole("button", { name: "Edit Details" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Add Group" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Retire Application" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Check Now" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "More actions" }));
     expect(screen.getByRole("button", { name: "Setup Guide" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Check Now" })).toBeVisible();
     expect(screen.getAllByRole("button", { name: /Edit/ })).toHaveLength(1);
   });
 
@@ -463,7 +464,7 @@ describe("AppDetailPage", () => {
     ]);
     expect(await screen.findByText(/sign-in page was not found since/)).toBeVisible();
     expect(screen.getByText(/Fix the Sign-In Address in Edit Details/)).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "More actions" }));
+    expect(screen.getByText("Needs Attention")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Check Now" }));
     await waitFor(() => expect(asked).toHaveLength(1));
   });

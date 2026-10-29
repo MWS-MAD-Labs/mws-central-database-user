@@ -181,16 +181,6 @@ export function AppDetailPage() {
                     >
                       Setup Guide
                     </ActionsMenuItem>
-                    {retired || setup.is_hub || link ? null : (
-                      <ActionsMenuItem
-                        onClick={() => {
-                          closeMenu();
-                          checkNow.mutate(applicationId);
-                        }}
-                      >
-                        Check Now
-                      </ActionsMenuItem>
-                    )}
                     {retired ? null : (
                       <ActionsMenuItem
                         onClick={() => {
@@ -309,6 +299,8 @@ export function AppDetailPage() {
         address={setup.address}
         health={health}
         connection={setup.connection}
+        onCheck={retired ? undefined : () => checkNow.mutate(applicationId)}
+        checking={checkNow.isPending}
         access={more?.access}
         createdAt={more?.created_at}
         groupsPath={base}

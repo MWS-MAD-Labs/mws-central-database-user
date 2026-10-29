@@ -99,7 +99,7 @@ describe('ApplicationAccessPage', () => {
     const exima = (await screen.findByText('exima')).closest('tr')
     expect(within(exima).getByText('Exima')).toBeVisible()
     expect(await within(exima).findByText('Safespace')).toBeVisible()
-    expect(within(exima).getByText(/2 Hours/)).toBeVisible()
+    expect(within(exima).getByText('Check Token')).toBeVisible()
     expect(within(exima).getByText('7')).toBeVisible()
     expect(within(exima).getByText('3')).toBeVisible()
     expect(within(exima).getByText('2')).toBeVisible()
@@ -169,7 +169,7 @@ describe('ApplicationAccessPage', () => {
     try {
       const { user } = renderPage()
       await screen.findByText('Exima')
-      expect(screen.getAllByText('Wrong Path')).toHaveLength(1)
+      expect(screen.getAllByText('Needs Attention')).toHaveLength(1)
       expect(screen.getByText('Shared Origin')).toBeVisible()
       await user.click(screen.getByRole('button', { name: 'Actions for exima' }))
       await user.click(screen.getByRole('button', { name: 'Check Now' }))
