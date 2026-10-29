@@ -17,7 +17,7 @@ export type CreateAcademicYearRequest = {
   end_date?: string;
   status?: AcademicYearStatus;
   // Left out, the year gets Semester 1 and 2 from its dates. An empty list means none.
-  semesters?: { name: string; start_date: string; end_date: string }[];
+  semesters?: { name: string; start_date: string; end_date: string; half_end_date?: string }[];
 };
 
 // Creates July-June years and derives status from their dates.
@@ -42,7 +42,7 @@ export type UpdateAcademicYearRequest = {
   // Confirms that existing enrollment dates may fall outside the new range.
   confirm_date_range_change?: boolean;
   // The full set of semesters. A row with an id is changed, one without is added, one left out is removed.
-  semesters?: { id?: string; name: string; start_date: string; end_date: string }[];
+  semesters?: { id?: string; name: string; start_date: string; end_date: string; half_end_date?: string }[];
 };
 
 export type GetUnresolvedEnrollmentCountRequest = {

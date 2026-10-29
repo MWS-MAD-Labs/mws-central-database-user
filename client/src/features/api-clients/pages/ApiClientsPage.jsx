@@ -44,6 +44,15 @@ export function ApiClientsPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    meta: { successMessage: "API client deleted." },
+    mutationFn: apiClientsApi.remove,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["api-clients"] });
+      queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
+    },
+  });
+
   const updateScopesMutation = useMutation({
     mutationFn: ({ id, scopeNames }) => apiClientsApi.updateScopes(id, scopeNames),
     onSuccess: () => {
@@ -85,6 +94,20 @@ export function ApiClientsPage() {
     }
   }
 
+  async function handleDelete(client) {
+    const credentials = getCredentials(client).length;
+    if (
+      await confirm({
+        title: "Delete API Client",
+        description: `"${client.profile?.name || client.name}" and its ${credentials} credential${credentials === 1 ? "" : "s"} will be deleted. The audit log keeps its name.`,
+        confirmLabel: "Delete",
+        tone: "danger",
+      })
+    ) {
+      deleteMutation.mutate(client.id);
+    }
+  }
+
   const profiles = profilesQuery.data?.profiles || [];
   // Profiles that belong to an application added in Application Access, by code.
   const applicationProfiles = profiles.filter((profile) => profile.application);
@@ -113,7 +136,7 @@ export function ApiClientsPage() {
             </div>
             <div className="min-w-0">
               <h2 className="font-display text-base font-bold text-(--mws-charcoal)">Other Clients</h2>
-              <p className="text-xs text-(--mws-muted)">Clients that belong to no application. Revoke the ones nobody uses.</p>
+              <p className="text-xs text-(--mws-muted)">Clients that belong to no application. Revoke the ones nobody uses, then delete them.</p>
             </div>
           </div>
 
@@ -163,7 +186,8 @@ export function ApiClientsPage() {
                         onEditScopes={() => setScopesDialogFor(client)}
                         onRevokeCredential={(credential) => handleRevokeCredential(client, credential)}
                         onRevoke={() => handleRevoke(client)}
-                        isBusy={isPendingFor(revokeMutation, client.id)}
+                        onDelete={() => handleDelete(client)}
+                        isBusy={isPendingFor(revokeMutation, client.id) || isPendingFor(deleteMutation, client.id)}
                       />
                     </td>
                   </tr>
@@ -289,7 +313,7 @@ function CredentialSummary({ client }) {
   );
 }
 
-function ClientActionsMenu({ client, onRotate, onEditScopes, onRevokeCredential, onRevoke, isBusy }) {
+function ClientActionsMenu({ client, onRotate, onEditScopes, onRevokeCredential, onRevoke, onDelete, isBusy }) {
   const active = clientIsActive(client);
   const retiring = getCredentials(client).filter(
     (credential) => credential.status === "RETIRING",
@@ -341,6 +365,18 @@ function ClientActionsMenu({ client, onRotate, onEditScopes, onRevokeCredential,
           >
             Revoke Client
           </ActionsMenuItem>
+          {!active ? (
+            <ActionsMenuItem
+              tone="danger"
+              disabled={isBusy}
+              onClick={() => {
+                close();
+                onDelete();
+              }}
+            >
+              Delete Client
+            </ActionsMenuItem>
+          ) : null}
         </>
       )}
     </ActionsMenu>

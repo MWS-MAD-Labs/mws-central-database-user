@@ -24,6 +24,16 @@ export class AuditService {
       return;
     }
 
+    // Keep who the client was on the row, so the actor still reads after a revoked client is deleted.
+    const client = validated.api_client_id
+      ? await writer.apiClient
+          .findUnique({
+            where: { id: validated.api_client_id },
+            select: { name: true, token_prefix: true },
+          })
+          .catch(() => null)
+      : null;
+
     try {
       await writer.auditLog.create({
         data: {
@@ -35,6 +45,8 @@ export class AuditService {
 
           admin_id: validated.admin_id,
           api_client_id: validated.api_client_id,
+          api_client_label: client?.name,
+          api_client_prefix: client?.token_prefix,
 
           old_values: validated.old_values ?? Prisma.JsonNull,
           new_values: validated.new_values ?? Prisma.JsonNull,

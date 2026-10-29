@@ -200,6 +200,7 @@ export function InternsPage() {
               exportParams={queryParams}
               canImport={canImport}
               canExport={canWrite}
+              isEmpty={Boolean(internsQuery.data) && paging.total_item === 0}
               canExportSensitive={
                 user?.role === "SUPER_ADMIN" ||
                 Boolean(user?.can_view_employee_pii)

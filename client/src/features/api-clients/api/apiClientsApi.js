@@ -62,6 +62,13 @@ export const apiClientsApi = {
     return response.data;
   },
 
+  async remove(id) {
+    const response = await apiRequest(`/api/admin/api-clients/${id}`, {
+      method: "DELETE",
+    });
+    return response.data;
+  },
+
   async rotate({ id, mode = "graceful", graceSeconds = 86400 }) {
     const response = await apiRequest(`/api/admin/api-clients/rotate/${id}`, {
       method: "PATCH",

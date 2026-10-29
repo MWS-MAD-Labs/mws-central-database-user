@@ -15,6 +15,7 @@ import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { LiveIndicator } from "../../../components/ui/LiveIndicator.jsx";
 import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
+import { auditActor } from "../utils/auditActor.js";
 import {
   formatDateTime,
   formatDiffValue,
@@ -339,14 +340,12 @@ export function AuditLogsPage() {
                       </StatusBadge>
                     </td>
                     <td className="px-4 py-3">{formatStatus(log.source)}</td>
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-(--mws-charcoal)">
-                        {log.admin?.email || log.api_client?.name || "System"}
+                    <td className="px-4 py-3" title={auditActor(log).title}>
+                      <p className="max-w-56 truncate font-semibold text-(--mws-charcoal)">
+                        {auditActor(log).primary}
                       </p>
-                      <p className="text-xs text-(--mws-muted)">
-                        {log.admin?.role
-                          ? formatStatus(log.admin.role)
-                          : log.api_client?.token_prefix || "-"}
+                      <p className="max-w-56 truncate text-xs text-(--mws-muted)">
+                        {auditActor(log).secondary}
                       </p>
                     </td>
                     <td className="px-4 py-3">
@@ -476,18 +475,8 @@ function AuditLogDetailsDialog({ log, onClose }) {
           <DetailItem label="Time" value={formatDateTime(log.created_at)} />
           <DetailItem label="Action" value={formatStatus(log.action)} />
           <DetailItem label="Source" value={formatStatus(log.source)} />
-          <DetailItem
-            label="Actor"
-            value={log.admin?.email || log.api_client?.name || "System"}
-          />
-          <DetailItem
-            label="Actor Role / Token"
-            value={
-              log.admin?.role
-                ? formatStatus(log.admin.role)
-                : log.api_client?.token_prefix || "-"
-            }
-          />
+          <DetailItem label="Actor" value={auditActor(log).primary} />
+          <DetailItem label="Actor Detail" value={auditActor(log).secondary} />
           <DetailItem
             label="Entity"
             value={log.entity_label || log.entity_type || "-"}

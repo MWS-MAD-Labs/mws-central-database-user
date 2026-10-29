@@ -4,7 +4,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { cn } from "../../../lib/cn.js";
 import { formatDate } from "../../../lib/format.js";
 import { timeAgo } from "../utils/setupSteps.js";
-import { addressState, connectionState } from "../utils/connectionState.js";
+import { addressState, connectionState, overallState } from "../utils/connectionState.js";
 
 const DOT = {
   green: { color: "bg-[#58a451]", ping: true },
@@ -33,28 +33,50 @@ function Cell({ label, children }) {
   );
 }
 
-// The summary at the top of Settings: where it shows, whether it is connected, who can open it and since when.
-export function AppStatusStrip({ hubStatus, link, isHub = false, address = null, health, connection, access, createdAt, groupsPath }) {
-  const state = connectionState({ link, health, connection });
+// The summary at the top of Settings: where it shows, whether it works, who can open it and since when. Working needs
+// both: the application calls Central with its token, and its sign-in address answers.
+export function AppStatusStrip({ hubStatus, link, isHub = false, address = null, health, connection, access, createdAt, groupsPath, onCheck, checking = false }) {
+  const state = overallState({ link, isHub, health, connection, address });
+  const token = connectionState({ link, health, connection });
   const addressLine = addressState({ link, isHub, address });
+  const checkedAgo = address?.checked_at ? timeAgo(address.checked_at) : null;
   const people = access?.people;
   return (
     <div className="grid grid-cols-2 divide-y divide-(--mws-line) rounded-2xl border border-(--mws-line) bg-white text-sm md:grid-cols-4 md:divide-x md:divide-y-0">
       <Cell label="Visibility">
         <StatusBadge tone={hubStatus.tone}>{hubStatus.label}</StatusBadge>
       </Cell>
-      <Cell label="Connection">
+      <Cell label="Health">
         <p className="flex items-center gap-2 font-semibold text-(--mws-charcoal)">
           <Dot tone={state.tone} pulse={state.pulse} />
           {state.label}
         </p>
         <p className="text-xs text-(--mws-muted)">{state.note}</p>
-        {addressLine ? (
-          <p className="flex items-center gap-2 pt-1 text-xs text-(--mws-charcoal)" title={addressLine.title}>
-            <Dot tone={addressLine.tone} pulse={false} />
-            {`Sign-In Address: ${addressLine.label}`}
-          </p>
-        ) : null}
+        {link ? null : (
+          <>
+            <p className="flex items-center gap-2 pt-1 text-xs text-(--mws-charcoal)" title="The application calls Central with its token">
+              <Dot tone={token.tone} pulse={false} />
+              {`Calls Central: ${token.label}`}
+            </p>
+            {addressLine ? (
+              <p className="flex items-center gap-2 text-xs text-(--mws-charcoal)" title={addressLine.title}>
+                <Dot tone={addressLine.tone} pulse={false} />
+                {`Sign-In Address: ${addressLine.label}`}
+                {checkedAgo ? <span className="text-(--mws-muted)">{` · Checked ${checkedAgo === "Just Now" ? "Just Now" : `${checkedAgo} Ago`}`}</span> : null}
+              </p>
+            ) : null}
+            {onCheck && addressLine ? (
+              <button
+                type="button"
+                onClick={onCheck}
+                disabled={checking}
+                className="pt-1 text-xs font-semibold text-(--mws-burgundy) hover:underline disabled:opacity-60"
+              >
+                {checking ? "Checking…" : "Check Now"}
+              </button>
+            ) : null}
+          </>
+        )}
       </Cell>
       <Cell label="People">
         {access ? (

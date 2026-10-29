@@ -58,6 +58,7 @@ export class AcademicYearValidation {
             name: z.string().trim().min(1, "Semester name is required").max(64, "Semester name is too long"),
             start_date: z.iso.datetime("Semester start date must be a valid ISO-8601 datetime string"),
             end_date: z.iso.datetime("Semester end date must be a valid ISO-8601 datetime string"),
+            half_end_date: z.iso.datetime("Half semester end date must be a valid ISO-8601 datetime string").optional(),
           }),
         )
         .max(4, "A year can have at most 4 semesters")
@@ -100,6 +101,7 @@ export class AcademicYearValidation {
           name: z.string().trim().min(1, "Semester name is required").max(64, "Semester name is too long"),
           start_date: z.iso.datetime("Semester start date must be a valid ISO-8601 datetime string"),
           end_date: z.iso.datetime("Semester end date must be a valid ISO-8601 datetime string"),
+          half_end_date: z.iso.datetime("Half semester end date must be a valid ISO-8601 datetime string").optional(),
         }),
       )
       .max(4, "A year can have at most 4 semesters")

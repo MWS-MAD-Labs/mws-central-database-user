@@ -155,4 +155,21 @@ describe('EmployeesPage', () => {
     expect(screen.queryByRole('button', { name: 'Bulk Photo Upload' })).not.toBeInTheDocument()
     expect(screen.queryByRole('checkbox', { name: 'Select All Employees' })).not.toBeInTheDocument()
   })
+
+  it('disables Export for an empty list and Bulk Photo when there are no employees at all', async () => {
+    const routes = [...pageRoutes({ employees: [] }), { path: '/api/admin/employees/count-total', response: jsonResponse({ data: { total: 0 } }) }]
+    renderPage({ routes })
+    const exportButton = await screen.findByRole('button', { name: 'Export' })
+    await waitFor(() => expect(exportButton).toBeDisabled())
+    expect(exportButton).toHaveAttribute('title', 'Nothing to export for this list')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Bulk Photo Upload' })).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled()
+  })
+
+  it('keeps Bulk Photo open when a filter hides every row but employees exist', async () => {
+    const routes = [...pageRoutes({ employees: [] }), { path: '/api/admin/employees/count-total', response: jsonResponse({ data: { total: 12 } }) }]
+    renderPage({ routes })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export' })).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Bulk Photo Upload' })).toBeEnabled()
+  })
 })

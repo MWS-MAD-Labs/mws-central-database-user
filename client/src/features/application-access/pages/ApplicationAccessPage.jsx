@@ -29,12 +29,39 @@ import {
 import { applicationAccessApi } from "../api/applicationAccessApi.js";
 import { useCheckNow } from "../hooks/useCheckNow.js";
 import { copyText } from "../utils/copyText.js";
-import { timeAgo } from "../utils/setupSteps.js";
+import { overallState } from "../utils/connectionState.js";
 import { RemoveApplicationDialog } from "../components/RemoveApplicationDialog.jsx";
 import { canManageApplications } from "../utils/canManageApplications.js";
 import { startGuideHref } from "../utils/startGuide.js";
 
 // Every application with how much access it has. Roles and groups are managed inside each one.
+const STATUS_DOT = {
+  green: "bg-[#476b43]",
+  amber: "bg-[#c59b3b]",
+  red: "bg-[#c75f64]",
+  grey: "bg-[#b8b0ad]",
+};
+
+// Whether the application works: it calls Central with its token and its sign-in address answers. The note says why
+// when it does not.
+function RowStatus({ row }) {
+  const state = overallState({
+    link: false,
+    isHub: row.is_hub,
+    health: row.health,
+    connection: { created: row.connection_created, last_used_at: row.connection_last_used_at },
+  });
+  return (
+    <span className="block max-w-64" title={state.note}>
+      <span className="flex items-center gap-1.5 font-semibold text-(--mws-charcoal)">
+        <span className={`inline-block size-2 shrink-0 rounded-full ${STATUS_DOT[state.tone]}`} aria-hidden="true" />
+        {state.label}
+      </span>
+      <span className="block truncate text-[11px] font-normal text-(--mws-muted)">{state.note}</span>
+    </span>
+  );
+}
+
 export function ApplicationAccessPage() {
   const taxonomy = useApplicationTaxonomy();
   const { user } = useAuth();
@@ -176,7 +203,7 @@ export function ApplicationAccessPage() {
           head={
             <>
               <th className="px-4 py-2.5">Application</th>
-              <th className="px-4 py-2.5">Connection</th>
+              <th className="px-4 py-2.5">Status</th>
               <th className="px-4 py-2.5 text-center">Permissions</th>
               <th className="px-4 py-2.5 text-center">Roles</th>
               <th className="px-4 py-2.5 text-center">Groups</th>
@@ -235,18 +262,6 @@ export function ApplicationAccessPage() {
                   {row.published ? (
                     <StatusBadge tone="green">In Hub</StatusBadge>
                   ) : null}
-                  {row.health?.status === "check_token" ? (
-                    <StatusBadge tone="amber">Check Token</StatusBadge>
-                  ) : null}
-                  {row.health?.status === "token_pending" || row.health?.status === "sign_in_pending" ? (
-                    <StatusBadge tone="amber">Update Pending</StatusBadge>
-                  ) : null}
-                  {row.health?.status === "unreachable" ? (
-                    <StatusBadge tone="red">Unreachable</StatusBadge>
-                  ) : null}
-                  {row.health?.status === "wrong_path" ? (
-                    <StatusBadge tone="amber">Wrong Path</StatusBadge>
-                  ) : null}
                   {row.shares_origin_with?.length ? (
                     <span title={`Same address start as ${row.shares_origin_with.join(", ")}`}>
                       <StatusBadge tone="neutral">Shared Origin</StatusBadge>
@@ -271,24 +286,8 @@ export function ApplicationAccessPage() {
               <td className={`${denseCellClass} text-xs`}>
                 {row.launch_mode === "link" ? (
                   <span className="text-(--mws-muted)">Not needed</span>
-                ) : !row.connection_created ? (
-                  <StatusBadge tone="amber">Not Connected</StatusBadge>
-                ) : row.connection_last_used_at ? (
-                  <span className="text-(--mws-charcoal)">
-                    <span
-                      className="mr-1.5 inline-block size-2 rounded-full bg-[#476b43]"
-                      aria-hidden="true"
-                    />
-                    {timeAgo(row.connection_last_used_at)}
-                  </span>
                 ) : (
-                  <span className="text-(--mws-muted)">
-                    <span
-                      className="mr-1.5 inline-block size-2 rounded-full bg-[#c59b3b]"
-                      aria-hidden="true"
-                    />
-                    Waiting for the first call
-                  </span>
+                  <RowStatus row={row} />
                 )}
               </td>
               <td className={`${denseCellClass} text-center`}>

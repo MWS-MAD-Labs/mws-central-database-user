@@ -24,3 +24,54 @@ export function addressState({ link, isHub, address }) {
   if (link || isHub) return null;
   return ADDRESS_STATES[address?.status] ?? { tone: "grey", label: "Not Checked Yet" };
 }
+
+// A token that has not been used for this long counts as quiet: the application may be down or not calling Central.
+export const QUIET_AFTER_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function daysSince(iso, now) {
+  return Math.floor((now - new Date(iso).getTime()) / DAY_MS);
+}
+
+// One verdict from the two things Central can see. The application calls Central with its token, and Central or the
+// Hub opens the sign-in address of the application. Both have to be fine to be Working. The first match wins.
+//   token: connectionState(...), address: the status of the last check of the sign-in address, from the list row
+//   `health.status` when `address` is not given.
+export function overallState({ link, isHub = false, health, connection, address, now = Date.now() }) {
+  if (link) return { tone: "grey", pulse: false, label: "Plain Link", note: "Nothing To Connect" };
+  const token = connectionState({ link, health, connection });
+  if (token.label !== "Connected") return token;
+
+  const addressStatus = address?.status ?? (health?.status === "unreachable" || health?.status === "wrong_path" ? health.status : null);
+  if (!isHub && addressStatus === "unreachable") {
+    return {
+      tone: "red",
+      pulse: false,
+      label: "Needs Attention",
+      note: "The application calls Central, but its sign-in address does not answer, so people cannot open it from the Hub",
+    };
+  }
+  if (!isHub && addressStatus === "wrong_path") {
+    return {
+      tone: "amber",
+      pulse: false,
+      label: "Needs Attention",
+      note: "The sign-in address answers, but the sign-in page is not there. Check the end of the address",
+    };
+  }
+  if (connection.last_used_at && daysSince(connection.last_used_at, now) >= QUIET_AFTER_DAYS) {
+    return {
+      tone: "amber",
+      pulse: false,
+      label: "Quiet",
+      note: `No call from the application for ${daysSince(connection.last_used_at, now)} days. It may be down`,
+    };
+  }
+  const verified = addressStatus === "ok";
+  return {
+    tone: "green",
+    pulse: true,
+    label: "Working",
+    note: `${token.note}${isHub ? "" : verified ? " · Sign-In Address Answers" : " · Sign-In Address Not Verified"}`,
+  };
+}

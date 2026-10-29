@@ -54,6 +54,9 @@ export type CreatePcActivityRoomRequest = {
   day: PCDay;
   duration_type: PcActivityRoomDurationType;
   custom_duration_days?: number;
+  // The semester and half the dates come from. Left out, the first semester (and its first half).
+  semester_id?: string;
+  half?: number;
   unit_ids: string[];
   // Empty allows any grade within the selected units.
   grade_ids?: string[];
@@ -66,6 +69,8 @@ export type UpdatePcActivityRoomRequest = {
   label?: string | null;
   duration_type?: PcActivityRoomDurationType;
   custom_duration_days?: number | null;
+  semester_id?: string | null;
+  half?: number | null;
   unit_ids?: string[];
   grade_ids?: string[];
   class_ids?: string[];
@@ -97,6 +102,9 @@ export type PcActivityRoomResponse = {
   day: PCDay;
   duration_type: PcActivityRoomDurationType;
   custom_duration_days: number | null;
+  period_semester_id: string | null;
+  period_semester_name: string | null;
+  period_half: number | null;
   start_date: string;
   end_date: string;
   units: { id: string; name: string }[];
@@ -114,6 +122,7 @@ export type PcActivityRoomResponse = {
 type PcActivityRoomWithRelations = PcActivityRoom & {
   activity: MasterPCActivity;
   academic_year: AcademicYear;
+  period_semester?: { name: string } | null;
   units: (PcActivityRoomUnit & { unit: MasterUnit })[];
   grades: (PcActivityRoomGrade & { grade: Grade })[];
   classes: (PcActivityRoomClass & { class: Class })[];
@@ -138,6 +147,9 @@ export function toPcActivityRoomResponse(
     day: room.day,
     duration_type: room.duration_type,
     custom_duration_days: room.custom_duration_days,
+    period_semester_id: room.period_semester_id,
+    period_semester_name: room.period_semester?.name ?? null,
+    period_half: room.period_half,
     start_date: room.start_date.toISOString(),
     end_date: room.end_date.toISOString(),
     units: room.units.map((u) => ({ id: u.unit.id, name: u.unit.name })),

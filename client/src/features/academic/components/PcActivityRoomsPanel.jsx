@@ -59,12 +59,12 @@ const DURATION_OPTIONS = [
   {
     value: "HALF_SEMESTER",
     label: "Half Semester",
-    description: "Half of one semester, about one academic quarter.",
+    description: "The first or second half of a semester, set in the academic year.",
   },
   {
     value: "SEMESTER",
     label: "One Semester",
-    description: "From the academic year start through its midpoint.",
+    description: "From the start to the end of a semester of the academic year.",
   },
   {
     value: "FULL_YEAR",
@@ -74,7 +74,7 @@ const DURATION_OPTIONS = [
   {
     value: "CUSTOM",
     label: "Custom Days",
-    description: "A custom period, up to one semester.",
+    description: "A custom number of days from the start of a semester, up to its end.",
   },
 ];
 const LEGACY_SIX_MONTHS_OPTION = {
@@ -89,9 +89,36 @@ const DURATION_LABELS = {
   FULL_YEAR: "Full Academic Year",
   CUSTOM: "Custom",
 };
+const PERIOD_DURATIONS = ["SEMESTER", "HALF_SEMESTER", "CUSTOM"];
+const HALF_NAMES = { 1: "First Half", 2: "Second Half" };
 const MAX_ROOM_MENTORS = 3;
 const MAX_ROOM_STUDENTS = 100;
 const PROMOTE_WINDOW_DAYS = 30;
+
+// The semester a room takes its dates from, for the list, e.g. "Semester 1, First Half".
+function roomPeriodLabel(room) {
+  if (!room.period_semester_name) return "";
+  return room.period_half ? `${room.period_semester_name}, ${HALF_NAMES[room.period_half]}` : room.period_semester_name;
+}
+
+// What the Period select offers for a duration: a semester, or one half of each semester.
+function periodOptions(durationType, semesters) {
+  const range = (from, to) => `${formatDate(from)} to ${formatDate(to)}`;
+  if (durationType === "HALF_SEMESTER") {
+    return semesters.flatMap((semester) => {
+      const secondStart = new Date(new Date(semester.half_end_date).getTime() + 24 * 60 * 60 * 1000);
+      return [
+        { value: `${semester.id}:1`, label: `${semester.name}, ${HALF_NAMES[1]}`, description: range(semester.start_date, semester.half_end_date) },
+        { value: `${semester.id}:2`, label: `${semester.name}, ${HALF_NAMES[2]}`, description: range(secondStart, semester.end_date) },
+      ];
+    });
+  }
+  return semesters.map((semester) => ({
+    value: semester.id,
+    label: semester.name,
+    description: range(semester.start_date, semester.end_date),
+  }));
+}
 
 async function listAllClasses(academicYearId) {
   if (!academicYearId) return [];
@@ -319,6 +346,7 @@ export function PcActivityRoomsPanel() {
                       {room.academic_year_name} ·{" "}
                       {DURATION_LABELS[room.duration_type] ||
                         formatStatus(room.duration_type)}
+                      {roomPeriodLabel(room) ? ` · ${roomPeriodLabel(room)}` : ""}
                     </p>
                   </td>
                   <td className="px-4 py-3 align-middle font-medium text-(--mws-charcoal)">
@@ -414,6 +442,12 @@ export function RoomFormDialog({
     custom_duration_days: room?.custom_duration_days
       ? String(room.custom_duration_days)
       : "",
+    // A semester id, or "id:1" / "id:2" for a half. Empty until picked, then the first one is used.
+    period: room?.period_semester_id
+      ? room.period_half
+        ? `${room.period_semester_id}:${room.period_half}`
+        : room.period_semester_id
+      : "",
     unit_ids: room
       ? room.units.map((unit) => unit.id)
       : isDatabaseAdmin && canWriteUnit(user?.unit_id)
@@ -422,6 +456,11 @@ export function RoomFormDialog({
     grade_ids: room ? room.grades.map((grade) => grade.id) : [],
     class_ids: room ? room.classes.map((klass) => klass.id) : [],
   }));
+  const initialPeriod = room?.period_semester_id
+    ? room.period_half
+      ? `${room.period_semester_id}:${room.period_half}`
+      : room.period_semester_id
+    : "";
   const [allowAllClasses, setAllowAllClasses] = useState(() =>
     Boolean(room && room.classes.length === 0),
   );
@@ -516,6 +555,16 @@ export function RoomFormDialog({
       ...(klass.additional_grades || []).map((grade) => grade.name),
     ].join(", "),
   }));
+  const semestersQuery = useQuery({
+    queryKey: ["academic-year-semesters", values.academic_year_id],
+    queryFn: () => academicYearsApi.semesters(values.academic_year_id),
+    enabled: Boolean(values.academic_year_id) && PERIOD_DURATIONS.includes(values.duration_type),
+  });
+  const periodChoices = PERIOD_DURATIONS.includes(values.duration_type)
+    ? periodOptions(values.duration_type, semestersQuery.data ?? [])
+    : [];
+  const period = periodChoices.find((option) => option.value === values.period)?.value ?? periodChoices[0]?.value ?? "";
+  const [periodSemesterId, periodHalf] = period.split(":");
   const durationOptions =
     values.duration_type === "SIX_MONTHS"
       ? [LEGACY_SIX_MONTHS_OPTION, ...DURATION_OPTIONS]
@@ -634,6 +683,7 @@ export function RoomFormDialog({
     values.duration_type &&
     (values.duration_type !== "CUSTOM" ||
       Number(values.custom_duration_days) > 0) &&
+    (!PERIOD_DURATIONS.includes(values.duration_type) || semestersQuery.isSuccess) &&
     values.unit_ids.length > 0 &&
     values.grade_ids.length > 0 &&
     selectedClassIds.length > 0;
@@ -641,13 +691,24 @@ export function RoomFormDialog({
   const saveMutation = useMutation({
     mutationFn: () => {
       if (isEdit) {
+        // The period is only sent when it was changed, so a room made before semesters keeps its dates.
+        const periodChanged =
+          values.duration_type !== room.duration_type ||
+          (values.duration_type === "CUSTOM" && Number(values.custom_duration_days) !== room.custom_duration_days) ||
+          (PERIOD_DURATIONS.includes(values.duration_type) && values.period !== "" && values.period !== initialPeriod);
         return pcActivityRoomsApi.update(room.id, {
           label: values.label || null,
-          duration_type: values.duration_type,
-          custom_duration_days:
-            values.duration_type === "CUSTOM"
-              ? Number(values.custom_duration_days)
-              : null,
+          ...(periodChanged
+            ? {
+                duration_type: values.duration_type,
+                custom_duration_days:
+                  values.duration_type === "CUSTOM"
+                    ? Number(values.custom_duration_days)
+                    : null,
+                semester_id: periodSemesterId || null,
+                half: values.duration_type === "HALF_SEMESTER" ? Number(periodHalf) : null,
+              }
+            : {}),
           unit_ids: values.unit_ids,
           grade_ids: values.grade_ids,
           class_ids: selectedClassIds,
@@ -666,6 +727,8 @@ export function RoomFormDialog({
           values.duration_type === "CUSTOM"
             ? Number(values.custom_duration_days)
             : undefined,
+        semester_id: periodSemesterId || undefined,
+        half: values.duration_type === "HALF_SEMESTER" ? Number(periodHalf) : undefined,
         unit_ids: values.unit_ids,
         grade_ids: values.grade_ids,
         class_ids: selectedClassIds,
@@ -810,10 +873,26 @@ export function RoomFormDialog({
             searchableThreshold={99}
           />
         </Field>
+        {periodChoices.length > 0 ? (
+          <Field
+            label={values.duration_type === "HALF_SEMESTER" ? "Half Of Semester" : "Semester"}
+            hint="The room takes its dates from the semesters set in the academic year."
+          >
+            <SearchableSelect
+              value={period}
+              onChange={(value) =>
+                setValues((current) => ({ ...current, period: value }))
+              }
+              options={periodChoices}
+              placeholder="Select period"
+              searchableThreshold={99}
+            />
+          </Field>
+        ) : null}
         {values.duration_type === "CUSTOM" ? (
           <Field
             label="Custom Duration (Days)"
-            hint="Must be longer than zero and no longer than one semester in the selected academic year."
+            hint="Counted from the start of the chosen semester. It has to end inside that semester."
           >
             <TextInput
               type="number"

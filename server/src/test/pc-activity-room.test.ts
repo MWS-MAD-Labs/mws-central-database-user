@@ -589,6 +589,163 @@ describe("PC Activity Rooms", () => {
     });
   });
 
+  describe("period from the semesters of the academic year", () => {
+    const d = (value: string) => new Date(`${value}T00:00:00.000Z`).toISOString();
+    let yearId: string;
+    let first: { id: string };
+    let second: { id: string };
+
+    beforeEach(async () => {
+      const year = await prismaClient.academicYear.create({
+        data: {
+          name: `TEST_ROOM_NEXT_YEAR_SEM_${Date.now()}`,
+          start_date: new Date("2090-07-01T00:00:00.000Z"),
+          end_date: new Date("2091-06-30T00:00:00.000Z"),
+          status: "UPCOMING",
+        },
+      });
+      yearId = year.id;
+      first = await prismaClient.academicSemester.create({
+        data: {
+          academic_year_id: yearId,
+          name: "Semester 1",
+          position: 1,
+          start_date: new Date("2090-07-01T00:00:00.000Z"),
+          end_date: new Date("2090-12-31T00:00:00.000Z"),
+          half_end_date: new Date("2090-09-30T00:00:00.000Z"),
+        },
+      });
+      second = await prismaClient.academicSemester.create({
+        data: {
+          academic_year_id: yearId,
+          name: "Semester 2",
+          position: 2,
+          start_date: new Date("2091-01-01T00:00:00.000Z"),
+          end_date: new Date("2091-06-30T00:00:00.000Z"),
+          half_end_date: new Date("2091-03-31T00:00:00.000Z"),
+        },
+      });
+    });
+
+    function create(body: Record<string, unknown>, accessToken: string) {
+      return TestRequest.post(
+        "/api/admin/pc-activity-rooms",
+        { activity_id: activityId, academic_year_id: yearId, day: "MONDAY", unit_ids: [unitId], grade_ids: [gradeId], ...body },
+        accessToken,
+      );
+    }
+
+    it("takes the dates of the chosen semester", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await create({ duration_type: "SEMESTER", semester_id: second.id }, accessToken);
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.data.start_date).toBe(d("2091-01-01"));
+      expect(body.data.end_date).toBe(d("2091-06-30"));
+      expect(body.data.period_semester_id).toBe(second.id);
+      expect(body.data.period_semester_name).toBe("Semester 2");
+      expect(body.data.period_half).toBeNull();
+    });
+
+    it("takes the first semester when none is chosen", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await (await create({ duration_type: "SEMESTER" }, accessToken)).json();
+      expect(body.data.start_date).toBe(d("2090-07-01"));
+      expect(body.data.end_date).toBe(d("2090-12-31"));
+      expect(body.data.period_semester_id).toBe(first.id);
+    });
+
+    it("takes the first or the second half of a semester", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const one = await (await create({ duration_type: "HALF_SEMESTER", semester_id: first.id, half: 1 }, accessToken)).json();
+      expect(one.data.start_date).toBe(d("2090-07-01"));
+      expect(one.data.end_date).toBe(d("2090-09-30"));
+      expect(one.data.period_half).toBe(1);
+      const two = await (await create({ duration_type: "HALF_SEMESTER", semester_id: first.id, half: 2 }, accessToken)).json();
+      expect(two.data.start_date).toBe(d("2090-10-01"));
+      expect(two.data.end_date).toBe(d("2090-12-31"));
+      expect(two.data.period_half).toBe(2);
+    });
+
+    it("measures a custom duration from the start of the chosen semester and keeps it inside", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const ok = await (await create({ duration_type: "CUSTOM", custom_duration_days: 30, semester_id: second.id }, accessToken)).json();
+      expect(ok.data.start_date).toBe(d("2091-01-01"));
+      expect(ok.data.end_date).toBe(d("2091-01-31"));
+      const tooLong = await create({ duration_type: "CUSTOM", custom_duration_days: 400, semester_id: second.id }, accessToken);
+      expect(tooLong.status).toBe(400);
+      expect((await tooLong.json()).errors).toMatch(/fit inside Semester 2/);
+    });
+
+    it("keeps the whole year for a full year room", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await (await create({ duration_type: "FULL_YEAR" }, accessToken)).json();
+      expect(body.data.start_date).toBe(d("2090-07-01"));
+      expect(body.data.end_date).toBe(d("2091-06-30"));
+      expect(body.data.period_semester_id).toBeNull();
+    });
+
+    it("rejects a semester of another year and a half other than 1 or 2", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const otherYear = await prismaClient.academicYear.create({
+        data: {
+          name: `TEST_ROOM_NEXT_YEAR_OTHER_${Date.now()}`,
+          start_date: new Date("2095-07-01T00:00:00.000Z"),
+          end_date: new Date("2096-06-30T00:00:00.000Z"),
+          status: "UPCOMING",
+        },
+      });
+      const other = await prismaClient.academicSemester.create({
+        data: {
+          academic_year_id: otherYear.id,
+          name: "Semester 1",
+          position: 1,
+          start_date: new Date("2095-07-01T00:00:00.000Z"),
+          end_date: new Date("2095-12-31T00:00:00.000Z"),
+          half_end_date: new Date("2095-09-30T00:00:00.000Z"),
+        },
+      });
+      const foreign = await create({ duration_type: "SEMESTER", semester_id: other.id }, accessToken);
+      expect(foreign.status).toBe(400);
+      const bad = await create({ duration_type: "HALF_SEMESTER", semester_id: first.id, half: 3 }, accessToken);
+      expect(bad.status).toBe(400);
+    });
+
+    it("moves the dates when the period is edited and leaves them when only the label changes", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const room = (await (await create({ duration_type: "SEMESTER", semester_id: first.id }, accessToken)).json()).data;
+      const relabel = await (await TestRequest.patch(`/api/admin/pc-activity-rooms/${room.id}`, { label: "Evening" }, accessToken)).json();
+      expect(relabel.data.start_date).toBe(room.start_date);
+      expect(relabel.data.end_date).toBe(room.end_date);
+      const moved = await (
+        await TestRequest.patch(`/api/admin/pc-activity-rooms/${room.id}`, { duration_type: "HALF_SEMESTER", semester_id: second.id, half: 2 }, accessToken)
+      ).json();
+      expect(moved.data.start_date).toBe(d("2091-04-01"));
+      expect(moved.data.end_date).toBe(d("2091-06-30"));
+      expect(moved.data.period_semester_id).toBe(second.id);
+      expect(moved.data.period_half).toBe(2);
+    });
+
+    it("leaves a room made before semesters as it was when only the label changes", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const room = await prismaClient.pcActivityRoom.create({
+        data: {
+          activity_id: activityId,
+          academic_year_id: yearId,
+          day: "MONDAY",
+          duration_type: "SEMESTER",
+          start_date: new Date("2090-07-01T00:00:00.000Z"),
+          end_date: new Date("2090-11-15T00:00:00.000Z"),
+          created_by: "legacy",
+          units: { create: [{ unit_id: unitId }] },
+        },
+      });
+      const body = await (await TestRequest.patch(`/api/admin/pc-activity-rooms/${room.id}`, { label: "Renamed" }, accessToken)).json();
+      expect(body.data.end_date).toBe(d("2090-11-15"));
+      expect(body.data.period_semester_id).toBeNull();
+    });
+  });
+
   describe("PATCH /api/admin/pc-activity-rooms/:id", () => {
     it("should reject (400) narrowing scope when it would orphan an active student assignment", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();

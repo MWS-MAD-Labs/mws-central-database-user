@@ -38,6 +38,20 @@ export class ApiClientController {
     return c.json({ data: response });
   }
 
+  static async remove(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const clientId = c.req.param("id");
+    if (!clientId) {
+      throw new ResponseError(400, "API Client ID is required in parameter");
+    }
+    const response = await ApiClientService.remove(
+      admin,
+      { id: clientId },
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
   static async revoke(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const clientId = c.req.param("id");

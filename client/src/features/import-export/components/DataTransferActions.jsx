@@ -55,6 +55,7 @@ export function DataTransferActions({
   canImport,
   canExport = true,
   canExportSensitive = false,
+  isEmpty = false,
 }) {
   const [isImportOpen, setIsImportOpen] = useState(false);
 
@@ -76,6 +77,7 @@ export function DataTransferActions({
         exportParams={exportParams}
         canExport={canExport}
         canExportSensitive={canExportSensitive}
+        isEmpty={isEmpty}
       />
 
       {isImportOpen ? (
@@ -85,7 +87,8 @@ export function DataTransferActions({
   );
 }
 
-function ExportMenu({ entity, exportParams, canExport, canExportSensitive }) {
+function ExportMenu({ entity, exportParams, canExport: canExportRole, canExportSensitive, isEmpty }) {
+  const canExport = canExportRole && !isEmpty;
   const confirm = useConfirm();
   const exportMutation = useMutation({
     mutationFn: ({ format, exportMode }) =>
@@ -125,7 +128,7 @@ function ExportMenu({ entity, exportParams, canExport, canExportSensitive }) {
           variant="secondary"
           size="icon"
           aria-label="Export"
-          title="Export"
+          title={canExportRole && isEmpty ? "Nothing to export for this list" : "Export"}
           disabled={!canExport}
           loading={exportMutation.isPending}
           onClick={onClick}

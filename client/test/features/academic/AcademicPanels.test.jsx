@@ -109,8 +109,8 @@ describe('AcademicYearsPanel', () => {
       {
         path: /^\/api\/admin\/academic-years\/year-2026\/semesters$/,
         response: jsonResponse({ data: [
-          { id: 'sem-1', academic_year_id: 'year-2026', name: 'Ganjil', position: 1, start_date: '2026-07-01T00:00:00.000Z', end_date: '2026-12-20T00:00:00.000Z' },
-          { id: 'sem-2', academic_year_id: 'year-2026', name: 'Genap', position: 2, start_date: '2027-01-05T00:00:00.000Z', end_date: '2027-06-30T00:00:00.000Z' },
+          { id: 'sem-1', academic_year_id: 'year-2026', name: 'Ganjil', position: 1, start_date: '2026-07-01T00:00:00.000Z', end_date: '2026-12-20T00:00:00.000Z', half_end_date: '2026-09-30T00:00:00.000Z' },
+          { id: 'sem-2', academic_year_id: 'year-2026', name: 'Genap', position: 2, start_date: '2027-01-05T00:00:00.000Z', end_date: '2027-06-30T00:00:00.000Z', half_end_date: '2027-03-31T00:00:00.000Z' },
         ] }),
       },
       {
@@ -133,6 +133,7 @@ describe('AcademicYearsPanel', () => {
     const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
     const sent = JSON.parse(patch[1].body)
     expect(sent.semesters.map((item) => [item.id, item.name])).toEqual([['sem-1', 'Semester Satu'], ['sem-2', 'Genap']])
+    expect(sent.semesters.map((item) => item.half_end_date.slice(0, 10))).toEqual(['2026-09-30', '2027-03-31'])
   })
 
   it('creates and deletes an academic year', async () => {
@@ -160,6 +161,10 @@ describe('AcademicYearsPanel', () => {
     const sent = JSON.parse(post[1].body)
     expect(sent.semesters.map((item) => item.name)).toEqual(['Semester 1', 'Semester 2'])
     expect(sent.semesters[1].start_date > sent.semesters[0].end_date).toBe(true)
+    // each semester sends where its first half ends, inside it
+    for (const item of sent.semesters) {
+      expect(item.half_end_date >= item.start_date && item.half_end_date < item.end_date).toBe(true)
+    }
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New Academic Year' })).not.toBeInTheDocument())
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
 
@@ -293,6 +298,15 @@ describe('ClassesPanel', () => {
   })
 })
 
+// A function, so every test reads a fresh body.
+const semesterRoute = {
+  path: /^\/api\/admin\/academic-years\/year-2026\/semesters$/,
+  response: () => jsonResponse({ data: [
+    { id: 'sem-1', academic_year_id: 'year-2026', name: 'Semester 1', position: 1, start_date: '2026-07-01T00:00:00.000Z', end_date: '2026-12-31T00:00:00.000Z', half_end_date: '2026-09-30T00:00:00.000Z' },
+    { id: 'sem-2', academic_year_id: 'year-2026', name: 'Semester 2', position: 2, start_date: '2027-01-01T00:00:00.000Z', end_date: '2027-06-30T00:00:00.000Z', half_end_date: '2027-03-31T00:00:00.000Z' },
+  ] }),
+}
+
 describe('PcActivityRoomsPanel', () => {
   it('filters by academic year and submits explicit year plus compatible class scope', async () => {
     const fetchMock = createFetchRouter([
@@ -311,6 +325,7 @@ describe('PcActivityRoomsPanel', () => {
           ],
         }),
       },
+      semesterRoute,
       { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: academicYears }) },
       { path: /^\/api\/admin\/classes(?:\?.*)?$/, response: jsonResponse({ data: [classFixture()] }) },
       { path: /^\/api\/admin\/pc-activities-master(?:\?.*)?$/, response: jsonResponse({ data: [{ id: 'activity-1', name: 'Coding' }] }) },
@@ -346,7 +361,46 @@ describe('PcActivityRoomsPanel', () => {
       academic_year_id: 'year-2026',
       unit_ids: ['unit-elementary'],
       class_ids: ['class-1'],
+      semester_id: 'sem-1',
     })
+  })
+
+  it('picks the semester or the half the room takes its dates from', async () => {
+    const fetchMock = createFetchRouter([
+      {
+        path: /^\/api\/admin\/pc-activity-rooms(?:\?.*)?$/,
+        response: ({ method }) => method === 'POST'
+          ? jsonResponse({ data: { id: 'room-new' } })
+          : jsonResponse({ data: [], paging: { ...paging, total_item: 0 } }),
+      },
+      { path: /^\/api\/admin\/grades(?:\?.*)?$/, response: jsonResponse({ data: grades }) },
+      semesterRoute,
+      { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: academicYears }) },
+      { path: /^\/api\/admin\/classes(?:\?.*)?$/, response: jsonResponse({ data: [classFixture()], paging }) },
+      { path: /^\/api\/admin\/pc-activities-master(?:\?.*)?$/, response: jsonResponse({ data: [{ id: 'activity-1', name: 'Coding' }] }) },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderPanel(<PcActivityRoomsPanel />)
+    await screen.findByText('No PC Activity rooms found.')
+
+    await user.click(screen.getByRole('button', { name: 'Create Room' }))
+    const dialog = screen.getByRole('dialog', { name: 'Create Room' })
+    await user.click(within(dialog).getByRole('button', { name: 'Select PC Activity' }))
+    await user.click(screen.getByRole('option', { name: 'Coding' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Select day' }))
+    await user.click(screen.getByRole('option', { name: 'Monday' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Select duration' }))
+    await user.click(screen.getByRole('option', { name: /^Half Semester/ }))
+    await user.click(await within(dialog).findByRole('button', { name: /^Semester 1, First Half/ }))
+    await user.click(screen.getByRole('option', { name: /^Semester 2, Second Half/ }))
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Elementary' }))
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Grade 1' }))
+    await user.click(within(dialog).getByRole('checkbox', { name: /^Grade 1A/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    const post = await waitFor(() => fetchMock.mock.calls.find(([url, options]) =>
+      url === '/api/admin/pc-activity-rooms' && options.method === 'POST'))
+    expect(JSON.parse(post[1].body)).toMatchObject({ duration_type: 'HALF_SEMESTER', semester_id: 'sem-2', half: 2 })
   })
 
   it('supports selecting all compatible classes explicitly', async () => {
@@ -359,6 +413,7 @@ describe('PcActivityRoomsPanel', () => {
           : jsonResponse({ data: [], paging: { ...paging, total_item: 0 } }),
       },
       { path: /^\/api\/admin\/grades(?:\?.*)?$/, response: jsonResponse({ data: grades }) },
+      semesterRoute,
       { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: academicYears }) },
       { path: /^\/api\/admin\/classes(?:\?.*)?$/, response: jsonResponse({ data: [classFixture(), secondClass], paging }) },
       { path: /^\/api\/admin\/pc-activities-master(?:\?.*)?$/, response: jsonResponse({ data: [{ id: 'activity-1', name: 'Coding' }] }) },

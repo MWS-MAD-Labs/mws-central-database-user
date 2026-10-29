@@ -7,6 +7,7 @@ export type AcademicSemesterResponse = {
   position: number;
   start_date: string;
   end_date: string;
+  half_end_date: string;
 };
 
 export function toAcademicSemesterResponse(row: AcademicSemester): AcademicSemesterResponse {
@@ -17,6 +18,7 @@ export function toAcademicSemesterResponse(row: AcademicSemester): AcademicSemes
     position: row.position,
     start_date: row.start_date.toISOString(),
     end_date: row.end_date.toISOString(),
+    half_end_date: row.half_end_date.toISOString(),
   };
 }
 
@@ -27,6 +29,7 @@ export function toAcademicSemesterAuditSnapshot(row: AcademicSemester) {
     position: row.position,
     start_date: row.start_date.toISOString(),
     end_date: row.end_date.toISOString(),
+    half_end_date: row.half_end_date.toISOString(),
   };
 }
 

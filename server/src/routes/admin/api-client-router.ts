@@ -10,6 +10,7 @@ apiClientRouter.get("/internal-endpoints", (c) =>
   ApiClientController.listInternalEndpoints(c),
 );
 apiClientRouter.patch("/revoke/:id", (c) => ApiClientController.revoke(c));
+apiClientRouter.delete("/:id", (c) => ApiClientController.remove(c));
 apiClientRouter.patch("/rotate/:id", (c) => ApiClientController.rotate(c));
 apiClientRouter.patch("/:id/credentials/:credentialId/revoke", (c) =>
   ApiClientController.revokeCredential(c),

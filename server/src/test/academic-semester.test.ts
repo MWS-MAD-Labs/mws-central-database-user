@@ -42,7 +42,7 @@ describe("academic semesters", () => {
     expect(first.name).toBe("Semester 1");
   });
 
-  it("makes the semesters with the year: given, by default, or none", async () => {
+  it("makes the semesters with the year: given or by default, never none", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const body = {
       name: YEAR_NAME,
@@ -87,9 +87,39 @@ describe("academic semesters", () => {
     expect(made.map((row) => row.name)).toEqual(["Semester 1", "Semester 2"]);
     await prismaClient.academicYear.delete({ where: { id: defaultId } });
 
+    // a year with an end date always has semesters
     const none = await TestRequest.post(BASE, { ...body, semesters: [] }, accessToken);
-    const noneId = (await none.json()).data.id;
-    expect(await prismaClient.academicSemester.count({ where: { academic_year_id: noneId } })).toBe(0);
+    expect(none.status).toBe(400);
+    expect(await prismaClient.academicYear.count({ where: { name: YEAR_NAME } })).toBe(0);
+  });
+
+  it("keeps the half of a semester: given, the middle by default, and inside the semester", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const body = { name: YEAR_NAME, start_date: iso(`${YEAR}-07-01`), end_date: iso(`${YEAR + 1}-06-30`), status: "UPCOMING" };
+    const semester = (half?: string) => ({
+      name: "Semester 1",
+      start_date: iso(`${YEAR}-07-01`),
+      end_date: iso(`${YEAR}-12-31`),
+      ...(half ? { half_end_date: iso(half) } : {}),
+    });
+    const outside = await TestRequest.post(BASE, { ...body, semesters: [semester(`${YEAR + 1}-01-15`)] }, accessToken);
+    expect(outside.status).toBe(400);
+    const lastDay = await TestRequest.post(BASE, { ...body, semesters: [semester(`${YEAR}-12-31`)] }, accessToken);
+    expect(lastDay.status).toBe(400);
+    expect(await prismaClient.academicYear.count({ where: { name: YEAR_NAME } })).toBe(0);
+
+    const given = await TestRequest.post(BASE, { ...body, semesters: [semester(`${YEAR}-10-15`)] }, accessToken);
+    expect(given.status).toBe(200);
+    const givenId = (await given.json()).data.id;
+    const row = await prismaClient.academicSemester.findFirstOrThrow({ where: { academic_year_id: givenId } });
+    expect(row.half_end_date.toISOString().slice(0, 10)).toBe(`${YEAR}-10-15`);
+    await prismaClient.academicYear.delete({ where: { id: givenId } });
+
+    const byDefault = await TestRequest.post(BASE, { ...body, semesters: [semester()] }, accessToken);
+    const defaultId = (await byDefault.json()).data.id;
+    const middle = await prismaClient.academicSemester.findFirstOrThrow({ where: { academic_year_id: defaultId } });
+    expect(middle.half_end_date.toISOString().slice(0, 10)).toBe(`${YEAR}-09-30`);
+    await prismaClient.academicYear.delete({ where: { id: defaultId } });
   });
 
   it("changes the semesters with the year: edit, add, remove, swap names", async () => {
@@ -130,8 +160,8 @@ describe("academic semesters", () => {
 
     const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
     expect((await TestRequest.patch(`${BASE}/${year.id}`, { semesters: [] }, other)).status).toBe(403);
-    expect((await TestRequest.patch(`${BASE}/${year.id}`, { semesters: [] }, accessToken)).status).toBe(200);
-    expect(await names()).toEqual([]);
+    expect((await TestRequest.patch(`${BASE}/${year.id}`, { semesters: [] }, accessToken)).status).toBe(400);
+    expect(await names()).toEqual(["Semester 2"]);
 
     const actions = (await prismaClient.auditLog.findMany({ where: { entity_type: "AcademicSemester" } })).map((row) => row.action);
     expect(actions).toContain(AuditAction.CREATE_ACADEMIC_SEMESTER);
@@ -159,8 +189,8 @@ describe("academic semesters", () => {
     const year = await makeYear();
     await prismaClient.academicSemester.createMany({
       data: [
-        { academic_year_id: year.id, name: "Semester 1", position: 1, start_date: new Date(`${YEAR}-07-01`), end_date: new Date(`${YEAR}-12-31`) },
-        { academic_year_id: year.id, name: "Semester 2", position: 2, start_date: new Date(`${YEAR + 1}-01-01`), end_date: new Date(`${YEAR + 1}-06-30`) },
+        { academic_year_id: year.id, name: "Semester 1", position: 1, start_date: new Date(`${YEAR}-07-01`), end_date: new Date(`${YEAR}-12-31`), half_end_date: new Date(`${YEAR}-09-30`) },
+        { academic_year_id: year.id, name: "Semester 2", position: 2, start_date: new Date(`${YEAR + 1}-01-01`), end_date: new Date(`${YEAR + 1}-06-30`), half_end_date: new Date(`${YEAR + 1}-03-31`) },
       ],
     });
     const { token } = await ApiClientTest.createWithToken({ scopeNames: ["classes:read"] });
