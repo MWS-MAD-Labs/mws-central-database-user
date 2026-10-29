@@ -216,7 +216,6 @@ export function AcademicYearDialog({
           semesters.length > 0
             ? semesters.map((item) => ({
                 id: item.id,
-                name: item.name.trim(),
                 start_date: isoFromDateInput(item.start_date),
                 end_date: isoFromDateInput(item.end_date),
                 half_end_date: isoFromDateInput(item.half_end_date),
@@ -349,11 +348,8 @@ export function AcademicYearDialog({
         {semesters.length > 0
           ? semesters.map((item, index) => (
               <div key={index} className="grid gap-4 md:col-span-2 md:grid-cols-4">
-                <Field label={`Semester ${index + 1}`} error={errors[`semester_${index}`]}>
-                  <TextInput
-                    value={item.name}
-                    onChange={(event) => editSemester(index, "name", event.target.value)}
-                  />
+                <Field label="Semester" error={errors[`semester_${index}`]}>
+                  <TextInput value={`Semester ${index + 1}`} readOnly disabled />
                 </Field>
                 <Field label="Start Date">
                   <DateField
@@ -367,7 +363,7 @@ export function AcademicYearDialog({
                     onChange={(event) => editSemester(index, "end_date", event.target.value)}
                   />
                 </Field>
-                <Field label="First Half Ends" error={errors[`half_${index}`]}>
+                <Field label={`Mid Semester ${index + 1} Ends`} error={errors[`half_${index}`]}>
                   <DateField
                     value={item.half_end_date}
                     onChange={(event) => editSemester(index, "half_end_date", event.target.value)}
@@ -440,8 +436,7 @@ function computeAcademicYearErrors(values, semesters = []) {
   if (values.start_date && outOfRange(values.start_date)) errors.start_date = dateMessage;
   if (values.end_date && outOfRange(values.end_date)) errors.end_date = dateMessage;
   semesters.forEach((item, index) => {
-    if (!item.name.trim()) errors[`semester_${index}`] = "Name is required.";
-    else if (!item.start_date || !item.end_date || item.start_date > item.end_date)
+    if (!item.start_date || !item.end_date || item.start_date > item.end_date)
       errors[`semester_${index}`] = "Use a start date that is not after the end date.";
     else if (item.start_date < values.start_date || item.end_date > values.end_date)
       errors[`semester_${index}`] = "Keep the dates inside the academic year.";

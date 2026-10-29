@@ -124,15 +124,17 @@ describe('AcademicYearsPanel', () => {
     const { user } = renderPanel(<AcademicYearsPanel />)
     await screen.findByText('2026/2027')
     await user.click(screen.getAllByRole('button', { name: 'Edit' })[0])
-    const name = await screen.findByDisplayValue('Ganjil')
-    expect(screen.getByDisplayValue('Genap')).toBeInTheDocument()
-    await user.clear(name)
-    await user.type(name, 'Semester Satu')
+    // names are set from the place in the year and cannot be typed
+    const first = await screen.findByDisplayValue('Semester 1')
+    expect(first).toBeDisabled()
+    expect(screen.getByDisplayValue('Semester 2')).toBeDisabled()
+    expect(screen.queryByDisplayValue('Ganjil')).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(true))
     const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
     const sent = JSON.parse(patch[1].body)
-    expect(sent.semesters.map((item) => [item.id, item.name])).toEqual([['sem-1', 'Semester Satu'], ['sem-2', 'Genap']])
+    expect(sent.semesters.map((item) => item.id)).toEqual(['sem-1', 'sem-2'])
+    expect(sent.semesters.every((item) => item.name === undefined)).toBe(true)
     expect(sent.semesters.map((item) => item.half_end_date.slice(0, 10))).toEqual(['2026-09-30', '2027-03-31'])
   })
 
@@ -159,7 +161,8 @@ describe('AcademicYearsPanel', () => {
     )).toBe(true))
     const post = fetchMock.mock.calls.find(([url, options]) => url === '/api/admin/academic-years' && options.method === 'POST')
     const sent = JSON.parse(post[1].body)
-    expect(sent.semesters.map((item) => item.name)).toEqual(['Semester 1', 'Semester 2'])
+    expect(sent.semesters).toHaveLength(2)
+    expect(sent.semesters.every((item) => item.name === undefined)).toBe(true)
     expect(sent.semesters[1].start_date > sent.semesters[0].end_date).toBe(true)
     // each semester sends where its first half ends, inside it
     for (const item of sent.semesters) {
@@ -348,7 +351,7 @@ describe('PcActivityRoomsPanel', () => {
     await user.click(screen.getByRole('option', { name: 'Monday' }))
     await user.click(within(dialog).getByRole('button', { name: 'Select duration' }))
     expect(screen.queryByRole('option', { name: /Six Months/ })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('option', { name: /^One Semester/ }))
+    await user.click(screen.getByRole('option', { name: /^Semester 1/ }))
     await user.click(within(dialog).getByRole('checkbox', { name: 'Elementary' }))
     await user.click(within(dialog).getByRole('checkbox', { name: 'Grade 1' }))
     expect(within(dialog).getByPlaceholderText('Search class or grade')).toBeVisible()
@@ -390,9 +393,10 @@ describe('PcActivityRoomsPanel', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Select day' }))
     await user.click(screen.getByRole('option', { name: 'Monday' }))
     await user.click(within(dialog).getByRole('button', { name: 'Select duration' }))
-    await user.click(screen.getByRole('option', { name: /^Half Semester/ }))
-    await user.click(await within(dialog).findByRole('button', { name: /^Semester 1, First Half/ }))
-    await user.click(screen.getByRole('option', { name: /^Semester 2, Second Half/ }))
+    const mid = await screen.findByRole('option', { name: /^Mid Semester 2/ })
+    // each choice carries the dates of the semester under its name
+    expect(mid).toHaveTextContent('1 Jan 2027')
+    await user.click(mid)
     await user.click(within(dialog).getByRole('checkbox', { name: 'Elementary' }))
     await user.click(within(dialog).getByRole('checkbox', { name: 'Grade 1' }))
     await user.click(within(dialog).getByRole('checkbox', { name: /^Grade 1A/ }))
@@ -400,7 +404,7 @@ describe('PcActivityRoomsPanel', () => {
 
     const post = await waitFor(() => fetchMock.mock.calls.find(([url, options]) =>
       url === '/api/admin/pc-activity-rooms' && options.method === 'POST'))
-    expect(JSON.parse(post[1].body)).toMatchObject({ duration_type: 'HALF_SEMESTER', semester_id: 'sem-2', half: 2 })
+    expect(JSON.parse(post[1].body)).toMatchObject({ duration_type: 'HALF_SEMESTER', semester_id: 'sem-2', half: 1 })
   })
 
   it('supports selecting all compatible classes explicitly', async () => {
@@ -429,7 +433,7 @@ describe('PcActivityRoomsPanel', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Select day' }))
     await user.click(screen.getByRole('option', { name: 'Monday' }))
     await user.click(within(dialog).getByRole('button', { name: 'Select duration' }))
-    await user.click(screen.getByRole('option', { name: /^One Semester/ }))
+    await user.click(screen.getByRole('option', { name: /^Semester 1/ }))
     await user.click(within(dialog).getByRole('checkbox', { name: 'Elementary' }))
     await user.click(within(dialog).getByRole('checkbox', { name: 'Grade 1' }))
     await user.click(await within(dialog).findByRole('checkbox', { name: 'Allow All Classes (2)' }))
