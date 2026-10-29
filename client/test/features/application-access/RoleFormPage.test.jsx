@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { Route, Routes } from 'react-router'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { RoleFormPage } from '../../../src/features/application-access/pages/RoleFormPage.jsx'
 import { renderWithProviders } from '../../helpers/render.jsx'
@@ -71,6 +71,57 @@ describe('RoleFormPage', () => {
       expect(JSON.parse(call[1].body).permissions.sort()).toEqual(['store.refund', 'store.use'])
     })
     expect(await screen.findByText('App page')).toBeVisible()
+  })
+
+  it('changes the key after a warning that shows who follows it', async () => {
+    let sent
+    const fetchMock = createFetchRouter(routes([
+      {
+        path: '/api/admin/application-roles/role-staff/key',
+        method: 'PATCH',
+        response: ({ options }) => {
+          sent = JSON.parse(options.body)
+          return jsonResponse({ data: { ...roles[1], key: 'MEMBER' } })
+        },
+      },
+    ]))
+    globalThis.fetch = fetchMock
+    const { user } = renderPage('/application-access/apps/exima/roles/role-staff')
+
+    await screen.findByText('Edit STAFF')
+    await user.click(screen.getByRole('button', { name: 'Change Key' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Change Key of STAFF' })
+    expect(within(dialog).getByText(/3 active people and 0 active groups follow the new key/)).toBeVisible()
+
+    await user.type(within(dialog).getByRole('textbox'), 'team member')
+    expect(within(dialog).getByRole('textbox')).toHaveValue('TEAM_MEMBER')
+    await user.click(within(dialog).getByRole('button', { name: 'Change Key' }))
+    await waitFor(() => expect(sent).toEqual({ key: 'TEAM_MEMBER' }))
+  })
+
+  it('refuses a key that is empty, the same, or already a role of the application', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage('/application-access/apps/exima/roles/role-staff')
+    await screen.findByText('Edit STAFF')
+    await user.click(screen.getByRole('button', { name: 'Change Key' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Change Key of STAFF' })
+
+    await user.click(within(dialog).getByRole('button', { name: 'Change Key' }))
+    expect(within(dialog).getByText('The new key is required.')).toBeVisible()
+    await user.type(within(dialog).getByRole('textbox'), 'staff')
+    await user.click(within(dialog).getByRole('button', { name: 'Change Key' }))
+    expect(within(dialog).getByText('This is already the key of the role.')).toBeVisible()
+    await user.clear(within(dialog).getByRole('textbox'))
+    await user.type(within(dialog).getByRole('textbox'), 'admin')
+    await user.click(within(dialog).getByRole('button', { name: 'Change Key' }))
+    expect(within(dialog).getByText('ADMIN is already a role of this application.')).toBeVisible()
+  })
+
+  it('shows no Change Key button when adding a role', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage('/application-access/apps/exima/roles/new')
+    await screen.findByText('Add Role to exima')
+    expect(screen.queryByRole('button', { name: 'Change Key' })).not.toBeInTheDocument()
   })
 
   it('blocks saving a role whose permissions match another active role', async () => {
