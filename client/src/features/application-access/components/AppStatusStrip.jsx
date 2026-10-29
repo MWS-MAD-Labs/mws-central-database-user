@@ -59,25 +59,27 @@ export function AppStatusStrip({ hubStatus, link, isHub = false, address = null,
               <p>{`Calls Central: ${token.label}`}</p>
             </div>
             {addressLine ? (
-              <div className="flex items-start gap-2 text-xs text-(--mws-charcoal)" title={addressLine.title}>
-                <Dot tone={addressLine.tone} pulse={false} className="mt-1" />
-                <div className="space-y-0.5">
-                  <p>{`Sign-In Address: ${addressLine.label}`}</p>
-                  {checkedAgo ? (
-                    <p className="text-(--mws-muted)">{`Checked ${checkedAgo === "Just Now" ? "Just Now" : `${checkedAgo} Ago`}`}</p>
-                  ) : null}
+              <div className="flex items-start justify-between gap-3 text-xs text-(--mws-charcoal)">
+                <div className="flex items-start gap-2" title={addressLine.title}>
+                  <Dot tone={addressLine.tone} pulse={false} className="mt-1" />
+                  <div className="space-y-0.5">
+                    <p>{`Sign-In Address: ${addressLine.label}`}</p>
+                    {checkedAgo ? (
+                      <p className="text-(--mws-muted)">{`Checked ${checkedAgo === "Just Now" ? "Just Now" : `${checkedAgo} Ago`}`}</p>
+                    ) : null}
+                  </div>
                 </div>
+                {onCheck ? (
+                  <button
+                    type="button"
+                    onClick={onCheck}
+                    disabled={checking}
+                    className="shrink-0 text-xs font-semibold text-(--mws-burgundy) hover:underline disabled:opacity-60"
+                  >
+                    {checking ? "Checking…" : "Check Now"}
+                  </button>
+                ) : null}
               </div>
-            ) : null}
-            {onCheck && addressLine ? (
-              <button
-                type="button"
-                onClick={onCheck}
-                disabled={checking}
-                className="text-xs font-semibold text-(--mws-burgundy) hover:underline disabled:opacity-60"
-              >
-                {checking ? "Checking…" : "Check Now"}
-              </button>
             ) : null}
           </div>
         )}
