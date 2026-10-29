@@ -343,6 +343,7 @@ enum AuditAction {
   API_ACCESS
   API_TOKEN_CREATE
   API_TOKEN_REVOKE
+  API_TOKEN_DELETE
   API_TOKEN_ROTATE
   API_TOKEN_UPDATE_SCOPES
   APPLICATION_ENTITLEMENT_GRANT
@@ -1938,6 +1939,9 @@ model AuditLog {
   admin         AdminUser?  @relation(fields: [admin_id], references: [id])
   api_client_id String?
   api_client    ApiClient?  @relation(fields: [api_client_id], references: [id])
+  // Who the API client was, kept on the row so the actor still reads after the client is deleted.
+  api_client_label  String?
+  api_client_prefix String?
   old_values    Json?
   new_values    Json?
   ip_address    String?

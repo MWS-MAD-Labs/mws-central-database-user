@@ -228,6 +228,7 @@ export class AuditLogController {
             { entity_id: { contains: search, mode: "insensitive" as const } },
             { admin: { email: { contains: search, mode: "insensitive" as const } } },
             { api_client: { name: { contains: search, mode: "insensitive" as const } } },
+            { api_client_label: { contains: search, mode: "insensitive" as const } },
           ]
         : undefined,
     };
@@ -266,7 +267,12 @@ export class AuditLogController {
               user_agent: log.user_agent,
               created_at: log.created_at.toISOString(),
               admin: log.admin,
-              api_client: log.api_client,
+              // A deleted client no longer has a row, so the name saved on the log stands in for it.
+              api_client:
+                log.api_client ??
+                (log.api_client_label
+                  ? { id: null, name: log.api_client_label, token_prefix: log.api_client_prefix, deleted: true }
+                  : null),
             })),
           ),
     });

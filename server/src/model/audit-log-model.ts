@@ -135,6 +135,7 @@ export const ENTITY_AUDIT_ACTIONS = [
   // API client mutations always identify an existing client.
   "API_TOKEN_CREATE",
   "API_TOKEN_REVOKE",
+  "API_TOKEN_DELETE",
   "API_TOKEN_ROTATE",
   "API_TOKEN_UPDATE_SCOPES",
   "APPLICATION_ENTITLEMENT_GRANT",

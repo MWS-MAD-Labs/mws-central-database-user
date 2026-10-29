@@ -211,6 +211,56 @@ export class ApiClientService {
     return INTERNAL_API_ENDPOINTS;
   }
 
+  // Only a revoked client can go. Its credentials go with it, and the audit rows already carry its name.
+  static async remove(
+    admin: AdminUser,
+    request: RevokeApiClientRequest,
+    context: AuditRequestContext = {},
+  ): Promise<{ id: string; deleted_credentials: number }> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(403, "Forbidden: Only Super Admin can delete API clients");
+    }
+    const deleteRequest = Validation.validate(ApiClientValidation.REVOKE, request);
+
+    const existing = await prismaClient.apiClient.findUnique({
+      where: { id: deleteRequest.id },
+      include: { profile: { select: { code: true, name: true } }, credentials: { select: { id: true } } },
+    });
+    if (!existing) throw new ResponseError(404, "API client not found");
+    if (existing.is_active) {
+      throw new ResponseError(400, "Revoke this API client before deleting it");
+    }
+    await assertNotAnApplicationConnection(existing.profile?.code);
+
+    await prismaClient.$transaction(async (tx) => {
+      // Rows written before the snapshot columns existed, or by a path that skipped them.
+      await tx.auditLog.updateMany({
+        where: { api_client_id: existing.id, api_client_label: null },
+        data: { api_client_label: existing.name, api_client_prefix: existing.token_prefix },
+      });
+      await tx.apiClient.delete({ where: { id: existing.id } });
+      await AuditService.record(
+        {
+          action: AuditAction.API_TOKEN_DELETE,
+          source: AuditSource.UI,
+          entity_type: "ApiClient",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: {
+            name: existing.name,
+            profile: existing.profile?.name ?? null,
+            token_prefix: existing.token_prefix,
+            credentials: existing.credentials.length,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+    return { id: existing.id, deleted_credentials: existing.credentials.length };
+  }
+
   static async revoke(
     admin: AdminUser,
     request: RevokeApiClientRequest,

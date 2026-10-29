@@ -655,6 +655,87 @@ describe("PATCH /api/admin/api-clients/revoke/:id", () => {
   });
 });
 
+describe("DELETE /api/admin/api-clients/:id", () => {
+  let masterData: Awaited<ReturnType<typeof MasterDataTest.create>>;
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await ApiClientTest.delete();
+    await AuditLogTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await ApiClientTest.delete();
+    await AuditLogTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("deletes a revoked client with its credentials and keeps its name on the audit log", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const client = await ApiClientTest.create({ name: "TEST_CLIENT_DELETE" });
+    await TestRequest.patch(`/api/admin/api-clients/revoke/${client.id}`, {}, accessToken);
+    // The client did something once, so an audit row points at it.
+    await prismaClient.auditLog.create({
+      data: { action: AuditAction.API_TOKEN_REVOKE, source: "API", api_client_id: client.id, entity_type: "ApiClient", entity_id: client.id },
+    });
+
+    const response = await TestRequest.delete(`/api/admin/api-clients/${client.id}`, accessToken);
+    expect(response.status).toBe(200);
+    expect(await prismaClient.apiClient.findUnique({ where: { id: client.id } })).toBeNull();
+    expect(await prismaClient.apiClientCredential.count({ where: { client_id: client.id } })).toBe(0);
+
+    const kept = await prismaClient.auditLog.findMany({
+      where: { entity_id: client.id, api_client_label: "TEST_CLIENT_DELETE" },
+    });
+    expect(kept.length).toBeGreaterThan(0);
+    expect(kept.every((row) => row.api_client_id === null)).toBe(true);
+    const deleted = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.API_TOKEN_DELETE, entity_id: client.id },
+    });
+    expect(deleted.old_values).toMatchObject({ name: "TEST_CLIENT_DELETE" });
+  });
+
+  it("shows the saved name as the actor in the audit log list", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const client = await ApiClientTest.create({ name: "TEST_CLIENT_ACTOR" });
+    await prismaClient.auditLog.create({
+      data: { action: AuditAction.API_TOKEN_UPDATE_SCOPES, source: "API", api_client_id: client.id, api_client_label: client.name, api_client_prefix: client.token_prefix, entity_type: "ApiClient", entity_id: client.id },
+    });
+    await TestRequest.patch(`/api/admin/api-clients/revoke/${client.id}`, {}, accessToken);
+    await TestRequest.delete(`/api/admin/api-clients/${client.id}`, accessToken);
+
+    const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const to = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const list = await (
+      await TestRequest.get(`/api/admin/audit-logs?search=TEST_CLIENT_ACTOR&date_from=${from}&date_to=${to}&size=50`, accessToken)
+    ).json();
+    const row = list.data.find((item: { action: string }) => item.action === "API_TOKEN_UPDATE_SCOPES");
+    expect(row.api_client).toMatchObject({ name: "TEST_CLIENT_ACTOR", deleted: true });
+  });
+
+  it("refuses an active client, and a request from a Database Admin", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const client = await ApiClientTest.create({ name: "TEST_CLIENT_DELETE_ACTIVE" });
+    const active = await TestRequest.delete(`/api/admin/api-clients/${client.id}`, accessToken);
+    expect(active.status).toBe(400);
+    expect((await active.json()).errors).toContain("Revoke this API client");
+
+    await TestRequest.patch(`/api/admin/api-clients/revoke/${client.id}`, {}, accessToken);
+    const dba = await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+    const denied = await TestRequest.delete(`/api/admin/api-clients/${client.id}`, dba.accessToken);
+    expect(denied.status).toBe(403);
+    expect(await prismaClient.apiClient.findUnique({ where: { id: client.id } })).not.toBeNull();
+  });
+
+  it("answers 404 for a client that does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    expect((await TestRequest.delete("/api/admin/api-clients/nope", accessToken)).status).toBe(404);
+  });
+});
+
 describe("PATCH /api/admin/api-clients/rotate/:id", () => {
   let masterData: {
     unit: MasterUnit;
