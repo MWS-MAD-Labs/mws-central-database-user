@@ -72,11 +72,11 @@ describe('overallState', () => {
   it('is working when the token calls and the address answers', () => {
     const state = overallState({ link: false, health: healthy, connection: live, address: { status: 'ok' } })
     expect(state).toMatchObject({ tone: 'green', label: 'Working' })
-    expect(state.note).toMatch(/Sign-In Address Answers/)
+    expect(state.note).toMatch(/Address Answers/)
   })
 
-  it('says the address is not verified when it was never checked', () => {
-    expect(overallState({ link: false, health: healthy, connection: live }).note).toMatch(/Not Verified/)
+  it('adds nothing about the address when it was never checked', () => {
+    expect(overallState({ link: false, health: healthy, connection: live }).note).not.toMatch(/Address/)
   })
 
   it('does not check an address for the Hub', () => {

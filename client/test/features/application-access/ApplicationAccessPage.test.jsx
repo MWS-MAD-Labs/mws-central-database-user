@@ -100,6 +100,8 @@ describe('ApplicationAccessPage', () => {
     expect(within(exima).getByText('Exima')).toBeVisible()
     expect(await within(exima).findByText('Safespace')).toBeVisible()
     expect(within(exima).getByText('Check Token')).toBeVisible()
+    // the list shows the label only, the note is in the tooltip and the detail page
+    expect(within(exima).queryByText(/Old Token/)).toBeNull()
     expect(within(exima).getByText('7')).toBeVisible()
     expect(within(exima).getByText('3')).toBeVisible()
     expect(within(exima).getByText('2')).toBeVisible()
