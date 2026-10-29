@@ -106,6 +106,12 @@ export function StudentsPage() {
     },
   });
 
+  const totalQuery = useQuery({
+    queryKey: ["students", "count-total"],
+    queryFn: () => studentsApi.countTotal(),
+  });
+  const noRecords = totalQuery.data === 0;
+
   const paging = studentsQuery.data?.paging || {
     current_page: params.page,
     total_page: 1,
@@ -253,6 +259,7 @@ export function StudentsPage() {
               exportParams={queryParams}
               canImport={canImport}
               canExport={canWrite}
+              isEmpty={Boolean(studentsQuery.data) && paging.total_item === 0}
               canExportSensitive={
                 user?.role === "SUPER_ADMIN" ||
                 Boolean(user?.can_view_sensitive_data)
@@ -264,7 +271,8 @@ export function StudentsPage() {
                 variant="secondary"
                 size="icon"
                 aria-label="Bulk Photo Upload"
-                title="Bulk Photo Upload"
+                title={noRecords ? "Add records first" : "Bulk Photo Upload"}
+                disabled={noRecords}
                 onClick={() => setBulkPhotoDialogOpen(true)}
               >
                 <ImagePlus size={16} />

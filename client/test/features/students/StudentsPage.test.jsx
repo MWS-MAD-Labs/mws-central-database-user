@@ -156,4 +156,19 @@ describe('StudentsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Close Dialog' }))
     expect(screen.queryByRole('dialog', { name: 'Bulk Photo Upload' })).not.toBeInTheDocument()
   })
+
+  it('disables Export for an empty list and Bulk Photo when there are no students at all', async () => {
+    renderPage({ routes: [...pageRoutes({ students: [] }), { path: '/api/admin/students/count-total', response: jsonResponse({ data: { total: 0 } }) }] })
+    const exportButton = await screen.findByRole('button', { name: 'Export' })
+    await waitFor(() => expect(exportButton).toBeDisabled())
+    expect(exportButton).toHaveAttribute('title', 'Nothing to export for this list')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Bulk Photo Upload' })).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled()
+  })
+
+  it('keeps Bulk Photo open when a filter hides every row but students exist', async () => {
+    renderPage({ routes: [...pageRoutes({ students: [] }), { path: '/api/admin/students/count-total', response: jsonResponse({ data: { total: 40 } }) }] })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export' })).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Bulk Photo Upload' })).toBeEnabled()
+  })
 })

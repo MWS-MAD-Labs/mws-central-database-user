@@ -223,6 +223,12 @@ export function EmployeesPage() {
     });
   }
 
+  const totalQuery = useQuery({
+    queryKey: ["employees", "count-total"],
+    queryFn: () => employeesApi.countTotal(),
+  });
+  const noRecords = totalQuery.data === 0;
+
   const paging = employeesQuery.data?.paging || {
     current_page: params.page,
     total_page: 1,
@@ -355,6 +361,7 @@ export function EmployeesPage() {
               exportParams={queryParams}
               canImport={canImport}
               canExport={canWrite}
+              isEmpty={Boolean(employeesQuery.data) && paging.total_item === 0}
               canExportSensitive={
                 user?.role === "SUPER_ADMIN" ||
                 Boolean(user?.can_view_employee_pii)
@@ -366,7 +373,8 @@ export function EmployeesPage() {
                 variant="secondary"
                 size="icon"
                 aria-label="Bulk Photo Upload"
-                title="Bulk Photo Upload"
+                title={noRecords ? "Add records first" : "Bulk Photo Upload"}
+                disabled={noRecords}
                 onClick={() => setBulkPhotoDialogOpen(true)}
               >
                 <ImagePlus size={16} />
