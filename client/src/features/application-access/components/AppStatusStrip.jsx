@@ -14,10 +14,10 @@ const DOT = {
 };
 
 // A dot that blinks while something is live or on its way, and stays still when it is not.
-function Dot({ tone, pulse }) {
+function Dot({ tone, pulse, className }) {
   const { color } = DOT[tone];
   return (
-    <span aria-hidden="true" className="relative flex size-2.5 shrink-0 items-center justify-center">
+    <span aria-hidden="true" className={cn("relative flex size-2.5 shrink-0 items-center justify-center", className)}>
       {pulse ? <span className={cn("absolute inline-flex size-full rounded-full opacity-50 motion-safe:animate-ping", color)} /> : null}
       <span className={cn("relative inline-flex size-2.5 rounded-full", color)} />
     </span>
@@ -53,29 +53,33 @@ export function AppStatusStrip({ hubStatus, link, isHub = false, address = null,
         </p>
         <p className="text-xs text-(--mws-muted)">{state.note}</p>
         {link ? null : (
-          <>
-            <p className="flex items-center gap-2 pt-1 text-xs text-(--mws-charcoal)" title="The application calls Central with its token">
-              <Dot tone={token.tone} pulse={false} />
-              {`Calls Central: ${token.label}`}
-            </p>
+          <div className="mt-3 space-y-2.5">
+            <div className="flex items-start gap-2 text-xs text-(--mws-charcoal)" title="The application calls Central with its token">
+              <Dot tone={token.tone} pulse={false} className="mt-1" />
+              <p>{`Calls Central: ${token.label}`}</p>
+            </div>
             {addressLine ? (
-              <p className="flex items-center gap-2 text-xs text-(--mws-charcoal)" title={addressLine.title}>
-                <Dot tone={addressLine.tone} pulse={false} />
-                {`Sign-In Address: ${addressLine.label}`}
-                {checkedAgo ? <span className="text-(--mws-muted)">{` · Checked ${checkedAgo === "Just Now" ? "Just Now" : `${checkedAgo} Ago`}`}</span> : null}
-              </p>
+              <div className="flex items-start gap-2 text-xs text-(--mws-charcoal)" title={addressLine.title}>
+                <Dot tone={addressLine.tone} pulse={false} className="mt-1" />
+                <div className="space-y-0.5">
+                  <p>{`Sign-In Address: ${addressLine.label}`}</p>
+                  {checkedAgo ? (
+                    <p className="text-(--mws-muted)">{`Checked ${checkedAgo === "Just Now" ? "Just Now" : `${checkedAgo} Ago`}`}</p>
+                  ) : null}
+                </div>
+              </div>
             ) : null}
             {onCheck && addressLine ? (
               <button
                 type="button"
                 onClick={onCheck}
                 disabled={checking}
-                className="pt-1 text-xs font-semibold text-(--mws-burgundy) hover:underline disabled:opacity-60"
+                className="text-xs font-semibold text-(--mws-burgundy) hover:underline disabled:opacity-60"
               >
                 {checking ? "Checking…" : "Check Now"}
               </button>
             ) : null}
-          </>
+          </div>
         )}
       </Cell>
       <Cell label="People">
