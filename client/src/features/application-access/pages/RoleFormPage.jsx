@@ -13,16 +13,10 @@ import { PermissionChecklist } from "../components/PermissionChecklist.jsx";
 import { useApplicationPermissions } from "../hooks/useApplicationPermissions.js";
 import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { cleanLabelInput, labelProblem } from "../utils/roleLabel.js";
+import { normalizeRoleKey } from "../utils/roleKey.js";
+import { ChangeRoleKeyDialog } from "../components/ChangeRoleKeyDialog.jsx";
 import { canManageApplications } from "../utils/canManageApplications.js";
 
-
-// Keys are exact: capital letters, digits and underscores.
-function normalizeRoleKey(value) {
-  return value
-    .toUpperCase()
-    .replace(/[\s-]+/g, "_")
-    .replace(/[^A-Z0-9_]/g, "");
-}
 
 // SUPPORT_STAFF becomes "Support Staff".
 function suggestLabel(key) {
@@ -68,6 +62,7 @@ function RoleForm({ applicationId, role, roles }) {
   const [allowsInterns, setAllowsInterns] = useState(role?.allows_interns ?? false);
   const [allowsStudents, setAllowsStudents] = useState(role?.allows_students ?? false);
   const [attempted, setAttempted] = useState(false);
+  const [changingKey, setChangingKey] = useState(false);
 
   const permissionsQuery = useApplicationPermissions(application);
   const registry = permissionsQuery.data;
@@ -145,15 +140,25 @@ function RoleForm({ applicationId, role, roles }) {
         title={isEdit ? `Edit ${role.key}` : `Add Role to ${applicationId}`}
         description={
           isEdit
-            ? `Role of ${role.application_id}. The key stays as created.`
+            ? `Role of ${role.application_id}. Changing the label does not change the key.`
             : "Role keys are exact and uppercase, for example ADMIN or SUPPORT_STAFF."
         }
         actions={
-          <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
-            <Link to={back}><ArrowLeft size={16} /></Link>
-          </Button>
+          <>
+            {isEdit ? (
+              <Button type="button" variant="secondary" onClick={() => setChangingKey(true)}>
+                Change Key
+              </Button>
+            ) : null}
+            <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
+              <Link to={back}><ArrowLeft size={16} /></Link>
+            </Button>
+          </>
         }
       />
+      {changingKey ? (
+        <ChangeRoleKeyDialog role={role} roles={roles} onClose={() => setChangingKey(false)} />
+      ) : null}
       <form onSubmit={submit} noValidate>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <section className="min-w-0 space-y-5 rounded-2xl border border-(--mws-line) bg-white p-5">

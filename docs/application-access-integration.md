@@ -91,6 +91,10 @@ Orang yang aksesnya datang dari group bisa diblokir tanpa mengganti role mereka:
 
 Jadi Remove tidak pernah memutus akses orang yang masih tercakup group. Untuk memblokir lagi gunakan Block Access (pada exception aktif) atau Add Exception dengan pilihan Blocked. Memberi akses kepada orang yang tidak tercakup group mana pun dilakukan dengan memperluas scope sebuah group.
 
+## Mengganti key role
+
+Label role bisa diganti kapan saja dari halaman Edit. Key (`STAFF`) tidak ikut berubah, karena key disimpan di setiap entitlement orang dan di role bawaan setiap group. Bila key itu sendiri yang perlu berubah, Super Admin memakai **Change Key** di halaman Edit role: semua entitlement dan group (aktif maupun tidak) pindah ke key baru dalam satu langkah, versi entitlement naik, dan perubahan tercatat di audit log dengan key lama dan jumlah yang ikut pindah. Key baru harus UPPER_SNAKE dan belum dipakai role lain di aplikasi itu. Aplikasi membaca role sebagai teks dari Central dan memperbarui salinannya pada lookup berikutnya (sekitar satu menit). Akses ditentukan permission, bukan nama role, jadi tidak ada yang bertambah atau berkurang.
+
 ## Menghapus role
 
 Role bisa dihapus dari tab Roles (Delete, Super Admin saja) hanya bila tidak pernah dirujuk: tidak ada orang yang pernah memegangnya (termasuk yang aksesnya sudah dicabut) dan tidak ada group yang memberikannya (termasuk yang dimatikan). Selain itu Central menolak dengan hitungannya, dan jalannya adalah memindahkan orang lewat Change Role atau group lewat Edit Group, atau cukup menonaktifkan role itu. Urutan role dirapatkan kembali setelah hapus dan penghapusan tercatat di audit log.

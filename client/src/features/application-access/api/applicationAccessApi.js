@@ -281,6 +281,11 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  async changeRoleKey(id, key) {
+    const response = await apiRequest(`${ROLES}/${id}/key`, { method: 'PATCH', body: { key } })
+    return response.data
+  },
+
   async deleteRole(id) {
     const response = await apiRequest(`${ROLES}/${id}`, { method: 'DELETE' })
     return response.data

@@ -107,6 +107,110 @@ describe("application role registry", () => {
     expect(entitlement.version).toBe(2);
   });
 
+  describe("changing the key of a role", () => {
+    async function createRole(accessToken: string, key: string, permissions = ["a.read"]) {
+      const response = await TestRequest.post(BASE, { application_id: appId, key, label: key, permissions }, accessToken);
+      expect(response.status).toBe(200);
+      return (await response.json()).data as { id: string; key: string };
+    }
+
+    it("moves the role, its entitlements and its groups to the new key and audits it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const role = await createRole(accessToken, "STAFF");
+      const { position, level, building, unit } = masterData;
+      const person = await EmployeeTest.create({
+        email: `test_role_${randomBytes(3).toString("hex")}@millennia21.id`,
+        unitId: unit.id,
+        jobPositionId: position.id,
+        jobLevelId: level.id,
+        buildingId: building.id,
+      });
+      // A role is handed out next to a group that covers the person, as in the test above.
+      await prismaClient.applicationRole.create({ data: { application_id: appId, key: "BASE", label: "Base", permissions: [] } });
+      await prismaClient.applicationAccessRule.create({
+        data: { application_id: appId, for_employees: true, default_role_key: "BASE", organization_id: "org_test" },
+      });
+      const granted = await TestRequest.post(
+        "/api/admin/application-entitlements",
+        { person_id: person.id, application_id: appId, role: "STAFF" },
+        accessToken,
+      );
+      expect(granted.status).toBe(200);
+      await prismaClient.applicationAccessRule.createMany({
+        data: [
+          { application_id: appId, for_students: true, default_role_key: "STAFF", organization_id: "org_test" },
+          { application_id: appId, for_interns: true, default_role_key: "STAFF", organization_id: "org_test", is_active: false },
+        ],
+      });
+
+      const response = await TestRequest.patch(`${BASE}/${role.id}/key`, { key: "USER" }, accessToken);
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.data.key).toBe("USER");
+      expect(body.data.active_entitlement_count).toBe(1);
+
+      const entitlement = await prismaClient.applicationEntitlement.findFirstOrThrow({ where: { application_id: appId } });
+      expect(entitlement.role).toBe("USER");
+      expect(entitlement.version).toBe(2);
+      const groups = await prismaClient.applicationAccessRule.findMany({ where: { application_id: appId } });
+      expect(groups.map((group) => group.default_role_key).sort()).toEqual(["BASE", "USER", "USER"]);
+
+      const audit = await prismaClient.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.APPLICATION_ROLE_UPDATE, entity_id: role.id },
+      });
+      expect(audit.new_values).toMatchObject({
+        key: "USER",
+        key_changed_from: "STAFF",
+        moved_entitlements: 1,
+        moved_groups: 2,
+      });
+    });
+
+    it("leaves the same key in another application alone", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const role = await createRole(accessToken, "STAFF");
+      const otherApp = `${appId}-other`;
+      await prismaClient.applicationRole.create({ data: { application_id: otherApp, key: "STAFF", label: "Staff", permissions: [] } });
+      await prismaClient.applicationAccessRule.create({
+        data: { application_id: otherApp, for_employees: true, default_role_key: "STAFF", organization_id: "org_other" },
+      });
+      try {
+        expect((await TestRequest.patch(`${BASE}/${role.id}/key`, { key: "USER" }, accessToken)).status).toBe(200);
+        expect(
+          (await prismaClient.applicationRole.findFirstOrThrow({ where: { application_id: otherApp } })).key,
+        ).toBe("STAFF");
+        expect(
+          (await prismaClient.applicationAccessRule.findFirstOrThrow({ where: { application_id: otherApp } })).default_role_key,
+        ).toBe("STAFF");
+      } finally {
+        await prismaClient.applicationAccessRule.deleteMany({ where: { application_id: otherApp } });
+        await prismaClient.applicationRole.deleteMany({ where: { application_id: otherApp } });
+      }
+    });
+
+    it("refuses the same key, a key that exists, a wrong format, and a missing role", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const role = await createRole(accessToken, "STAFF");
+      await createRole(accessToken, "LEAD", ["a.write"]);
+
+      expect((await TestRequest.patch(`${BASE}/${role.id}/key`, { key: "STAFF" }, accessToken)).status).toBe(400);
+      const taken = await TestRequest.patch(`${BASE}/${role.id}/key`, { key: "LEAD" }, accessToken);
+      expect(taken.status).toBe(409);
+      expect((await taken.json()).errors).toContain("LEAD already exists");
+      expect((await TestRequest.patch(`${BASE}/${role.id}/key`, { key: "user" }, accessToken)).status).toBe(400);
+      expect((await TestRequest.patch(`${BASE}/${role.id}/key`, { key: "" }, accessToken)).status).toBe(400);
+      expect((await TestRequest.patch(`${BASE}/not-a-role/key`, { key: "USER" }, accessToken)).status).toBe(404);
+      expect((await prismaClient.applicationRole.findUniqueOrThrow({ where: { id: role.id } })).key).toBe("STAFF");
+    });
+
+    it("is for a Super Admin only", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const role = await createRole(accessToken, "STAFF");
+      const dba = await AdminUserTest.createDatabaseAdmin();
+      expect((await TestRequest.patch(`${BASE}/${role.id}/key`, { key: "USER" }, dba.accessToken)).status).toBe(403);
+    });
+  });
+
   describe("deleting a role", () => {
     // Every role carries a permission of its own, so no two are the same.
     const post = (accessToken: string, key: string, permissions: string[] = [`${key.toLowerCase()}.use`]) =>
