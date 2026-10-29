@@ -45,6 +45,10 @@ Write like a dev leaving practical notes for a teammate, not an AI assistant exp
 - Before writing a command or curl example into the doc, actually run it (seed script, the request, the expected response/status code). Walkthroughs are copy-pasteable by design, a plausible-looking but unverified command defeats the point. If a claim depends on timing or DB state (e.g. a grace-period lock), show how to fake that state (e.g. `bunx prisma db execute` to backdate a timestamp) rather than asserting it and moving on.
 - When a script/path referenced in the doc changes (e.g. a `package.json` alias gets added), grep the doc for the old form and update it in the same pass, don't leave the doc pointing at a stale path.
 
+## Testing scope
+
+Run only the tests of the feature you changed: the test file or folder next to it (e.g. `bun test src/test/academic-semester.test.ts`, `bun test test/features/audit`). Do not run the full server or client suite. It crashes the session and tells little about a small change. A full run is for the user to ask for.
+
 ## Git commit messages
 
 - Short, concise, clear one line stating what changed and why, not a running log of steps taken.
