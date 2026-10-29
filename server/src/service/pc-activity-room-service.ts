@@ -128,6 +128,58 @@ function resolveRoomPeriod(
   return { startDate, endDate: new Date(startDate.getTime() + durationMs) };
 }
 
+type RoomPeriod = { startDate: Date; endDate: Date; semesterId: string | null; half: number | null };
+
+// The dates of a room. A semester or half takes the dates the academic year gives it. A year with no semesters
+// (made before they existed) still uses the old arithmetic.
+async function resolveRoomPeriodFromSemesters(
+  db: Prisma.TransactionClient | typeof prismaClient,
+  year: { id: string; start_date: Date; end_date: Date | null },
+  input: {
+    durationType: "SIX_MONTHS" | "HALF_SEMESTER" | "SEMESTER" | "FULL_YEAR" | "CUSTOM";
+    semesterId?: string | null;
+    half?: number | null;
+    customDays?: number | null;
+  },
+): Promise<RoomPeriod> {
+  const legacy = () => ({
+    ...resolveRoomPeriod(input.durationType, year.start_date, year.end_date, input.customDays),
+    semesterId: null,
+    half: null,
+  });
+  if (!year.end_date) return legacy();
+  if (input.durationType === "FULL_YEAR") {
+    return { startDate: year.start_date, endDate: year.end_date, semesterId: null, half: null };
+  }
+  if (input.durationType === "SIX_MONTHS") return legacy();
+
+  const semesters = await db.academicSemester.findMany({
+    where: { academic_year_id: year.id },
+    orderBy: { position: "asc" },
+  });
+  if (semesters.length === 0) return legacy();
+  const semester = input.semesterId ? semesters.find((row) => row.id === input.semesterId) : semesters[0];
+  if (!semester) throw new ResponseError(400, "That semester does not belong to the academic year of this room");
+
+  if (input.durationType === "SEMESTER") {
+    return { startDate: semester.start_date, endDate: semester.end_date, semesterId: semester.id, half: null };
+  }
+  if (input.durationType === "HALF_SEMESTER") {
+    const half = input.half ?? 1;
+    if (half !== 1 && half !== 2) throw new ResponseError(400, "Half must be 1 or 2");
+    const secondStart = new Date(semester.half_end_date.getTime() + 24 * 60 * 60 * 1000);
+    return half === 1
+      ? { startDate: semester.start_date, endDate: semester.half_end_date, semesterId: semester.id, half }
+      : { startDate: secondStart, endDate: semester.end_date, semesterId: semester.id, half };
+  }
+  const days = input.customDays ?? 0;
+  const endDate = new Date(semester.start_date.getTime() + days * 24 * 60 * 60 * 1000);
+  if (days <= 0 || endDate > semester.end_date) {
+    throw new ResponseError(400, `Custom duration must be greater than zero and fit inside ${semester.name}`);
+  }
+  return { startDate: semester.start_date, endDate, semesterId: semester.id, half: null };
+}
+
 async function assertRoomWriteAllowed(
   admin: AdminUser,
   context: AuditRequestContext,
@@ -447,6 +499,7 @@ function assertSelectedRoomUnits(
 const ROOM_INCLUDE = {
   activity: true,
   academic_year: true,
+  period_semester: { select: { name: true } },
   units: { include: { unit: true } },
   grades: { include: { grade: true } },
   classes: { include: { class: true } },
@@ -863,12 +916,12 @@ export class PCActivityRoomService {
       createRequest.unit_ids,
       createRequest.grade_ids ?? [],
     );
-    const { startDate, endDate } = resolveRoomPeriod(
-      createRequest.duration_type,
-      academicYear.start_date,
-      academicYear.end_date,
-      createRequest.custom_duration_days,
-    );
+    const { startDate, endDate, semesterId, half } = await resolveRoomPeriodFromSemesters(prismaClient, academicYear, {
+      durationType: createRequest.duration_type,
+      semesterId: createRequest.semester_id,
+      half: createRequest.half,
+      customDays: createRequest.custom_duration_days,
+    });
 
     const createdId = await prismaClient.$transaction(async (tx) => {
       const room = await tx.pcActivityRoom.create({
@@ -880,6 +933,8 @@ export class PCActivityRoomService {
           duration_type: createRequest.duration_type,
           custom_duration_days:
             createRequest.duration_type === "CUSTOM" ? createRequest.custom_duration_days : null,
+          period_semester_id: semesterId,
+          period_half: half,
           start_date: startDate,
           end_date: endDate,
           created_by: admin.id,
@@ -924,6 +979,8 @@ export class PCActivityRoomService {
             day: room.day,
             duration_type: room.duration_type,
             custom_duration_days: room.custom_duration_days,
+            period_semester_id: room.period_semester_id,
+            period_half: room.period_half,
             start_date: room.start_date.toISOString(),
             end_date: room.end_date.toISOString(),
             unit_ids: createRequest.unit_ids,
@@ -1025,12 +1082,26 @@ export class PCActivityRoomService {
         updateRequest.custom_duration_days !== undefined
           ? updateRequest.custom_duration_days
           : existing.custom_duration_days;
-      const { startDate: nextStartDate, endDate: nextEndDate } = resolveRoomPeriod(
-        nextDurationType,
-        academicYear.start_date,
-        academicYear.end_date,
-        nextCustomDurationDays,
-      );
+      // Dates only move when the period itself was edited, so a label change leaves old rooms as they are.
+      const periodEdited =
+        updateRequest.duration_type !== undefined ||
+        updateRequest.custom_duration_days !== undefined ||
+        updateRequest.semester_id !== undefined ||
+        updateRequest.half !== undefined;
+      const period: RoomPeriod = periodEdited
+        ? await resolveRoomPeriodFromSemesters(tx, academicYear, {
+            durationType: nextDurationType,
+            semesterId: updateRequest.semester_id !== undefined ? updateRequest.semester_id : existing.period_semester_id,
+            half: updateRequest.half !== undefined ? updateRequest.half : existing.period_half,
+            customDays: nextCustomDurationDays,
+          })
+        : {
+            startDate: existing.start_date,
+            endDate: existing.end_date,
+            semesterId: existing.period_semester_id,
+            half: existing.period_half,
+          };
+      const { startDate: nextStartDate, endDate: nextEndDate } = period;
       const updated = await tx.pcActivityRoom.update({
         where: { id: existing.id },
         data: {
@@ -1038,11 +1109,13 @@ export class PCActivityRoomService {
           duration_type: updateRequest.duration_type,
           custom_duration_days:
             nextDurationType === "CUSTOM" ? nextCustomDurationDays : null,
+          period_semester_id: period.semesterId,
+          period_half: period.half,
           start_date: nextStartDate,
           end_date: nextEndDate,
         },
       });
-      if (updateRequest.duration_type || updateRequest.custom_duration_days !== undefined) {
+      if (periodEdited) {
         await tx.passionConnectionActivity.updateMany({
           where: {
             room_id: existing.id,
@@ -1107,6 +1180,8 @@ export class PCActivityRoomService {
             label: updated.label,
             duration_type: updated.duration_type,
             custom_duration_days: updated.custom_duration_days,
+            period_semester_id: updated.period_semester_id,
+            period_half: updated.period_half,
             start_date: updated.start_date.toISOString(),
             end_date: updated.end_date.toISOString(),
             unit_ids: nextUnitIds,

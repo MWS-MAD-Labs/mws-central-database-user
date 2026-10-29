@@ -41,6 +41,8 @@ export class PcActivityRoomValidation {
       message: "Duration type must be a valid format",
     }),
     custom_duration_days: z.number().int().positive().optional(),
+    semester_id: z.string().min(1).optional(),
+    half: z.number().int().min(1).max(2).optional(),
     unit_ids: z
       .array(z.string().min(1))
       .min(1, "A room needs at least one unit"),
@@ -64,6 +66,8 @@ export class PcActivityRoomValidation {
       .enum(DURATION_TYPE_VALUES, { message: "Duration type must be a valid format" })
       .optional(),
     custom_duration_days: z.number().int().positive().nullable().optional(),
+    semester_id: z.string().min(1).nullable().optional(),
+    half: z.number().int().min(1).max(2).nullable().optional(),
     unit_ids: z
       .array(z.string().min(1))
       .min(1, "A room needs at least one unit")

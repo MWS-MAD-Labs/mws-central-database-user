@@ -560,6 +560,10 @@ model PcActivityRoom {
   day                  PCDay
   duration_type        PcActivityRoomDurationType
   custom_duration_days Int?
+  // The semester (and half, 1 or 2) the period was taken from. Empty on rooms made before semesters.
+  period_semester_id   String?
+  period_semester      AcademicSemester?          @relation(fields: [period_semester_id], references: [id], onDelete: SetNull)
+  period_half          Int?
   start_date           DateTime
   end_date             DateTime
   created_by           String
@@ -700,43 +704,43 @@ model MasterMajor {
 }
 
 model Person {
-  id               String     @id @default(cuid())
-  full_name        String
-  nick_name        String
-  email            String     @unique
-  person_type      PersonType
-  gender           Gender
-  religion         Religion
+  id                          String           @id @default(cuid())
+  full_name                   String
+  nick_name                   String
+  email                       String           @unique
+  person_type                 PersonType
+  gender                      Gender
+  religion                    Religion
   // Set for an explicit OTHER religion; null may indicate a legacy placeholder.
-  religion_other   String?
-  birth_place      String
-  birth_date       DateTime
+  religion_other              String?
+  birth_place                 String
+  birth_date                  DateTime
   // Legacy external photo URL used when photo_object_key is unset.
-  photo_url        String?
+  photo_url                   String?
   // Private object key. Presigned URLs are generated on read and never stored.
-  photo_object_key String?
+  photo_object_key            String?
   // The Google Workspace account behind this email. Central makes and updates it, see service/google-workspace-service.ts.
-  google_user_id     String?            @unique
-  google_sync_status GoogleSyncStatus   @default(NONE)
-  google_synced_at   DateTime?
+  google_user_id              String?          @unique
+  google_sync_status          GoogleSyncStatus @default(NONE)
+  google_synced_at            DateTime?
   // Why the last call to Google failed, in plain words. Never holds a password or a key.
-  google_last_error  String?
+  google_last_error           String?
   // Last time Central asked Google how the account is doing.
-  google_checked_at  DateTime?
+  google_checked_at           DateTime?
   // The account was claimed with its own name: Central never writes the name over it.
-  google_keeps_name  Boolean  @default(false)
+  google_keeps_name           Boolean          @default(false)
   // True until the person sets their own password. null when Google has not been asked.
-  google_password_pending   Boolean?
+  google_password_pending     Boolean?
   // When the temporary or unknown password was issued (account created or password reset by an admin).
-  google_password_issued_at DateTime?
-  google_last_login_at      DateTime?
+  google_password_issued_at   DateTime?
+  google_last_login_at        DateTime?
   // When Google deleted the account, kept while it can still be restored.
-  google_deleted_at         DateTime?
+  google_deleted_at           DateTime?
   // True when Central suspended the account because the person left, so only then does Central open it again.
-  google_suspended_by_central Boolean @default(false)
-  created_at       DateTime   @default(now())
-  updated_at       DateTime   @updatedAt
-  deleted_at       DateTime?
+  google_suspended_by_central Boolean          @default(false)
+  created_at                  DateTime         @default(now())
+  updated_at                  DateTime         @updatedAt
+  deleted_at                  DateTime?
 
   student   Student?
   employee  Employee?
@@ -1450,16 +1454,19 @@ model AcademicYear {
 // A part of an academic year, like Semester 1. Applications that report on a part of the year (Learnspace) take them
 // from here. Nothing else in Central depends on them, so they are deleted for real, with the audit log as the record.
 model AcademicSemester {
-  id               String       @id @default(cuid())
-  academic_year_id String
-  academic_year    AcademicYear @relation(fields: [academic_year_id], references: [id], onDelete: Cascade)
-  name             String
+  id                String           @id @default(cuid())
+  academic_year_id  String
+  academic_year     AcademicYear     @relation(fields: [academic_year_id], references: [id], onDelete: Cascade)
+  name              String
   // 1 for the first part of the year, then 2 and so on.
-  position         Int
-  start_date       DateTime
-  end_date         DateTime
-  created_at       DateTime     @default(now())
-  updated_at       DateTime     @updatedAt
+  position          Int
+  start_date        DateTime
+  end_date          DateTime
+  // Last day of the first half. The second half runs from the next day to end_date.
+  half_end_date     DateTime
+  created_at        DateTime         @default(now())
+  updated_at        DateTime         @updatedAt
+  pc_activity_rooms PcActivityRoom[]
 
   @@unique([academic_year_id, position])
   @@unique([academic_year_id, name])
@@ -1677,21 +1684,21 @@ model ApplicationIntegrationProfileScope {
 }
 
 model ApiClientCredential {
-  id           String              @id @default(cuid())
-  client_id    String
-  client       ApiClient           @relation(fields: [client_id], references: [id], onDelete: Cascade)
-  token_prefix String              @unique
-  token_hash   String
-  status       ApiCredentialStatus @default(ACTIVE)
-  issued_at    DateTime            @default(now())
-  activates_at DateTime            @default(now())
-  expires_at   DateTime?
-  revoked_at   DateTime?
-  last_used_at DateTime?
+  id               String              @id @default(cuid())
+  client_id        String
+  client           ApiClient           @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  token_prefix     String              @unique
+  token_hash       String
+  status           ApiCredentialStatus @default(ACTIVE)
+  issued_at        DateTime            @default(now())
+  activates_at     DateTime            @default(now())
+  expires_at       DateTime?
+  revoked_at       DateTime?
+  last_used_at     DateTime?
   // The last time this token was shown with the right secret after it could no longer be used.
   last_rejected_at DateTime?
-  created_at   DateTime            @default(now())
-  updated_at   DateTime            @updatedAt
+  created_at       DateTime            @default(now())
+  updated_at       DateTime            @updatedAt
 
   @@index([client_id, status])
   @@map("api_client_credentials")
@@ -1730,24 +1737,24 @@ model ApplicationEntitlement {
 // per-person row. The most specific matching rule wins, and a person's own
 // entitlement (even a revoked one) always wins over any rule.
 model ApplicationAccessRule {
-  id               String              @id @default(cuid())
-  application_id   String
+  id                String   @id @default(cuid())
+  application_id    String
   // Who the group is for. At least one, and students are never mixed with the others.
-  for_employees    Boolean             @default(false)
-  for_interns      Boolean             @default(false)
-  for_students     Boolean             @default(false)
+  for_employees     Boolean  @default(false)
+  for_interns       Boolean  @default(false)
+  for_students      Boolean  @default(false)
   // Empty means every unit, position or level.
-  unit_ids         String[]            @default([])
-  job_position_ids String[]            @default([])
-  job_level_ids    String[]            @default([])
-  default_role_key String
-  organization_id  String
-  is_active        Boolean             @default(true)
+  unit_ids          String[] @default([])
+  job_position_ids  String[] @default([])
+  job_level_ids     String[] @default([])
+  default_role_key  String
+  organization_id   String
+  is_active         Boolean  @default(true)
   // A group of students can have exceptions (such as a class leader) only when this is on.
   // Groups of employees always can.
-  allows_exceptions Boolean            @default(false)
-  created_at       DateTime            @default(now())
-  updated_at       DateTime            @updatedAt
+  allows_exceptions Boolean  @default(false)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
 
   @@index([application_id])
   @@map("application_access_rules")
@@ -1802,58 +1809,58 @@ enum ApplicationSessionMode {
 }
 
 model Application {
-  id             String   @id @default(cuid())
-  application_id String   @unique
-  name           String
-  description    String?
-  icon           String?
-  category       String?
+  id                        String                 @id @default(cuid())
+  application_id            String                 @unique
+  name                      String
+  description               String?
+  icon                      String?
+  category                  String?
   // The product space, like Safespace. Optional. Both hold the key of a row in the master data.
-  scope          String?
-  launch_url     String?
-  logout_url     String?
-  published      Boolean  @default(false)
+  scope                     String?
+  launch_url                String?
+  logout_url                String?
+  published                 Boolean                @default(false)
   // Stopped but kept: its connection is revoked, it is hidden from the Hub and it gives nobody access.
-  retired_at     DateTime?
+  retired_at                DateTime?
   // Set the first time it is shown in the Hub, which is the last step. After that it is managed from Settings.
-  setup_completed_at DateTime?
+  setup_completed_at        DateTime?
   // How its card looks in the Hub: a status, and words people can find it by.
-  hub_status     HubCardStatus @default(ACTIVE)
-  hub_keywords   String[] @default([])
+  hub_status                HubCardStatus          @default(ACTIVE)
+  hub_keywords              String[]               @default([])
   // Settings that go into the .env of the application, for now only the Hub's sign-in settings.
-  env_settings   Json?
+  env_settings              Json?
   // Only on the Hub's own row. Its public address, and the secret it shares with the applications (encrypted).
-  hub_base_url        String?
+  hub_base_url              String?
   // Whether the .env of this application carries the Hub address and the shared secret.
-  uses_hub            Boolean @default(true)
+  uses_hub                  Boolean                @default(true)
   // SHARED: the application uses the Hub's master secret. OWN: a secret made from it for this application alone.
-  hub_secret_mode     HubSecretMode @default(SHARED)
+  hub_secret_mode           HubSecretMode          @default(SHARED)
   // Goes up when the secret of this application is rotated.
-  hub_secret_version  Int @default(1)
-  hub_internal_secret String?
+  hub_secret_version        Int                    @default(1)
+  hub_internal_secret       String?
   // Only on the Hub's own row. Which signing key Central made for it: its name and the thumbprint of the public key.
   // The private key is shown once and never kept.
-  hub_signing_kid        String?
-  hub_signing_thumbprint String?
-  hub_signing_created_at DateTime?
+  hub_signing_kid           String?
+  hub_signing_thumbprint    String?
+  hub_signing_created_at    DateTime?
   // What the application says its Organization ID is, when it calls Central, and whether that is the one Central made.
   // Null until it sends one. It is only noted, a call is never refused for it.
-  organization_check_ok  Boolean?
-  organization_reported  String?
-  organization_checked_at DateTime?
+  organization_check_ok     Boolean?
+  organization_reported     String?
+  organization_checked_at   DateTime?
   // sso: opened through the Hub's sign-in handoff. link: a plain address, nothing to connect.
-  launch_mode    ApplicationLaunchMode @default(SSO)
-  session_mode   ApplicationSessionMode @default(RELAY)
+  launch_mode               ApplicationLaunchMode  @default(SSO)
+  session_mode              ApplicationSessionMode @default(RELAY)
   // Whether the address of the application answers, checked every few minutes. Two failures in a row mark it down.
-  address_status     String?
-  address_checked_at DateTime?
-  address_failures   Int       @default(0)
-  address_down_since DateTime?
+  address_status            String?
+  address_checked_at        DateTime?
+  address_failures          Int                    @default(0)
+  address_down_since        DateTime?
   // When the sign-in way last changed, and the first proof that the application signs in the new way.
   session_mode_changed_at   DateTime?
   session_mode_confirmed_at DateTime?
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
+  created_at                DateTime               @default(now())
+  updated_at                DateTime               @updatedAt
 
   @@map("applications")
 }
@@ -1883,20 +1890,20 @@ model ApplicationScope {
 
 // Allowed roles per application. Entitlement roles must match a row here exactly.
 model ApplicationRole {
-  id             String   @id @default(cuid())
-  application_id String
-  key            String
-  label          String
-  permissions    String[] @default([])
+  id               String   @id @default(cuid())
+  application_id   String
+  key              String
+  label            String
+  permissions      String[] @default([])
   // 0 is the highest role of the application, then 1, 2 and so on.
-  rank           Int      @default(0)
+  rank             Int      @default(0)
   // Who the role is meant for. A group of students can only hand out roles that allow students.
-  allows_employees Boolean @default(true)
-  allows_students  Boolean @default(false)
-  allows_interns   Boolean @default(false)
-  is_active      Boolean  @default(true)
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
+  allows_employees Boolean  @default(true)
+  allows_students  Boolean  @default(false)
+  allows_interns   Boolean  @default(false)
+  is_active        Boolean  @default(true)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
 
   @@unique([application_id, key])
   @@map("application_roles")
@@ -1931,23 +1938,23 @@ model ApplicationPermission {
 }
 
 model AuditLog {
-  id            String      @id @default(cuid())
-  action        AuditAction
-  entity_type   String?
-  entity_id     String?
-  admin_id      String?
-  admin         AdminUser?  @relation(fields: [admin_id], references: [id])
-  api_client_id String?
-  api_client    ApiClient?  @relation(fields: [api_client_id], references: [id])
+  id                String      @id @default(cuid())
+  action            AuditAction
+  entity_type       String?
+  entity_id         String?
+  admin_id          String?
+  admin             AdminUser?  @relation(fields: [admin_id], references: [id])
+  api_client_id     String?
+  api_client        ApiClient?  @relation(fields: [api_client_id], references: [id])
   // Who the API client was, kept on the row so the actor still reads after the client is deleted.
   api_client_label  String?
   api_client_prefix String?
-  old_values    Json?
-  new_values    Json?
-  ip_address    String?
-  user_agent    String?
-  source        AuditSource @default(UI)
-  created_at    DateTime    @default(now())
+  old_values        Json?
+  new_values        Json?
+  ip_address        String?
+  user_agent        String?
+  source            AuditSource @default(UI)
+  created_at        DateTime    @default(now())
 
   @@index([admin_id])
   @@index([entity_type, entity_id])

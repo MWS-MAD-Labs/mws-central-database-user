@@ -20,14 +20,32 @@ const MAX_SEMESTERS = 4;
 
 const day = (value: Date) => value.toISOString().slice(0, 10);
 
-// Two parts of a year: the first half and the day after it to the end. A year with no end date has no halves to make.
-export function defaultSemesterDates(start: Date, end: Date): { name: string; start_date: Date; end_date: Date }[] {
+// The middle day of a range, where the first half ends when nothing else was picked.
+export function midpointDate(start: Date, end: Date): Date {
   const days = Math.floor((end.getTime() - start.getTime()) / DAY_MS);
-  const firstEnd = new Date(start.getTime() + Math.floor(days / 2) * DAY_MS);
+  return new Date(start.getTime() + Math.floor(days / 2) * DAY_MS);
+}
+
+// Two parts of a year: the first half and the day after it to the end. A year with no end date has no halves to make.
+export function defaultSemesterDates(start: Date, end: Date): SemesterInput[] {
+  const firstEnd = midpointDate(start, end);
+  const secondStart = new Date(firstEnd.getTime() + DAY_MS);
   return [
-    { name: "Semester 1", start_date: start, end_date: firstEnd },
-    { name: "Semester 2", start_date: new Date(firstEnd.getTime() + DAY_MS), end_date: end },
+    { name: "Semester 1", start_date: start, end_date: firstEnd, half_end_date: midpointDate(start, firstEnd) },
+    { name: "Semester 2", start_date: secondStart, end_date: end, half_end_date: midpointDate(secondStart, end) },
   ];
+}
+
+// A semester from a request: the half defaults to the middle when it was not sent.
+export function toSemesterInput(item: { name: string; start_date: string; end_date: string; half_end_date?: string }): SemesterInput {
+  const start = new Date(item.start_date);
+  const end = new Date(item.end_date);
+  return {
+    name: item.name,
+    start_date: start,
+    end_date: end,
+    half_end_date: item.half_end_date ? new Date(item.half_end_date) : midpointDate(start, end),
+  };
 }
 
 // The dates have to be inside the year, in order, and not overlap another semester of it.
@@ -53,7 +71,7 @@ function assertDatesFit(
   }
 }
 
-export type SemesterInput = { name: string; start_date: Date; end_date: Date };
+export type SemesterInput = { name: string; start_date: Date; end_date: Date; half_end_date: Date };
 
 // Checks a whole set for a new year: names, order and dates inside the year, no overlap.
 export function assertSemesterSet<T extends SemesterInput>(
@@ -70,6 +88,12 @@ export function assertSemesterSet<T extends SemesterInput>(
       throw new ResponseError(400, "Semester names have to be different");
     }
     assertDatesFit(year, item.start_date, item.end_date, seen);
+    if (item.half_end_date < item.start_date || item.half_end_date >= item.end_date) {
+      throw new ResponseError(
+        400,
+        `The first half of ${item.name} has to end on a day inside it, before the last day (${day(item.start_date)} to ${day(item.end_date)})`,
+      );
+    }
     seen.push(item);
   }
   return sorted;
@@ -147,7 +171,13 @@ export async function syncSemestersForYear(
     await tx.academicSemester.update({ where: { id }, data: { position: 100 + index, name: `~${id}` } });
   }
   for (const [index, item] of items.entries()) {
-    const data = { name: item.name, position: index + 1, start_date: item.start_date, end_date: item.end_date };
+    const data = {
+      name: item.name,
+      position: index + 1,
+      start_date: item.start_date,
+      end_date: item.end_date,
+      half_end_date: item.half_end_date,
+    };
     if (item.id) {
       const before = byId.get(item.id)!;
       const row = await tx.academicSemester.update({ where: { id: item.id }, data });
@@ -155,7 +185,8 @@ export async function syncSemestersForYear(
         before.name !== row.name ||
         before.position !== row.position ||
         before.start_date.getTime() !== row.start_date.getTime() ||
-        before.end_date.getTime() !== row.end_date.getTime();
+        before.end_date.getTime() !== row.end_date.getTime() ||
+        before.half_end_date.getTime() !== row.half_end_date.getTime();
       if (changed) {
         await audit(AuditAction.UPDATE_ACADEMIC_SEMESTER, row.id, {
           old_values: toAcademicSemesterAuditSnapshot(before),

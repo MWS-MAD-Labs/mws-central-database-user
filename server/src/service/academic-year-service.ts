@@ -13,6 +13,7 @@ import {
   createSemestersForYear,
   defaultSemesterDates,
   syncSemestersForYear,
+  toSemesterInput,
   type SemesterInput,
 } from "./academic-semester-service";
 import { prismaClient } from "../lib/prisma";
@@ -293,12 +294,11 @@ export class AcademicYearService {
     assertDatesMatchName(createRequest.name, createStartDate, createEndDate);
     await assertNoOverlappingAcademicYear(createStartDate, createEndDate);
 
+    if (createEndDate && createRequest.semesters?.length === 0) {
+      throw new ResponseError(400, "A year with an end date needs at least one semester");
+    }
     const semesterInputs: SemesterInput[] = createRequest.semesters
-      ? createRequest.semesters.map((item) => ({
-          name: item.name,
-          start_date: new Date(item.start_date),
-          end_date: new Date(item.end_date),
-        }))
+      ? createRequest.semesters.map(toSemesterInput)
       : createEndDate
         ? defaultSemesterDates(createStartDate, createEndDate)
         : [];
@@ -481,15 +481,13 @@ export class AcademicYearService {
     if (nextStart && nextEnd && nextStart >= nextEnd) {
       throw new ResponseError(400, "start_date must be before end_date");
     }
+    if (nextEnd && updateRequest.semesters?.length === 0) {
+      throw new ResponseError(400, "A year with an end date needs at least one semester");
+    }
     const nextSemesters = updateRequest.semesters
       ? assertSemesterSet(
           { name: updateRequest.name ?? existing.name, start_date: nextStart, end_date: nextEnd },
-          updateRequest.semesters.map((item) => ({
-            id: item.id,
-            name: item.name,
-            start_date: new Date(item.start_date),
-            end_date: new Date(item.end_date),
-          })),
+          updateRequest.semesters.map((item) => ({ id: item.id, ...toSemesterInput(item) })),
         )
       : null;
     // A semester has to stay inside its year, so the year cannot shrink past one.
