@@ -95,29 +95,40 @@ const MAX_ROOM_MENTORS = 3;
 const MAX_ROOM_STUDENTS = 100;
 const PROMOTE_WINDOW_DAYS = 30;
 
-// The semester a room takes its dates from, for the list, e.g. "Semester 1, First Half".
+// The semester a room takes its dates from, for the list: "Semester 1" or "Mid Semester 1".
 function roomPeriodLabel(room) {
   if (!room.period_semester_name) return "";
-  return room.period_half ? `${room.period_semester_name}, ${HALF_NAMES[room.period_half]}` : room.period_semester_name;
+  if (!room.period_half) return room.period_semester_name;
+  if (room.period_half === 1) return room.period_semester_name.replace(/^Semester /, "Mid Semester ");
+  return `${room.period_semester_name}, ${HALF_NAMES[room.period_half]}`;
 }
 
-// What the Period select offers for a duration: a semester, or one half of each semester.
-function periodOptions(durationType, semesters) {
+// What the Duration select offers: each semester and its middle, with their dates, then the whole year and custom.
+function durationChoices(semesters, year, current) {
   const range = (from, to) => `${formatDate(from)} to ${formatDate(to)}`;
-  if (durationType === "HALF_SEMESTER") {
-    return semesters.flatMap((semester) => {
-      const secondStart = new Date(new Date(semester.half_end_date).getTime() + 24 * 60 * 60 * 1000);
-      return [
-        { value: `${semester.id}:1`, label: `${semester.name}, ${HALF_NAMES[1]}`, description: range(semester.start_date, semester.half_end_date) },
-        { value: `${semester.id}:2`, label: `${semester.name}, ${HALF_NAMES[2]}`, description: range(secondStart, semester.end_date) },
-      ];
-    });
-  }
-  return semesters.map((semester) => ({
-    value: semester.id,
-    label: semester.name,
-    description: range(semester.start_date, semester.end_date),
-  }));
+  if (semesters.length === 0) return current === "SIX_MONTHS" ? [LEGACY_SIX_MONTHS_OPTION, ...DURATION_OPTIONS] : DURATION_OPTIONS;
+  const rows = semesters.flatMap((semester) => [
+    {
+      value: `SEMESTER:${semester.id}`,
+      label: `Semester ${semester.position}`,
+      description: range(semester.start_date, semester.end_date),
+    },
+    {
+      value: `HALF_SEMESTER:${semester.id}:1`,
+      label: `Mid Semester ${semester.position}`,
+      description: range(semester.start_date, semester.half_end_date),
+    },
+  ]);
+  return [
+    ...(current === "SIX_MONTHS" ? [LEGACY_SIX_MONTHS_OPTION] : []),
+    ...rows,
+    {
+      value: "FULL_YEAR",
+      label: "Full Academic Year",
+      description: year?.start_date && year?.end_date ? range(year.start_date, year.end_date) : "The complete selected academic year.",
+    },
+    { value: "CUSTOM", label: "Custom Days", description: "A number of days from the start of a semester." },
+  ];
 }
 
 async function listAllClasses(academicYearId) {
@@ -558,17 +569,28 @@ export function RoomFormDialog({
   const semestersQuery = useQuery({
     queryKey: ["academic-year-semesters", values.academic_year_id],
     queryFn: () => academicYearsApi.semesters(values.academic_year_id),
-    enabled: Boolean(values.academic_year_id) && PERIOD_DURATIONS.includes(values.duration_type),
+    enabled: Boolean(values.academic_year_id),
   });
-  const periodChoices = PERIOD_DURATIONS.includes(values.duration_type)
-    ? periodOptions(values.duration_type, semestersQuery.data ?? [])
-    : [];
-  const period = periodChoices.find((option) => option.value === values.period)?.value ?? periodChoices[0]?.value ?? "";
-  const [periodSemesterId, periodHalf] = period.split(":");
-  const durationOptions =
-    values.duration_type === "SIX_MONTHS"
-      ? [LEGACY_SIX_MONTHS_OPTION, ...DURATION_OPTIONS]
-      : DURATION_OPTIONS;
+  const semesters = semestersQuery.data ?? [];
+  const [storedSemesterId, storedHalf] = values.period.split(":");
+  const periodSemesterId = semesters.find((row) => row.id === storedSemesterId)?.id ?? semesters[0]?.id ?? "";
+  const periodHalf = Number(storedHalf) || 1;
+  const usesSemester = PERIOD_DURATIONS.includes(values.duration_type);
+  // A room made with the second half keeps it, with its own name, until another duration is picked.
+  const secondHalf = values.duration_type === "HALF_SEMESTER" && periodHalf === 2;
+  const durationOptions = durationChoices(semesters, selectedYear, values.duration_type);
+  if (secondHalf && semesters.length > 0) {
+    const row = semesters.find((item) => item.id === periodSemesterId);
+    if (row) durationOptions.unshift({ value: `HALF_SEMESTER:${row.id}:2`, label: `Semester ${row.position}, ${HALF_NAMES[2]}`, description: "Second half, as it was set." });
+  }
+  let durationValue = values.duration_type;
+  if (semesters.length > 0 && values.duration_type === "SEMESTER") durationValue = `SEMESTER:${periodSemesterId}`;
+  if (semesters.length > 0 && values.duration_type === "HALF_SEMESTER") durationValue = `HALF_SEMESTER:${periodSemesterId}:${periodHalf}`;
+  const customSemesterOptions = semesters.map((row) => ({
+    value: row.id,
+    label: `Semester ${row.position}`,
+    description: `${formatDate(row.start_date)} to ${formatDate(row.end_date)}`,
+  }));
 
   function toggleUnit(unitId) {
     setValues((current) => {
@@ -683,7 +705,7 @@ export function RoomFormDialog({
     values.duration_type &&
     (values.duration_type !== "CUSTOM" ||
       Number(values.custom_duration_days) > 0) &&
-    (!PERIOD_DURATIONS.includes(values.duration_type) || semestersQuery.isSuccess) &&
+    (!usesSemester || semestersQuery.isSuccess) &&
     values.unit_ids.length > 0 &&
     values.grade_ids.length > 0 &&
     selectedClassIds.length > 0;
@@ -695,7 +717,7 @@ export function RoomFormDialog({
         const periodChanged =
           values.duration_type !== room.duration_type ||
           (values.duration_type === "CUSTOM" && Number(values.custom_duration_days) !== room.custom_duration_days) ||
-          (PERIOD_DURATIONS.includes(values.duration_type) && values.period !== "" && values.period !== initialPeriod);
+          (usesSemester && values.period !== "" && values.period !== initialPeriod);
         return pcActivityRoomsApi.update(room.id, {
           label: values.label || null,
           ...(periodChanged
@@ -705,8 +727,8 @@ export function RoomFormDialog({
                   values.duration_type === "CUSTOM"
                     ? Number(values.custom_duration_days)
                     : null,
-                semester_id: periodSemesterId || null,
-                half: values.duration_type === "HALF_SEMESTER" ? Number(periodHalf) : null,
+                semester_id: usesSemester ? periodSemesterId || null : null,
+                half: values.duration_type === "HALF_SEMESTER" ? periodHalf : null,
               }
             : {}),
           unit_ids: values.unit_ids,
@@ -727,8 +749,8 @@ export function RoomFormDialog({
           values.duration_type === "CUSTOM"
             ? Number(values.custom_duration_days)
             : undefined,
-        semester_id: periodSemesterId || undefined,
-        half: values.duration_type === "HALF_SEMESTER" ? Number(periodHalf) : undefined,
+        semester_id: usesSemester ? periodSemesterId || undefined : undefined,
+        half: values.duration_type === "HALF_SEMESTER" ? periodHalf : undefined,
         unit_ids: values.unit_ids,
         grade_ids: values.grade_ids,
         class_ids: selectedClassIds,
@@ -861,30 +883,30 @@ export function RoomFormDialog({
 
         <Field
           label="Duration"
-          hint="Sets how long the room remains active."
+          hint="Taken from the semesters set in the academic year."
         >
           <SearchableSelect
-            value={values.duration_type}
-            onChange={(value) =>
-              setValues((current) => ({ ...current, duration_type: value }))
-            }
+            value={durationValue}
+            onChange={(value) => {
+              const [type, semesterId, half] = value.split(":");
+              setValues((current) => ({
+                ...current,
+                duration_type: type,
+                period: semesterId ? (half ? `${semesterId}:${half}` : semesterId) : "",
+              }));
+            }}
             options={durationOptions}
             placeholder="Select duration"
             searchableThreshold={99}
           />
         </Field>
-        {periodChoices.length > 0 ? (
-          <Field
-            label={values.duration_type === "HALF_SEMESTER" ? "Half Of Semester" : "Semester"}
-            hint="The room takes its dates from the semesters set in the academic year."
-          >
+        {values.duration_type === "CUSTOM" && customSemesterOptions.length > 0 ? (
+          <Field label="Counted From" hint="The days start on the first day of this semester.">
             <SearchableSelect
-              value={period}
-              onChange={(value) =>
-                setValues((current) => ({ ...current, period: value }))
-              }
-              options={periodChoices}
-              placeholder="Select period"
+              value={periodSemesterId}
+              onChange={(value) => setValues((current) => ({ ...current, period: value }))}
+              options={customSemesterOptions}
+              placeholder="Select semester"
               searchableThreshold={99}
             />
           </Field>

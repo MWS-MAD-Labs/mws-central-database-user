@@ -48,7 +48,7 @@ export function overallState({ link, isHub = false, health, connection, address,
       tone: "red",
       pulse: false,
       label: "Needs Attention",
-      note: "The application calls Central, but its sign-in address does not answer, so people cannot open it from the Hub",
+      note: "Its sign-in address does not answer",
     };
   }
   if (!isHub && addressStatus === "wrong_path") {
@@ -56,7 +56,7 @@ export function overallState({ link, isHub = false, health, connection, address,
       tone: "amber",
       pulse: false,
       label: "Needs Attention",
-      note: "The sign-in address answers, but the sign-in page is not there. Check the end of the address",
+      note: "The sign-in page is not at this address",
     };
   }
   if (connection.last_used_at && daysSince(connection.last_used_at, now) >= QUIET_AFTER_DAYS) {
@@ -64,7 +64,7 @@ export function overallState({ link, isHub = false, health, connection, address,
       tone: "amber",
       pulse: false,
       label: "Quiet",
-      note: `No call from the application for ${daysSince(connection.last_used_at, now)} days. It may be down`,
+      note: `No call for ${daysSince(connection.last_used_at, now)} days`,
     };
   }
   const verified = addressStatus === "ok";
@@ -72,6 +72,6 @@ export function overallState({ link, isHub = false, health, connection, address,
     tone: "green",
     pulse: true,
     label: "Working",
-    note: `${token.note}${isHub ? "" : verified ? " · Sign-In Address Answers" : " · Sign-In Address Not Verified"}`,
+    note: `${token.note}${isHub || !verified ? "" : " · Address Answers"}`,
   };
 }

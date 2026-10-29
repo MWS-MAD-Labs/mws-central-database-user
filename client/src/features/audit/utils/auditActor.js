@@ -47,3 +47,12 @@ export function auditActor(log) {
   }
   return { primary: "System", secondary: "-", title: "System" };
 }
+
+// The entity of a client log is the client itself, named like its actor: the application, not "(DEVELOPMENT/app-connection) (retired ...)".
+export function auditEntity(log) {
+  const label = log?.entity_label || log?.entity_type || "-";
+  if (!log?.entity_label) return { label, title: label };
+  const client = readClientName(log.entity_label);
+  const isClientName = client.environment !== null || /\((retired|removed)/i.test(log.entity_label);
+  return { label: isClientName ? client.profile : log.entity_label, title: log.entity_label };
+}

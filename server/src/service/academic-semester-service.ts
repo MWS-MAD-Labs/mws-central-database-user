@@ -31,17 +31,17 @@ export function defaultSemesterDates(start: Date, end: Date): SemesterInput[] {
   const firstEnd = midpointDate(start, end);
   const secondStart = new Date(firstEnd.getTime() + DAY_MS);
   return [
-    { name: "Semester 1", start_date: start, end_date: firstEnd, half_end_date: midpointDate(start, firstEnd) },
-    { name: "Semester 2", start_date: secondStart, end_date: end, half_end_date: midpointDate(secondStart, end) },
+    { name: semesterName(1), start_date: start, end_date: firstEnd, half_end_date: midpointDate(start, firstEnd) },
+    { name: semesterName(2), start_date: secondStart, end_date: end, half_end_date: midpointDate(secondStart, end) },
   ];
 }
 
 // A semester from a request: the half defaults to the middle when it was not sent.
-export function toSemesterInput(item: { name: string; start_date: string; end_date: string; half_end_date?: string }): SemesterInput {
+export function toSemesterInput(item: { name?: string; start_date: string; end_date: string; half_end_date?: string }): SemesterInput {
   const start = new Date(item.start_date);
   const end = new Date(item.end_date);
   return {
-    name: item.name,
+    name: "",
     start_date: start,
     end_date: end,
     half_end_date: item.half_end_date ? new Date(item.half_end_date) : midpointDate(start, end),
@@ -73,7 +73,10 @@ function assertDatesFit(
 
 export type SemesterInput = { name: string; start_date: Date; end_date: Date; half_end_date: Date };
 
-// Checks a whole set for a new year: names, order and dates inside the year, no overlap.
+// The name of a semester is its place in the year, never typed.
+export const semesterName = (position: number) => `Semester ${position}`;
+
+// Checks a whole set for a new year: order and dates inside the year, no overlap. Names follow the order.
 export function assertSemesterSet<T extends SemesterInput>(
   year: { name: string; start_date: Date; end_date: Date | null },
   items: T[],
@@ -81,12 +84,11 @@ export function assertSemesterSet<T extends SemesterInput>(
   if (items.length > MAX_SEMESTERS) {
     throw new ResponseError(400, `A year can have at most ${MAX_SEMESTERS} semesters`);
   }
-  const sorted = [...items].sort((a, b) => a.start_date.getTime() - b.start_date.getTime());
+  const sorted = [...items]
+    .sort((a, b) => a.start_date.getTime() - b.start_date.getTime())
+    .map((item, index) => ({ ...item, name: semesterName(index + 1) }));
   const seen: T[] = [];
   for (const item of sorted) {
-    if (seen.some((other) => other.name.toLowerCase() === item.name.toLowerCase())) {
-      throw new ResponseError(400, "Semester names have to be different");
-    }
     assertDatesFit(year, item.start_date, item.end_date, seen);
     if (item.half_end_date < item.start_date || item.half_end_date >= item.end_date) {
       throw new ResponseError(

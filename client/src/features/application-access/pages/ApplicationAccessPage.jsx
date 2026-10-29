@@ -57,7 +57,6 @@ function RowStatus({ row }) {
         <span className={`inline-block size-2 shrink-0 rounded-full ${STATUS_DOT[state.tone]}`} aria-hidden="true" />
         {state.label}
       </span>
-      <span className="block truncate text-[11px] font-normal text-(--mws-muted)">{state.note}</span>
     </span>
   );
 }

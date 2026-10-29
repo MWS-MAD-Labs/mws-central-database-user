@@ -15,7 +15,7 @@ import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { LiveIndicator } from "../../../components/ui/LiveIndicator.jsx";
 import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
-import { auditActor } from "../utils/auditActor.js";
+import { auditActor, auditEntity } from "../utils/auditActor.js";
 import {
   formatDateTime,
   formatDiffValue,
@@ -335,7 +335,7 @@ export function AuditLogsPage() {
                       {formatDateTime(log.created_at)}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge tone={actionTone(log.action)}>
+                      <StatusBadge tone={actionTone(log.action)} className="whitespace-nowrap">
                         {formatStatus(log.action)}
                       </StatusBadge>
                     </td>
@@ -349,8 +349,8 @@ export function AuditLogsPage() {
                       </p>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-(--mws-charcoal)">
-                        {log.entity_label || log.entity_type || "-"}
+                      <p className="max-w-56 truncate font-semibold text-(--mws-charcoal)" title={auditEntity(log).title}>
+                        {auditEntity(log).label}
                       </p>
                       {log.entity_type === "ImportJob" ||
                       (log.new_values?.job_id && log.new_values?.entity) ? (
@@ -479,7 +479,7 @@ function AuditLogDetailsDialog({ log, onClose }) {
           <DetailItem label="Actor Detail" value={auditActor(log).secondary} />
           <DetailItem
             label="Entity"
-            value={log.entity_label || log.entity_type || "-"}
+            value={auditEntity(log).label}
           />
           <DetailItem
             label="Entity Type / ID"

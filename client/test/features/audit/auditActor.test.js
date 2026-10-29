@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { auditActor } from '../../../src/features/audit/utils/auditActor.js'
+import { auditActor, auditEntity } from '../../../src/features/audit/utils/auditActor.js'
 
 describe('auditActor', () => {
   it('shows an admin by name with the role under it', () => {
@@ -47,5 +47,22 @@ describe('auditActor', () => {
 
   it('says System when nobody is behind the entry', () => {
     expect(auditActor({})).toEqual({ primary: 'System', secondary: '-', title: 'System' })
+  })
+})
+
+describe('auditEntity', () => {
+  it('reads a retired and removed client as its application name', () => {
+    const entity = auditEntity({
+      entity_type: 'ApiClient',
+      entity_label: 'Woko Work Order (DEVELOPMENT/app-connection) (retired 2026-10-27T02:21:57.990Z) (removed 2026-10-27T02:22:02.450Z)',
+    })
+    expect(entity.label).toBe('Woko Work Order')
+    expect(entity.title).toContain('retired')
+  })
+
+  it('leaves other labels and a missing label as they are', () => {
+    expect(auditEntity({ entity_type: 'Student', entity_label: 'Ari Student' }).label).toBe('Ari Student')
+    expect(auditEntity({ entity_type: 'Student' }).label).toBe('Student')
+    expect(auditEntity({}).label).toBe('-')
   })
 })
