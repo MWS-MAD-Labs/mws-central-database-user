@@ -247,7 +247,7 @@ export class AuditLogController {
             skip: (page - 1) * size,
             orderBy: { [sortBy]: sortOrder },
             include: {
-              admin: { select: { id: true, email: true, role: true } },
+              admin: { select: { id: true, email: true, full_name: true, role: true } },
               api_client: { select: { id: true, name: true, token_prefix: true } },
             },
           })
