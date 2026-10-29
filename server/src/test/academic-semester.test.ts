@@ -78,7 +78,8 @@ describe("academic semesters", () => {
     expect(given.status).toBe(200);
     const id = (await given.json()).data.id;
     const rows = await prismaClient.academicSemester.findMany({ where: { academic_year_id: id }, orderBy: { position: "asc" } });
-    expect(rows.map((row) => row.name)).toEqual(["Ganjil", "Genap"]);
+    // typed names are ignored, the place in the year names them
+    expect(rows.map((row) => row.name)).toEqual(["Semester 1", "Semester 2"]);
     await prismaClient.academicYear.delete({ where: { id } });
 
     const byDefault = await TestRequest.post(BASE, body, accessToken);
@@ -122,7 +123,7 @@ describe("academic semesters", () => {
     await prismaClient.academicYear.delete({ where: { id: defaultId } });
   });
 
-  it("changes the semesters with the year: edit, add, remove, swap names", async () => {
+  it("changes the semesters with the year: edit, add, remove, names follow the order", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const year = await makeYear();
     const patch = (semesters: unknown[], extra: Record<string, unknown> = {}) =>
@@ -142,26 +143,25 @@ describe("academic semesters", () => {
     expect(await names()).toEqual(["Semester 1", "Semester 2"]);
     const rows = await prismaClient.academicSemester.findMany({ where: { academic_year_id: year.id }, orderBy: { position: "asc" } });
 
-    // swap the names and move a date
+    // typed names are ignored and a date can move
     expect(
       (await patch([item("Semester 2", `${YEAR}-07-01`, `${YEAR}-12-31`, rows[0].id), item("Semester 1", `${YEAR + 1}-01-05`, `${YEAR + 1}-06-30`, rows[1].id)])).status,
     ).toBe(200);
-    expect(await names()).toEqual(["Semester 2", "Semester 1"]);
+    expect(await names()).toEqual(["Semester 1", "Semester 2"]);
 
     // leaving one out removes it
     expect((await patch([item("Semester 2", `${YEAR}-07-01`, `${YEAR}-12-31`, rows[0].id)])).status).toBe(200);
-    expect(await names()).toEqual(["Semester 2"]);
+    expect(await names()).toEqual(["Semester 1"]);
 
-    // outside the year, overlapping or a repeated name is refused and nothing changes
+    // outside the year or overlapping is refused and nothing changes
     expect((await patch([item("Early", `${YEAR}-06-01`, `${YEAR}-08-01`, rows[0].id)])).status).toBe(400);
     expect((await patch([item("A", `${YEAR}-07-01`, `${YEAR}-12-31`, rows[0].id), item("B", `${YEAR}-12-01`, `${YEAR + 1}-02-01`)])).status).toBe(400);
-    expect((await patch([item("A", `${YEAR}-07-01`, `${YEAR}-09-30`, rows[0].id), item("a", `${YEAR}-10-01`, `${YEAR}-12-31`)])).status).toBe(400);
-    expect(await names()).toEqual(["Semester 2"]);
+    expect(await names()).toEqual(["Semester 1"]);
 
     const { accessToken: other } = await AdminUserTest.createDatabaseAdmin();
     expect((await TestRequest.patch(`${BASE}/${year.id}`, { semesters: [] }, other)).status).toBe(403);
     expect((await TestRequest.patch(`${BASE}/${year.id}`, { semesters: [] }, accessToken)).status).toBe(400);
-    expect(await names()).toEqual(["Semester 2"]);
+    expect(await names()).toEqual(["Semester 1"]);
 
     const actions = (await prismaClient.auditLog.findMany({ where: { entity_type: "AcademicSemester" } })).map((row) => row.action);
     expect(actions).toContain(AuditAction.CREATE_ACADEMIC_SEMESTER);
