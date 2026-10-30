@@ -55,7 +55,8 @@ async function runDisciplinaryActionSweep(): Promise<void> {
 
 async function runPcActivityRoomSweep(): Promise<void> {
   try {
-    const activatedCount = await PCActivityRoomService.activateScheduledAssignments();
+    const activatedCount =
+      await PCActivityRoomService.activateScheduledAssignments();
     const expiredCount = await PCActivityRoomService.expirePastDueAssignments();
     if (activatedCount > 0 || expiredCount > 0) {
       logger.info(
@@ -132,7 +133,10 @@ void (async () => {
   );
 })();
 
-if (process.env.NODE_ENV === "production" && !process.env.DEPLOYMENT_ENVIRONMENT?.trim()) {
+if (
+  process.env.NODE_ENV === "production" &&
+  !process.env.DEPLOYMENT_ENVIRONMENT?.trim()
+) {
   logger.warn(
     "DEPLOYMENT_ENVIRONMENT is not set, so this Central names its application connections DEVELOPMENT",
   );
