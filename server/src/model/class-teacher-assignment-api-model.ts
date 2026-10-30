@@ -18,6 +18,7 @@ export type ClassTeacherAssignmentWithRelations = {
   };
   employee: {
     id: string;
+    person_id: string;
     employee_id: string;
     unit: { name: string };
     job_position: { name: string };
@@ -25,6 +26,7 @@ export type ClassTeacherAssignmentWithRelations = {
   } | null;
   intern: {
     id: string;
+    person_id: string;
     full_name: string;
     email: string;
     unit: { name: string };
@@ -36,6 +38,8 @@ export type ClassTeacherWorkforceMemberResponse = {
   type: "EMPLOYEE" | "INTERN";
   id: string;
   member_id: string;
+  // Stable across email changes; matches the Hub token's sub.
+  person_id: string;
   full_name: string;
   email: string;
   unit_name: string;
@@ -74,6 +78,7 @@ export function toClassTeacherAssignmentResponse(
         type: "EMPLOYEE",
         id: assignment.employee.id,
         member_id: assignment.employee.id,
+        person_id: assignment.employee.person_id,
         full_name: assignment.employee.person.full_name,
         email: assignment.employee.person.email,
         unit_name: assignment.employee.unit.name,
@@ -84,6 +89,7 @@ export function toClassTeacherAssignmentResponse(
         type: "INTERN",
         id: assignment.intern!.id,
         member_id: assignment.intern!.id,
+        person_id: assignment.intern!.person_id,
         full_name: assignment.intern!.full_name,
         email: assignment.intern!.email,
         unit_name: assignment.intern!.unit.name,
