@@ -19,7 +19,7 @@ function authHeader(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
 
-async function createTeachingEmployee(email: string): Promise<{ id: string }> {
+async function createTeachingEmployee(email: string): Promise<{ id: string; person_id: string }> {
   const masterUnit = await prismaClient.masterUnit.findFirstOrThrow({
     where: { name: { startsWith: "TEST_" } },
   });
@@ -130,6 +130,49 @@ describe("Student Support Assignment API (internal)", () => {
       );
     expect(body.data[0].role).toBe(StudentSupportRole.SPECIAL_ED);
       expect(body.data[0].workforce_member.type).toBe("EMPLOYEE");
+      expect(body.data[0].workforce_member.person_id).toBe(teacher.person_id);
+    });
+
+    it("pages assignments that share created_at in a stable order", async () => {
+      const teacher = await createTeachingEmployee("test_seapi_teacher_page@millennia21.id");
+      // Inserted straight into the table, so the caseload limit does not apply here.
+      const createdAt = new Date();
+      const expected: string[] = [];
+      for (let index = 0; index < 8; index += 1) {
+        const student = await StudentTest.create({
+          email: `test_seapi_page_${index}@millennia21.id`,
+          nis: `96001${String(index).padStart(2, "0")}`,
+        });
+        expected.push(student.email);
+        await prismaClient.studentSupportAssignment.create({
+          data: {
+            // Reverse id order, so only the id tie-breaker returns them sorted.
+            id: `test_seapi_page_${7 - index}`,
+            student_id: student.student!.id,
+            employee_id: teacher.id,
+            role: StudentSupportRole.SPECIAL_ED,
+            created_at: createdAt,
+          },
+        });
+      }
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [READ_SCOPE] });
+
+      const seen: string[] = [];
+      for (let page = 1; ; page += 1) {
+        const response = await TestRequest.get(
+          `/api/internal/student-support-assignments?page=${page}&size=1`,
+          undefined,
+          authHeader(token),
+        );
+        const body = await response.json();
+        expect(response.status).toBe(200);
+        for (const item of body.data as { employee_id: string | null; student_email: string }[]) {
+          if (item.employee_id === teacher.id) seen.push(item.student_email);
+        }
+        if (page >= body.paging.total_page) break;
+      }
+
+      expect(seen).toEqual([...expected].reverse());
     });
 
     it("should list an active intern assignment with a workforce discriminator", async () => {
@@ -179,6 +222,7 @@ describe("Student Support Assignment API (internal)", () => {
       expect(assignment.workforce_member).toMatchObject({
         type: "INTERN",
         id: intern.id,
+        person_id: intern.person_id,
         employee_id: null,
       });
       expect(assignment.employee_id).toBeNull();

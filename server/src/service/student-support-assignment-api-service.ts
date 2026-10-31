@@ -46,7 +46,8 @@ export class StudentSupportAssignmentApiService {
             where: whereClause,
             take: listRequest.size,
             skip: (listRequest.page - 1) * listRequest.size,
-            orderBy: { created_at: "desc" },
+            // id breaks created_at ties so pages never overlap or skip rows.
+            orderBy: [{ created_at: "desc" }, { id: "asc" }],
             include: ASSIGNMENT_INCLUDE,
           })
           .then((assignments) =>

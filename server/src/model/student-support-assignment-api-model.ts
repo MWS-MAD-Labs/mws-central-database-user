@@ -8,8 +8,8 @@ export type StudentSupportAssignmentListRequest = {
 export type StudentSupportAssignmentWithRelations = {
   id: string;
   role: StudentSupportRole;
-  employee: { id: string; employee_id: string; person: { full_name: string; email: string } } | null;
-  intern: { id: string; full_name: string; email: string } | null;
+  employee: { id: string; person_id: string; employee_id: string; person: { full_name: string; email: string } } | null;
+  intern: { id: string; person_id: string; full_name: string; email: string } | null;
   student: { id: string; person: { email: string } };
 };
 
@@ -19,6 +19,8 @@ export type StudentSupportAssignmentResponse = {
     type: "EMPLOYEE" | "INTERN";
     id: string;
     member_id: string;
+    // Stable across email changes; matches the Hub token's sub.
+    person_id: string;
     full_name: string;
     email: string;
     employee_id: string | null;
@@ -38,6 +40,7 @@ export function toStudentSupportAssignmentResponse(
         type: "EMPLOYEE" as const,
         id: assignment.employee.id,
         member_id: assignment.employee.id,
+        person_id: assignment.employee.person_id,
         full_name: assignment.employee.person.full_name,
         email: assignment.employee.person.email,
         employee_id: assignment.employee.employee_id,
@@ -46,6 +49,7 @@ export function toStudentSupportAssignmentResponse(
         type: "INTERN" as const,
         id: assignment.intern!.id,
         member_id: assignment.intern!.id,
+        person_id: assignment.intern!.person_id,
         full_name: assignment.intern!.full_name,
         email: assignment.intern!.email,
         employee_id: null,
