@@ -39,5 +39,6 @@ export type AcademicYearWithSemestersResponse = {
   academic_year: string;
   start_date: string;
   end_date: string | null;
-  semesters: { semester_id: string; name: string; position: number; start_date: string; end_date: string }[];
+  // half_end_date is the last day of the first half of the semester.
+  semesters: { semester_id: string; name: string; position: number; start_date: string; end_date: string; half_end_date: string }[];
 };

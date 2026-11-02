@@ -23,6 +23,7 @@ export class AcademicYearApiService {
         position: semester.position,
         start_date: date(semester.start_date),
         end_date: date(semester.end_date),
+        half_end_date: date(semester.half_end_date),
       })),
     }));
   }

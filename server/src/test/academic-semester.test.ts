@@ -205,6 +205,7 @@ describe("academic semesters", () => {
     const row = body.data.find((item: { academic_year: string }) => item.academic_year === YEAR_NAME);
     expect(row.semesters.map((item: { name: string }) => item.name)).toEqual(["Semester 1", "Semester 2"]);
     expect(row.semesters[0].start_date).toBe(`${YEAR}-07-01`);
+    expect(row.semesters.map((item: { half_end_date: string }) => item.half_end_date)).toEqual([`${YEAR}-09-30`, `${YEAR + 1}-03-31`]);
 
     const { token: noScope } = await ApiClientTest.createWithToken({ scopeNames: ["students:read"], name: "TEST_NOSCOPE" } as never);
     expect((await TestRequest.get("/api/internal/academic-years", undefined, { Authorization: `Bearer ${noScope}` })).status).toBe(403);
