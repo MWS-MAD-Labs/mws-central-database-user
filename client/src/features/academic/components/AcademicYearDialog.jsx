@@ -21,6 +21,7 @@ import { LIMITS } from "../../../lib/limits.js";
 import { yearProblem, isValidYear } from "../utils/yearRange.js";
 import { academicYearsApi, academicYearStatuses } from "../api/academicApi.js";
 import { parseAcademicYearStartYear } from "../utils/Pattern.js";
+import { hasAcademicYearChanges } from "../utils/academicYearChanges.js";
 
 const STATUS_TRANSITION_WINDOW_DAYS = 30;
 
@@ -63,6 +64,29 @@ function computeDefaultStartDate(startYear) {
   return startYear ? `${startYear}-07-01` : "";
 }
 
+// What the form shows when it opens. Edit compares against this to know whether anything changed.
+function initialYearValues(dialog, suggestedStartYear) {
+  const existingStartYear = parseAcademicYearStartYear(dialog.record?.name);
+  const initialStartYear =
+    dialog.mode === "create"
+      ? (suggestedStartYear ?? new Date().getFullYear())
+      : (existingStartYear ?? new Date().getFullYear());
+  const initialStartDate =
+    dialog.mode === "create"
+      ? computeDefaultStartDate(initialStartYear)
+      : dateInputFromIso(dialog.record?.start_date);
+  return {
+    startYear: String(initialStartYear),
+    start_date: initialStartDate,
+    end_date:
+      dialog.mode === "create"
+        ? computeDefaultEndDate(initialStartDate)
+        : dateInputFromIso(dialog.record?.end_date),
+    status: dialog.record?.status || "UPCOMING",
+    activateClasses: false,
+  };
+}
+
 export function AcademicYearDialog({
   dialog,
   suggestedStartYear,
@@ -71,26 +95,8 @@ export function AcademicYearDialog({
   onSubmit,
 }) {
   const existingStartYear = parseAcademicYearStartYear(dialog.record?.name);
-  const [values, setValues] = useState(() => {
-    const initialStartYear =
-      dialog.mode === "create"
-        ? (suggestedStartYear ?? new Date().getFullYear())
-        : (existingStartYear ?? new Date().getFullYear());
-    const initialStartDate =
-      dialog.mode === "create"
-        ? computeDefaultStartDate(initialStartYear)
-        : dateInputFromIso(dialog.record?.start_date);
-    return {
-      startYear: String(initialStartYear),
-      start_date: initialStartDate,
-      end_date:
-        dialog.mode === "create"
-          ? computeDefaultEndDate(initialStartDate)
-          : dateInputFromIso(dialog.record?.end_date),
-      status: dialog.record?.status || "UPCOMING",
-      activateClasses: false,
-    };
-  });
+  const [initialValues] = useState(() => initialYearValues(dialog, suggestedStartYear));
+  const [values, setValues] = useState(initialValues);
   const [startDateTouched, setStartDateTouched] = useState(() =>
     Boolean(dateInputFromIso(dialog.record?.start_date)),
   );
@@ -135,6 +141,12 @@ export function AcademicYearDialog({
     ? `${startYearNumber}/${startYearNumber + 1}`
     : "";
   const isLegacyName = dialog.mode === "edit" && existingStartYear === null;
+
+  // Save stays off until something differs from what is stored. Semesters still to be created count.
+  const noChangesYet =
+    isEdit &&
+    (!semestersQuery.isSuccess ||
+      !hasAcademicYearChanges({ initial: initialValues, values, semesters, savedSemesters }));
 
   const currentYear = new Date().getFullYear();
   const activeYearTooFar =
@@ -240,10 +252,12 @@ export function AcademicYearDialog({
             form="academic-year-form"
             type="submit"
             disabled={
+              noChangesYet ||
               activationBlocked ||
               completionBlocked ||
               leavingActiveBlocked
             }
+            title={noChangesYet ? "No changes to save yet." : undefined}
             loading={isSubmitting}
           >
             Save

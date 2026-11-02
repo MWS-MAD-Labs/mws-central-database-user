@@ -129,13 +129,20 @@ describe('AcademicYearsPanel', () => {
     expect(first).toBeDisabled()
     expect(screen.getByDisplayValue('Semester 2')).toBeDisabled()
     expect(screen.queryByDisplayValue('Ganjil')).toBeNull()
+    // Nothing changed yet, so there is nothing to save.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    const midSemester = screen.getByText('Mid Semester 1 Ends').closest('div')
+    await user.click(within(midSemester).getByRole('button', { name: /Choose date/ }))
+    await user.click(await screen.findByRole('gridcell', { name: '15' }))
+    await user.click(await screen.findByRole('button', { name: 'OK' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled())
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(true))
     const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
     const sent = JSON.parse(patch[1].body)
     expect(sent.semesters.map((item) => item.id)).toEqual(['sem-1', 'sem-2'])
     expect(sent.semesters.every((item) => item.name === undefined)).toBe(true)
-    expect(sent.semesters.map((item) => item.half_end_date.slice(0, 10))).toEqual(['2026-09-30', '2027-03-31'])
+    expect(sent.semesters.map((item) => item.half_end_date.slice(0, 10))).toEqual(['2026-09-15', '2027-03-31'])
   })
 
   it('creates and deletes an academic year', async () => {

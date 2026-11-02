@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from 'bun:test'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { NumberInput } from '../../../src/components/ui/formControls/NumberInput.jsx'
@@ -7,6 +7,7 @@ import { AcademicYearBulkCreateDialog } from '../../../src/features/academic/com
 import { AcademicYearDialog } from '../../../src/features/academic/components/AcademicYearDialog.jsx'
 import { GradeDialog } from '../../../src/features/academic/components/GradeDialog.jsx'
 import { LIMITS } from '../../../src/lib/limits.js'
+import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 import { renderWithProviders } from '../../helpers/render.jsx'
 
 function Probe(props) {
@@ -93,6 +94,69 @@ describe('AcademicYearDialog', () => {
     await user.click(screen.getByRole('button', { name: /Save|Create/ }))
     expect(screen.getByText(`Use a year between ${LIMITS.ACADEMIC_YEAR_MIN} and ${LIMITS.ACADEMIC_YEAR_MAX}.`)).toBeVisible()
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+})
+
+describe('AcademicYearDialog save button when editing', () => {
+  const record = { id: 'year-2026', name: '2026/2027', start_date: '2026-07-01T00:00:00.000Z', end_date: '2027-06-30T00:00:00.000Z', status: 'ACTIVE' }
+  const stored = [
+    { id: 's1', name: 'Semester 1', position: 1, start_date: '2026-07-01T00:00:00.000Z', end_date: '2026-12-30T00:00:00.000Z', half_end_date: '2026-09-30T00:00:00.000Z' },
+    { id: 's2', name: 'Semester 2', position: 2, start_date: '2026-12-31T00:00:00.000Z', end_date: '2027-06-30T00:00:00.000Z', half_end_date: '2027-03-31T00:00:00.000Z' },
+  ]
+  const route = (semesters) => ({ path: /\/semesters$/, response: jsonResponse({ data: semesters }) })
+  const open = (mode = 'edit') =>
+    renderWithProviders(
+      <AcademicYearDialog dialog={{ mode, record: mode === 'edit' ? record : undefined }} suggestedStartYear={2026} isSubmitting={false} onClose={() => {}} onSubmit={() => {}} />,
+    )
+  const save = () => screen.getByRole('button', { name: 'Save' })
+
+  it('stays off while nothing differs from what is stored', async () => {
+    globalThis.fetch = createFetchRouter([route(stored)])
+    open()
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled())
+    await screen.findByDisplayValue('2026')
+    expect(save()).toBeDisabled()
+    expect(save()).toHaveAttribute('title', 'No changes to save yet.')
+  })
+
+  it('stays off until the stored semesters have loaded, even after a change', async () => {
+    globalThis.fetch = mock(() => new Promise(() => {}))
+    const { user } = open()
+
+    const year = screen.getAllByRole('textbox')[0]
+    await user.clear(year)
+    await user.type(year, '2027')
+
+    expect(save()).toBeDisabled()
+  })
+
+  it('is on for a year whose semesters are not stored yet, so they can be saved', async () => {
+    globalThis.fetch = createFetchRouter([route([])])
+    open()
+
+    await waitFor(() => expect(save()).not.toBeDisabled())
+    expect(save()).not.toHaveAttribute('title')
+  })
+
+  it('turns on after a change', async () => {
+    globalThis.fetch = createFetchRouter([route(stored)])
+    const { user } = open()
+    await screen.findByDisplayValue('2026')
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled())
+
+    const year = screen.getAllByRole('textbox')[0]
+    await user.clear(year)
+    await user.type(year, '2027')
+
+    await waitFor(() => expect(save()).not.toBeDisabled())
+  })
+
+  it('is on when creating a year, as before', async () => {
+    globalThis.fetch = createFetchRouter([])
+    open('create')
+
+    expect(save()).not.toBeDisabled()
   })
 })
 
