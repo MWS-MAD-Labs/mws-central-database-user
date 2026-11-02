@@ -37,6 +37,7 @@ export type InternLookupResponse = {
   job_position: string;
   job_position_id: string;
   building: string;
+  building_id: string;
   status: InternStatus;
   join_date: string;
   end_date: string;
@@ -57,6 +58,7 @@ export function toInternLookupResponse(person: InternPerson): InternLookupRespon
     job_position: intern.job_position.name,
     job_position_id: intern.job_position_id,
     building: intern.building.name,
+    building_id: intern.building_id,
     status: intern.status,
     // Cache hits may return dates as ISO strings.
     join_date: new Date(intern.join_date).toISOString().slice(0, 10),

@@ -47,7 +47,13 @@ export type EmployeeLookupResponse = {
   unit: string;
   unit_id: string;
   job_position: string;
+  job_position_id: string;
   job_level: string;
+  job_level_id: string;
+  // Ids alongside the names, so consumers (e.g. mws-hub's GPT Code mapping)
+  // can match on a stable id the same way they already match unit_id.
+  building: string;
+  building_id: string;
   // Authoritative teacher and mentor eligibility flag.
   is_teaching_role: boolean;
   status: EmployeeStatus;
@@ -73,7 +79,11 @@ export function toEmployeeLookupResponse(
     unit: employee.unit.name,
     unit_id: employee.unit_id,
     job_position: employee.job_position.name,
+    job_position_id: employee.job_position_id,
     job_level: employee.job_level.name,
+    job_level_id: employee.job_level_id,
+    building: employee.building.name,
+    building_id: employee.building_id,
     is_teaching_role: employee.job_level.is_teaching_role,
     status: employee.status,
     employment_type: employee.employment_type,

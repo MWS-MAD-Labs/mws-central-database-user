@@ -72,6 +72,12 @@ describe("GET /api/internal/employees/lookup", () => {
     expect(body.data.birth_date).toBe("1995-01-01");
     expect(body.data.unit).toBe(masterData.unit.name);
     expect(body.data.job_position).toBe(masterData.position.name);
+    // Ids next to the names, matched on by consumers like mws-hub's GPT Code.
+    expect(body.data.unit_id).toBe(masterData.unit.id);
+    expect(body.data.job_position_id).toBe(masterData.position.id);
+    expect(body.data.job_level_id).toBe(masterData.level.id);
+    expect(body.data.building).toBe(masterData.building.name);
+    expect(body.data.building_id).toBe(masterData.building.id);
     expect(body.data.status).toBe(EmployeeStatus.ACTIVE);
     expect(body.data.gender).toBe(Gender.MALE);
 
