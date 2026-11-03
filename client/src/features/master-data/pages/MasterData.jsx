@@ -1,3 +1,4 @@
+import { ApplicationLogosPanel } from '../../application-access/components/ApplicationLogosPanel.jsx'
 import {
   BriefcaseBusiness,
   Building2,
@@ -237,6 +238,7 @@ export default function MasterData() {
         <div className="space-y-6">
           <MasterResourcePanel resource={scopeResource} />
           <MasterResourcePanel resource={categoryResource} />
+          <ApplicationLogosPanel />
         </div>
       ) : (
         <EmploymentTab

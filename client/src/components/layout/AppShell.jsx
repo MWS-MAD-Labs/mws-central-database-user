@@ -145,7 +145,7 @@ export function AppShell() {
             },
             {
               to: "/master-data?tab=scopes",
-              label: "Scopes & Categories",
+              label: "Scopes, Categories & Logos",
               icon: Tags,
             },
           ],

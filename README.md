@@ -328,11 +328,19 @@ and [`src/middleware/api-client-auth-middleware.ts`](server/src/middleware/api-c
 | `students:consent:read`          | Consent records       |
 | `students:support_contacts:read` | Support assignments   |
 
-## Application Access icons
+## Application Access icons and logos
 
-The icon of an application is picked from the icons the Hub can draw (`HUB_ICONS` in
-`mws-hub/frontend/src/data/hubCategories.ts`). The list lives in `server/src/constants/hub-icons.ts` and
-`client/src/features/application-access/utils/hubIcons.js`, both generated. After the Hub adds or removes an icon:
+The picture of an application is either a logo or an icon, never both. Picking one takes the other off.
+
+**Logos** are kept in Master Data (Scopes, Categories & Logos). A Super Admin uploads a PNG, JPG, WebP or AVIF
+(2 MB at most, 128 px or more on the longest side). The server saves every logo the same way: 256 x 256, transparent,
+WebP, the picture fitted inside with a little room around it. A new logo needs no code change. The Hub fetches the
+picture from `GET /api/internal/applications/{application_id}/logo` and the published applications list carries
+`logo: { version }`. A logo that an application uses cannot be deleted.
+
+**Icons** are the ones the Hub can draw (`HUB_ICONS` in `mws-hub/frontend/src/data/hubCategories.ts`). The list lives in
+`server/src/constants/hub-icons.ts` and `client/src/features/application-access/utils/hubIcons.js`, both generated.
+After the Hub adds or removes an icon:
 
 ```bash
 cd server

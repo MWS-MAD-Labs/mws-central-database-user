@@ -1,9 +1,13 @@
 import { DEFAULT_ICON, HUB_ICONS } from "../utils/hubIcons.js";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { useApplicationLogos } from "../hooks/useApplicationLogos.js";
+import { LogoImage } from "./LogoImage.jsx";
 
 // A small stand-in for the card the Hub will show, so the form has something to look at.
 export function AppCardPreview({ values }) {
   const Icon = HUB_ICONS[values.icon?.trim()] || HUB_ICONS[DEFAULT_ICON];
+  const { logos } = useApplicationLogos();
+  const logo = logos.find((item) => item.id === values.logo_id);
   const name = values.name?.trim();
   const description = values.description?.trim();
   const launch = values.launch_url?.trim();
@@ -14,7 +18,7 @@ export function AppCardPreview({ values }) {
       <div className="min-w-0 overflow-hidden rounded-xl border border-(--mws-line) bg-(--mws-soft) p-4">
         <div className="flex items-start gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-(--mws-burgundy) shadow-sm">
-            <Icon size={20} aria-hidden="true" />
+            {logo ? <LogoImage id={logo.id} version={logo.version} size={28} /> : <Icon size={20} aria-hidden="true" />}
           </span>
           <div className="min-w-0 flex-1">
             <p
