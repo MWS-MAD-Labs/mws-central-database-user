@@ -35,8 +35,30 @@ describe("processLogo", () => {
     await expect(processLogo(Buffer.from("not a picture"))).rejects.toBeInstanceOf(LogoImageError);
     const gif = await sharp({ create: { width: 200, height: 200, channels: 3, background: "#fff" } }).gif().toBuffer();
     await expect(processLogo(gif)).rejects.toBeInstanceOf(LogoImageError);
-    await expect(processLogo(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>'))).rejects.toBeInstanceOf(LogoImageError);
     await expect(processLogo(await png(64, 64))).rejects.toThrow(/too small/);
+  });
+
+  const svg = (body: string, size = 'width="1278" height="1295" viewBox="0 0 1278 1295"') =>
+    Buffer.from(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" ${size}>${body}</svg>`);
+
+  it("takes an SVG: drawn to 256 x 256 transparent WebP, tall or small alike", async () => {
+    for (const buffer of [
+      svg('<rect width="1278" height="1295" fill="#7e1518"/>'),
+      svg('<rect width="40" height="20" fill="#7e1518"/>', 'width="40" height="20"'),
+    ]) {
+      const out = await processLogo(buffer);
+      const meta = await sharp(out.buffer).metadata();
+      expect([meta.format, meta.width, meta.height, meta.hasAlpha]).toEqual(["webp", LOGO_SIZE, LOGO_SIZE, true]);
+    }
+  });
+
+  it("refuses an SVG that runs or reaches out, or has no size", async () => {
+    await expect(processLogo(svg("<script>alert(1)</script>"))).rejects.toThrow(/scripts/);
+    await expect(processLogo(svg('<foreignObject><div>hi</div></foreignObject>'))).rejects.toThrow(/scripts or embedded/);
+    await expect(
+      processLogo(Buffer.from('<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY x SYSTEM "file:///etc/passwd">]><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">&x;</svg>')),
+    ).rejects.toBeInstanceOf(LogoImageError);
+    await expect(processLogo(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>'))).rejects.toBeInstanceOf(LogoImageError);
   });
 });
 

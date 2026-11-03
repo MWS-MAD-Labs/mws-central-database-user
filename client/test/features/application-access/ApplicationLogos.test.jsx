@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { beforeEach, describe, expect, it } from 'bun:test'
 import { screen, waitFor, within } from '@testing-library/react'
 import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
@@ -20,13 +21,26 @@ function routes(extra = []) {
   ]
 }
 
+// What the preview was made from and which addresses were let go, so a picture on a let-go address can be told apart.
+const madeFrom = []
+const letGo = new Set()
+let handedOut = 0
+const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])
+const svgFile = (name) => new File(['<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>'], name, { type: 'image/png' })
+
 beforeEach(() => {
-  URL.createObjectURL = () => 'blob:logo'
-  URL.revokeObjectURL = () => undefined
+  madeFrom.length = 0
+  letGo.clear()
+  handedOut = 0
+  URL.createObjectURL = (blob) => {
+    madeFrom.push(blob.type)
+    return `blob:logo-${++handedOut}`
+  }
+  URL.revokeObjectURL = (address) => letGo.add(address)
 })
 
 function renderPanel() {
-  return renderWithProviders(<ConfirmProvider><ApplicationLogosPanel /></ConfirmProvider>)
+  return renderWithProviders(<StrictMode><ConfirmProvider><ApplicationLogosPanel /></ConfirmProvider></StrictMode>)
 }
 
 describe('ApplicationLogosPanel', () => {
@@ -51,7 +65,7 @@ describe('ApplicationLogosPanel', () => {
     const submit = within(dialog).getByRole('button', { name: 'Add Logo' })
     expect(submit).toBeDisabled()
 
-    await user.upload(within(dialog).getByLabelText('Picture'), new File(['x'], 'northstar.png', { type: 'image/png' }))
+    await user.upload(within(dialog).getByLabelText('Picture'), new File([PNG_BYTES], 'northstar.png', { type: 'image/png' }))
     expect(within(dialog).getByDisplayValue('northstar')).toBeVisible()
     await user.click(submit)
 
@@ -59,6 +73,57 @@ describe('ApplicationLogosPanel', () => {
     expect(post[1].body).toBeInstanceOf(FormData)
     expect(post[1].body.get('name')).toBe('northstar')
     expect(post[1].body.get('file').name).toBe('northstar.png')
+  })
+
+  it('reads what the file is, not its name: an SVG named .png is previewed as an SVG and accepted', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPanel()
+    await screen.findByText('Millennia')
+    await user.click(screen.getByRole('button', { name: 'Add Logo' }))
+    const dialog = screen.getByRole('dialog', { name: 'Add Logo' })
+    await user.upload(within(dialog).getByLabelText('Picture'), svgFile('Logo (1).png'))
+
+    await waitFor(() => expect(within(dialog).getByLabelText('How the logo will look').querySelector('img')).not.toBeNull())
+    expect(madeFrom.at(-1)).toBe('image/svg+xml')
+    expect(within(dialog).getByDisplayValue('Logo (1)')).toBeVisible()
+    expect(within(dialog).getByRole('button', { name: 'Add Logo' })).toBeEnabled()
+  })
+
+  it('says so when the file is not a picture, instead of a broken preview', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPanel()
+    await screen.findByText('Millennia')
+    await user.click(screen.getByRole('button', { name: 'Add Logo' }))
+    const dialog = screen.getByRole('dialog', { name: 'Add Logo' })
+    await user.upload(within(dialog).getByLabelText('Picture'), new File(['just some words'], 'notes.png', { type: 'image/png' }))
+
+    expect(await within(dialog).findByText(/not a picture the server can use/)).toBeVisible()
+    expect(within(dialog).getByLabelText('How the logo will look').querySelector('img')).toBeNull()
+    expect(within(dialog).getByRole('button', { name: 'Add Logo' })).toBeDisabled()
+  })
+
+  it('previews on an address that stays good, and lets go of old ones', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPanel()
+    await screen.findByText('Millennia')
+    await user.click(screen.getByRole('button', { name: 'Add Logo' }))
+    const dialog = screen.getByRole('dialog', { name: 'Add Logo' })
+    const input = within(dialog).getByLabelText('Picture')
+    const preview = () => within(dialog).getByLabelText('How the logo will look').querySelector('img')
+
+    await user.upload(input, new File([PNG_BYTES], 'first.png', { type: 'image/png' }))
+    await waitFor(() => expect(preview()).not.toBeNull())
+    const first = preview().getAttribute('src')
+    expect(letGo.has(first)).toBe(false)
+
+    await user.upload(input, new File([PNG_BYTES], 'second.png', { type: 'image/png' }))
+    await waitFor(() => expect(preview().getAttribute('src')).not.toBe(first))
+    const second = preview().getAttribute('src')
+    expect(letGo.has(first)).toBe(true)
+    expect(letGo.has(second)).toBe(false)
+
+    await user.click(within(dialog).getByRole('button', { name: 'Close Dialog' }))
+    expect(letGo.has(second)).toBe(true)
   })
 
   it('refuses a picture over 2 MB before sending it', async () => {
