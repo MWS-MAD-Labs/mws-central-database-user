@@ -332,7 +332,7 @@ and [`src/middleware/api-client-auth-middleware.ts`](server/src/middleware/api-c
 
 The picture of an application is either a logo or an icon, never both. Picking one takes the other off.
 
-**Logos** are kept in Master Data (Scopes, Categories & Logos). A Super Admin uploads a PNG, JPG, WebP or AVIF
+**Logos** are kept in Master Data (the App Data tab). A Super Admin uploads a PNG, JPG, WebP or AVIF
 (2 MB at most, 128 px or more on the longest side). The server saves every logo the same way: 256 x 256, transparent,
 WebP, the picture fitted inside with a little room around it. A new logo needs no code change. The Hub fetches the
 picture from `GET /api/internal/applications/{application_id}/logo` and the published applications list carries
