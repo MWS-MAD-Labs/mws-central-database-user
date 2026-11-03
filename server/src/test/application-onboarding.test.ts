@@ -312,6 +312,7 @@ describe("application onboarding", () => {
         icon: "Wallet",
         category: null,
         scope: null,
+        logo: null,
         launch_url: "https://onb.example.com/auth/sso",
         logout_url: "https://onb.example.com/auth/logout",
         launch_mode: "sso",
