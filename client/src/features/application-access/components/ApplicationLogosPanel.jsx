@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
-import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { PanelFrame } from "../../master-data/components/PanelFrame.jsx";
@@ -199,15 +198,9 @@ export function ApplicationLogosPanel() {
               <LogoImage id={logo.id} version={logo.version} alt={logo.name} size={56} className="bg-(--mws-soft)" />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-display text-sm font-bold text-(--mws-charcoal)" title={logo.name}>{logo.name}</p>
-                <div className="mt-1">
-                  {logo.used_by.length > 0 ? (
-                    <StatusBadge tone="neutral" title={logo.used_by.map((item) => item.name).join(", ")}>
-                      {`Used By ${logo.used_by.length}`}
-                    </StatusBadge>
-                  ) : (
-                    <span className="text-xs text-(--mws-muted)">Not used</span>
-                  )}
-                </div>
+                <p className="mt-1 text-xs text-(--mws-muted)" title={logo.used_by.map((item) => item.name).join(", ") || undefined}>
+                  {logo.used_by.length > 0 ? `Used by ${logo.used_by.length}` : "Not used"}
+                </p>
               </div>
               <div className="flex shrink-0 gap-1">
                 <Button type="button" variant="ghost" size="icon" aria-label={`Rename ${logo.name}`} title="Rename" onClick={() => setRenaming(logo)}>
