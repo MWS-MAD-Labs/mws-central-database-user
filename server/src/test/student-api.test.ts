@@ -1029,6 +1029,114 @@ describe("Student internal API", () => {
       expect(otherYearBody.data.length).toBe(0);
     });
 
+    describe("enrollment_start_date", () => {
+      async function listed(email: string, nis: string) {
+        const { token } = await ApiClientTest.createWithToken({
+          scopeNames: [READ_SCOPE],
+        });
+        const person = await StudentTest.create({
+          email,
+          nis,
+          currentGradeId: gradeId,
+          joinGradeId: gradeId,
+          joinAcademicYearId: academicYearId,
+          currentClassId: classId,
+        });
+        const get = async () => {
+          const response = await TestRequest.get(
+            `/api/internal/students?current_class_id=${classId}`,
+            undefined,
+            authHeader(token),
+          );
+          const body = await response.json();
+          return body.data.find((item: { nis: string }) => item.nis === nis);
+        };
+        return { person, get };
+      }
+
+      it("should give the start date of the student's active enrollment", async () => {
+        const { person, get } = await listed("start_dated@millennia21.id", "9500420");
+        await EnrollmentTest.create({
+          studentId: person.student!.id,
+          classId,
+          academicYearId,
+          gradeLevel: "TEST_STUAPI_GRADE",
+          startDate: new Date("2026-08-03T00:00:00.000Z"),
+        });
+
+        expect((await get()).enrollment_start_date).toBe("2026-08-03T00:00:00.000Z");
+      });
+
+      it("should be null when the enrollment has no start date, or there is none", async () => {
+        const { person, get } = await listed("no_start@millennia21.id", "9500421");
+        expect((await get()).enrollment_start_date).toBeNull();
+
+        await EnrollmentTest.create({
+          studentId: person.student!.id,
+          classId,
+          academicYearId,
+          gradeLevel: "TEST_STUAPI_GRADE",
+        });
+        expect((await get()).enrollment_start_date).toBeNull();
+      });
+
+      it("should ignore enrollments that are closed or deleted", async () => {
+        const { person, get } = await listed("closed_only@millennia21.id", "9500422");
+        await EnrollmentTest.create({
+          studentId: person.student!.id,
+          classId,
+          academicYearId,
+          gradeLevel: "TEST_STUAPI_GRADE",
+          status: EnrollmentStatus.COMPLETED,
+          startDate: new Date("2026-08-03T00:00:00.000Z"),
+        });
+        const otherYear = await prismaClient.academicYear.create({
+          data: {
+            name: "TEST_STUAPI_START_YEAR",
+            status: "UPCOMING",
+            start_date: new Date("2102-01-01"),
+          },
+        });
+        await EnrollmentTest.create({
+          studentId: person.student!.id,
+          classId,
+          academicYearId: otherYear.id,
+          gradeLevel: "TEST_STUAPI_GRADE",
+          startDate: new Date("2026-09-01T00:00:00.000Z"),
+          deletedAt: new Date(),
+        });
+
+        expect((await get()).enrollment_start_date).toBeNull();
+      });
+
+      it("should take the newest active enrollment when there are several", async () => {
+        const { person, get } = await listed("two_active@millennia21.id", "9500423");
+        const nextYear = await prismaClient.academicYear.create({
+          data: {
+            name: "TEST_STUAPI_NEXT_YEAR",
+            status: "UPCOMING",
+            start_date: new Date("2103-01-01"),
+          },
+        });
+        await EnrollmentTest.create({
+          studentId: person.student!.id,
+          classId,
+          academicYearId,
+          gradeLevel: "TEST_STUAPI_GRADE",
+          startDate: new Date("2026-08-03T00:00:00.000Z"),
+        });
+        await EnrollmentTest.create({
+          studentId: person.student!.id,
+          classId,
+          academicYearId: nextYear.id,
+          gradeLevel: "TEST_STUAPI_GRADE",
+          startDate: new Date("2027-07-12T00:00:00.000Z"),
+        });
+
+        expect((await get()).enrollment_start_date).toBe("2027-07-12T00:00:00.000Z");
+      });
+    });
+
     it("should exclude soft-deleted students", async () => {
       const { token } = await ApiClientTest.createWithToken({
         scopeNames: [READ_SCOPE],

@@ -91,6 +91,27 @@ export function toStudentLookupResponse(
   };
 }
 
+// One item of the internal student list: the profile, plus when the current enrollment began.
+export type StudentListItemResponse = StudentLookupResponse & {
+  enrollment_start_date: string | null;
+};
+
+export type StudentListPerson = StudentLookupPerson & {
+  student: NonNullable<StudentLookupPerson["student"]> & {
+    enrollments: Pick<StudentClassEnrollment, "start_date">[];
+  };
+};
+
+export function toStudentListItem(
+  person: StudentListPerson,
+): StudentListItemResponse {
+  return {
+    ...toStudentLookupResponse(person),
+    enrollment_start_date:
+      person.student.enrollments[0]?.start_date?.toISOString() ?? null,
+  };
+}
+
 // Minimal active teacher contacts for external consumers.
 export type StudentSupportContactsResponse = {
   current_class: string | null;

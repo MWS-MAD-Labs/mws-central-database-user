@@ -15,6 +15,7 @@ import { paginate, type Pageable } from "../model/page-model";
 import {
   toStudentAcademicHistoryEntry,
   toStudentConsentStatusEntry,
+  toStudentListItem,
   toStudentLookupResponse,
   toStudentRosterExportRow,
   toStudentSupportContactsResponse,
@@ -22,6 +23,8 @@ import {
   type StudentConsentStatusEntry,
   type StudentHealthResponse,
   type StudentListRequest,
+  type StudentListItemResponse,
+  type StudentListPerson,
   type StudentLookupPerson,
   type StudentLookupRequest,
   type StudentLookupResponse,
@@ -108,7 +111,7 @@ export class StudentApiService {
     client: ApiClientVariables,
     request: StudentListRequest,
     context: AuditRequestContext = {},
-  ): Promise<Pageable<StudentLookupResponse>> {
+  ): Promise<Pageable<StudentListItemResponse>> {
     const listRequest = Validation.validate(StudentApiValidation.LIST, request);
 
     // Full lifecycle states require an explicit status filter.
@@ -147,12 +150,25 @@ export class StudentApiService {
             orderBy: { created_at: "desc" },
             include: {
               student: {
-                include: { current_grade: true, current_class: true },
+                include: {
+                  current_grade: true,
+                  current_class: true,
+                  // The newest active enrollment is the one the student is in now.
+                  enrollments: {
+                    where: {
+                      enrollment_status: EnrollmentStatus.ACTIVE,
+                      deleted_at: null,
+                    },
+                    orderBy: { created_at: "desc" },
+                    take: 1,
+                    select: { start_date: true },
+                  },
+                },
               },
             },
           })
           .then((persons) =>
-            (persons as StudentLookupPerson[]).map(toStudentLookupResponse),
+            (persons as StudentListPerson[]).map(toStudentListItem),
           ),
     });
   }
