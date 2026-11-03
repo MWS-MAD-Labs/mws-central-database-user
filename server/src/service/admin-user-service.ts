@@ -6,7 +6,11 @@ import {
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
-import { toAdminResponse, type AdminResponse } from "../model/auth-model";
+import {
+  toAdminResponse,
+  type AdminEmployeeProfile,
+  type AdminResponse,
+} from "../model/auth-model";
 import { headOfCarePersonIds, isHeadOfCare } from "../utils/change-request-approver";
 import type {
   AdminUserSortField,
@@ -1684,8 +1688,30 @@ export class AdminUserService {
             },
           })
           .then(async (admins) => {
-            const headOfCare = await headOfCarePersonIds(
-              admins.map((admin) => admin.person_id),
+            const personIds = admins
+              .map((admin) => admin.person_id)
+              .filter((personId): personId is string => Boolean(personId));
+            const [headOfCare, employeeProfiles] = await Promise.all([
+              headOfCarePersonIds(admins.map((admin) => admin.person_id)),
+              personIds.length
+                ? prismaClient.employee.findMany({
+                    where: { person_id: { in: personIds }, deleted_at: null },
+                    select: {
+                      person_id: true,
+                      job_position: { select: { name: true } },
+                      job_position_id: true,
+                      job_level_id: true,
+                      building_id: true,
+                      education_level: true,
+                    },
+                  })
+                : Promise.resolve([]),
+            ]);
+            const employeeProfileByPersonId = new Map<string, AdminEmployeeProfile>(
+              employeeProfiles.map(({ person_id, ...profile }) => [
+                person_id,
+                profile,
+              ]),
             );
             const inactiveIds = admins
               .filter((admin) => !admin.is_active)
@@ -1696,6 +1722,9 @@ export class AdminUserService {
                 const response = await toAdminResponse(
                   admin,
                   admin.person_id ? headOfCare.has(admin.person_id) : false,
+                  admin.person_id
+                    ? employeeProfileByPersonId.get(admin.person_id) ?? null
+                    : null,
                 );
                 const trace = traces.get(admin.id) ?? 0;
                 return {

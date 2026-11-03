@@ -340,14 +340,18 @@ describe("POST /api/auth/google", () => {
 });
 
 describe("GET /api/auth/me", () => {
+  let masterData: Awaited<ReturnType<typeof MasterDataTest.create>>;
+
   beforeEach(async () => {
     await AdminUserTest.delete();
+    await EmployeeTest.delete();
     await MasterDataTest.delete();
-    await MasterDataTest.create();
+    masterData = await MasterDataTest.create();
   });
 
   afterEach(async () => {
     await AdminUserTest.delete();
+    await EmployeeTest.delete();
     await MasterDataTest.delete();
   });
 
@@ -362,6 +366,40 @@ describe("GET /api/auth/me", () => {
     expect(body.data.email).toBe("test_superadmin@millennia21.id");
     expect(body.data.role).toBe(AdminRole.SUPER_ADMIN);
     expect(body.data.admin_no).toMatch(/^ADM-\d{5,}$/);
+    expect(body.data.job_position).toBeNull();
+    expect(body.data.job_position_id).toBeNull();
+    expect(body.data.job_level_id).toBeNull();
+    expect(body.data.building_id).toBeNull();
+    expect(body.data.education_level).toBeNull();
+  });
+
+  it("should include linked employee job and education fields", async () => {
+    const employeePerson = await EmployeeTest.create({
+      email: "test_auth_me_employee@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    await prismaClient.employee.update({
+      where: { id: employeePerson.employee!.id },
+      data: { education_level: "S1" },
+    });
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await prismaClient.adminUser.update({
+      where: { id: "test-super-admin-id" },
+      data: { person_id: employeePerson.id },
+    });
+
+    const response = await TestRequest.get("/api/auth/me", accessToken);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.job_position).toBe(masterData.position.name);
+    expect(body.data.job_position_id).toBe(masterData.position.id);
+    expect(body.data.job_level_id).toBe(masterData.level.id);
+    expect(body.data.building_id).toBe(masterData.building.id);
+    expect(body.data.education_level).toBe("S1");
   });
 
   it("should reject if no access token provided", async () => {
