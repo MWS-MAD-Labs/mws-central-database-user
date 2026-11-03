@@ -1,3 +1,4 @@
+import { ApplicationLogoService } from "./application-logo-service";
 import { checkOneApplicationDetailed, confirmSignIn, healthOf, type ApplicationHealth, type HealthCredential } from "./application-health";
 import { AdminRole, ApiCredentialStatus, HubSecretMode, ApplicationLaunchMode, ApplicationSessionMode, ApplicationPermissionSource, AuditAction, AuditSource, IntegrationProfileStatus } from "../generated/prisma/client";
 import type { AdminUser } from "../generated/prisma/client";
@@ -36,6 +37,7 @@ export type ApplicationDetail = {
   name: string;
   description: string | null;
   icon: string | null;
+  logo_id: string | null;
   category: string | null;
   scope: string | null;
   launch_url: string | null;
@@ -156,6 +158,7 @@ const FIELD_LABEL: Record<string, string> = {
   name: "name",
   description: "description",
   icon: "icon",
+  logo_id: "logo",
   category: "category",
   scope: "scope",
   launch_url: "address",
@@ -239,11 +242,22 @@ function cardStatus(status: HubCardStatus): ApplicationDetail["hub_status"] {
   return CARD_STATUS[status];
 }
 
+// One picture at a time: a logo replaces the icon and an icon replaces the logo. Emptying a field takes it off.
+function pictureChange(input: { icon?: string | null; logo_id?: string | null }) {
+  if (input.logo_id) return { logo_id: input.logo_id, icon: null };
+  if (input.icon) return { icon: input.icon, logo_id: null };
+  return {
+    ...(input.icon !== undefined && { icon: null }),
+    ...(input.logo_id !== undefined && { logo_id: null }),
+  };
+}
+
 function toDetail(row: {
   application_id: string;
   name: string;
   description: string | null;
   icon: string | null;
+  logo_id: string | null;
   category: string | null;
   scope: string | null;
   launch_url: string | null;
@@ -261,6 +275,7 @@ function toDetail(row: {
     name: row.name,
     description: row.description,
     icon: row.icon,
+    logo_id: row.logo_id,
     category: row.category,
     scope: row.scope,
     launch_url: row.launch_url,
@@ -422,6 +437,7 @@ export class ApplicationOnboardingService {
     const input = Validation.validate(ApplicationValidation.UPDATE, request);
     const before = await findApplication(input.application_id);
     await ApplicationTaxonomyService.assertKnown(input);
+    if (input.logo_id) await ApplicationLogoService.assertExists(input.logo_id);
     if (input.launch_url) await assertAddressFree(input.launch_url, before.application_id);
     // The Hub is always called HUB. An older Hub row with another spelling can be put right, nothing else.
     if (input.application_id === hubApplicationId() && input.name !== undefined && input.name !== before.name && input.name !== "HUB") {
@@ -430,7 +446,7 @@ export class ApplicationOnboardingService {
     const data = {
       ...(input.name !== undefined && { name: input.name }),
       ...(input.description !== undefined && { description: input.description || null }),
-      ...(input.icon !== undefined && { icon: input.icon || null }),
+      ...pictureChange(input),
       ...(input.category !== undefined && { category: input.category || null }),
       ...(input.scope !== undefined && { scope: input.scope || null }),
       ...(input.uses_hub !== undefined && { uses_hub: input.uses_hub }),
@@ -1164,17 +1180,30 @@ export class ApplicationOnboardingService {
     return { ...summary, connection };
   }
 
+  // The logo of a published application, for the Hub.
+  static async publishedLogo(applicationId: string) {
+    const row = await prismaClient.application.findFirst({
+      where: { application_id: applicationId, published: true, logo_id: { not: null } },
+      select: { logo_id: true },
+    });
+    if (!row?.logo_id) throw new ResponseError(404, "This application has no logo");
+    return ApplicationLogoService.image(row.logo_id);
+  }
+
   // What the Hub reads: published applications only, nothing about people.
   static async listPublished() {
     const rows = await prismaClient.application.findMany({
       where: { published: true, launch_url: { not: null } },
       orderBy: { name: "asc" },
+      include: { logo: { select: { version: true } } },
     });
     return rows.map((row) => ({
       id: row.application_id,
       name: row.name,
       description: row.description,
       icon: row.icon,
+      // The picture, when it has one. The Hub fetches it from /api/internal/applications/:id/logo, by version.
+      logo: row.logo ? { version: row.logo.version } : null,
       category: row.category,
       scope: row.scope,
       launch_url: row.launch_url,

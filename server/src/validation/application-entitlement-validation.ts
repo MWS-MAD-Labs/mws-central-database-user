@@ -67,6 +67,8 @@ const applicationDetails = {
     .refine((value) => value === "" || isHubIcon(value), "Pick an icon from the list")
     .optional()
     .nullable(),
+  // The id of a logo in the master data. When set it replaces the icon. Empty or null takes the logo off.
+  logo_id: z.string().trim().max(64, "Logo is not valid").optional().nullable(),
   // Keys from the master data lists, checked against them when saved.
   category: z.string().trim().max(64, "Category is too long").optional().nullable(),
   scope: z.string().trim().max(64, "Scope is too long").optional().nullable(),

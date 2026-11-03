@@ -58,6 +58,15 @@ export class ApplicationEntitlementApiController {
     return c.json({ success: true, data: await ApplicationOnboardingService.listPublished() });
   }
 
+  static async publishedLogo(c: Context<{ Variables: ApiClientVariables }>) {
+    const { buffer, contentType, version } = await ApplicationOnboardingService.publishedLogo(c.req.param("applicationId")!);
+    const tag = `"v${version}"`;
+    if (c.req.header("if-none-match") === tag) return new Response(null, { status: 304, headers: { ETag: tag } });
+    return new Response(new Uint8Array(buffer), {
+      headers: { "Content-Type": contentType, "Cache-Control": "private, max-age=300", ETag: tag },
+    });
+  }
+
   static async taxonomy(c: Context<{ Variables: ApiClientVariables }>) {
     return c.json({ success: true, data: await ApplicationTaxonomyService.list() });
   }

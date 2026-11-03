@@ -164,6 +164,14 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
+    path: "/api/internal/applications/{application_id}/logo",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Logo of an application",
+    group: "Application Access",
+    purpose: "Gets the picture of a published application as a 256 x 256 WebP image, for the card in the Hub. Answers 304 when the version has not changed.",
+  },
+  {
+    method: "GET",
     path: "/api/internal/application-taxonomy",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
     title: "Categories and scopes of applications",

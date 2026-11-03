@@ -1,3 +1,4 @@
+import { ApplicationLogoService } from "./application-logo-service";
 import { addressConflict, isLocalHost, originSharedWith } from "../utils/application-address";
 import { healthOf } from "./application-health";
 import { createHash, randomBytes } from "crypto";
@@ -2055,6 +2056,7 @@ export class ApplicationAccessService {
       throw new ResponseError(400, "Add the Hub first. Every application is given its address");
     }
     await ApplicationTaxonomyService.assertKnown(input);
+    if (input.logo_id) await ApplicationLogoService.assertExists(input.logo_id);
     if (input.launch_url) await assertAddressFree(input.launch_url);
     await resolveOrganizationId(input.application_id);
     const organizationRow = await prismaClient.applicationOrganization.findUniqueOrThrow({
@@ -2065,7 +2067,9 @@ export class ApplicationAccessService {
         application_id: input.application_id,
         name: input.name ?? input.application_id,
         description: input.description || null,
-        icon: input.icon || null,
+        // One picture at a time: a logo replaces the icon.
+        icon: input.logo_id ? null : input.icon || null,
+        logo_id: input.logo_id || null,
         category: input.category || null,
         scope: input.scope || null,
         launch_url: input.launch_url || null,

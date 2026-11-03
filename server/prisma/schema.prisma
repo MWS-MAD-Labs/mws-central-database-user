@@ -344,6 +344,9 @@ enum AuditAction {
   API_TOKEN_CREATE
   API_TOKEN_REVOKE
   API_TOKEN_DELETE
+  CREATE_APPLICATION_LOGO
+  UPDATE_APPLICATION_LOGO
+  DELETE_APPLICATION_LOGO
   API_TOKEN_ROTATE
   API_TOKEN_UPDATE_SCOPES
   APPLICATION_ENTITLEMENT_GRANT
@@ -1808,12 +1811,33 @@ enum ApplicationSessionMode {
   SHARED
 }
 
+// A logo anyone with the right to manage applications can pick. Always 256 x 256, transparent, WebP (see processLogo).
+model ApplicationLogo {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  object_key   String
+  content_type String
+  width        Int
+  height       Int
+  bytes        Int
+  // Part of the address the Hub caches the image by.
+  version      Int           @default(1)
+  created_at   DateTime      @default(now())
+  updated_at   DateTime      @updatedAt
+  applications Application[]
+
+  @@map("application_logos")
+}
+
 model Application {
   id                        String                 @id @default(cuid())
   application_id            String                 @unique
   name                      String
   description               String?
   icon                      String?
+  // A picture from the master data. When set it is shown instead of the icon.
+  logo_id                   String?
+  logo                      ApplicationLogo?       @relation(fields: [logo_id], references: [id], onDelete: SetNull)
   category                  String?
   // The product space, like Safespace. Optional. Both hold the key of a row in the master data.
   scope                     String?
