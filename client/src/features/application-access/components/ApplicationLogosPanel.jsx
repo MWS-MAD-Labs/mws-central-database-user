@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ImagePlus, Pencil, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
@@ -9,16 +9,15 @@ import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { PanelFrame } from "../../master-data/components/PanelFrame.jsx";
 import { applicationLogosApi } from "../api/applicationLogosApi.js";
+import { sniffImageType } from "../utils/imageSniff.js";
 import { LOGOS_KEY, useApplicationLogos } from "../hooks/useApplicationLogos.js";
 import { LogoImage } from "./LogoImage.jsx";
 
-const ACCEPT = "image/png,image/jpeg,image/webp,image/avif";
+const ACCEPT = "image/png,image/jpeg,image/webp,image/avif,image/svg+xml,.svg";
 const MAX_BYTES = 2 * 1024 * 1024;
 
 // How the picture will sit in the saved logo: a square, the picture fitted inside with a little room around it.
-function SavedLook({ file }) {
-  const address = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
-  useEffect(() => () => (address ? URL.revokeObjectURL(address) : undefined), [address]);
+function SavedLook({ address }) {
   return (
     <div
       className="flex size-32 items-center justify-center rounded-xl border border-(--mws-line) bg-[conic-gradient(#f3efef_25%,#fff_0_50%,#f3efef_0_75%,#fff_0)] bg-size-[16px_16px] p-[5%]"
@@ -34,6 +33,19 @@ function UploadDialog({ onClose }) {
   const [name, setName] = useState("");
   const [file, setFile] = useState(null);
   const [problem, setProblem] = useState("");
+  // The preview address is made when a file is picked and let go when it is replaced or the dialog closes.
+  const [address, setAddress] = useState(null);
+  const addressRef = useRef(null);
+  useEffect(() => () => {
+    if (addressRef.current) URL.revokeObjectURL(addressRef.current);
+  }, []);
+
+  function showPreview(picked, type) {
+    if (addressRef.current) URL.revokeObjectURL(addressRef.current);
+    // The type is what the file is, not what its name says, or the browser would not draw it.
+    addressRef.current = picked ? URL.createObjectURL(new Blob([picked], { type })) : null;
+    setAddress(addressRef.current);
+  }
 
   const mutation = useMutation({
     mutationFn: () => applicationLogosApi.upload({ name: name.trim(), file }),
@@ -45,11 +57,27 @@ function UploadDialog({ onClose }) {
     onError: (error) => showErrorToast(error, "The logo could not be added."),
   });
 
-  function choose(event) {
+  async function choose(event) {
     const picked = event.target.files?.[0] ?? null;
-    setProblem(picked && picked.size > MAX_BYTES ? "The picture is too large, 2 MB at most." : "");
-    setFile(picked && picked.size <= MAX_BYTES ? picked : null);
-    if (picked && !name.trim()) setName(picked.name.replace(/\.[^.]+$/, "").slice(0, 64));
+    setFile(null);
+    showPreview(null);
+    if (!picked) {
+      setProblem("");
+      return;
+    }
+    if (picked.size > MAX_BYTES) {
+      setProblem("The picture is too large, 2 MB at most.");
+      return;
+    }
+    const type = await sniffImageType(picked);
+    if (!type) {
+      setProblem("This file is not a picture the server can use. Use a PNG, JPG, WebP, AVIF or SVG.");
+      return;
+    }
+    setProblem("");
+    setFile(picked);
+    showPreview(picked, type);
+    if (!name.trim()) setName(picked.name.replace(/\.[^.]+$/, "").slice(0, 64));
   }
 
   return (
@@ -68,12 +96,12 @@ function UploadDialog({ onClose }) {
       }
     >
       <div className="flex flex-col gap-4 sm:flex-row">
-        <SavedLook file={file} />
+        <SavedLook address={address} />
         <div className="min-w-0 flex-1 space-y-4">
           <Field label="Name" required counter={{ value: name, max: 64, count: (value) => value.length }}>
             <TextInput value={name} maxLength={64} onChange={(event) => setName(event.target.value)} placeholder="e.g. Millennia" />
           </Field>
-          <Field label="Picture" required hint="PNG, JPG, WebP or AVIF, 2 MB at most and at least 128 px on the longest side." error={problem}>
+          <Field label="Picture" required hint="PNG, JPG, WebP, AVIF or SVG, 2 MB at most. A PNG or JPG needs at least 128 px on the longest side." error={problem}>
             <input
               type="file"
               accept={ACCEPT}

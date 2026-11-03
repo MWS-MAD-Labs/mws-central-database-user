@@ -52,15 +52,31 @@ const LOGO_MIN_EDGE = 128;
 const LOGO_MAX_PIXELS = 4096 * 4096;
 const LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/avif"]);
 
+// An SVG is text. It is let in when it starts like one and carries nothing that runs or reaches out: scripts, entities
+// (which can pull in files) and embedded pages. It is only ever drawn to pixels here, never served as it came.
+function looksLikeSvg(buffer: Buffer): boolean {
+  const head = buffer.subarray(0, 2048).toString("utf8").replace(/^\uFEFF/, "").trimStart();
+  return /^(<\?xml[^>]*\?>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.test(head);
+}
+
+function assertSafeSvg(buffer: Buffer) {
+  const text = buffer.toString("utf8");
+  if (/<script|<!ENTITY|<foreignObject/i.test(text)) {
+    throw new LogoImageError("This SVG has scripts or embedded content. Export it again as a plain SVG");
+  }
+}
+
 // Every logo ends up the same: 256 x 256, transparent, WebP. The picture is fitted inside with a little room around
 // it, never cropped or stretched, so a wide logo and a tall logo sit alike on a card.
 export async function processLogo(
   buffer: Buffer,
 ): Promise<{ buffer: Buffer; width: number; height: number }> {
+  const svg = looksLikeSvg(buffer);
   const type = detectImageMimeType(buffer);
-  if (!type || !LOGO_TYPES.has(type)) {
-    throw new LogoImageError("Use a PNG, JPG, WebP or AVIF picture");
+  if (!svg && (!type || !LOGO_TYPES.has(type))) {
+    throw new LogoImageError("Use a PNG, JPG, WebP, AVIF or SVG picture");
   }
+  if (svg) assertSafeSvg(buffer);
   let source: Metadata;
   try {
     source = await sharp(buffer, { limitInputPixels: LOGO_MAX_PIXELS }).metadata();
@@ -68,11 +84,17 @@ export async function processLogo(
     throw new LogoImageError("That picture could not be read, or it is too large (4096 px at most)");
   }
   const longest = Math.max(source.width ?? 0, source.height ?? 0);
-  if (longest < LOGO_MIN_EDGE) {
+  // A drawing has no pixels of its own to run short of, so only a photo or a scan needs enough of them.
+  if (!svg && longest < LOGO_MIN_EDGE) {
     throw new LogoImageError(`The picture is too small, its longest side has to be at least ${LOGO_MIN_EDGE} px`);
   }
+  if (svg && longest === 0) {
+    throw new LogoImageError("That SVG has no size. Export it again with a width and a height");
+  }
   const inner = LOGO_SIZE - LOGO_PADDING * 2;
-  const fitted = await sharp(buffer, { limitInputPixels: LOGO_MAX_PIXELS })
+  // A small drawing is drawn larger first so it stays sharp when it is fitted.
+  const density = svg ? Math.max(72, Math.min(300, Math.ceil((72 * inner * 2) / longest))) : undefined;
+  const fitted = await sharp(buffer, { limitInputPixels: LOGO_MAX_PIXELS, ...(density ? { density } : {}) })
     .rotate()
     .resize({ width: inner, height: inner, fit: "inside" })
     .ensureAlpha()
