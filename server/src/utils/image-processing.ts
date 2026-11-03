@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import sharp, { type Metadata } from "sharp";
 
 // Validate magic bytes, not the client-supplied Content-Type.
 const IMAGE_SIGNATURES: { mimeType: string; bytes: number[] }[] = [
@@ -45,3 +45,52 @@ export async function processPhotoForGoogle(buffer: Buffer): Promise<Buffer> {
     .jpeg({ quality: 85 })
     .toBuffer();
 }
+
+export const LOGO_SIZE = 256;
+const LOGO_PADDING = 12;
+const LOGO_MIN_EDGE = 128;
+const LOGO_MAX_PIXELS = 4096 * 4096;
+const LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/avif"]);
+
+// Every logo ends up the same: 256 x 256, transparent, WebP. The picture is fitted inside with a little room around
+// it, never cropped or stretched, so a wide logo and a tall logo sit alike on a card.
+export async function processLogo(
+  buffer: Buffer,
+): Promise<{ buffer: Buffer; width: number; height: number }> {
+  const type = detectImageMimeType(buffer);
+  if (!type || !LOGO_TYPES.has(type)) {
+    throw new LogoImageError("Use a PNG, JPG, WebP or AVIF picture");
+  }
+  let source: Metadata;
+  try {
+    source = await sharp(buffer, { limitInputPixels: LOGO_MAX_PIXELS }).metadata();
+  } catch {
+    throw new LogoImageError("That picture could not be read, or it is too large (4096 px at most)");
+  }
+  const longest = Math.max(source.width ?? 0, source.height ?? 0);
+  if (longest < LOGO_MIN_EDGE) {
+    throw new LogoImageError(`The picture is too small, its longest side has to be at least ${LOGO_MIN_EDGE} px`);
+  }
+  const inner = LOGO_SIZE - LOGO_PADDING * 2;
+  const fitted = await sharp(buffer, { limitInputPixels: LOGO_MAX_PIXELS })
+    .rotate()
+    .resize({ width: inner, height: inner, fit: "inside" })
+    .ensureAlpha()
+    .png()
+    .toBuffer();
+  const output = await sharp({
+    create: {
+      width: LOGO_SIZE,
+      height: LOGO_SIZE,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([{ input: fitted, gravity: "centre" }])
+    .webp({ quality: 90, alphaQuality: 100 })
+    .toBuffer();
+  return { buffer: output, width: LOGO_SIZE, height: LOGO_SIZE };
+}
+
+// A picture that cannot become a logo. The message is meant to be shown to the person who uploaded it.
+export class LogoImageError extends Error {}

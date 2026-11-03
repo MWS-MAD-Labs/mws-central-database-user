@@ -81,6 +81,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     description: initial?.description ?? "",
     // An icon the Hub does not know falls back to the default, so it is not carried over.
     icon: HUB_ICON_NAMES.includes(initial?.icon) ? initial.icon : "",
+    // A logo of the master data replaces the icon.
+    logo_id: initial?.logo_id ?? "",
     category: initial?.category ?? "",
     scope: initial?.scope ?? "",
     hub_status: initial?.hub_status ?? "active",
@@ -262,6 +264,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       name: tidyText(values.name),
       description: tidyText(values.description),
       icon: values.icon.trim(),
+      // Only sent when there is one, or when one is being taken off.
+      ...(values.logo_id || initial?.logo_id ? { logo_id: values.logo_id } : {}),
       category: values.category,
       scope: values.scope,
       hub_status: values.hub_status,
@@ -375,7 +379,12 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
             />
           </Field>
           <Field label="Icon" hint="The picture on the Hub card.">
-            <IconPicker value={values.icon} onChange={(icon) => setValues((current) => ({ ...current, icon }))} />
+            <IconPicker
+              value={values.icon}
+              logoId={values.logo_id}
+              onChange={(icon) => setValues((current) => ({ ...current, icon, logo_id: "" }))}
+              onPickLogo={(logoId) => setValues((current) => ({ ...current, logo_id: logoId, icon: "" }))}
+            />
           </Field>
           <Field label="Status" hint="Maintenance and Coming Soon keep the card from opening and say why.">
             <SearchableSelect

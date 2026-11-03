@@ -65,3 +65,9 @@ applicationCatalogApiRouter.get(
   requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
   (c) => ApplicationEntitlementApiController.publishedApplications(c),
 );
+
+applicationCatalogApiRouter.get(
+  "/:applicationId/logo",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.publishedLogo(c),
+);
