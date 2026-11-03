@@ -48,7 +48,7 @@ describe('ApplicationLogosPanel', () => {
     globalThis.fetch = createFetchRouter(routes())
     renderPanel()
     expect(await screen.findByText('Millennia')).toBeVisible()
-    expect(screen.getByText('Used By 2')).toBeVisible()
+    expect(screen.getByText('Used by 2')).toBeVisible()
     expect(screen.getByText('Safespace')).toBeVisible()
     expect(screen.getByText('Not used')).toBeVisible()
   })
