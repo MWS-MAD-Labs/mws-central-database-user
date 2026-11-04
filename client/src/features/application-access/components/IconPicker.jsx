@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Search, Upload } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../../lib/cn.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -77,6 +77,19 @@ function UploadTab({ logos, logoId, onChoose }) {
   const [file, setFile] = useState(null);
   const [name, setName] = useState("");
   const [problem, setProblem] = useState("");
+  // Preview of the picked file, let go when replaced or when the tab closes.
+  const [preview, setPreview] = useState(null);
+  const previewRef = useRef(null);
+  useEffect(() => () => {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+  }, []);
+
+  function showPreview(picked, type) {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    // Built from the real type, so an SVG named .png still draws.
+    previewRef.current = picked ? URL.createObjectURL(new Blob([picked], { type })) : null;
+    setPreview(previewRef.current);
+  }
 
   const mutation = useMutation({
     mutationFn: () => applicationLogosApi.upload({ name: name.trim(), file }),
@@ -92,8 +105,9 @@ function UploadTab({ logos, logoId, onChoose }) {
     const picked = event.target.files?.[0] ?? null;
     setFile(null);
     setProblem("");
+    showPreview(null);
     if (!picked) return;
-    const { problem: reason } = await checkLogoFile(picked);
+    const { type, problem: reason } = await checkLogoFile(picked);
     if (reason) {
       setProblem(reason);
       // Lets the same file be picked again after fixing it.
@@ -101,6 +115,7 @@ function UploadTab({ logos, logoId, onChoose }) {
       return;
     }
     setFile(picked);
+    showPreview(picked, type);
     if (!name.trim()) setName(picked.name.replace(/\.[^.]+$/, "").slice(0, 64));
   }
 
@@ -136,7 +151,13 @@ function UploadTab({ logos, logoId, onChoose }) {
         />
         <p className={cn("text-xs", problem ? "text-[#a43c41]" : "text-(--mws-muted)")}>{problem || LOGO_HINT}</p>
         {file ? (
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <span
+              aria-label="Logo preview"
+              className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-(--mws-line) bg-[conic-gradient(#f3efef_25%,#fff_0_50%,#f3efef_0_75%,#fff_0)] bg-size-[10px_10px] p-1"
+            >
+              {preview ? <img src={preview} alt="" className="size-full object-contain" /> : null}
+            </span>
             <input
               aria-label="Logo name"
               value={name}

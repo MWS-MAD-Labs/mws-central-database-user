@@ -1820,8 +1820,8 @@ model ApplicationLogo {
   width        Int
   height       Int
   bytes        Int
-  // Part of the address the Hub caches the image by.
-  version      Int           @default(1)
+  // The Hub caches the image by application and this number, so it is unique across logos: picking another logo changes it.
+  version      Int           @default(autoincrement())
   created_at   DateTime      @default(now())
   updated_at   DateTime      @updatedAt
   applications Application[]
