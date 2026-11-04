@@ -18,3 +18,16 @@ export async function sniffImageType(file) {
   const text = new TextDecoder().decode(head).replace(/^\uFEFF/, "").trimStart();
   return SVG_START.test(text) ? "image/svg+xml" : null;
 }
+
+// Logo uploads, the same rule in the form and in App Data. JPG has no transparency, so only SVG and PNG.
+export const LOGO_ACCEPT = ".svg,image/svg+xml,.png,image/png";
+export const LOGO_HINT = "SVG or PNG, 2 MB at most. A PNG needs at least 128 px on the longest side.";
+const LOGO_TYPES = new Set(["image/svg+xml", "image/png"]);
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+
+// The real type of a logo file, or the problem with it.
+export async function checkLogoFile(file) {
+  if (file.size > LOGO_MAX_BYTES) return { problem: "The file is too large, 2 MB at most." };
+  const type = await sniffImageType(file);
+  return LOGO_TYPES.has(type) ? { type } : { problem: "Only SVG or PNG files can be used as a logo." };
+}

@@ -378,7 +378,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
               placeholder="No category"
             />
           </Field>
-          <Field label="Icon" hint="The picture on the Hub card.">
+          <Field label="Logo" hint="The picture on the Hub card. Pick an icon or upload a logo.">
             <IconPicker
               value={values.icon}
               logoId={values.logo_id}
