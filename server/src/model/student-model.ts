@@ -113,7 +113,7 @@ export type CreateStudentRequest = {
   graduation_grade?: string;
   leave_year?: string;
   sn?: boolean;
-  // Optional create-time summary. Stored as a sensitive SPECIAL_NEEDS health note.
+  // Optional create-time Special Needs profile; it also marks the student Special Needs.
   special_needs_profile?: SpecialNeedsProfileRequest;
 
   // The parent or guardian who is the first contact. Saved with the student, as the primary one.

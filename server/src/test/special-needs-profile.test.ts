@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, setSystemTime } from "bun:test";
 import { AdminUserTest, AuditLogTest, EmployeeTest, MasterDataTest, GradeTest, StudentTest, TestRequest } from "./test-utils";
 import { prismaClient } from "../lib/prisma";
 import { StudentSupportRole } from "../generated/prisma/client";
+import { SpecialNeedsProfileValidation } from "../validation/special-needs-profile-validation";
 
 const profile = (over: Record<string, unknown> = {}) => ({
   needs: [
@@ -182,6 +183,24 @@ describe("Special Needs profile", () => {
     expect(response.status).toBe(400);
     expect(await prismaClient.student.findUnique({ where: { id: studentId }, select: { sn: true } })).toEqual({ sn: true });
     expect(await prismaClient.studentSpecialNeedsProfile.count({ where: { student_id: studentId, deleted_at: null } })).toBe(1);
+  });
+
+  describe("dates follow the school day in WIB", () => {
+    afterEach(() => setSystemTime());
+
+    const check = (identified_date: string) =>
+      SpecialNeedsProfileValidation.SAVE.safeParse({
+        student_id: "s",
+        profile: { needs: [{ need_type: "LEARNING", description: "d" }], identified_date },
+      }).success;
+
+    it("accepts today in WIB while UTC is still yesterday, and refuses the day after", () => {
+      // 18:00 UTC on 9 November is 01:00 on 10 November in WIB.
+      setSystemTime(new Date("2026-11-09T18:00:00Z"));
+
+      expect(check("2026-11-10")).toBe(true);
+      expect(check("2026-11-11")).toBe(false);
+    });
   });
 
   describe("atomic student edit", () => {

@@ -7,7 +7,9 @@ const NEED_TYPE_VALUES = Object.values(SpecialNeedType) as [SpecialNeedType, ...
 const optionalText = (label: string, max: number) =>
   z.string().trim().min(1, `${label} cannot be blank`).max(max, `${label} is too long`).optional();
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Today in WIB (UTC+7, no daylight saving), so a date typed in the morning is not a day ahead.
+const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+const today = () => new Date(Date.now() + WIB_OFFSET_MS).toISOString().slice(0, 10);
 const date = (label: string) =>
   z.iso.date({ message: `${label} must be a valid date` }).refine((value) => value <= today(), `${label} cannot be in the future`).optional();
 

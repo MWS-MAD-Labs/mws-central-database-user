@@ -1253,6 +1253,28 @@ describe("Student internal API", () => {
       expect(body.data[0].has_professional_report).toBeUndefined();
     });
 
+    it("leaves out a profiled student whose class is not active", async () => {
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [SPECIAL_EDUCATION_SCOPE] });
+      const closed = await ClassTest.create({ gradeId, academicYearId, status: ClassStatus.INACTIVE, name: "TEST_Class_closed_se" });
+      const student = await StudentTest.create({
+        email: "special_education_closed_class@millennia21.id",
+        nis: "9500496",
+        status: StudentStatus.ACTIVE,
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+        currentClassId: closed.id,
+        sn: true,
+      });
+      await prismaClient.studentSpecialNeedsProfile.create({
+        data: { student_id: student.student!.id, needs: { create: { need_type: "OTHER", description: "Reads below grade level." } } },
+      });
+
+      const response = await TestRequest.get("/api/internal/students/special-education", undefined, authHeader(token));
+
+      expect((await response.json()).data).toHaveLength(0);
+    });
+
     it("rejects a client with only the general student scope", async () => {
       const { token } = await ApiClientTest.createWithToken({ scopeNames: [READ_SCOPE] });
       expect((await TestRequest.get("/api/internal/students/special-education", undefined, authHeader(token))).status).toBe(403);

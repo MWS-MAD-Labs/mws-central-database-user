@@ -2,6 +2,7 @@ import {
   AcademicYearStatus,
   AuditAction,
   AuditSource,
+  ClassStatus,
   ConsentType,
   EnrollmentStatus,
   PersonType,
@@ -54,7 +55,9 @@ export class StudentApiService {
       sn: true,
       // Only profiled students are eligible; a bare legacy flag is not enough.
       special_needs_profile: { deleted_at: null },
+      // The same class rule as the SE assignment gate: an active class.
       current_class_id: { not: null },
+      current_class: { status: ClassStatus.ACTIVE },
       ...(listRequest.current_grade_id ? { current_grade_id: listRequest.current_grade_id } : {}),
       ...(listRequest.current_class_id ? { current_class_id: listRequest.current_class_id } : {}),
     };

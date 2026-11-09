@@ -70,6 +70,7 @@ import { useCreateFormDraft } from "../../../lib/useCreateFormDraft.js";
 import { CreateDraftDialog } from "../../../components/ui/CreateDraftDialog.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { SPECIAL_NEED_TYPES } from "../constants/specialNeeds.js";
+import { todayDateOnly } from "../../../lib/dateRange.js";
 import {
   genderOptions,
   religionOptions,
@@ -1733,7 +1734,7 @@ function computeStudentErrors(values, isCreate, specialNeedsChanged = false) {
     if (values.report_date && !values.has_professional_report) {
       errors.report_date = "Report date requires a professional report.";
     }
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayDateOnly();
     if (values.report_date && values.report_date > today) {
       errors.report_date = "Report date cannot be in the future.";
     }

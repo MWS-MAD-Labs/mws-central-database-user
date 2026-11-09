@@ -9,3 +9,4 @@
 - [x] 2026-11-06: Manage Health disederhanakan menjadi Create/Edit untuk health information, health notes, dan vaccine records; delete/restore tetap tersedia pada API lama tetapi tidak ditampilkan di UI.
 - [x] 2026-11-06: Special Needs Profile menyimpan deskripsi per Need Type; Learning Support Summary dan Classroom Accommodations tetap ringkasan gabungan per siswa.
 - [x] 2026-11-06: Label tanggal diperjelas menjadi Needs Identified Date dan Professional Report Date; tanggal laporan hanya tampil ketika laporan tersedia.
+- [x] 2026-11-09: Tinjauan Special Needs: migrasi gate mengakhiri SE aktif ganda lama (yang tertua tetap) sebelum indeks unik dibuat; roster `special-education` hanya memuat siswa di kelas ACTIVE; tanggal profil "tidak di masa depan" memakai tanggal WIB. Perubahan migrasi yang sudah teraplikasi di DB lokal: `migrate dev` bisa melaporkan checksum berbeda; `migrate deploy` tidak terpengaruh.
