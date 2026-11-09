@@ -38,6 +38,8 @@ export type BulkCreateEnrollmentRequest = Omit<
   "student_id"
 > & {
   student_ids: string[];
+  // The caller will assign an SE Teacher to every student; refuses the whole request if one cannot get one.
+  requires_special_education?: boolean;
 };
 
 export type BulkCreateEnrollmentResponse =

@@ -724,6 +724,40 @@ async function resolveDefaultCloseEndDate(
   return now;
 }
 
+const SUPPORT_NAMES_SHOWN = 5;
+
+// An SE Teacher needs a student with an active Special Needs profile and an active class. Checked for the
+// whole group before anyone is enrolled, so a refusal leaves nothing half done.
+async function assertAllEligibleForSupport(studentIds: string[], classId: string): Promise<void> {
+  const klass = await prismaClient.class.findUnique({ where: { id: classId }, select: { status: true } });
+  if (!klass || klass.status !== ClassStatus.ACTIVE) {
+    throw new ResponseError(400, "An SE Teacher can only be assigned to students in an active class.");
+  }
+  const students = await prismaClient.student.findMany({
+    where: { id: { in: studentIds } },
+    select: {
+      id: true,
+      sn: true,
+      deleted_at: true,
+      special_needs_profile: { select: { deleted_at: true } },
+      person: { select: { full_name: true } },
+    },
+  });
+  const byId = new Map(students.map((student) => [student.id, student]));
+  const refused = studentIds.flatMap((id) => {
+    const student = byId.get(id);
+    const eligible = student && !student.deleted_at && student.sn && student.special_needs_profile && !student.special_needs_profile.deleted_at;
+    return eligible ? [] : [student?.person.full_name ?? id];
+  });
+  if (refused.length === 0) return;
+  const shown = refused.slice(0, SUPPORT_NAMES_SHOWN).join(", ");
+  const rest = refused.length - SUPPORT_NAMES_SHOWN;
+  throw new ResponseError(
+    400,
+    `These students need a Special Needs profile before an SE Teacher can be assigned: ${shown}${rest > 0 ? ` and ${rest} more` : ""}. No one was enrolled.`,
+  );
+}
+
 export class EnrollmentService {
   static async searchCandidates(
     admin: AdminUserWithStudentScope,
@@ -1222,7 +1256,10 @@ export class EnrollmentService {
       request,
     );
 
-    const { student_ids: studentIds, ...createPayload } = bulkRequest;
+    const { student_ids: studentIds, requires_special_education: requiresSupport, ...createPayload } = bulkRequest;
+    if (requiresSupport) {
+      await assertAllEligibleForSupport(studentIds, createPayload.class_id);
+    }
     const items: BulkActionItemResponse<EnrollmentResponse>[] = [];
 
     for (const studentId of studentIds) {

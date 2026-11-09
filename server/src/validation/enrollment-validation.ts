@@ -43,10 +43,16 @@ export class EnrollmentValidation {
         .datetime("Start date must be a valid ISO-8601 datetime string")
         .optional(),
       is_legacy: z.boolean().optional(),
+      // Set when an SE Teacher is going to be assigned right after, so the whole request is checked first.
+      requires_special_education: z.boolean().optional(),
     })
     .refine((data) => !data.is_legacy || !!data.academic_year_id, {
       message: "Academic year is required for a historical enrollment",
       path: ["academic_year_id"],
+    })
+    .refine((data) => !data.is_legacy || !data.requires_special_education, {
+      message: "A historical enrollment cannot be given an SE Teacher",
+      path: ["requires_special_education"],
     });
 
   static readonly PREVIEW_BACKFILL = z.object({

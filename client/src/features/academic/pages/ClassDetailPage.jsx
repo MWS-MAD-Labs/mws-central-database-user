@@ -53,6 +53,7 @@ import {
   assignSupportTeacher,
   supportFailureMessage,
 } from "../utils/assignSupportTeacher.js";
+import { bulkEnrollmentRequest } from "../utils/enrollmentRequest.js";
 import {
   canManageEnrollments,
   canManageTeacherAssignments,
@@ -378,12 +379,11 @@ export function ClassDetailPage() {
       specialEducationEmployeeId,
     }) => {
       const targetStudentIds = studentIds?.length ? studentIds : [studentId];
-      const result = await enrollmentsApi.bulkCreate({
-        student_ids: targetStudentIds,
-        ...payload,
-      });
-
       const supportTarget = workforceTargetPayload(specialEducationEmployeeId);
+      const result = await enrollmentsApi.bulkCreate(
+        bulkEnrollmentRequest(targetStudentIds, payload, supportTarget),
+      );
+
       if (supportTarget) {
         const successfulStudentIds = result.items
           .filter((item) => item.status === "SUCCESS")

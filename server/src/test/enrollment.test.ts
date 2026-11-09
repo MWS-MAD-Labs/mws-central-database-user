@@ -4885,4 +4885,83 @@ describe("Student Class Enrollment", () => {
       expect(student.current_grade_id).toBe(gradeTwoId);
     });
   });
+  describe("POST /api/admin/enrollments/bulk with requires_special_education", () => {
+    const profile = (id: string) =>
+      prismaClient.studentSpecialNeedsProfile.create({
+        data: { student_id: id, needs: { create: { need_type: "OTHER", description: "Needs support." } } },
+      });
+    const second = () =>
+      StudentTest.create({
+        email: "test_enroll_se_second@millennia21.id",
+        nis: "ENR00903",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+    const enrolled = (ids: string[]) =>
+      prismaClient.studentClassEnrollment.count({ where: { student_id: { in: ids } } });
+    const bulk = (token: string, body: Record<string, unknown>) =>
+      TestRequest.post("/api/admin/enrollments/bulk", { class_id: classGrade1YearA, academic_year_id: yearAId, ...body }, token);
+
+    it("enrolls the group when every student has an active Special Needs profile", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const other = (await second()).student!.id;
+      await prismaClient.student.updateMany({ where: { id: { in: [studentId, other] } }, data: { sn: true } });
+      await profile(studentId);
+      await profile(other);
+
+      const response = await bulk(accessToken, { student_ids: [studentId, other], requires_special_education: true });
+
+      expect(response.status).toBe(200);
+      expect((await response.json()).data.success_count).toBe(2);
+    });
+
+    it("refuses the whole group, naming the student, when one has only the old flag", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const other = await second();
+      const otherId = other.student!.id;
+      await prismaClient.student.updateMany({ where: { id: { in: [studentId, otherId] } }, data: { sn: true } });
+      await profile(studentId);
+
+      const response = await bulk(accessToken, { student_ids: [studentId, otherId], requires_special_education: true });
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain(other.full_name);
+      expect(body.errors).toContain("No one was enrolled");
+      expect(await enrolled([studentId, otherId])).toBe(0);
+    });
+
+    it("refuses a student that is not marked Special Needs at all", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await bulk(accessToken, { student_ids: [studentId], requires_special_education: true });
+
+      expect(response.status).toBe(400);
+      expect(await enrolled([studentId])).toBe(0);
+    });
+
+    it("refuses a class that is not active, and a historical enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await prismaClient.student.update({ where: { id: studentId }, data: { sn: true } });
+      await profile(studentId);
+
+      const inactive = await bulk(accessToken, { student_ids: [studentId], class_id: classGrade1YearAInactive, requires_special_education: true });
+      const legacy = await bulk(accessToken, { student_ids: [studentId], is_legacy: true, requires_special_education: true });
+
+      expect(inactive.status).toBe(400);
+      expect(legacy.status).toBe(400);
+      expect(await enrolled([studentId])).toBe(0);
+    });
+
+    it("leaves a plain enrollment alone, so a student without a profile still enrolls", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await bulk(accessToken, { student_ids: [studentId] });
+
+      expect(response.status).toBe(200);
+      expect((await response.json()).data.success_count).toBe(1);
+    });
+  });
 });
