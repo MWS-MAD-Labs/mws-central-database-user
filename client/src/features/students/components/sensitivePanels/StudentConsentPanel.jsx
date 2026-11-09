@@ -22,7 +22,7 @@ import { consentStatuses, consentTypes, studentSensitiveApi } from '../../api/st
 import { DialogFooter, PanelFrame } from './panelPrimitives.jsx'
 import { isPendingFor } from "../../../../lib/mutationState.js";
 
-export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
+export function StudentConsentPanel({ studentId, canWrite, canViewSensitive, loadAttachments = canWrite }) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
   const [showDeleted, setShowDeleted] = useState(false)
@@ -81,21 +81,20 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
       title="Consent"
       icon={FileSignature}
       isFetching={consentsQuery.isFetching}
-      action={
+      action={canWrite ? (
         <>
           <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
             Show Deleted
           </ToggleChip>
           <Button
             type="button"
-            disabled={!canWrite}
             onClick={() => setDialog({ mode: 'create' })}
             size="icon" aria-label="Add Consent" title="Add Consent"
           >
             <Plus size={15} />
           </Button>
         </>
-      }
+      ) : null}
     >
       {(consentsQuery.data || []).length === 0 ? (
         <PanelMessage>No consent records yet.</PanelMessage>
@@ -108,16 +107,17 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
               consent={consent}
               canWrite={canWrite}
               canViewSensitive={canViewSensitive}
-              onEdit={() => setDialog({ mode: 'edit', record: consent })}
-              onDelete={() => handleDelete(consent)}
-              onRestore={() => restoreMutation.mutate(consent.id)}
+              loadAttachments={loadAttachments}
+              onEdit={canWrite ? () => setDialog({ mode: 'edit', record: consent }) : null}
+              onDelete={canWrite ? () => handleDelete(consent) : null}
+              onRestore={canWrite ? () => restoreMutation.mutate(consent.id) : null}
               isRestoring={isPendingFor(restoreMutation, consent.id)}
             />
           ))}
         </div>
       )}
 
-      {dialog ? (
+      {canWrite && dialog ? (
         <ConsentDialog
           dialog={dialog}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
@@ -137,6 +137,7 @@ function ConsentCard({
   consent,
   canWrite,
   canViewSensitive,
+  loadAttachments,
   onEdit,
   onDelete,
   onRestore,
@@ -168,11 +169,11 @@ function ConsentCard({
           ) : null}
         </div>
         <div className="flex gap-1">
-          {consent.deleted_at ? (
+          {canWrite && consent.deleted_at ? (
             <Button type="button" variant="ghost" disabled={!canWrite || isRestoring} onClick={onRestore} size="icon" aria-label="Restore" title="Restore">
               <RotateCcw size={15} />
             </Button>
-          ) : (
+          ) : canWrite ? (
             <>
               <Button
                 type="button"
@@ -199,15 +200,15 @@ function ConsentCard({
                 <Trash2 size={15} />
               </Button>
             </>
-          )}
+          ) : null}
         </div>
       </div>
-      <ConsentAttachments
+      {loadAttachments ? <ConsentAttachments
         studentId={studentId}
         consentId={consent.id}
         canWrite={canWrite && !consent.deleted_at}
         canViewSensitive={canViewSensitive}
-      />
+      /> : null}
     </article>
   )
 }

@@ -55,11 +55,11 @@ function renderClassDetail(user = superAdminUser) {
   )
 }
 
-function classDetailRoutes({ klass = classFixture(), assignments = [activeAssignment] } = {}) {
+function classDetailRoutes({ klass = classFixture(), assignments = [activeAssignment], enrollments = [enrollmentFixture()] } = {}) {
   return [
     { path: '/api/admin/classes/class-1', response: jsonResponse({ data: klass }) },
     { path: '/api/admin/classes/class-1/teacher-assignments', response: jsonResponse({ data: assignments }) },
-    { path: /^\/api\/admin\/enrollments\?.*class_id=class-1/, response: jsonResponse({ data: [enrollmentFixture()], paging }) },
+    { path: /^\/api\/admin\/enrollments\?.*class_id=class-1/, response: jsonResponse({ data: enrollments, paging }) },
     { path: /^\/api\/admin\/grades(?:\?.*)?$/, response: jsonResponse({ data: grades }) },
     { path: /^\/api\/admin\/employees(?:\?.*)?$/, response: jsonResponse({ data: teachingEmployees, paging: { ...paging, total_item: teachingEmployees.length } }) },
     { path: /^\/api\/admin\/job-levels(?:\?.*)?$/, response: jsonResponse({ data: [{ id: 'level-1', name: 'Teacher', is_teaching_role: true }] }) },
@@ -153,6 +153,28 @@ describe('ClassDetailPage', () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/teacher-assignments'))).toBe(false)
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/admin/employees'))).toBe(false)
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/admin/interns'))).toBe(false)
+  })
+
+  it('offers Add SE Teacher only for students with a completed Special Needs profile', async () => {
+    const baseEnrollment = enrollmentFixture()
+    const profiled = {
+      ...baseEnrollment,
+      student: { ...baseEnrollment.student, special_needs_status: 'PROFILED' },
+    }
+    globalThis.fetch = createFetchRouter(classDetailRoutes({ enrollments: [profiled] }))
+    const first = renderClassDetail()
+    await screen.findByText('Ari Student')
+    await first.user.click(screen.getByRole('checkbox', { name: 'Select Ari Student' }))
+    await first.user.click(screen.getByRole('button', { name: 'Bulk Actions' }))
+    expect(screen.getByText('Add SE teacher')).toBeVisible()
+    first.unmount()
+
+    globalThis.fetch = createFetchRouter(classDetailRoutes({ enrollments: [baseEnrollment] }))
+    const second = renderClassDetail()
+    await screen.findByText('Ari Student')
+    await second.user.click(screen.getByRole('checkbox', { name: 'Select Ari Student' }))
+    await second.user.click(screen.getByRole('button', { name: 'Bulk Actions' }))
+    expect(screen.queryByText('Add SE teacher')).not.toBeInTheDocument()
   })
 })
 

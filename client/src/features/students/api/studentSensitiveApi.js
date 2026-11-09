@@ -14,7 +14,6 @@ export const consentTypes = [
 ]
 
 export const consentStatuses = ['PENDING', 'SIGNED', 'DECLINED', 'EXPIRED']
-export const healthNoteCategories = ['HEALTH_INFO', 'SPECIAL_NEEDS']
 export const healthNoteStatuses = ['ACTIVE', 'RESOLVED']
 export const bloodTypes = ['A', 'B', 'AB', 'O', 'UNKNOWN']
 export const parentTypes = ['FATHER', 'MOTHER', 'GUARDIAN']
@@ -159,6 +158,34 @@ export const studentSensitiveApi = {
       if (error instanceof ApiError && error.status === 404) return null
       throw error
     }
+  },
+
+  async getSpecialNeedsProfile(studentId) {
+    try {
+      const response = await apiRequest(
+        `/api/admin/students/${studentId}/special-needs-profile`,
+      )
+      return response.data
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return null
+      throw error
+    }
+  },
+
+  async saveSpecialNeedsProfile(studentId, payload) {
+    const response = await apiRequest(
+      `/api/admin/students/${studentId}/special-needs-profile`,
+      { method: 'PUT', body: payload },
+    )
+    return response.data
+  },
+
+  async removeSpecialNeedsProfile(studentId) {
+    const response = await apiRequest(
+      `/api/admin/students/${studentId}/special-needs-profile/delete`,
+      { method: 'PATCH' },
+    )
+    return response.data
   },
 
   async createHealthRecord(studentId, payload) {

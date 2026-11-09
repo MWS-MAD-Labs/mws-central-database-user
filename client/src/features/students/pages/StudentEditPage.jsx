@@ -1,17 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { loadStudentFormOptions } from '../api/studentFormOptions.js'
 import { studentsApi } from '../api/studentsApi.js'
 import { StudentForm } from '../components/StudentForm.jsx'
+import { studentSensitiveApi } from '../api/studentSensitiveApi.js'
+import { useAuth } from '../../auth/hooks/useAuth.js'
 
 export function StudentEditPage() {
   const { studentId } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const { user } = useAuth()
+  const canEditSpecialNeeds =
+    user?.role === 'SUPER_ADMIN' || Boolean(user?.can_view_sensitive_data)
 
   const studentQuery = useQuery({
     queryKey: ['students', studentId],
@@ -23,18 +29,24 @@ export function StudentEditPage() {
     queryKey: ['student-form-options'],
     queryFn: loadStudentFormOptions,
   })
+  const profileQuery = useQuery({
+    queryKey: ['students', studentId, 'special-needs-profile'],
+    queryFn: () => studentSensitiveApi.getSpecialNeedsProfile(studentId),
+    enabled: Boolean(studentId) && canEditSpecialNeeds,
+  })
 
   const updateMutation = useMutation({
     meta: { successMessage: 'Student updated.' },
     mutationFn: (payload) => studentsApi.update(studentId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['students'] })
+      queryClient.invalidateQueries({ queryKey: ['students', studentId, 'special-needs-profile'] })
       navigate(`/students/${studentId}`)
     },
   })
 
-  const isLoading = studentQuery.isLoading || optionsQuery.isLoading
-  const error = studentQuery.error || optionsQuery.error
+  const isLoading = studentQuery.isLoading || optionsQuery.isLoading || (canEditSpecialNeeds && profileQuery.isLoading)
+  const error = studentQuery.error || optionsQuery.error || (canEditSpecialNeeds ? profileQuery.error : null)
   const student = studentQuery.data
 
   return (
@@ -61,6 +73,9 @@ export function StudentEditPage() {
         <StudentForm
           mode="edit"
           student={student}
+          specialNeedsProfile={profileQuery.data ?? null}
+          canEditSpecialNeeds={canEditSpecialNeeds}
+          focusSection={searchParams.get('section')}
           options={optionsQuery.data}
           isSubmitting={updateMutation.isPending}
           onSubmit={(payload) => updateMutation.mutate(payload)}

@@ -171,6 +171,10 @@ describe("EnrollmentDialog", () => {
       />,
     );
 
+    await user.click(screen.getByRole("button", { name: "Select Class" }));
+    await user.click(screen.getByRole("option", { name: /Grade 1A/ }));
+    await screen.findByText("Bela Student");
+    await user.click(screen.getByText("Bela Student"));
     await user.click(screen.getByRole("button", { name: "Choose SE Teacher" }));
     await user.click(
       await screen.findByRole("checkbox", { name: /Flat SE Teacher/ }),
@@ -191,6 +195,35 @@ describe("EnrollmentDialog", () => {
     expect(
       screen.queryByRole("button", { name: "Clear SE Teacher" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("does not offer an SE Teacher for a student without a completed profile", async () => {
+    globalThis.fetch = createFetchRouter([
+      {
+        path: /^\/api\/admin\/classes\/[^/]+\/enrollment-candidates(?:\?.*)?$/,
+        response: () => jsonResponse({
+          data: [{ ...studentCandidate, special_needs_status: "LEGACY_INCOMPLETE" }],
+          paging,
+        }),
+      },
+    ]);
+    const { user } = renderAcademic(
+      <EnrollmentDialog
+        dialog={{ mode: "create" }}
+        options={options}
+        isSubmitting={false}
+        onClose={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Select Class" }));
+    await user.click(screen.getByRole("option", { name: /Grade 1A/ }));
+    await screen.findByText("Bela Student");
+    await user.click(screen.getByText("Bela Student"));
+
+    expect(screen.queryByRole("button", { name: "Choose SE Teacher" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Complete the selected student's Special Needs profile/)).toBeVisible();
   });
 
   it("asks only for teachers with room for the students ticked, and holds the form back when more are ticked later", async () => {

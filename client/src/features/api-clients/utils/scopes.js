@@ -47,6 +47,12 @@ const SCOPE_INFO = {
     description:
       "One flat list of every student, including health, parent contact and consent fields.",
   },
+  "students:special_education:read": {
+    group: "Students",
+    title: "View the Special Education roster",
+    description:
+      "Active students with a completed Special Needs profile and a current class.",
+  },
   "classes:read": {
     group: "Classes and Teachers",
     title: "View all classes",

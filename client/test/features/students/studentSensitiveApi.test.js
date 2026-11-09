@@ -4,7 +4,6 @@ import {
   bloodTypes,
   consentStatuses,
   consentTypes,
-  healthNoteCategories,
   parentTypes,
   pcDays,
   studentSensitiveApi,
@@ -17,7 +16,6 @@ describe('studentSensitiveApi', () => {
   it('exports the relation option catalogs', () => {
     expect(consentTypes).toContain('MEDIA_CONSENT')
     expect(consentStatuses).toContain('SIGNED')
-    expect(healthNoteCategories).toEqual(['HEALTH_INFO', 'SPECIAL_NEEDS'])
     expect(bloodTypes).toContain('AB')
     expect(parentTypes).toEqual(['FATHER', 'MOTHER', 'GUARDIAN'])
     expect(vaccineTypes).toContain('MMR')

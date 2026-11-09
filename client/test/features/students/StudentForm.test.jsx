@@ -18,6 +18,8 @@ function renderStudentForm({
   user = superAdminUser,
   onSubmit = mock(() => {}),
   isSubmitting = false,
+  specialNeedsProfile = null,
+  canEditSpecialNeeds = true,
   availability = { available: true, reason: 'FREE', message: 'Available' },
 } = {}) {
   globalThis.fetch = mock(async (url) =>
@@ -32,6 +34,8 @@ function renderStudentForm({
         <StudentForm
           mode={mode}
           student={mode === 'edit' ? student : undefined}
+          specialNeedsProfile={specialNeedsProfile}
+          canEditSpecialNeeds={canEditSpecialNeeds}
           options={options}
           isSubmitting={isSubmitting}
           onSubmit={onSubmit}
@@ -82,6 +86,27 @@ describe('StudentForm', () => {
     expect(screen.getByText(/draft with 1 filled fields/i)).toBeVisible()
   })
 
+  it('migrates a legacy Special Needs draft without crashing', async () => {
+    window.sessionStorage.setItem('mws:create-draft:student', JSON.stringify({
+      version: 2,
+      saved_at: new Date().toISOString(),
+      filled_field_count: 3,
+      values: {
+        sn: true,
+        need_types: ['LEARNING', 'SENSORY'],
+        profile_description: 'Legacy combined description.',
+      },
+    }))
+    const { user } = renderStudentForm({ mode: 'create' })
+
+    await user.click(within(screen.getByRole('dialog', { name: 'Continue student draft?' })).getByRole('button', { name: 'Continue draft' }))
+
+    expect(field('need_description_LEARNING').querySelector('textarea')).toHaveValue('Legacy combined description.')
+    expect(field('need_description_SENSORY').querySelector('textarea')).toHaveValue('Legacy combined description.')
+    expect(screen.getByRole('checkbox', { name: 'Learning' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Sensory' })).toBeChecked()
+  })
+
   it('keeps the submit disabled while required fields are blank', async () => {
     const { onSubmit } = renderStudentForm({ mode: 'create' })
 
@@ -123,6 +148,13 @@ describe('StudentForm', () => {
     await chooseSelect(user, 'Select Current Grade', 'Grade 1')
     await user.click(screen.getByRole('checkbox', { name: 'Pickup/Drop' }))
     await user.click(screen.getByRole('checkbox', { name: 'PSB Guide' }))
+    await user.click(screen.getByRole('checkbox', { name: 'This Student Requires Special Education Support' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Learning' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Sensory' }))
+    await user.type(field('need_description_LEARNING').querySelector('textarea'), 'Needs short written instructions.')
+    await user.type(field('need_description_SENSORY').querySelector('textarea'), 'Needs reduced background noise.')
+    await user.type(field('learning_support_summary').querySelector('textarea'), 'Uses visual prompts.')
+    await user.type(field('accommodations').querySelector('textarea'), 'Additional processing time.')
     await chooseSelect(user, 'Select Relation', 'Father')
     await user.type(field('parent_name').querySelector('input'), 'budi santoso')
     await user.type(field('parent_email').querySelector('input'), 'budi.santoso')
@@ -154,11 +186,21 @@ describe('StudentForm', () => {
       join_grade_id: 'grade-1',
       pickup_drop_service: true,
       catering_service: false,
+      special_needs_profile: {
+        needs: [
+          { need_type: 'LEARNING', description: 'Needs short written instructions.' },
+          { need_type: 'SENSORY', description: 'Needs reduced background noise.' },
+        ],
+        learning_support_summary: 'Uses visual prompts.',
+        accommodations: 'Additional processing time.',
+        has_professional_report: false,
+      },
       parent: { type: 'FATHER', full_name: 'Budi Santoso', email: 'budi.santoso@gmail.com', phone: '081234567890' },
       psb_guide: true,
     })
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('sn')
     expect(onSubmit.mock.calls[0][1]).toBeNull()
-  })
+  }, 10_000)
 
   it('keeps the second parent email off until the first one is filled in and valid', async () => {
     const { user } = renderStudentForm({ mode: 'create' })
@@ -302,6 +344,61 @@ describe('StudentForm', () => {
     await user.click(screen.getByRole('button', { name: 'Reset' }))
     expect(name).toHaveValue('Ari Student')
     expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
+  })
+
+  it('updates and removes the Special Needs profile through the student PATCH payload', async () => {
+    const profile = {
+      needs: [{ need_type: 'LEARNING', description: 'Needs short instructions.' }],
+      learning_support_summary: 'Uses visual prompts.',
+      accommodations: null,
+      has_professional_report: false,
+      report_date: null,
+      identified_date: null,
+    }
+    const profiledStudent = studentFixture({ academic: { sn: true, special_needs_status: 'PROFILED' } })
+    const first = renderStudentForm({ student: profiledStudent, specialNeedsProfile: profile })
+    const description = field('need_description_LEARNING').querySelector('textarea')
+    expect(description).toHaveValue('Needs short instructions.')
+    await first.user.clear(description)
+    await first.user.type(description, 'Needs updated support.')
+    await first.user.click(screen.getByRole('button', { name: 'Save changes' }))
+    await first.user.click(within(screen.getByRole('dialog', { name: 'Review changes before saving' })).getByRole('button', { name: 'Save changes' }))
+    expect(first.onSubmit.mock.calls[0][0].special_needs_profile).toMatchObject({
+      needs: [{ need_type: 'LEARNING', description: 'Needs updated support.' }],
+    })
+    first.unmount()
+
+    const second = renderStudentForm({ student: profiledStudent, specialNeedsProfile: profile })
+    await second.user.click(screen.getByRole('checkbox', { name: 'This Student Requires Special Education Support' }))
+    await second.user.click(screen.getByRole('button', { name: 'Save changes' }))
+    await second.user.click(within(screen.getByRole('dialog', { name: 'Review changes before saving' })).getByRole('button', { name: 'Save changes' }))
+    expect(second.onSubmit.mock.calls[0][0].special_needs_profile).toBeNull()
+    expect(second.onSubmit.mock.calls[0][0]).not.toHaveProperty('sn')
+  }, 10_000)
+
+  it('confirms before removing a need type with a description', async () => {
+    const profile = {
+      needs: [
+        { need_type: 'LEARNING', description: 'Needs short instructions.' },
+        { need_type: 'SENSORY', description: 'Needs reduced background noise.' },
+      ],
+      learning_support_summary: null,
+      accommodations: null,
+      has_professional_report: false,
+      report_date: null,
+      identified_date: null,
+    }
+    const student = studentFixture({ academic: { sn: true, special_needs_status: 'PROFILED' } })
+    const { user } = renderStudentForm({ student, specialNeedsProfile: profile })
+
+    await user.click(screen.getByRole('checkbox', { name: 'Sensory' }))
+    const dialog = screen.getByRole('dialog', { name: 'Remove Sensory' })
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(field('need_description_SENSORY').querySelector('textarea')).toHaveValue('Needs reduced background noise.')
+
+    await user.click(screen.getByRole('checkbox', { name: 'Sensory' }))
+    await user.click(within(screen.getByRole('dialog', { name: 'Remove Sensory' })).getByRole('button', { name: 'Remove' }))
+    expect(field('need_description_SENSORY')).toBeNull()
   })
 
   it('disables save while a submission is pending', () => {

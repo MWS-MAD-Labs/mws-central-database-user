@@ -24,6 +24,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { studentSensitiveApi } from "../../students/api/studentSensitiveApi.js";
 import { SupportAssignmentDialog } from "../../students/components/StudentSensitivePanels.jsx";
+import { SpecialNeedsEligibilityStatus } from "../../students/constants/specialNeeds.js";
 import {
   academicYearsApi,
   classesApi,
@@ -735,6 +736,13 @@ export function ClassDetailPage() {
   const selectedAllHaveSeTeacher =
     selectedEnrollments.length > 0 &&
     selectedEnrollments.every((e) => activeSupportByStudentId.has(e.student.id));
+  const selectedAllProfiled =
+    selectedEnrollments.length > 0 &&
+    selectedEnrollments.every(
+      (enrollment) =>
+        enrollment.student.special_needs_status ===
+        SpecialNeedsEligibilityStatus.PROFILED,
+    );
   const currentSeTeacherIdsForSelection = new Set(
     selectedEnrollments
       .map((e) => activeSupportByStudentId.get(e.student.id)?.id)
@@ -1017,8 +1025,9 @@ export function ClassDetailPage() {
                             </span>
                           </ActionsMenuItem>
                         ) : null}
-                        {(selectedAreAllActive || selectedAreAllInactive) &&
-                        selectedNoneHaveSeTeacher ? (
+                        {selectedAreAllActive &&
+                        selectedNoneHaveSeTeacher &&
+                        selectedAllProfiled ? (
                           <ActionsMenuItem
                             onClick={() => {
                               closeMenu();

@@ -14,21 +14,21 @@ describe('student sensitive panels', () => {
   it('does not request health data before explicit reveal', async () => {
     const fetchMock = createFetchRouter([
       { path: '/api/admin/students/student-1/health-record', response: jsonResponse({ data: { blood_type: 'A', needs_assistance: false } }) },
-      { path: '/api/admin/students/student-1/health-notes?is_deleted=false', response: jsonResponse({ data: [] }) },
+      { path: '/api/admin/students/student-1/health-notes?category=HEALTH_INFO', response: jsonResponse({ data: [] }) },
     ])
     globalThis.fetch = fetchMock
     const { user } = renderPanel(
       <StudentHealthPanel studentId="student-1" canWrite canViewSensitive />,
     )
 
-    expect(screen.getByRole('button', { name: 'Show Health & Special Needs' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Show Health Information' })).toBeVisible()
     expect(fetchMock).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('button', { name: 'Show Health & Special Needs' }))
-    expect(screen.getByRole('dialog', { name: 'View health & special needs' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Show Health Information' }))
+    expect(screen.getByRole('dialog', { name: 'View health information' })).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'View' }))
 
-    expect(await screen.findByText('No health or special needs notes yet.')).toBeVisible()
+    expect(await screen.findByText('No health notes yet.')).toBeVisible()
     expect(screen.getByText('A')).toBeVisible()
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(sessionStorage.getItem('pii-reveal:student-health:student-1')).not.toBeNull()
@@ -49,13 +49,13 @@ describe('student sensitive panels', () => {
     sessionStorage.setItem('pii-reveal:student-health:student-1', String(Date.now()))
     globalThis.fetch = createFetchRouter([
       { path: '/api/admin/students/student-1/health-record', response: jsonResponse({ data: null }) },
-      { path: '/api/admin/students/student-1/health-notes?is_deleted=false', response: jsonResponse({ data: [] }) },
+      { path: '/api/admin/students/student-1/health-notes?category=HEALTH_INFO', response: jsonResponse({ data: [] }) },
     ])
     renderPanel(
       <StudentHealthPanel studentId="student-1" canWrite={false} canViewSensitive />,
     )
-    expect(await screen.findByText('No health or special needs notes yet.')).toBeVisible()
-    expect(screen.queryByRole('button', { name: 'Show Health & Special Needs' })).not.toBeInTheDocument()
+    expect(await screen.findByText('No health notes yet.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Show Health Information' })).not.toBeInTheDocument()
     await waitFor(() => expect(screen.queryByText('Syncing')).not.toBeInTheDocument())
   })
 
@@ -81,5 +81,20 @@ describe('student sensitive panels', () => {
       url === '/api/admin/students/student-1/vaccine-records' && options.method === 'POST',
     )).toBe(true))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New Vaccine Record' })).not.toBeInTheDocument())
+  })
+
+  it('keeps vaccine management create/edit-only', async () => {
+    sessionStorage.setItem('pii-reveal:student-vaccine:student-1', String(Date.now()))
+    globalThis.fetch = createFetchRouter([
+      { path: '/api/admin/students/student-1/vaccine-records', response: jsonResponse({ data: [{ id: 'vaccine-1', vaccine_type: 'POLIO', received: true, date: null, deleted_at: null }] }) },
+    ])
+    renderPanel(<StudentVaccinePanel studentId="student-1" canWrite canViewSensitive />)
+
+    expect(await screen.findByText('Polio')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Add Vaccine' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeVisible()
+    expect(screen.queryByRole('switch', { name: 'Show Deleted' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument()
   })
 })

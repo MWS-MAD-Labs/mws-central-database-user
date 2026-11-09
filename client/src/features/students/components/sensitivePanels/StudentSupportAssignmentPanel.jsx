@@ -24,7 +24,7 @@ import { DialogFooter, PanelFrame } from './panelPrimitives.jsx'
 import { invalidateStudentRelation } from './panelHelpers.js'
 import { isPendingFor } from "../../../../lib/mutationState.js";
 
-export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canWrite }) {
+export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canWrite, isEligible }) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
   const [dialog, setDialog] = useState(null)
@@ -123,7 +123,7 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
       icon={HeartHandshake}
       isFetching={assignmentsQuery.isFetching}
       action={
-        !activeAssignment ? (
+        canWrite && !activeAssignment && isEligible ? (
           <Button
             type="button"
             disabled={!canWrite}
@@ -136,7 +136,7 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
       }
     >
       {(assignmentsQuery.data || []).length === 0 ? (
-        <PanelMessage>No Special Education teacher assigned yet.</PanelMessage>
+        <PanelMessage>{isEligible ? 'No Special Education teacher assigned yet.' : "Complete this student's Special Needs profile before assigning an SE Teacher."}</PanelMessage>
       ) : (
         <div className="space-y-3">
           {(assignmentsQuery.data || []).map((assignment) => (
@@ -168,7 +168,7 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
                     </p>
                   ) : null}
                 </div>
-                <div className="flex shrink-0 gap-1">
+                {canWrite ? <div className="flex shrink-0 gap-1">
                   {!assignment.end_date ? (
                     <>
                       <Button
@@ -225,7 +225,7 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
                   >
                     <Trash2 size={15} />
                   </Button>
-                </div>
+                </div> : null}
               </div>
             </article>
               )
@@ -234,7 +234,7 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
         </div>
       )}
 
-      {dialog ? (
+      {canWrite && dialog ? (
         <SupportAssignmentDialog
           title={dialog.mode === 'change' ? 'Change Special Education Teacher' : undefined}
           unitName={studentUnitName}

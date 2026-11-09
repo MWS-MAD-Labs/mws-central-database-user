@@ -37,6 +37,7 @@ import { fetchAllPages } from "../../../lib/pagination.js";
 import { inputClasses } from "../../../components/ui/formControls/sharedStyles.js";
 import { candidateName, workforceTargetValue } from "../utils/selectOptions.js";
 import { SupportAssignmentDialog } from "../../students/components/StudentSensitivePanels.jsx";
+import { SpecialNeedsEligibilityStatus } from "../../students/constants/specialNeeds.js";
 
 const PROMOTE_WINDOW_DAYS = 30;
 
@@ -405,6 +406,25 @@ export function EnrollmentDialog({
   });
   const excludedStudentIdSet = new Set(excludeStudentIds || []);
   const selectedStudents = Array.from(selectedStudentById.values());
+  // SE support is only offered when every selected student carries an active
+  // Special Needs profile; the legacy flag alone is not enough anymore.
+  const allSelectedProfiled =
+    selectedStudents.length > 0 &&
+    selectedStudents.every(
+      (student) =>
+        student.special_needs_status ===
+        SpecialNeedsEligibilityStatus.PROFILED,
+    );
+  const selectedHasIncompleteProfile = selectedStudents.some(
+    (student) =>
+      student.special_needs_status ===
+      SpecialNeedsEligibilityStatus.LEGACY_INCOMPLETE,
+  );
+  // A mixed or ineligible selection cannot keep a previously chosen teacher.
+  const supportCandidate = allSelectedProfiled ? selectedSupportCandidate : null;
+  const supportEmployeeId = allSelectedProfiled
+    ? values.special_education_employee_id
+    : "";
   const pagedCandidateStudents = (studentOptionsQuery.data?.data || []).filter(
     (student) => !excludedStudentIdSet.has(student.id),
   );
@@ -543,20 +563,20 @@ export function EnrollmentDialog({
       }),
       specialEducationEmployeeId: values.is_legacy
         ? undefined
-        : values.special_education_employee_id || undefined,
+        : supportEmployeeId || undefined,
     });
   }
 
   // The teacher was chosen with some room left. If more students are ticked afterwards, say so before sending.
   function supportRoomShort(studentCount) {
-    if (values.is_legacy || !selectedSupportCandidate) return false;
-    const room = selectedSupportCandidate.remaining_slots;
+    if (values.is_legacy || !supportCandidate) return false;
+    const room = supportCandidate.remaining_slots;
     return typeof room === "number" && studentCount > room;
   }
 
   function supportRoomMessage() {
-    const room = selectedSupportCandidate?.remaining_slots ?? 0;
-    return `${candidateName(selectedSupportCandidate)} has room for ${room} more student${room === 1 ? "" : "s"}. Untick some students or choose another teacher.`;
+    const room = supportCandidate?.remaining_slots ?? 0;
+    return `${candidateName(supportCandidate)} has room for ${room} more student${room === 1 ? "" : "s"}. Untick some students or choose another teacher.`;
   }
 
   async function handleManualStep(entry, step, klass) {
@@ -1134,7 +1154,7 @@ export function EnrollmentDialog({
           </div>
         ) : null}
 
-        {dialog.mode === "create" && !values.is_legacy ? (
+        {dialog.mode === "create" && !values.is_legacy && allSelectedProfiled ? (
           <Field
             label="Special Education Teacher"
             className="md:col-span-2"
@@ -1147,18 +1167,18 @@ export function EnrollmentDialog({
                 aria-haspopup="dialog"
                 onClick={() => setSupportPickerOpen(true)}
                 className={`${inputClasses} flex items-center justify-between gap-2 text-left ${
-                  selectedSupportCandidate ? "pr-16" : ""
+                  supportCandidate ? "pr-16" : ""
                 }`}
               >
                 <span className="min-w-0 flex-1 truncate">
-                  {selectedSupportCandidate ? (
+                  {supportCandidate ? (
                     <>
                       <span className="font-semibold text-(--mws-charcoal)">
-                        {candidateName(selectedSupportCandidate)}
+                        {candidateName(supportCandidate)}
                       </span>
                       <span className="ml-2 text-xs text-(--mws-muted)">
-                        {selectedSupportCandidate.active_student_count || 0}{" "}
-                        {selectedSupportCandidate.active_student_count === 1 ? "student" : "students"}
+                        {supportCandidate.active_student_count || 0}{" "}
+                        {supportCandidate.active_student_count === 1 ? "student" : "students"}
                       </span>
                     </>
                   ) : (
@@ -1167,7 +1187,7 @@ export function EnrollmentDialog({
                 </span>
                 <ChevronDown size={16} className="shrink-0 text-(--mws-muted)" aria-hidden="true" />
               </button>
-              {selectedSupportCandidate ? (
+              {supportCandidate ? (
                 <button
                   type="button"
                   aria-label="Clear SE Teacher"
@@ -1183,6 +1203,15 @@ export function EnrollmentDialog({
               ) : null}
             </div>
           </Field>
+        ) : null}
+
+        {dialog.mode === "create" &&
+        !values.is_legacy &&
+        selectedHasIncompleteProfile ? (
+          <p className="md:col-span-2 text-sm text-[#a43c41]" role="status">
+            Complete the selected student's Special Needs profile before
+            assigning an SE Teacher.
+          </p>
         ) : null}
 
         {dialog.mode === "create" ? (

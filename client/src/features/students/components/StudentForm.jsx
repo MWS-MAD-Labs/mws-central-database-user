@@ -29,6 +29,7 @@ import {
   LimitedField,
   ReligionFields,
   SearchableSelect,
+  TextAreaInput,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
@@ -68,6 +69,7 @@ import { studentSensitiveApi } from "../api/studentSensitiveApi.js";
 import { useCreateFormDraft } from "../../../lib/useCreateFormDraft.js";
 import { CreateDraftDialog } from "../../../components/ui/CreateDraftDialog.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
+import { SPECIAL_NEED_TYPES } from "../constants/specialNeeds.js";
 import {
   genderOptions,
   religionOptions,
@@ -92,6 +94,9 @@ const SENSITIVE_FIELD_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000;
 export function StudentForm({
   mode,
   student,
+  specialNeedsProfile = null,
+  canEditSpecialNeeds,
+  focusSection,
   options = emptyOptions,
   isSubmitting,
   onSubmit,
@@ -99,7 +104,9 @@ export function StudentForm({
   const { user } = useAuth();
   const confirm = useConfirm();
   const [initialValues, setInitialValues] = useState(() =>
-    getInitialValues(mode, student, options),
+    normalizeStudentFormValues(
+      getInitialValues(mode, student, options, specialNeedsProfile),
+    ),
   );
   // Birth details stay hidden on edit until the admin presses Show.
   const [birthRevealed, setBirthRevealed] = useState(() => mode !== "edit");
@@ -115,6 +122,7 @@ export function StudentForm({
           identity: { ...student.identity, ...revealed },
         },
         options,
+        specialNeedsProfile,
       );
       const patch = {
         birth_place: fresh.birth_place,
@@ -137,6 +145,9 @@ export function StudentForm({
     if (confirmed) revealBirthMutation.mutate();
   }
   const [values, setValues] = useState(initialValues);
+  const selectedSpecialNeeds = Array.isArray(values.special_needs)
+    ? values.special_needs
+    : [];
   const [nowSnapshot] = useState(() => Date.now());
   const [requestNisnChangeOpen, setRequestNisnChangeOpen] = useState(false);
   const myRequestFor = useMyRequestsForRecord(
@@ -147,6 +158,14 @@ export function StudentForm({
   );
 
   const isCreate = mode === "create";
+  const mayEditSpecialNeeds =
+    canEditSpecialNeeds ??
+    (user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_sensitive_data));
+  const specialNeedsChanged =
+    values.sn !== initialValues.sn ||
+    SPECIAL_NEED_PROFILE_FIELDS.some(
+      (field) => JSON.stringify(values[field]) !== JSON.stringify(initialValues[field]),
+    );
   // A new or changed email has to pass the Check button before the form can be saved.
   // A Super Admin can save a legacy student whose email Google already has, and link the account afterwards.
   const [claimExisting, setClaimExisting] = useState(false);
@@ -169,8 +188,8 @@ export function StudentForm({
   // as the join year is the one running. Picking a current grade by hand ends that.
   const [currentGradeTouched, setCurrentGradeTouched] = useState(false);
   const allErrors = useMemo(
-    () => computeStudentErrors(values, isCreate),
-    [values, isCreate],
+    () => computeStudentErrors(values, isCreate, specialNeedsChanged),
+    [values, isCreate, specialNeedsChanged],
   );
   // The email typed a second time only makes sense while the first one is filled in and valid.
   const parentEmailNotReady =
@@ -198,10 +217,18 @@ export function StudentForm({
     [pendingPhotoBlob],
   );
   useEffect(() => {
+    if (Array.isArray(values.special_needs)) return;
+    setValues((current) => normalizeStudentFormValues(current, initialValues));
+  }, [initialValues, values.special_needs]);
+  useEffect(() => {
     return () => {
       if (pendingPhotoPreviewUrl) URL.revokeObjectURL(pendingPhotoPreviewUrl);
     };
   }, [pendingPhotoPreviewUrl]);
+  useEffect(() => {
+    if (focusSection !== "special-needs") return;
+    document.querySelector('[data-section="special-needs"]')?.scrollIntoView({ block: "start" });
+  }, [focusSection]);
 
   function handlePhotoFileChange(event) {
     const file = event.target.files?.[0];
@@ -305,7 +332,7 @@ export function StudentForm({
     }
     setHasAttemptedSubmit(true);
 
-    const computedErrors = computeStudentErrors(values, isCreate);
+    const computedErrors = computeStudentErrors(values, isCreate, specialNeedsChanged);
     if (Object.keys(computedErrors).length > 0) {
       showErrorToast("Please fix the highlighted fields before saving.");
       scrollToFirstError(computedErrors);
@@ -334,7 +361,13 @@ export function StudentForm({
     );
 
     if (isCreate) {
-      const fields = buildFilledFieldEntries(values, {
+      // Empty profile fields would only be noise in the review; the profile
+      // keys only belong there once the Special Needs section is ticked.
+      const reviewValues = { ...values };
+      if (!values.sn) {
+        for (const key of SPECIAL_NEED_PROFILE_FIELDS) delete reviewValues[key];
+      }
+      const fields = buildFilledFieldEntries(reviewValues, {
         labels: STUDENT_DIFF_LABELS,
         resolveValue,
         excludeKeys: STUDENT_DIFF_EXCLUDED_KEYS,
@@ -403,15 +436,18 @@ export function StudentForm({
       }
     }
 
-    onSubmit(
-      buildPayload(values, {
+    const payload = buildPayload(values, {
         includeBirth: birthRevealed,
         isCreate,
         claiming,
         emailLanguage: emailLanguage.current,
-      }),
-      pendingPhotoBlob,
-    );
+      });
+    if (!isCreate && mayEditSpecialNeeds && specialNeedsChanged) {
+      payload.special_needs_profile = values.sn
+        ? buildSpecialNeedsProfilePayload(values)
+        : null;
+    }
+    onSubmit(payload, pendingPhotoBlob);
   }
 
   return (
@@ -927,13 +963,6 @@ export function StudentForm({
                     searchPlaceholder="Search Years"
                   />
                 </Field>
-                <CheckboxField
-                  label="SN"
-                  checked={values.sn}
-                  onChange={(event) =>
-                    updateCheckbox("sn", event.target.checked)
-                  }
-                />
               </>
             ) : isLegacyGraduateCreate ? (
               <>
@@ -969,13 +998,6 @@ export function StudentForm({
                     searchPlaceholder="Search Years"
                   />
                 </Field>
-                <CheckboxField
-                  label="SN"
-                  checked={values.sn}
-                  onChange={(event) =>
-                    updateCheckbox("sn", event.target.checked)
-                  }
-                />
               </>
             ) : null}
           </div>
@@ -1009,6 +1031,171 @@ export function StudentForm({
             />
           </div>
         </section>
+
+        {(isCreate ? canRevealBirth : mayEditSpecialNeeds) ? (
+          <section data-section="special-needs" className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
+              Special Needs
+            </h2>
+            <CheckboxField
+              label="This Student Requires Special Education Support"
+              checked={values.sn}
+              onChange={(event) => {
+                updateCheckbox("sn", event.target.checked);
+                if (!event.target.checked) {
+                  setValues((current) => ({
+                    ...current,
+                    sn: false,
+                    special_needs: [],
+                    learning_support_summary: "",
+                    accommodations: "",
+                    has_professional_report: false,
+                    report_date: "",
+                    identified_date: "",
+                  }));
+                }
+              }}
+            />
+            {values.sn && isLegacyGraduateCreate ? (
+              <p className="mt-2 text-sm text-(--mws-muted)">
+                A legacy graduate keeps only the flag. The profile can be filled
+                in later from the student page if support details are found.
+              </p>
+            ) : null}
+            {values.sn && !isLegacyGraduateCreate ? (
+              <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-2">
+                <Field
+                  label="Need Types"
+                  name="special_needs"
+                  required
+                  error={errors.special_needs}
+                  className="md:col-span-2"
+                >
+                  <div className="grid min-w-0 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                    {SPECIAL_NEED_TYPES.map((type) => (
+                      <CheckboxField
+                        key={type.value}
+                        label={type.label}
+                        checked={selectedSpecialNeeds.some((need) => need.need_type === type.value)}
+                        onChange={async (event) => {
+                          const checked = event.target.checked;
+                          const existingNeed = selectedSpecialNeeds.find((need) => need.need_type === type.value);
+                          if (!checked && existingNeed?.description.trim()) {
+                            const confirmed = await confirm({
+                              title: `Remove ${type.label}`,
+                              description: `Remove ${type.label} and its description?`,
+                              confirmLabel: "Remove",
+                              tone: "danger",
+                            });
+                            if (!confirmed) return;
+                          }
+                          setValues((current) => {
+                            const normalized = normalizeStudentFormValues(current, initialValues);
+                            return {
+                              ...normalized,
+                              special_needs: checked
+                                ? [...normalized.special_needs, { need_type: type.value, description: "" }]
+                                : normalized.special_needs.filter((need) => need.need_type !== type.value),
+                            };
+                          });
+                        }}
+                      />
+                    ))}
+                  </div>
+                </Field>
+                {selectedSpecialNeeds.map((need) => {
+                  const type = SPECIAL_NEED_TYPES.find((item) => item.value === need.need_type);
+                  return (
+                    <Field
+                      key={need.need_type}
+                      label={`${type?.label || need.need_type} Description`}
+                      name={`need_description_${need.need_type}`}
+                      required
+                      error={errors[`need_description_${need.need_type}`]}
+                      counter={{ value: need.description, max: 1000 }}
+                      className="md:col-span-2"
+                    >
+                      <TextAreaInput
+                        value={need.description}
+                        maxLength={1000}
+                        rows={3}
+                        onChange={(event) => setValues((current) => ({
+                          ...current,
+                          special_needs: current.special_needs.map((item) =>
+                            item.need_type === need.need_type
+                              ? { ...item, description: event.target.value }
+                              : item,
+                          ),
+                        }))}
+                      />
+                    </Field>
+                  );
+                })}
+                <Field
+                  label="Learning Support Summary"
+                  name="learning_support_summary"
+                  hint="How the student learns best and what helps at school. No medical details."
+                  counter={{ value: values.learning_support_summary, max: 500 }}
+                  className="md:col-span-2"
+                >
+                  <TextAreaInput
+                    value={values.learning_support_summary}
+                    maxLength={500}
+                    rows={2}
+                    onChange={(event) =>
+                      updateValue("learning_support_summary", event.target.value)
+                    }
+                  />
+                </Field>
+                <Field
+                  label="Classroom Accommodations"
+                  name="accommodations"
+                  counter={{ value: values.accommodations, max: 1000 }}
+                  className="md:col-span-2"
+                >
+                  <TextAreaInput
+                    value={values.accommodations}
+                    maxLength={1000}
+                    rows={2}
+                    onChange={(event) =>
+                      updateValue("accommodations", event.target.value)
+                    }
+                  />
+                </Field>
+                <CheckboxField
+                  label="Professional Report Available"
+                  checked={values.has_professional_report}
+                  onChange={(event) => {
+                    updateCheckbox("has_professional_report", event.target.checked);
+                    if (!event.target.checked) updateValue("report_date", "");
+                  }}
+                />
+                {values.has_professional_report ? (
+                  <Field
+                    label="Professional Report Date"
+                    name="report_date"
+                    error={errors.report_date}
+                  >
+                    <DateField
+                      value={values.report_date}
+                      onChange={(event) =>
+                        updateValue("report_date", event.target.value)
+                      }
+                    />
+                  </Field>
+                ) : null}
+                <Field label="Needs Identified Date" name="identified_date">
+                  <DateField
+                    value={values.identified_date}
+                    onChange={(event) =>
+                      updateValue("identified_date", event.target.value)
+                    }
+                  />
+                </Field>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         {isCreate ? (
           <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
@@ -1130,7 +1317,7 @@ export function StudentForm({
         entityLabel="student"
         draft={isCreate && !draft.draftHandled ? draft.savedDraft : null}
         onContinue={() => {
-          setValues(draft.savedDraft.values);
+          setValues(normalizeStudentFormValues(draft.savedDraft.values, initialValues));
           draft.markDraftHandled();
         }}
         onStartFresh={() => {
@@ -1162,7 +1349,7 @@ export function StudentForm({
   );
 }
 
-function getInitialValues(mode, student, options) {
+function getInitialValues(mode, student, options, specialNeedsProfile = null) {
   const identity = student?.identity || {};
   const academic = student?.academic || {};
 
@@ -1191,6 +1378,12 @@ function getInitialValues(mode, student, options) {
     graduation_grade: academic.graduation_grade || "",
     leave_year: academic.leave_year || "",
     sn: Boolean(academic.sn),
+    special_needs: specialNeedsProfile?.needs || [],
+    learning_support_summary: specialNeedsProfile?.learning_support_summary || "",
+    accommodations: specialNeedsProfile?.accommodations || "",
+    has_professional_report: Boolean(specialNeedsProfile?.has_professional_report),
+    report_date: dateInputFromIso(specialNeedsProfile?.report_date),
+    identified_date: dateInputFromIso(specialNeedsProfile?.identified_date),
     pickup_drop_service: Boolean(academic.pickup_drop_service),
     catering_service: Boolean(academic.catering_service),
     psb_guide: Boolean(academic.psb_guide),
@@ -1203,11 +1396,59 @@ function getInitialValues(mode, student, options) {
   };
 }
 
+function normalizeStudentFormValues(values = {}, fallback = {}) {
+  const {
+    need_types: legacyNeedTypes,
+    profile_description: legacyDescription,
+    ...current
+  } = values || {};
+  const specialNeeds = Array.isArray(current.special_needs)
+    ? current.special_needs.filter(
+        (need) => need && typeof need.need_type === "string",
+      )
+    : Array.isArray(legacyNeedTypes)
+      ? legacyNeedTypes.map((needType) => ({
+          need_type: needType,
+          description: legacyDescription || "",
+        }))
+      : Array.isArray(fallback.special_needs)
+        ? fallback.special_needs
+        : [];
+  return {
+    ...fallback,
+    ...current,
+    special_needs: specialNeeds,
+  };
+}
+
 const PARENT_TYPES = [
   { value: "FATHER", label: "Father" },
   { value: "MOTHER", label: "Mother" },
   { value: "GUARDIAN", label: "Guardian" },
 ];
+
+const SPECIAL_NEED_PROFILE_FIELDS = [
+  "special_needs",
+  "learning_support_summary",
+  "accommodations",
+  "has_professional_report",
+  "report_date",
+  "identified_date",
+];
+
+function buildSpecialNeedsProfilePayload(values) {
+  return cleanPayload({
+    needs: values.special_needs.map((need) => ({
+      need_type: need.need_type,
+      description: need.description.trim(),
+    })),
+    learning_support_summary: trimmedOrUndefined(values.learning_support_summary),
+    accommodations: trimmedOrUndefined(values.accommodations),
+    has_professional_report: values.has_professional_report,
+    report_date: values.has_professional_report && values.report_date ? values.report_date : undefined,
+    identified_date: values.identified_date || undefined,
+  });
+}
 
 function buildPayload(
   values,
@@ -1218,7 +1459,7 @@ function buildPayload(
     emailLanguage,
   } = {},
 ) {
-  const payload = buildFullPayload(values);
+  const payload = buildFullPayload(values, { isCreate });
   if (claiming) payload.claim_existing_google = true;
   // An email is changed only by Change Email, never by saving the form.
   if (!isCreate) delete payload.email;
@@ -1239,8 +1480,12 @@ function buildPayload(
   return payload;
 }
 
-function buildFullPayload(values) {
-  return cleanPayload({
+function buildFullPayload(values, { isCreate = false } = {}) {
+  // A legacy graduate may carry the bare flag; a normal create sends the whole
+  // profile and the server derives the flag. Later edits happen in the profile
+  // panel, never here.
+  const legacyGraduateFlag = isCreate && values.sn && isLegacyGraduateValues(values);
+  const payload = cleanPayload({
     full_name: trimmedOrUndefined(values.full_name),
     nick_name: trimmedOrUndefined(values.nick_name),
     email: buildEmail(values.email_local),
@@ -1264,11 +1509,20 @@ function buildFullPayload(values) {
     previous_school: trimmedOrUndefined(values.previous_school),
     graduation_grade: trimmedOrUndefined(values.graduation_grade),
     leave_year: trimmedOrUndefined(values.leave_year),
-    sn: values.sn,
+    sn: legacyGraduateFlag ? true : undefined,
+    special_needs_profile:
+      isCreate && values.sn && !legacyGraduateFlag
+        ? buildSpecialNeedsProfilePayload(values)
+        : undefined,
     pickup_drop_service: values.pickup_drop_service,
     catering_service: values.catering_service,
     psb_guide: values.psb_guide,
   });
+  return payload;
+}
+
+function isLegacyGraduateValues(values) {
+  return Boolean(values.is_legacy && values.status === "GRADUATED");
 }
 
 function findOptionByName(options, name) {
@@ -1349,6 +1603,12 @@ const STUDENT_ID_FIELD_OPTION_KEYS = {
 const STUDENT_FIELD_FORMATTERS = {
   email_local: buildEmail,
   entry_type: formatEntryType,
+  special_needs: (value) =>
+    Array.isArray(value)
+      ? value
+          .map((need) => `${SPECIAL_NEED_TYPES.find((type) => type.value === need.need_type)?.label ?? need.need_type}: ${need.description}`)
+          .join("; ")
+      : String(value ?? ""),
 };
 
 // nis is read-only here (server-generated, never sent by buildPayload) so
@@ -1387,7 +1647,13 @@ const STUDENT_FIELD_SECTIONS = {
   graduation_grade: "Academic",
   leave_year: "Academic",
 
-  sn: "Services",
+  sn: "Special Needs",
+  special_needs: "Needs And Descriptions",
+  learning_support_summary: "Learning Support Summary",
+  accommodations: "Classroom Accommodations",
+  has_professional_report: "Professional Report Available",
+  report_date: "Professional Report Date",
+  identified_date: "Needs Identified Date",
   pickup_drop_service: "Services",
   catering_service: "Services",
   psb_guide: "Services",
@@ -1398,7 +1664,7 @@ const STUDENT_FIELD_SECTIONS = {
   parent_phone: "Parent or guardian",
 };
 
-function computeStudentErrors(values, isCreate) {
+function computeStudentErrors(values, isCreate, specialNeedsChanged = false) {
   const errors = {};
   if (isCreate) {
     for (const [field, label] of Object.entries({
@@ -1453,6 +1719,26 @@ function computeStudentErrors(values, isCreate) {
     }
     if (!values.leave_year) {
       errors.leave_year = "Leave year is required for a legacy graduate.";
+    }
+  }
+  if ((isCreate || specialNeedsChanged) && values.sn && !isLegacyGraduateValues(values)) {
+    if (!values.special_needs || values.special_needs.length === 0) {
+      errors.special_needs = "Choose at least one need type.";
+    }
+    for (const need of values.special_needs || []) {
+      if (!need.description.trim()) {
+        errors[`need_description_${need.need_type}`] = "Description is required.";
+      }
+    }
+    if (values.report_date && !values.has_professional_report) {
+      errors.report_date = "Report date requires a professional report.";
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    if (values.report_date && values.report_date > today) {
+      errors.report_date = "Report date cannot be in the future.";
+    }
+    if (values.identified_date && values.identified_date > today) {
+      errors.identified_date = "Identified date cannot be in the future.";
     }
   }
   return errors;

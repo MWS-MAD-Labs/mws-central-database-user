@@ -1,12 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { EyeOff, HeartPulse, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { EyeOff, HeartPulse, Pencil, Plus } from 'lucide-react'
 import { useState } from 'react'
-import { ActionsMenu, ActionsMenuItem } from '../../../../components/ui/ActionsMenu.jsx'
 import { Button } from '../../../../components/ui/Button.jsx'
 import { useConfirm } from '../../../../components/ui/useConfirm.js'
 import { CrudDialog } from '../../../../components/ui/CrudDialog.jsx'
 import {
-  CheckboxField,
   DateField,
   Field,
   LimitedField,
@@ -17,14 +15,8 @@ import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
 import { cleanPayload, dateInputFromIso, isoFromDateInput, trimmedOrUndefined } from '../../../../lib/form.js'
 import { enumOptions, formatDate, formatStatus, statusTone } from '../../../../lib/format.js'
 import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../../lib/piiRevealMemory.js'
-import {
-  bloodTypes,
-  healthNoteCategories,
-  healthNoteStatuses,
-  studentSensitiveApi,
-} from '../../api/studentSensitiveApi.js'
+import { bloodTypes, healthNoteStatuses, studentSensitiveApi } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame, SensitiveDataReveal, SummaryCard } from './panelPrimitives.jsx'
-import { isPendingFor } from "../../../../lib/mutationState.js";
 
 const studentHealthPiiScope = (studentId) => `student-health:${studentId}`
 
@@ -34,13 +26,12 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
   const [revealed, setRevealed] = useState(
     () => Boolean(studentId) && hasRecentReveal(studentHealthPiiScope(studentId)),
   )
-  const [showDeletedNotes, setShowDeletedNotes] = useState(false)
   const [noteDialog, setNoteDialog] = useState(null)
   const [recordDialog, setRecordDialog] = useState(false)
 
   async function handleReveal() {
     const confirmed = await confirm({
-      title: 'View health & special needs',
+      title: 'View health information',
       description: 'View this student\'s blood type, needs-assistance flag, and health notes? This access is logged.',
       confirmLabel: 'View',
     })
@@ -56,10 +47,10 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
     enabled: Boolean(studentId) && canViewSensitive && revealed,
   })
   const notesQuery = useQuery({
-    queryKey: ['students', studentId, 'health-notes', showDeletedNotes],
+    queryKey: ['students', studentId, 'health-notes', 'HEALTH_INFO'],
     queryFn: () =>
       studentSensitiveApi.listHealthNotes(studentId, {
-        is_deleted: showDeletedNotes,
+        category: 'HEALTH_INFO',
       }),
     enabled: Boolean(studentId) && canViewSensitive && revealed,
   })
@@ -80,26 +71,6 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
       setNoteDialog(null)
     },
   })
-  const deleteNoteMutation = useMutation({
-    meta: { successMessage: "Health note deleted." },
-    mutationFn: (id) => studentSensitiveApi.removeHealthNote(studentId, id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-notes'] }),
-  })
-  const restoreNoteMutation = useMutation({
-    meta: { successMessage: "Health note restored." },
-    mutationFn: (id) => studentSensitiveApi.restoreHealthNote(studentId, id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-notes'] }),
-  })
-  const deleteRecordMutation = useMutation({
-    meta: { successMessage: "Health record deleted." },
-    mutationFn: () => studentSensitiveApi.removeHealthRecord(studentId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-record'] }),
-  })
-  const restoreRecordMutation = useMutation({
-    meta: { successMessage: "Health record restored." },
-    mutationFn: () => studentSensitiveApi.restoreHealthRecord(studentId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-record'] }),
-  })
   const saveRecordMutation = useMutation({
     meta: { successMessage: "Health record saved." },
     mutationFn: (payload) => recordQuery.data
@@ -113,7 +84,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
 
   if (!canViewSensitive) {
     return (
-      <PanelFrame title="Health & Special Needs" icon={HeartPulse} isFetching={false}>
+      <PanelFrame title="Health Information" icon={HeartPulse} isFetching={false}>
         <PanelMessage>
           Restricted. You don't have permission to view sensitive data.
         </PanelMessage>
@@ -125,7 +96,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
     return (
       <SensitiveDataReveal
         icon={HeartPulse}
-        title="Health & Special Needs"
+        title="Health Information"
         onReveal={handleReveal}
       />
     )
@@ -133,7 +104,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
 
   return (
     <PanelFrame
-      title="Health & Special Needs"
+      title="Health Information"
       icon={HeartPulse}
       isFetching={recordQuery.isFetching || notesQuery.isFetching}
       action={
@@ -146,54 +117,12 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
           >
             <EyeOff size={15} />
           </Button>
-          <Button type="button" disabled={!canWrite} onClick={() => setNoteDialog({ mode: 'create' })} size="icon" aria-label="Add Health Note" title="Add Health Note">
+          {canWrite ? <Button type="button" variant="secondary" onClick={() => setRecordDialog(true)} size="icon" aria-label={recordQuery.data ? 'Edit Health Information' : 'Create Health Information'} title={recordQuery.data ? 'Edit Health Information' : 'Create Health Information'}>
+            {recordQuery.data ? <Pencil size={15} /> : <Plus size={15} />}
+          </Button> : null}
+          {canWrite ? <Button type="button" onClick={() => setNoteDialog({ mode: 'create' })} size="icon" aria-label="Add Health Note" title="Add Health Note">
             <Plus size={15} />
-          </Button>
-          <ActionsMenu label="More Actions" disabled={!canWrite}>
-            {(close) => (
-              <>
-                <ActionsMenuItem
-                  checked={showDeletedNotes}
-                  onClick={() => {
-                    setShowDeletedNotes((current) => !current)
-                    close()
-                  }}
-                >
-                  Show deleted notes
-                </ActionsMenuItem>
-                <ActionsMenuItem
-                  onClick={() => {
-                    setRecordDialog(true)
-                    close()
-                  }}
-                >
-                  Edit Blood Type
-                </ActionsMenuItem>
-                {!recordQuery.data ? (
-                  <ActionsMenuItem
-                    disabled={restoreRecordMutation.isPending}
-                    onClick={() => {
-                      restoreRecordMutation.mutate()
-                      close()
-                    }}
-                  >
-                    Restore Blood Type
-                  </ActionsMenuItem>
-                ) : (
-                  <ActionsMenuItem
-                    tone="danger"
-                    disabled={deleteRecordMutation.isPending}
-                    onClick={() => {
-                      deleteRecordMutation.mutate()
-                      close()
-                    }}
-                  >
-                    Delete Blood Type
-                  </ActionsMenuItem>
-                )}
-              </>
-            )}
-          </ActionsMenu>
+          </Button> : null}
         </>
       }
     >
@@ -207,7 +136,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
       </div>
 
       {(notesQuery.data || []).length === 0 ? (
-        <PanelMessage>No health or special needs notes yet.</PanelMessage>
+        <PanelMessage>No health notes yet.</PanelMessage>
       ) : (
         <div className="space-y-3">
           {(notesQuery.data || []).map((note) => (
@@ -215,9 +144,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge tone="neutral">{formatStatus(note.category)}</StatusBadge>
                     <StatusBadge tone={statusTone(note.status)}>{formatStatus(note.status)}</StatusBadge>
-                    {note.deleted_at ? <StatusBadge tone="red">Deleted</StatusBadge> : null}
                   </div>
                   <p className="mt-2 text-sm leading-6 text-(--mws-charcoal)">
                     {note.description}
@@ -226,60 +153,32 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
                     Noted {formatDate(note.noted_date)} / Resolved {formatDate(note.resolved_date)}
                   </p>
                 </div>
-                <div className="flex gap-1">
-                  {note.deleted_at ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                       disabled={!canWrite}
-                       loading={isPendingFor(restoreNoteMutation, note.id)}
-                      onClick={() => restoreNoteMutation.mutate(note.id)}
-                      size="icon" aria-label="Restore" title="Restore"
-                    >
-                      <RotateCcw size={15} />
-                    </Button>
-                  ) : (
-                    <>
-                      <Button type="button" variant="ghost" size="icon" aria-label="Edit" title="Edit" disabled={!canWrite} onClick={() => setNoteDialog({ mode: 'edit', record: note })}>
-                        <Pencil size={15} />
-                      </Button>
-                       <Button aria-label="Delete" title="Delete" type="button" variant="ghost" size="icon" disabled={!canWrite} loading={isPendingFor(deleteNoteMutation, note.id)} onClick={() => deleteNoteMutation.mutate(note.id)}>
-                        <Trash2 size={15} />
-                      </Button>
-                    </>
-                  )}
-                </div>
+                {canWrite ? <Button type="button" variant="ghost" size="icon" aria-label="Edit" title="Edit" onClick={() => setNoteDialog({ mode: 'edit', record: note })}>
+                  <Pencil size={15} />
+                </Button> : null}
               </div>
             </article>
           ))}
         </div>
       )}
 
-      {noteDialog ? (
+      {canWrite && noteDialog ? (
           <HealthNoteDialog
             dialog={noteDialog}
-            healthRecord={recordQuery.data}
             isSubmitting={
               createNoteMutation.isPending ||
-              updateNoteMutation.isPending ||
-              saveRecordMutation.isPending
+              updateNoteMutation.isPending
             }
             onClose={() => setNoteDialog(null)}
-            onSubmit={({ notePayload, needsAssistance }) => {
+            onSubmit={(notePayload) => {
             if (noteDialog.mode === 'create') createNoteMutation.mutate(notePayload)
             else updateNoteMutation.mutate({ id: noteDialog.record.id, payload: notePayload })
-            if (needsAssistance !== undefined && needsAssistance !== Boolean(recordQuery.data?.needs_assistance)) {
-              saveRecordMutation.mutate({
-                blood_type: recordQuery.data?.blood_type || undefined,
-                needs_assistance: needsAssistance,
-              })
-            }
           }}
         />
       ) : null}
 
-      {recordDialog ? (
-        <BloodTypeDialog
+      {canWrite && recordDialog ? (
+        <HealthInformationDialog
           healthRecord={recordQuery.data}
           isSubmitting={saveRecordMutation.isPending}
           onClose={() => setRecordDialog(false)}
@@ -290,17 +189,14 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
   )
 }
 
-function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmit }) {
+function HealthNoteDialog({ dialog, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
-    category: dialog.record?.category || 'HEALTH_INFO',
     description: dialog.record?.description || '',
     status: dialog.record?.status || 'ACTIVE',
     noted_date: dateInputFromIso(dialog.record?.noted_date) || new Date().toISOString().slice(0, 10),
     resolved_date: dateInputFromIso(dialog.record?.resolved_date),
-    needs_assistance: Boolean(healthRecord?.needs_assistance),
   }))
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
-  const isSpecialNeeds = values.category === 'SPECIAL_NEEDS'
   const descriptionError =
     hasAttemptedSubmit && !values.description.trim()
       ? 'Description is required.'
@@ -310,30 +206,18 @@ function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmi
     event.preventDefault()
     setHasAttemptedSubmit(true)
     if (!values.description.trim()) return
-    onSubmit({
-      notePayload: cleanPayload({
-        category: values.category,
-        description: trimmedOrUndefined(values.description),
-        status: values.status,
-        noted_date: isoFromDateInput(values.noted_date),
-        resolved_date: isoFromDateInput(values.resolved_date),
-      }),
-      needsAssistance: isSpecialNeeds ? values.needs_assistance : undefined,
-    })
+    onSubmit(cleanPayload({
+      category: dialog.mode === 'create' ? 'HEALTH_INFO' : undefined,
+      description: trimmedOrUndefined(values.description),
+      status: values.status,
+      noted_date: isoFromDateInput(values.noted_date),
+      resolved_date: isoFromDateInput(values.resolved_date),
+    }))
   }
 
   return (
     <CrudDialog title={dialog.mode === 'create' ? 'New Health Note' : 'Edit Health Note'} onClose={onClose} footer={<DialogFooter form="health-note-form" isSubmitting={isSubmitting} onClose={onClose} />}>
       <form id="health-note-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit} noValidate>
-        <Field label="Category">
-          <SearchableSelect
-            value={values.category}
-            onChange={(value) => setValues({ ...values, category: value })}
-            options={enumOptions(healthNoteCategories)}
-            placeholder="Select Category"
-            searchPlaceholder="Search Category"
-          />
-        </Field>
         <Field label="Status">
           <SearchableSelect
             value={values.status}
@@ -356,42 +240,34 @@ function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmi
           as="textarea"
           className="md:col-span-2"
           required
-          placeholder={isSpecialNeeds ? 'Autism spectrum, ADHD, sensory sensitivity, learning support needs...' : undefined}
           values={values}
           errors={{ description: descriptionError }}
           updateValue={(field, value) =>
             setValues((current) => ({ ...current, [field]: value }))
           }
         />
-        {isSpecialNeeds ? (
-          <CheckboxField
-            className="md:col-span-2"
-            label="Needs Assistance"
-            description="Check this when the student needs extra assistance or special handling."
-            checked={values.needs_assistance}
-            onChange={(event) => setValues({ ...values, needs_assistance: event.target.checked })}
-          />
-        ) : null}
       </form>
     </CrudDialog>
   )
 }
 
-function BloodTypeDialog({ healthRecord, isSubmitting, onClose, onSubmit }) {
+function HealthInformationDialog({ healthRecord, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     blood_type: healthRecord?.blood_type || '',
+    needs_assistance: Boolean(healthRecord?.needs_assistance),
   }))
 
   function submit(event) {
     event.preventDefault()
     onSubmit({
       blood_type: values.blood_type || undefined,
+      needs_assistance: values.needs_assistance,
     })
   }
 
   return (
-    <CrudDialog title="Edit Blood Type" onClose={onClose} footer={<DialogFooter form="blood-type-form" isSubmitting={isSubmitting} onClose={onClose} />}>
-      <form id="blood-type-form" className="grid gap-4" onSubmit={submit} noValidate>
+    <CrudDialog title={healthRecord ? 'Edit Health Information' : 'Create Health Information'} onClose={onClose} footer={<DialogFooter form="health-information-form" isSubmitting={isSubmitting} onClose={onClose} />}>
+      <form id="health-information-form" className="grid gap-4" onSubmit={submit} noValidate>
         <Field label="Blood Type">
           <SearchableSelect
             value={values.blood_type}
@@ -401,6 +277,10 @@ function BloodTypeDialog({ healthRecord, isSubmitting, onClose, onSubmit }) {
             searchPlaceholder="Search Blood Type"
           />
         </Field>
+        <label className="flex min-h-11 items-center gap-3 rounded-xl border border-(--mws-line) bg-white px-3 py-2.5 text-sm text-(--mws-charcoal)">
+          <input type="checkbox" className="h-4 w-4 accent-(--mws-burgundy)" checked={values.needs_assistance} onChange={(event) => setValues({ ...values, needs_assistance: event.target.checked })} />
+          <span className="font-medium">Needs Assistance</span>
+        </label>
       </form>
     </CrudDialog>
   )

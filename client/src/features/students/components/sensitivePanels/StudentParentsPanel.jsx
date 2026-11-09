@@ -85,17 +85,16 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
               <EyeOff size={15} />
             </Button>
           ) : null}
-          <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
+          {canWrite ? <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
             Show Deleted
-          </ToggleChip>
-          <Button
+          </ToggleChip> : null}
+          {canWrite ? <Button
             type="button"
-            disabled={!canWrite}
             onClick={() => setDialog({ mode: 'create' })}
             size="icon" aria-label="Add Parent" title="Add Parent"
           >
             <Plus size={15} />
-          </Button>
+          </Button> : null}
         </>
       }
     >
@@ -124,7 +123,7 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
                     </p>
                   ) : null}
                 </div>
-                <div className="flex gap-1">
+                {canWrite ? <div className="flex gap-1">
                   {parent.deleted_at ? (
                     <Button
                       type="button"
@@ -159,14 +158,14 @@ export function StudentParentsPanel({ studentId, canWrite, revealed = true, onRe
                       </Button>
                     </>
                   )}
-                </div>
+                </div> : null}
               </div>
             </article>
           ))}
         </div>
       )}
 
-      {dialog ? (
+      {canWrite && dialog ? (
         <ParentDialog
           dialog={dialog}
           siblings={activeParentsQuery.data || []}

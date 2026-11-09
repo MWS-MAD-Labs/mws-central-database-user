@@ -54,6 +54,7 @@ describe('Student create and edit pages', () => {
   async function createStudentThrough({ postData = { id: 'student-new' }, extraRoutes = [] } = {}) {
     const fetchMock = createFetchRouter([
       ...optionsRoutes(),
+      { path: '/api/admin/students/student-1/special-needs-profile', response: jsonResponse({ errors: 'Not found' }, 404) },
       ...extraRoutes,
       {
         path: /^\/api\/admin\/google\/email-availability/,
@@ -152,6 +153,7 @@ describe('Student create and edit pages', () => {
     const accessCalls = []
     const fetchMock = createFetchRouter([
       ...optionsRoutes(),
+      { path: '/api/admin/students/student-1/special-needs-profile', response: jsonResponse({ errors: 'Not found' }, 404) },
       {
         path: '/api/admin/students/student-1/sensitive-fields/access',
         method: 'POST',
@@ -199,6 +201,7 @@ describe('Student create and edit pages', () => {
   it('leaves birth details out of the update when they were never shown', async () => {
     const fetchMock = createFetchRouter([
       ...optionsRoutes(),
+      { path: '/api/admin/students/student-1/special-needs-profile', response: jsonResponse({ errors: 'Not found' }, 404) },
       { path: '/api/admin/students/student-1', response: ({ method }) => method === 'PATCH'
         ? jsonResponse({ data: { id: 'student-1' } })
         : jsonResponse({ data: studentFixture() }) },
@@ -219,6 +222,40 @@ describe('Student create and edit pages', () => {
     expect(body).not.toHaveProperty('birth_place')
     expect(body).not.toHaveProperty('birth_date')
   })
+
+  it('loads and saves the Special Needs profile in the same student PATCH', async () => {
+    let patchBody
+    globalThis.fetch = createFetchRouter([
+      ...optionsRoutes(),
+      {
+        path: '/api/admin/students/student-1/special-needs-profile',
+        response: jsonResponse({ data: {
+          needs: [{ need_type: 'LEARNING', description: 'Needs short instructions.' }],
+          learning_support_summary: null,
+          accommodations: null,
+          has_professional_report: false,
+          report_date: null,
+          identified_date: null,
+        } }),
+      },
+      { path: '/api/admin/students/student-1', response: ({ method, options }) => {
+        if (method === 'PATCH') {
+          patchBody = JSON.parse(options.body)
+          return jsonResponse({ data: { id: 'student-1' } })
+        }
+        return jsonResponse({ data: studentFixture({ academic: { sn: true, special_needs_status: 'PROFILED' } }) })
+      } },
+    ])
+    const { user } = renderRoute(<StudentEditPage />, '/students/student-1/edit?section=special-needs', '/students/:studentId/edit')
+    const description = await screen.findByDisplayValue('Needs short instructions.')
+    await user.clear(description)
+    await user.type(description, 'Updated support description.')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    await user.click(within(screen.getByRole('dialog', { name: 'Review changes before saving' })).getByRole('button', { name: 'Save changes' }))
+    expect(await screen.findByText('Student destination')).toBeVisible()
+    expect(patchBody.special_needs_profile).toMatchObject({ needs: [{ need_type: 'LEARNING', description: 'Updated support description.' }] })
+    expect(patchBody).not.toHaveProperty('sn')
+  }, 10_000)
 
   it('renders edit error state when student data fails', async () => {
     globalThis.fetch = createFetchRouter([

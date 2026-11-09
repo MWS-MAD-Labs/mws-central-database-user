@@ -159,13 +159,13 @@ describe('StudentParentsPanel', () => {
     })
   })
 
-  it('disables writes for read-only users', async () => {
+  it('hides writes for read-only users', async () => {
     globalThis.fetch = createFetchRouter([
       { path: '/api/admin/students/student-1/parents?is_deleted=false', response: jsonResponse({ data: [] }) },
     ])
     renderPanel(<StudentParentsPanel studentId="student-1" canWrite={false} />)
     expect(await screen.findByText('No parent or guardian records yet.')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Add Parent' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Add Parent' })).not.toBeInTheDocument()
   })
 })
 

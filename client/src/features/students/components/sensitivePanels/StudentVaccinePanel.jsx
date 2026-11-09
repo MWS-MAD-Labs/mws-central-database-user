@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { EyeOff, Pencil, Plus, RotateCcw, Syringe, Trash2 } from 'lucide-react'
+import { EyeOff, Pencil, Plus, Syringe } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../../components/ui/Button.jsx'
 import { useConfirm } from '../../../../components/ui/useConfirm.js'
@@ -9,7 +9,6 @@ import {
   DateField,
   Field,
   SearchableSelect,
-  ToggleChip,
 } from '../../../../components/ui/FormControls.jsx'
 import { PanelMessage } from '../../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
@@ -19,7 +18,6 @@ import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../../lib/p
 import { studentSensitiveApi, vaccineTypes } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame, SensitiveDataReveal } from './panelPrimitives.jsx'
 import { invalidateStudentRelation } from './panelHelpers.js'
-import { isPendingFor } from "../../../../lib/mutationState.js";
 
 const studentVaccinePiiScope = (studentId) => `student-vaccine:${studentId}`
 
@@ -29,7 +27,6 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
   const [revealed, setRevealed] = useState(
     () => Boolean(studentId) && hasRecentReveal(studentVaccinePiiScope(studentId)),
   )
-  const [showDeleted, setShowDeleted] = useState(false)
   const [dialog, setDialog] = useState(null)
 
   async function handleReveal() {
@@ -45,9 +42,8 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
   }
 
   const vaccinesQuery = useQuery({
-    queryKey: ['students', studentId, 'vaccine-records', showDeleted],
-    queryFn: () =>
-      studentSensitiveApi.listVaccines(studentId, { is_deleted: showDeleted }),
+    queryKey: ['students', studentId, 'vaccine-records'],
+    queryFn: () => studentSensitiveApi.listVaccines(studentId),
     enabled: Boolean(studentId) && canViewSensitive && revealed,
   })
   const createMutation = useMutation({
@@ -66,16 +62,6 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
       invalidateStudentRelation(queryClient, studentId, 'vaccine-records')
       setDialog(null)
     },
-  })
-  const deleteMutation = useMutation({
-    meta: { successMessage: "Vaccine record deleted." },
-    mutationFn: (id) => studentSensitiveApi.removeVaccine(studentId, id),
-    onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'vaccine-records'),
-  })
-  const restoreMutation = useMutation({
-    meta: { successMessage: "Vaccine record restored." },
-    mutationFn: (id) => studentSensitiveApi.restoreVaccine(studentId, id),
-    onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'vaccine-records'),
   })
 
   if (!canViewSensitive) {
@@ -113,17 +99,13 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
           >
             <EyeOff size={15} />
           </Button>
-          <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
-            Show Deleted
-          </ToggleChip>
-          <Button
+          {canWrite ? <Button
             type="button"
-            disabled={!canWrite}
             onClick={() => setDialog({ mode: 'create' })}
             size="icon" aria-label="Add Vaccine" title="Add Vaccine"
           >
             <Plus size={15} />
-          </Button>
+          </Button> : null}
         </>
       }
     >
@@ -142,55 +124,28 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
                     <StatusBadge tone={record.received ? 'green' : 'amber'}>
                       {record.received ? 'Received' : 'Pending'}
                     </StatusBadge>
-                    {record.deleted_at ? <StatusBadge tone="red">Deleted</StatusBadge> : null}
                   </div>
                   <p className="mt-1 text-sm text-(--mws-muted)">
                     Date {formatDate(record.date)}
                   </p>
                 </div>
-                <div className="flex gap-1">
-                  {record.deleted_at ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      disabled={!canWrite || isPendingFor(restoreMutation, record.id)}
-                      onClick={() => restoreMutation.mutate(record.id)}
-                      size="icon" aria-label="Restore" title="Restore"
-                    >
-                      <RotateCcw size={15} />
-                    </Button>
-                  ) : (
-                    <>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Edit"
-                        title="Edit"
-                        disabled={!canWrite}
-                        onClick={() => setDialog({ mode: 'edit', record })}
-                      >
-                        <Pencil size={15} />
-                      </Button>
-                      <Button aria-label="Delete" title="Delete"
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        disabled={!canWrite || isPendingFor(deleteMutation, record.id)}
-                        onClick={() => deleteMutation.mutate(record.id)}
-                      >
-                        <Trash2 size={15} />
-                      </Button>
-                    </>
-                  )}
-                </div>
+                {canWrite ? <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Edit"
+                  title="Edit"
+                  onClick={() => setDialog({ mode: 'edit', record })}
+                >
+                  <Pencil size={15} />
+                </Button> : null}
               </div>
             </article>
           ))}
         </div>
       )}
 
-      {dialog ? (
+      {canWrite && dialog ? (
         <VaccineDialog
           dialog={dialog}
           isSubmitting={createMutation.isPending || updateMutation.isPending}

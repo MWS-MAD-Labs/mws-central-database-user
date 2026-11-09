@@ -43,6 +43,7 @@ const ProfilePage = lazy(() => import('../features/profile/pages/ProfilePage.jsx
 const StudentCreatePage = lazy(() => import('../features/students/pages/StudentCreatePage.jsx').then((module) => ({ default: module.StudentCreatePage })))
 const StudentDetailPage = lazy(() => import('../features/students/pages/StudentDetailPage.jsx').then((module) => ({ default: module.StudentDetailPage })))
 const StudentEditPage = lazy(() => import('../features/students/pages/StudentEditPage.jsx').then((module) => ({ default: module.StudentEditPage })))
+const StudentManagePage = lazy(() => import('../features/students/pages/StudentManagePage.jsx').then((module) => ({ default: module.StudentManagePage })))
 const StudentsPage = lazy(() => import('../features/students/pages/StudentsPage.jsx').then((module) => ({ default: module.StudentsPage })))
 const RoleHome = lazy(() => import('../routes/RoleHome.jsx').then((module) => ({ default: module.RoleHome })))
 const MasterData = lazy(() => import('../features/master-data/pages/MasterData.jsx'))
@@ -83,7 +84,10 @@ export default function App() {
            </Route>
            <Route element={<CapabilityRoute allowed={canEditStudentProfiles} title="Student Write Access Required" description="Your account cannot create or edit student profiles." />}>
              <Route path="students/new" element={<StudentCreatePage />} />
-             <Route path="students/:studentId/edit" element={<StudentEditPage />} />
+              <Route path="students/:studentId/edit" element={<StudentEditPage />} />
+              <Route path="students/:studentId/manage/contacts" element={<StudentManagePage section="contacts" />} />
+              <Route path="students/:studentId/manage/consent" element={<StudentManagePage section="consent" />} />
+              <Route path="students/:studentId/manage/health" element={<StudentManagePage section="health" />} />
            </Route>
            <Route element={<CapabilityRoute allowed={canViewAcademic} title="Academic Access Required" description="Student or employee access is required to view academic structure." />}>
              <Route path="academic" element={<AcademicPage />} />

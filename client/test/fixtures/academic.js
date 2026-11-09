@@ -64,6 +64,7 @@ export function enrollmentFixture(overrides = {}) {
 export const studentCandidate = {
   id: 'student-2',
   status: 'ACTIVE',
+  special_needs_status: 'PROFILED',
   identity: { full_name: 'Bela Student' },
   academic: {
     nis: '2611002',

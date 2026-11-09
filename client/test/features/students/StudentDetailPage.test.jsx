@@ -35,13 +35,13 @@ function detailRoutes({ student = studentFixture(), status = 200 } = {}) {
   ]
 }
 
-function renderDetail({ user = superAdminUser, routes = detailRoutes() } = {}) {
+function renderDetail({ user = superAdminUser, routes = detailRoutes(), entry = '/students/student-1' } = {}) {
   const fetchMock = createFetchRouter(routes)
   globalThis.fetch = fetchMock
   return { ...renderWithProviders(
     <AuthContext.Provider value={{ user }}>
       <ConfirmProvider>
-        <MemoryRouter initialEntries={['/students/student-1']}>
+        <MemoryRouter initialEntries={[entry]}>
           <Routes>
             <Route path="/students/:studentId" element={<StudentDetailPage />} />
             <Route path="/students" element={<p>Student list destination</p>} />
@@ -91,10 +91,47 @@ describe('StudentDetailPage', () => {
     expect(screen.getByRole('link', { name: /Edit/ })).toHaveAttribute('href', '/students/student-1/edit')
     expect(screen.getByRole('button', { name: 'Deactivate' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Archive' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Change Photo' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Show Health & Special Needs' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Show Vaccine Records' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Change Photo' })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('button', { name: 'Show Health Information' })).not.toBeInTheDocument()
+    expect(screen.queryByText('No mutation history found.')).not.toBeInTheDocument()
+  })
+
+  it('mounts only the active tab and normalizes an invalid tab', async () => {
+    const academic = renderDetail({ entry: '/students/student-1?tab=academic' })
+    expect(await screen.findByRole('tab', { name: 'Academic' })).toHaveAttribute('aria-selected', 'true')
     expect(await screen.findByText('No mutation history found.')).toBeVisible()
+    academic.unmount()
+
+    renderDetail({ entry: '/students/student-1?tab=not-real' })
+    expect(await screen.findByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('loads sensitive panels only after their tab is opened', async () => {
+    const healthRoutes = [
+      { path: '/api/admin/students/student-1/health-record', response: jsonResponse({ errors: 'Not found' }, 404) },
+      { path: '/api/admin/students/student-1/health-notes?category=HEALTH_INFO', response: jsonResponse({ data: [] }) },
+      { path: '/api/admin/students/student-1/vaccine-records?is_deleted=false', response: jsonResponse({ data: [] }) },
+      ...detailRoutes(),
+    ]
+    const { user, fetchMock } = renderDetail({ routes: healthRoutes })
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/health-record'))).toBe(false)
+    await user.click(await screen.findByRole('tab', { name: 'Health' }))
+    expect(screen.getByRole('button', { name: 'Show Health Information' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Show Vaccine Records' })).toBeVisible()
+  })
+
+  it('shows read-only Special Education and links profile changes to Edit Student', async () => {
+    const routes = [
+      { path: '/api/admin/students/student-1/special-needs-profile', response: jsonResponse({ data: { student_id: 'student-1', needs: [{ need_type: 'LEARNING', description: 'Needs support.' }], learning_support_summary: null, accommodations: null, has_professional_report: false, report_date: null, identified_date: null } }) },
+      ...detailRoutes(),
+    ]
+    const { user } = renderDetail({ routes, entry: '/students/student-1?tab=special-education' })
+    await user.click(await screen.findByRole('button', { name: 'Show Special Needs Profile' }))
+    await user.click(within(screen.getByRole('dialog', { name: 'View Special Needs profile' })).getByRole('button', { name: 'View' }))
+    expect(await screen.findByText('Needs support.')).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Edit Student' })).toHaveAttribute('href', '/students/student-1/edit?section=special-needs')
+    expect(screen.queryByRole('button', { name: 'Add Special Needs Profile' })).not.toBeInTheDocument()
   })
 
   it('renders a non-disclosing error state', async () => {
@@ -120,7 +157,8 @@ describe('StudentDetailPage', () => {
     expect(screen.queryByRole('button', { name: 'Deactivate' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Change Photo' })).not.toBeInTheDocument()
-    expect(screen.getAllByText(/Restricted/).length).toBeGreaterThanOrEqual(2)
+    expect(screen.queryByRole('tab', { name: 'Health' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Special Education' })).not.toBeInTheDocument()
   })
 
   it('confirms and submits deactivation', async () => {

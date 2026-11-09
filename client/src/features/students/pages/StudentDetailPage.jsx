@@ -2,23 +2,25 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowLeft,
-  Camera,
   Edit,
   Eye,
   EyeOff,
+  FileSignature,
+  HeartPulse,
   RefreshCw,
   Trash2,
   UserCheck,
   UserRound,
+  UsersRound,
   UserX,
-  X,
 } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { Tabs } from "../../../components/ui/Tabs.jsx";
 import { EnrollmentHistoryPanel } from "../../academic/components/EnrollmentHistoryPanel.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { canWriteInUnit, editBlockedReason } from "../../../lib/capabilities.js";
@@ -36,10 +38,12 @@ import {
   StudentHealthPanel,
   StudentParentsPanel,
   StudentPcActivitiesPanel,
+  StudentSpecialNeedsPanel,
   StudentSupportAssignmentPanel,
   StudentVaccinePanel,
 } from "../components/StudentSensitivePanels.jsx";
 import { StudentMutationHistoryPanel } from "../components/StudentMutationHistoryPanel.jsx";
+import { SpecialNeedsEligibilityStatus } from "../constants/specialNeeds.js";
 import {
   formatDate,
   formatStatus,
@@ -48,14 +52,12 @@ import {
   statusTone,
   UNKNOWN_LEGACY_GRADE_NAME,
 } from "../../../lib/format.js";
-import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from "../../../lib/fileSize.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { DetailRow } from "../components/DetailRow.jsx";
 import { useStudentPiiReveal } from "../hooks/useStudentPiiReveal.js";
 import { ServiceBadge } from "../components/ServiceBadge.jsx";
-import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import { PhotoLightbox } from "../../../components/photo/PhotoLightbox.jsx";
 import {
   decodeLegacyNisHints,
@@ -114,10 +116,9 @@ export function StudentDetailPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const confirm = useConfirm();
-  const photoInputRef = useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [isReissueModalOpen, setIsReissueModalOpen] = useState(false);
   const [isPhotoPreviewOpen, setIsPhotoPreviewOpen] = useState(false);
-  const [cropFile, setCropFile] = useState(null);
   const [reissueEntryType, setReissueEntryType] = useState("");
   const [reissueJoinGradeId, setReissueJoinGradeId] = useState("");
   const [reissueJoinAcademicYearId, setReissueJoinAcademicYearId] =
@@ -199,54 +200,6 @@ export function StudentDetailPage() {
     },
   });
 
-  const uploadPhotoMutation = useMutation({
-    mutationFn: (file) => studentsApi.uploadPhoto(studentId, file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["students", studentId] });
-      showSuccessToast("Photo updated.");
-    },
-    onError: (error) => showErrorToast(error, "Photo upload failed."),
-  });
-
-  const removePhotoMutation = useMutation({
-    mutationFn: () => studentsApi.removePhoto(studentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["students", studentId] });
-      showSuccessToast("Photo removed.");
-    },
-    onError: (error) => showErrorToast(error, "Photo removal failed."),
-  });
-
-  function handlePhotoFileChange(event) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    const sizeError = validateFileSize(file, MAX_PHOTO_SIZE_BYTES);
-    if (sizeError) {
-      showErrorToast(sizeError);
-      return;
-    }
-    setCropFile(file);
-    setIsPhotoPreviewOpen(false);
-  }
-
-  function handleCropped(blob) {
-    setCropFile(null);
-    uploadPhotoMutation.mutate(blob);
-  }
-
-  async function handleRemovePhoto() {
-    const confirmed = await confirm({
-      title: "Remove photo",
-      description: "Remove this student's photo?",
-      confirmLabel: "Remove",
-      tone: "danger",
-    });
-    if (confirmed) {
-      removePhotoMutation.mutate();
-    }
-  }
-
   const student = studentQuery.data;
   const pii = useStudentPiiReveal(studentId, student?.identity?.full_name);
   const birthDateWarning = pii.data?.birth_date
@@ -280,7 +233,35 @@ export function StudentDetailPage() {
   const canDelete = user?.role === "SUPER_ADMIN";
   const canViewSensitive =
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_sensitive_data);
-  const canManagePhoto = canWrite && canViewSensitive;
+  const effectiveCanWrite = canWrite && !editBlockedText;
+  const tabs = [
+    { id: "overview", label: "Overview" },
+    { id: "academic", label: "Academic" },
+    { id: "family-consent", label: "Family & Consent" },
+    ...(canViewSensitive
+      ? [
+          { id: "health", label: "Health" },
+          { id: "special-education", label: "Special Education" },
+        ]
+      : []),
+  ];
+  const requestedTab = searchParams.get("tab") || "overview";
+  const activeTab = tabs.some((tab) => tab.id === requestedTab)
+    ? requestedTab
+    : "overview";
+
+  useEffect(() => {
+    if (requestedTab === activeTab) return;
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", activeTab);
+    setSearchParams(next, { replace: true });
+  }, [activeTab, requestedTab, searchParams, setSearchParams]);
+
+  function changeTab(tab) {
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", tab);
+    setSearchParams(next);
+  }
 
   async function handleDelete() {
     const confirmed = await confirm({
@@ -381,6 +362,14 @@ export function StudentDetailPage() {
         <PanelMessage>Student data is unavailable.</PanelMessage>
       ) : student ? (
         <div className="min-w-0 space-y-5">
+          <Tabs
+            label="Student detail sections"
+            tabs={tabs}
+            active={activeTab}
+            onChange={changeTab}
+          />
+          {activeTab === "overview" ? (
+            <>
           {student.academic.import_defaulted_fields?.length ? (
             <div className="flex items-start gap-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
               <AlertTriangle size={18} className="mt-0.5 shrink-0" />
@@ -499,37 +488,6 @@ export function StudentDetailPage() {
                   ) : (
                     <UserRound size={24} />
                   )}
-                  {canManagePhoto ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => photoInputRef.current?.click()}
-                        disabled={uploadPhotoMutation.isPending}
-                        className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-(--mws-burgundy) text-white shadow-sm hover:bg-(--mws-burgundy-dark) disabled:opacity-60"
-                        aria-label="Change Photo"
-                      >
-                        <Camera size={12} />
-                      </button>
-                      {student.identity.photo_url ? (
-                        <button
-                          type="button"
-                          onClick={handleRemovePhoto}
-                          disabled={removePhotoMutation.isPending}
-                          className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-(--mws-rose) text-white shadow-sm hover:bg-[#9f3d41] disabled:opacity-60"
-                          aria-label="Remove Photo"
-                        >
-                          <X size={10} />
-                        </button>
-                      ) : null}
-                      <input
-                        ref={photoInputRef}
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        className="hidden"
-                        onChange={handlePhotoFileChange}
-                      />
-                    </>
-                  ) : null}
                 </div>
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-semibold text-(--mws-charcoal)">
@@ -801,40 +759,65 @@ export function StudentDetailPage() {
                 ) : null}
               </section>
             ) : null}
-          <EnrollmentHistoryPanel studentId={studentId} />
-          <StudentMutationHistoryPanel studentId={studentId} canWrite={canWrite} />
-          <StudentParentsPanel
-            studentId={studentId}
-            canWrite={canWrite && canViewSensitive}
-            revealed={!canViewSensitive || pii.revealed}
-            onReveal={pii.reveal}
-            onHide={canViewSensitive ? pii.hide : undefined}
-          />
-          <div className="grid min-w-0 gap-5 xl:grid-cols-2">
-            <StudentConsentPanel
-              studentId={studentId}
-              canWrite={canWrite}
-              canViewSensitive={canViewSensitive}
-            />
-            <StudentHealthPanel
-              studentId={studentId}
-              canWrite={canWrite}
-              canViewSensitive={canViewSensitive}
-            />
-          </div>
-          <div className="grid min-w-0 gap-5 xl:grid-cols-2">
-            <StudentVaccinePanel
-              studentId={studentId}
-              canWrite={canWrite}
-              canViewSensitive={canViewSensitive}
-            />
-            <StudentPcActivitiesPanel studentId={studentId} />
-          </div>
-          <StudentSupportAssignmentPanel
-            studentId={studentId}
-            studentUnitName={studentGrade?.unit_name}
-            canWrite={canWrite}
-          />
+            </>
+          ) : null}
+
+          {activeTab === "academic" ? (
+            <>
+              <EnrollmentHistoryPanel studentId={studentId} />
+              <StudentMutationHistoryPanel studentId={studentId} canWrite={false} />
+              <StudentPcActivitiesPanel studentId={studentId} />
+            </>
+          ) : null}
+
+          {activeTab === "family-consent" ? (
+            <>
+              {effectiveCanWrite && canViewSensitive ? (
+                <div className="flex justify-end gap-2">
+                  <Button asChild variant="secondary" size="sm" className="h-8 px-3"><Link to={`/students/${studentId}/manage/contacts`}><UsersRound size={14} />Manage Contacts</Link></Button>
+                  <Button asChild variant="secondary" size="sm" className="h-8 px-3"><Link to={`/students/${studentId}/manage/consent`}><FileSignature size={14} />Manage Consent</Link></Button>
+                </div>
+              ) : null}
+              <StudentParentsPanel
+                studentId={studentId}
+                canWrite={false}
+                revealed={!canViewSensitive || pii.revealed}
+                onReveal={pii.reveal}
+                onHide={canViewSensitive ? pii.hide : undefined}
+              />
+              <StudentConsentPanel
+                studentId={studentId}
+                canWrite={false}
+                canViewSensitive={canViewSensitive}
+              />
+            </>
+          ) : null}
+
+          {activeTab === "health" ? (
+            <>
+              {effectiveCanWrite ? (
+                <div className="flex justify-end">
+                  <Button asChild variant="secondary" size="sm" className="h-8 px-3"><Link to={`/students/${studentId}/manage/health`}><HeartPulse size={14} />Manage Health</Link></Button>
+                </div>
+              ) : null}
+              <div className="grid min-w-0 gap-5 xl:grid-cols-2">
+                <StudentHealthPanel studentId={studentId} canWrite={false} canViewSensitive={canViewSensitive} />
+                <StudentVaccinePanel studentId={studentId} canWrite={false} canViewSensitive={canViewSensitive} />
+              </div>
+            </>
+          ) : null}
+
+          {activeTab === "special-education" ? (
+            <>
+              <StudentSpecialNeedsPanel studentId={studentId} canWrite={effectiveCanWrite} canViewSensitive={canViewSensitive} />
+              <StudentSupportAssignmentPanel
+                studentId={studentId}
+                studentUnitName={studentGrade?.unit_name}
+                canWrite={false}
+                isEligible={student.academic.special_needs_status === SpecialNeedsEligibilityStatus.PROFILED}
+              />
+            </>
+          ) : null}
         </div>
       ) : null}
       {isReissueModalOpen && (() => {
@@ -1195,21 +1178,8 @@ export function StudentDetailPage() {
         <PhotoLightbox
           photoUrl={student.identity.photo_url}
           fullName={student.identity.full_name}
-          canManage={canManagePhoto}
+          canManage={false}
           onClose={() => setIsPhotoPreviewOpen(false)}
-          onRequestReplace={() => photoInputRef.current?.click()}
-          onRemove={handleRemovePhoto}
-          isReplacing={uploadPhotoMutation.isPending}
-          isRemoving={removePhotoMutation.isPending}
-        />
-      ) : null}
-
-      {cropFile ? (
-        <PhotoCropDialog
-          file={cropFile}
-          onCancel={() => setCropFile(null)}
-          onCropped={handleCropped}
-          isSaving={uploadPhotoMutation.isPending}
         />
       ) : null}
     </div>

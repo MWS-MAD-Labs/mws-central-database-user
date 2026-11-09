@@ -15,15 +15,16 @@ describe('StudentHealthPanel mutations', () => {
     sessionStorage.setItem('pii-reveal:student-health:student-1', String(Date.now()))
     const fetchMock = createFetchRouter([
       { path: '/api/admin/students/student-1/health-record', response: ({ method }) => method === 'POST' ? jsonResponse({ data: { blood_type: null, needs_assistance: true } }) : jsonResponse({ data: null }) },
-      { path: '/api/admin/students/student-1/health-notes?is_deleted=false', response: jsonResponse({ data: [] }) },
+      { path: '/api/admin/students/student-1/health-notes?category=HEALTH_INFO', response: jsonResponse({ data: [] }) },
       { path: '/api/admin/students/student-1/health-notes', method: 'POST', response: jsonResponse({ data: { id: 'note-1' } }) },
     ])
     globalThis.fetch = fetchMock
     const { user } = renderPanel(<StudentHealthPanel studentId="student-1" canWrite canViewSensitive />)
-    expect(await screen.findByText('No health or special needs notes yet.')).toBeVisible()
+    expect(await screen.findByText('No health notes yet.')).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: 'Add Health Note' }))
     const dialog = screen.getByRole('dialog', { name: 'New Health Note' })
+    expect(within(dialog).queryByText('Category')).not.toBeInTheDocument()
     await user.type(dialog.querySelector('[data-field="description"] textarea'), 'Updated health information')
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
@@ -32,9 +33,8 @@ describe('StudentHealthPanel mutations', () => {
       JSON.parse(options.body).category === 'HEALTH_INFO',
     )).toBe(true))
 
-    await user.click(screen.getByRole('button', { name: 'More Actions' }))
-    await user.click(screen.getByRole('button', { name: 'Edit Blood Type' }))
-    const bloodTypeDialog = screen.getByRole('dialog', { name: 'Edit Blood Type' })
+    await user.click(screen.getByRole('button', { name: 'Create Health Information' }))
+    const bloodTypeDialog = screen.getByRole('dialog', { name: 'Create Health Information' })
     await user.click(within(bloodTypeDialog).getByRole('button', { name: 'Select Blood Type' }))
     await user.click(screen.getByRole('option', { name: 'A' }))
     await user.click(within(bloodTypeDialog).getByRole('button', { name: 'Save' }))
@@ -44,7 +44,7 @@ describe('StudentHealthPanel mutations', () => {
     )).toBe(true))
   })
 
-  it('edits, deletes, and restores health data', async () => {
+  it('edits health data without delete or restore controls', async () => {
     sessionStorage.setItem('pii-reveal:student-health:student-1', String(Date.now()))
     const note = {
       id: 'note-1', category: 'HEALTH_INFO', description: 'Asthma plan', status: 'ACTIVE',
@@ -52,10 +52,8 @@ describe('StudentHealthPanel mutations', () => {
     }
     const fetchMock = createFetchRouter([
       { path: '/api/admin/students/student-1/health-record', response: jsonResponse({ data: { blood_type: 'O', needs_assistance: false } }) },
-      { path: '/api/admin/students/student-1/health-notes?is_deleted=false', response: jsonResponse({ data: [note] }) },
+      { path: '/api/admin/students/student-1/health-notes?category=HEALTH_INFO', response: jsonResponse({ data: [note] }) },
       { path: '/api/admin/students/student-1/health-notes/note-1', method: 'PATCH', response: jsonResponse({ data: note }) },
-      { path: '/api/admin/students/student-1/health-notes/delete/note-1', method: 'PATCH', response: jsonResponse({ data: note }) },
-      { path: '/api/admin/students/student-1/health-record/delete', method: 'PATCH', response: jsonResponse({ data: true }) },
     ])
     globalThis.fetch = fetchMock
     const { user } = renderPanel(<StudentHealthPanel studentId="student-1" canWrite canViewSensitive />)
@@ -70,13 +68,10 @@ describe('StudentHealthPanel mutations', () => {
       url.endsWith('/health-notes/note-1') && options.method === 'PATCH',
     )).toBe(true))
 
-    const noteCard = screen.getByText('Asthma plan').closest('article')
-    await user.click(within(noteCard).getAllByRole('button')[1])
-    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.includes('/health-notes/delete/note-1'))).toBe(true))
-
-    await user.click(screen.getByRole('button', { name: 'More Actions' }))
-    await user.click(screen.getByRole('button', { name: 'Delete Blood Type' }))
-    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/health-record/delete'))).toBe(true))
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'More Actions' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit Health Information' })).toBeVisible()
   })
 })
 

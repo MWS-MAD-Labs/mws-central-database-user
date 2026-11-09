@@ -55,7 +55,7 @@ describe('StudentSupportAssignmentPanel', () => {
     globalThis.fetch = fetchMock
     const { user } = renderWithProviders(
       <ConfirmProvider>
-        <StudentSupportAssignmentPanel studentId="student-1" studentUnitName="Elementary" canWrite />
+        <StudentSupportAssignmentPanel studentId="student-1" studentUnitName="Elementary" canWrite isEligible />
       </ConfirmProvider>,
     )
     expect(await screen.findByText('No Special Education teacher assigned yet.')).toBeVisible()
@@ -79,7 +79,7 @@ describe('StudentSupportAssignmentPanel', () => {
     globalThis.fetch = fetchMock
     const { user } = renderWithProviders(
       <ConfirmProvider>
-        <StudentSupportAssignmentPanel studentId="student-1" studentUnitName="Elementary" canWrite />
+        <StudentSupportAssignmentPanel studentId="student-1" studentUnitName="Elementary" canWrite isEligible />
       </ConfirmProvider>,
     )
     await screen.findByText('No Special Education teacher assigned yet.')
@@ -116,7 +116,7 @@ describe('StudentSupportAssignmentPanel', () => {
     globalThis.fetch = fetchMock
     const { user } = renderWithProviders(
       <ConfirmProvider>
-        <StudentSupportAssignmentPanel studentId="student-1" studentUnitName="Elementary" canWrite />
+        <StudentSupportAssignmentPanel studentId="student-1" studentUnitName="Elementary" canWrite isEligible />
       </ConfirmProvider>,
     )
     await screen.findByText('No Special Education teacher assigned yet.')
@@ -149,7 +149,7 @@ describe('StudentSupportAssignmentPanel', () => {
     globalThis.fetch = fetchMock
     const { user, unmount } = renderWithProviders(
       <ConfirmProvider>
-        <StudentSupportAssignmentPanel studentId="student-1" studentUnitName="Elementary" canWrite />
+        <StudentSupportAssignmentPanel studentId="student-1" studentUnitName="Elementary" canWrite isEligible />
       </ConfirmProvider>,
     )
     await screen.findByText('Taylor SE Teacher')
@@ -166,12 +166,23 @@ describe('StudentSupportAssignmentPanel', () => {
     globalThis.fetch = createFetchRouter(panelRoutes([{ ...active, end_date: '2026-09-10T00:00:00.000Z' }]))
     const ended = renderWithProviders(
       <ConfirmProvider>
-        <StudentSupportAssignmentPanel studentId="student-1" studentUnitName="Elementary" canWrite />
+        <StudentSupportAssignmentPanel studentId="student-1" studentUnitName="Elementary" canWrite isEligible />
       </ConfirmProvider>,
     )
     await screen.findByText('Ended')
     await ended.user.click(screen.getByRole('button', { name: 'Reactivate assignment' }))
     await ended.user.click(screen.getByRole('button', { name: 'Reactivate' }))
+  })
+
+  it('explains that eligibility is required before assignment', async () => {
+    globalThis.fetch = createFetchRouter(panelRoutes())
+    renderWithProviders(
+      <ConfirmProvider>
+        <StudentSupportAssignmentPanel studentId="student-1" studentUnitName="Elementary" canWrite isEligible={false} />
+      </ConfirmProvider>,
+    )
+    expect(await screen.findByText("Complete this student's Special Needs profile before assigning an SE Teacher.")).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Assign' })).not.toBeInTheDocument()
   })
 })
 
