@@ -195,15 +195,27 @@ Saat membuat siswa baru:
 
 ### Student Detail
 
-Student Detail berisi data utama dan panel tambahan:
+Student Detail bersifat read-only dan dibagi menjadi tab berbasis query parameter:
 
-- Enrollment history.
-- Parents atau guardians.
-- Consent status.
-- Consent attachments.
-- Health record dan health notes.
-- Vaccine records.
-- PC activities.
+- **Overview**: identity, status, grade, class, Google Account, dan services.
+- **Academic**: enrollment history, mutation history, dan PC activities.
+- **Family & Consent**: ringkasan parents atau guardians dan consent.
+- **Health**: blood type, needs-assistance flag, health notes, dan vaccine records setelah sensitive reveal. Special Needs tidak ditampilkan di tab ini.
+- **Special Education**: eligibility, Special Needs Profile, dan assignment SE Teacher.
+
+Tab Health dan Special Education hanya tampil bagi admin dengan sensitive-data permission. Tab yang tidak valid atau tidak boleh diakses diarahkan ke Overview. Data relasi hanya dimuat ketika tab terkait aktif.
+
+Perubahan data dilakukan melalui jalur khusus:
+
+- Identity, Academic, Services, dan Special Needs Profile melalui **Edit Student**.
+- Parents atau guardians melalui **Manage Contacts**.
+- Consent dan attachment melalui **Manage Consent**.
+- Health information, health notes, dan vaccine records melalui **Manage Health**. Workflow UI hanya Create dan Edit; data soft-deleted lama tetap dipertahankan sebagai history database.
+- Assignment SE Teacher melalui Class Detail atau flow assignment Special Education.
+
+Perubahan Student dan Special Needs Profile dari Edit Student disimpan dalam satu transaksi. Menghapus eligibility ditolak ketika siswa masih mempunyai assignment SE Teacher aktif.
+
+Setiap Need Type pada Special Needs Profile mempunyai deskripsi sendiri. Learning Support Summary dan Classroom Accommodations tetap satu ringkasan gabungan per siswa. Professional Report Date hanya ditampilkan ketika Professional Report Available dipilih.
 
 ### Bulk Actions (Delete & Restore)
 

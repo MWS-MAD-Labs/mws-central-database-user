@@ -363,8 +363,13 @@ Sistem sebaiknya mendukung lebih dari satu parent atau guardian contact.
 - Health Information
 - Blood Type
 - Special Needs, Psychological / Physical
+- `StudentSpecialNeedsProfile` adalah sumber kebenaran operasional untuk eligibility Special Education. Setiap jenis kebutuhan mempunyai deskripsi sendiri. Profil menyimpan Learning Support Summary dan penyesuaian kelas sebagai ringkasan gabungan per siswa, serta metadata laporan profesional dan tanggal identifikasi.
+- `Student.sn` tetap disimpan sebagai flag legacy/denormalisasi untuk import dan query cepat. `sn=true` tanpa profil aktif berstatus `LEGACY_INCOMPLETE` dan tidak boleh menerima assignment SE Teacher baru.
+- Learning Support Summary adalah ringkasan praktis cara siswa belajar dan dukungan yang membantu di sekolah, bukan diagnosis medis.
 
 Field ini dikategorikan sebagai data sensitif.
+
+Assignment SE Teacher hanya boleh dibuat untuk siswa dengan profil Special Needs aktif (`PROFILED`) dan kelas aktif. Satu siswa hanya boleh memiliki satu assignment SE Teacher aktif. Blood Type, Health Information, dan `needs_assistance` tidak menentukan eligibility. Health Information hanya memuat data kesehatan; Special Needs operasional hanya berasal dari Special Needs Profile. Form create student mengirim profil lengkap dalam permintaan yang sama; perubahan setelah create dilakukan lewat Edit Student dalam satu transaksi. Student Detail hanya menampilkan profil secara read-only.
 
 Akses data kesehatan melalui API diperbolehkan, tetapi harus dibatasi dengan scope khusus dan tercatat di audit log.
 
