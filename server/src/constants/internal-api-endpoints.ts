@@ -43,6 +43,15 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
+    path: "/api/internal/students/guardians",
+    scope: API_SCOPES.STUDENTS_GUARDIANS_READ,
+    title: "Student guardians",
+    group: "Students",
+    purpose: "Lists the parents and guardians with an email address of active students: name, email, type, and which student.",
+    note: "Does not return phone numbers or addresses.",
+  },
+  {
+    method: "GET",
     path: "/api/internal/students/{student_id}/academic-history",
     scope: API_SCOPES.STUDENTS_ACADEMIC_HISTORY_READ,
     title: "Student class and grade history",

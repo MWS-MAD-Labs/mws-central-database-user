@@ -34,6 +34,7 @@ import {
   type StudentRosterExportRow,
   type StudentSupportContactsResponse,
   type SpecialEducationStudentResponse,
+  type GuardianContactResponse,
 } from "../model/student-api-model";
 import type { ApiClientVariables } from "../type/hono-context";
 import { AuditService } from "./audit-service";
@@ -99,6 +100,51 @@ export class StudentApiService {
       new_values: { resource: "SpecialEducationRoster", result_count: response.data.length },
       ip_address: _context.ip_address,
       user_agent: _context.user_agent,
+    });
+    return response;
+  }
+
+  // The parents and guardians of active students that have an email, so another app can send them a code.
+  static async listGuardians(
+    client: ApiClientVariables,
+    request: Pick<StudentListRequest, "page" | "size">,
+    context: AuditRequestContext = {},
+  ): Promise<Pageable<GuardianContactResponse>> {
+    const listRequest = Validation.validate(StudentApiValidation.PAGE, request);
+    const where: Prisma.ParentGuardianWhereInput = {
+      deleted_at: null,
+      AND: [{ email: { not: null } }, { email: { not: "" } }],
+      student: { deleted_at: null, status: StudentStatus.ACTIVE },
+    };
+    const response = await paginate(listRequest.page, listRequest.size, {
+      count: () => prismaClient.parentGuardian.count({ where }),
+      findMany: () =>
+        prismaClient.parentGuardian
+          .findMany({
+            where,
+            orderBy: [{ student_id: "asc" }, { is_primary: "desc" }, { id: "asc" }],
+            take: listRequest.size,
+            skip: (listRequest.page - 1) * listRequest.size,
+          })
+          .then((rows) =>
+            rows.map((row) => ({
+              id: row.id,
+              student_id: row.student_id,
+              full_name: row.full_name,
+              email: row.email!.trim().toLowerCase(),
+              type: row.type,
+              is_primary: row.is_primary,
+            })),
+          ),
+    });
+    await AuditService.record({
+      action: AuditAction.API_ACCESS,
+      source: AuditSource.API,
+      api_client_id: client.clientId,
+      entity_type: "Student",
+      new_values: { resource: "GuardianContacts", result_count: response.data.length },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
     });
     return response;
   }

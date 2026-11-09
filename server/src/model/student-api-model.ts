@@ -114,6 +114,16 @@ export type SpecialEducationStudentResponse = {
   updated_at: string;
 };
 
+// A parent or guardian a Central student has an email for. Phone and address stay in Central.
+export type GuardianContactResponse = {
+  id: string;
+  student_id: string;
+  full_name: string;
+  email: string;
+  type: ParentType;
+  is_primary: boolean;
+};
+
 export type StudentListPerson = StudentLookupPerson & {
   student: NonNullable<StudentLookupPerson["student"]> & {
     enrollments: Pick<StudentClassEnrollment, "start_date">[];

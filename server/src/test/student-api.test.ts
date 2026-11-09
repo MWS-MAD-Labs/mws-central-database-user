@@ -38,6 +38,7 @@ const CONSENT_SCOPE = "students:consent:read";
 const SUPPORT_CONTACTS_SCOPE = "students:support_contacts:read";
 const ROSTER_EXPORT_SCOPE = "students:roster_export:read";
 const SPECIAL_EDUCATION_SCOPE = "students:special_education:read";
+const GUARDIANS_SCOPE = "students:guardians:read";
 
 function authHeader(token: string) {
   return { Authorization: `Bearer ${token}` };
@@ -1206,6 +1207,84 @@ describe("Student internal API", () => {
     it("should reject if no Authorization header is provided", async () => {
       const response = await TestRequest.get("/api/internal/students");
       expect(response.status).toBe(401);
+    });
+  });
+
+  describe("GET /api/internal/students/guardians", () => {
+    const active = (email: string, nis: string, status: StudentStatus = StudentStatus.ACTIVE) =>
+      StudentTest.create({ email, nis, status, currentGradeId: gradeId, joinGradeId: gradeId, joinAcademicYearId: academicYearId, currentClassId: classId });
+    const get = (token: string, query = "") => TestRequest.get(`/api/internal/students/guardians${query}`, undefined, authHeader(token));
+
+    it("lists the guardians with an email of active students, without phone or address", async () => {
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [GUARDIANS_SCOPE] });
+      const student = (await active("guardians_a@millennia21.id", "9500601")).student!;
+      const primary = await ParentGuardianTest.create({ studentId: student.id, type: ParentType.MOTHER, fullName: "Siti Ibu", email: "  Siti@Example.com ", phone: "081234567890", address: "Jl. Mawar 1", isPrimary: true });
+      const second = await ParentGuardianTest.create({ studentId: student.id, type: ParentType.GUARDIAN, fullName: "Budi Wali", email: "budi@example.com" });
+
+      const response = await get(token);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data).toEqual([
+        { id: primary.id, student_id: student.id, full_name: "Siti Ibu", email: "siti@example.com", type: "MOTHER", is_primary: true },
+        { id: second.id, student_id: student.id, full_name: "Budi Wali", email: "budi@example.com", type: "GUARDIAN", is_primary: false },
+      ]);
+      expect(JSON.stringify(body)).not.toContain("081234567890");
+      expect(JSON.stringify(body)).not.toContain("Mawar");
+    });
+
+    it("leaves out a guardian without an email, one that was deleted, and the guardians of a student who is not active", async () => {
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [GUARDIANS_SCOPE] });
+      const student = (await active("guardians_b@millennia21.id", "9500602")).student!;
+      const gone = (await active("guardians_c@millennia21.id", "9500603", StudentStatus.GRADUATED)).student!;
+      await ParentGuardianTest.create({ studentId: student.id, fullName: "No Email" });
+      await ParentGuardianTest.create({ studentId: student.id, fullName: "Empty Email", email: "" });
+      await ParentGuardianTest.create({ studentId: student.id, fullName: "Deleted", email: "deleted@example.com", deletedAt: new Date() });
+      await ParentGuardianTest.create({ studentId: student.id, fullName: "Kept", email: "kept@example.com" });
+      await ParentGuardianTest.create({ studentId: gone.id, fullName: "Alumni Parent", email: "alumni@example.com" });
+
+      const body = await (await get(token)).json();
+
+      expect(body.data.map((row: { full_name: string }) => row.full_name)).toEqual(["Kept"]);
+      expect(body.paging.total_item).toBe(1);
+    });
+
+    it("pages the list", async () => {
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [GUARDIANS_SCOPE] });
+      const student = (await active("guardians_d@millennia21.id", "9500604")).student!;
+      for (const name of ["One", "Two", "Three"]) await ParentGuardianTest.create({ studentId: student.id, fullName: name, email: `${name.toLowerCase()}@example.com` });
+
+      const first = await (await get(token, "?page=1&size=2")).json();
+      const second = await (await get(token, "?page=2&size=2")).json();
+
+      expect(first.data).toHaveLength(2);
+      expect(second.data).toHaveLength(1);
+      expect(first.paging).toMatchObject({ total_item: 3, total_page: 2 });
+      expect(new Set([...first.data, ...second.data].map((row: { id: string }) => row.id)).size).toBe(3);
+    });
+
+    it("refuses a size beyond 100 and a page that is not a number", async () => {
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [GUARDIANS_SCOPE] });
+      expect((await get(token, "?size=101")).status).toBe(400);
+      expect((await get(token, "?page=abc")).status).toBe(400);
+    });
+
+    it("records who read the list, without the contacts", async () => {
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [GUARDIANS_SCOPE] });
+      const student = (await active("guardians_e@millennia21.id", "9500605")).student!;
+      await ParentGuardianTest.create({ studentId: student.id, fullName: "Logged", email: "logged@example.com" });
+
+      await get(token);
+
+      const log = await prismaClient.auditLog.findFirstOrThrow({ where: { action: AuditAction.API_ACCESS }, orderBy: { created_at: "desc" } });
+      expect(log.new_values).toMatchObject({ resource: "GuardianContacts", result_count: 1 });
+      expect(JSON.stringify(log.new_values)).not.toContain("logged@example.com");
+    });
+
+    it("needs its own scope: the general student scope is not enough, and no token is refused", async () => {
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [READ_SCOPE] });
+      expect((await get(token)).status).toBe(403);
+      expect((await TestRequest.get("/api/internal/students/guardians")).status).toBe(401);
     });
   });
 

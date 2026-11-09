@@ -22,6 +22,10 @@ const SCOPE_DEFINITIONS = {
       "Read active students with completed Special Needs profiles for Special Education integration",
     is_sensitive: true,
   },
+  [API_SCOPES.STUDENTS_GUARDIANS_READ]: {
+    description: "Read the parents and guardians with an email address of active students, for the guardian portals of other apps",
+    is_sensitive: true,
+  },
   [API_SCOPES.STUDENTS_CONSENT_READ]: {
     description: "Read student consent attachments",
     is_sensitive: true,

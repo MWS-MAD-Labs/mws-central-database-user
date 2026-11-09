@@ -22,6 +22,11 @@ studentApiRouter.get(
   (c) => StudentApiController.specialEducation(c),
 );
 studentApiRouter.get(
+  "/guardians",
+  requireScope(API_SCOPES.STUDENTS_GUARDIANS_READ),
+  (c) => StudentApiController.guardians(c),
+);
+studentApiRouter.get(
   "/:id/academic-history",
   requireScope(API_SCOPES.STUDENTS_ACADEMIC_HISTORY_READ),
   (c) => StudentApiController.academicHistory(c),

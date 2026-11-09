@@ -47,6 +47,12 @@ const SCOPE_INFO = {
     description:
       "One flat list of every student, including health, parent contact and consent fields.",
   },
+  "students:guardians:read": {
+    group: "Students",
+    title: "View the guardians of students",
+    description:
+      "Parents and guardians with an email address of active students: name, email and type, without phone or address.",
+  },
   "students:special_education:read": {
     group: "Students",
     title: "View the Special Education roster",

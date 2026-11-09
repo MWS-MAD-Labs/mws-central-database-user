@@ -29,6 +29,11 @@ export class StudentApiValidation {
     academic_year_id: z.string().optional(),
   });
 
+  static readonly PAGE = z.object({
+    page: z.number().min(1).positive().default(1),
+    size: z.number().min(1).positive().max(100).default(10),
+  });
+
   static readonly ROSTER_EXPORT = z.object({
     status: z.enum(STUDENT_STATUS_VALUES).optional(),
   });
