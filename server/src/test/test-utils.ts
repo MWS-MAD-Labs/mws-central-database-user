@@ -976,6 +976,16 @@ export class StudentTest {
     await prismaClient.parentGuardian.deleteMany({
       where: { student: { person: { email: { contains: "@millennia21.id" } } } },
     });
+    // Profiles restrict student deletion.
+    await prismaClient.studentSpecialNeedsProfile.deleteMany({
+      where: { student: { person: { email: { contains: "@millennia21.id" } } } },
+    });
+    await prismaClient.studentSpecialNeedsProfile.deleteMany({
+      where: { student: { person: { email: { contains: "@millennia21.id" } } } },
+    });
+    await prismaClient.healthNote.deleteMany({
+      where: { student: { person: { email: { contains: "@millennia21.id" } } } },
+    });
     await prismaClient.student.deleteMany({
       where: { person: { email: { contains: "@millennia21.id" } } },
     });
@@ -1055,6 +1065,7 @@ export class StudentTest {
     joinGradeId?: string;
     joinAcademicYearId?: string;
     currentClassId?: string;
+    sn?: boolean;
     entry_type?: StudentEntryType;
     // Tests using seeded grades must provide an age-appropriate birth date.
     birthDate?: Date;
@@ -1088,6 +1099,7 @@ export class StudentTest {
             join_grade_id: joinGradeId,
             join_academic_year_id: joinAcademicYearId,
             current_class_id: params.currentClassId,
+            sn: params.sn ?? false,
             entry_type: params.entry_type ?? StudentEntryType.PSB,
           },
         },

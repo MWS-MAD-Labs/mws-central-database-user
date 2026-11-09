@@ -7,6 +7,7 @@ import type {
 import { HealthNoteService } from "../../service/health-note-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
+import type { HealthNoteCategory } from "../../generated/prisma/client";
 
 export class HealthNoteController {
   static async create(c: Context<{ Variables: AdminVariables }>) {
@@ -18,6 +19,9 @@ export class HealthNoteController {
     }
 
     const body = (await c.req.json()) as CreateHealthNoteRequest;
+    if (body.category === "SPECIAL_NEEDS") {
+      throw new ResponseError(400, "Special Needs must be managed through the Special Needs Profile");
+    }
 
     const response = await HealthNoteService.create(
       admin,
@@ -41,6 +45,9 @@ export class HealthNoteController {
     }
 
     const body = (await c.req.json()) as UpdateHealthNoteRequest;
+    if (body.category === "SPECIAL_NEEDS") {
+      throw new ResponseError(400, "Special Needs must be managed through the Special Needs Profile");
+    }
 
     const response = await HealthNoteService.update(
       admin,
@@ -102,12 +109,14 @@ export class HealthNoteController {
     }
 
     const isDeletedQuery = c.req.query("is_deleted");
+    const categoryQuery = c.req.query("category");
 
     const response = await HealthNoteService.getList(
       admin,
       {
         student_id: studentId,
         is_deleted: isDeletedQuery ? isDeletedQuery === "true" : undefined,
+        category: categoryQuery as HealthNoteCategory | undefined,
       },
       getAuditRequestContext(c),
     );

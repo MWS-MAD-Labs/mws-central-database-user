@@ -65,6 +65,18 @@ export class StudentApiController {
     return c.json({ success: true, ...response });
   }
 
+  static async specialEducation(c: Context<{ Variables: ApiClientVariables }>) {
+    const page = c.req.query("page") ? Number(c.req.query("page")) : 1;
+    const size = c.req.query("size") ? Number(c.req.query("size")) : 10;
+    if (Number.isNaN(page) || Number.isNaN(size)) throw new ResponseError(400, "page and size must be valid numbers");
+    const response = await StudentApiService.listSpecialEducation(
+      clientFromContext(c),
+      { page, size, current_grade_id: c.req.query("current_grade_id"), current_class_id: c.req.query("current_class_id") },
+      getAuditRequestContext(c),
+    );
+    return c.json({ success: true, ...response });
+  }
+
   static async consentStatus(c: Context<{ Variables: ApiClientVariables }>) {
     const studentId = c.req.param("id");
 

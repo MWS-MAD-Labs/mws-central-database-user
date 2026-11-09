@@ -700,6 +700,8 @@ curl -s -H "Authorization: Bearer $STUDENT_API_TOKEN" \
 lookup for "is this a currently enrolled student", not a general student
 search. The list endpoint defaults to `ACTIVE` too, an app holding
 `students:read` doesn't get the full roster across every lifecycle state
+
+`students:special_education:read` lists active students with an active `StudentSpecialNeedsProfile` and a current class. It returns Learning Support Summary from the profile, not the legacy health note, and excludes blood type and general health notes. Access is audited. A bare legacy `sn=true` flag is `LEGACY_INCOMPLETE`: it remains visible in Central but cannot receive a new or reactivated SE Teacher assignment until the profile is completed.
 for free, it has to explicitly pass `status=REGISTERED` (or `WITHDRAWN`,
 `GRADUATED`, ...) to see anything else. `academic-history`,
 `consent-status`, and `health` all work by student ID for any non-deleted

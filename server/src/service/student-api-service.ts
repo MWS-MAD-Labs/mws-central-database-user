@@ -32,6 +32,7 @@ import {
   type StudentRosterExportRequest,
   type StudentRosterExportRow,
   type StudentSupportContactsResponse,
+  type SpecialEducationStudentResponse,
 } from "../model/student-api-model";
 import type { ApiClientVariables } from "../type/hono-context";
 import { AuditService } from "./audit-service";
@@ -41,6 +42,64 @@ import { Validation } from "../validation/validation";
 import { withLookupCache } from "../lib/lookup-cache";
 
 export class StudentApiService {
+  static async listSpecialEducation(
+    _client: ApiClientVariables,
+    request: StudentListRequest,
+    _context: AuditRequestContext = {},
+  ): Promise<Pageable<SpecialEducationStudentResponse>> {
+    const listRequest = Validation.validate(StudentApiValidation.LIST, request);
+    const where: Prisma.StudentWhereInput = {
+      deleted_at: null,
+      status: StudentStatus.ACTIVE,
+      sn: true,
+      // Only profiled students are eligible; a bare legacy flag is not enough.
+      special_needs_profile: { deleted_at: null },
+      current_class_id: { not: null },
+      ...(listRequest.current_grade_id ? { current_grade_id: listRequest.current_grade_id } : {}),
+      ...(listRequest.current_class_id ? { current_class_id: listRequest.current_class_id } : {}),
+    };
+    const response = await paginate(listRequest.page, listRequest.size, {
+      count: () => prismaClient.student.count({ where }),
+      findMany: () => prismaClient.student.findMany({
+        where,
+        take: listRequest.size,
+        skip: (listRequest.page - 1) * listRequest.size,
+        orderBy: [{ person: { full_name: "asc" } }, { id: "asc" }],
+        include: {
+          person: true,
+          current_grade: true,
+          current_class: true,
+          special_needs_profile: { include: { needs: true } },
+        },
+      }).then((students) => students.map((student) => ({
+        id: student.id,
+        person_id: student.person_id,
+        nis: student.nis,
+        full_name: student.person.full_name,
+        nick_name: student.person.nick_name,
+        email: student.person.email,
+        current_grade_id: student.current_grade_id,
+        current_grade: student.current_grade.name,
+        current_class_id: student.current_class_id!,
+        current_class: student.current_class!.name,
+        need_types: student.special_needs_profile!.needs.map((need) => need.need_type),
+        learning_support_summary: student.special_needs_profile?.learning_support_summary ?? null,
+        accommodations: student.special_needs_profile?.accommodations ?? null,
+        updated_at: student.updated_at.toISOString(),
+      }))),
+    });
+    await AuditService.record({
+      action: AuditAction.API_ACCESS,
+      source: AuditSource.API,
+      api_client_id: _client.clientId,
+      entity_type: "Student",
+      new_values: { resource: "SpecialEducationRoster", result_count: response.data.length },
+      ip_address: _context.ip_address,
+      user_agent: _context.user_agent,
+    });
+    return response;
+  }
+
   static async lookup(
     client: ApiClientVariables,
     request: StudentLookupRequest,

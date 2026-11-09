@@ -38,6 +38,7 @@ export type RestoreHealthNoteRequest = {
 export type GetHealthNoteListRequest = {
   student_id: string;
   is_deleted?: boolean;
+  category?: HealthNoteCategory;
 };
 
 export type HealthNoteResponse = {

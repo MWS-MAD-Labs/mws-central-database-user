@@ -1,3 +1,4 @@
+import { SpecialNeedsProfileFields } from "./special-needs-profile-validation";
 import { z } from "zod";
 import {
   ConsentStatus,
@@ -141,6 +142,7 @@ export class StudentValidation {
       .optional(),
     leave_year: z.string().max(10, "Leave year is too long").optional(),
     sn: z.boolean().optional(),
+    special_needs_profile: SpecialNeedsProfileFields.optional(),
     override_too_far_ahead_reason: z
       .string()
       .min(10, "Explain why this grade skip is real (at least 10 characters)")
@@ -148,6 +150,12 @@ export class StudentValidation {
       .optional(),
     // Set only by the import pipeline.
     import_defaulted_fields: z.array(z.string()).optional(),
+    })
+    // The client sends the profile; the server derives the Special Needs flag from it.
+    // Only the legacy-graduate path may set the bare flag directly.
+    .refine((data) => data.sn !== false || data.special_needs_profile === undefined, {
+      message: "A Special Needs profile cannot be combined with sn=false",
+      path: ["special_needs_profile"],
     })
     .refine(
       (data) =>
@@ -229,6 +237,7 @@ export class StudentValidation {
       .optional(),
     leave_year: z.string().max(10, "Leave year is too long").optional(),
     sn: z.boolean().optional(),
+    special_needs_profile: SpecialNeedsProfileFields.nullable().optional(),
     // Entry type affects future NIS reissue, not the current NIS.
     entry_type: z
       .enum(STUDENT_ENTRY_TYPE_VALUES, {

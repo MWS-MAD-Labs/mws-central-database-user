@@ -19,4 +19,8 @@ export const LIMITS = {
   // Academic years: the year the name starts with, and the years the dates may fall in.
   ACADEMIC_YEAR_MIN: 2000,
   ACADEMIC_YEAR_MAX: 2100,
+  // Special Needs profile of a student.
+  SPECIAL_NEEDS_DESCRIPTION_MAX: 1000,
+  SPECIAL_NEEDS_SUMMARY_MAX: 500,
+  SPECIAL_NEEDS_ACCOMMODATIONS_MAX: 1000,
 } as const;

@@ -17,6 +17,11 @@ studentApiRouter.get(
   (c) => StudentApiController.lookup(c),
 );
 studentApiRouter.get(
+  "/special-education",
+  requireScope(API_SCOPES.STUDENTS_SPECIAL_EDUCATION_READ),
+  (c) => StudentApiController.specialEducation(c),
+);
+studentApiRouter.get(
   "/:id/academic-history",
   requireScope(API_SCOPES.STUDENTS_ACADEMIC_HISTORY_READ),
   (c) => StudentApiController.academicHistory(c),

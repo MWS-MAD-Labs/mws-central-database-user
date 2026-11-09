@@ -119,6 +119,83 @@ describe("POST /api/admin/students", () => {
     expect(auditLog.entity_type).toBe("Student");
   });
 
+  it("creates a Special Needs student together with the profile", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Test Special Needs Student",
+        nick_name: "Support",
+        email: "test_stu_special_needs@millennia21.id",
+        gender: Gender.FEMALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-01-01").toISOString(),
+        nis: "9000098",
+        entry_type: "PSB",
+        current_grade_id: gradeId,
+        join_academic_year_id: academicYearId,
+        join_grade_id: gradeId,
+        special_needs_profile: { needs: [{ need_type: "LEARNING", description: "Reads below grade level." }], learning_support_summary: "Uses short instructions and visual prompts." },
+      },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+    const id = (await response.json()).data.id as string;
+    expect(await prismaClient.student.findUnique({ where: { id }, select: { sn: true } })).toEqual({ sn: true });
+    expect(await prismaClient.studentSpecialNeedsProfile.findUnique({ where: { student_id: id }, select: { needs: { select: { need_type: true } }, learning_support_summary: true } })).toEqual({ needs: [{ need_type: "LEARNING" }], learning_support_summary: "Uses short instructions and visual prompts." });
+  });
+
+  it("rejects a new Special Needs student that comes without the profile", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Test Missing Profile",
+        nick_name: "Missing",
+        email: "test_stu_missing_profile@millennia21.id",
+        gender: Gender.FEMALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-01-01").toISOString(),
+        nis: "9000097",
+        entry_type: "PSB",
+        current_grade_id: gradeId,
+        join_academic_year_id: academicYearId,
+        join_grade_id: gradeId,
+        sn: true,
+      },
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+    expect(await prismaClient.person.count({ where: { email: "test_stu_missing_profile@millennia21.id" } })).toBe(0);
+  });
+
+  it("rejects a Special Needs profile when Special Needs is not selected", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Test Not Special Needs",
+        nick_name: "No Support",
+        email: "test_stu_not_special_needs@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-01-01").toISOString(),
+        nis: "9000099",
+        entry_type: "PSB",
+        current_grade_id: gradeId,
+        join_academic_year_id: academicYearId,
+        join_grade_id: gradeId,
+        sn: false,
+        special_needs_profile: { needs: [{ need_type: "LEARNING", description: "Should not be accepted." }] },
+      },
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+  });
+
   describe("the parent or guardian a new student comes with", () => {
     const studentBody = (email: string, nis: string, over: Record<string, unknown> = {}) => ({
       full_name: "Student With Parent",
@@ -3965,7 +4042,7 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(unchanged.join_grade_id).toBe(gradeId);
   });
 
-  it("should allow setting graduation_grade, leave_year, and sn on update", async () => {
+  it("should allow setting graduation_grade and leave_year on update", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_upd_graduate@millennia21.id",
@@ -3981,7 +4058,6 @@ describe("PATCH /api/admin/students/:id", () => {
         status: "GRADUATED",
         graduation_grade: "TEST_STU_GRADE2",
         leave_year: "2026",
-        sn: true,
       },
       accessToken,
     );
@@ -3995,7 +4071,8 @@ describe("PATCH /api/admin/students/:id", () => {
     const body = await superAdminResponse.json();
     expect(body.data.academic.graduation_grade).toBe("TEST_STU_GRADE2");
     expect(body.data.academic.leave_year).toBe("2026");
-    expect(body.data.academic.sn).toBe(true);
+    // Special Needs eligibility is no longer editable through the generic update.
+    expect(body.data.academic.sn).toBe(false);
   });
 
   it("should clear graduation_grade and leave_year when a graduated student is moved off GRADUATED", async () => {

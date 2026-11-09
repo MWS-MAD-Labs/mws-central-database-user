@@ -21,6 +21,7 @@ import { AuditService } from "./audit-service";
 import { withLookupCache } from "../lib/lookup-cache";
 import { assertCanWriteNow } from "../utils/office-hours";
 import {
+  assertCanViewStudentInScope,
   assertCanViewSensitiveData,
   assertStudentInAdminUnit,
 } from "../utils/sensitive-data";
@@ -29,7 +30,7 @@ import { HealthRecordValidation } from "../validation/health-record-validation";
 import { Validation } from "../validation/validation";
 
 const DUPLICATE_HEALTH_RECORD_MESSAGE =
-  "A health record already exists for this student. If it was deleted, restore it instead.";
+  "A health record already exists for this student.";
 
 function rethrowAsFriendlyHealthRecordConflict(error: unknown): never {
   const fields = getUniqueConstraintFields(error);
@@ -168,21 +169,37 @@ export class HealthRecordService {
     let created;
     try {
       created = await prismaClient.$transaction(async (tx) => {
-        const newRecord = await tx.healthRecord.create({
-          data: {
-            student_id: createRequest.student_id,
-            blood_type: createRequest.blood_type,
-            needs_assistance: createRequest.needs_assistance,
-          },
+        const existing = await tx.healthRecord.findUnique({
+          where: { student_id: createRequest.student_id },
         });
+        if (existing?.deleted_at === null) {
+          throw new ResponseError(400, DUPLICATE_HEALTH_RECORD_MESSAGE);
+        }
+        const newRecord = existing
+          ? await tx.healthRecord.update({
+              where: { id: existing.id },
+              data: {
+                blood_type: createRequest.blood_type ?? null,
+                needs_assistance: createRequest.needs_assistance ?? false,
+                deleted_at: null,
+              },
+            })
+          : await tx.healthRecord.create({
+              data: {
+                student_id: createRequest.student_id,
+                blood_type: createRequest.blood_type,
+                needs_assistance: createRequest.needs_assistance ?? false,
+              },
+            });
 
         await AuditService.record(
           {
-            action: AuditAction.CREATE_HEALTH_RECORD,
+            action: existing ? AuditAction.UPDATE_HEALTH_RECORD : AuditAction.CREATE_HEALTH_RECORD,
             source: AuditSource.UI,
             entity_type: "HealthRecord",
             entity_id: newRecord.id,
             admin_id: admin.id,
+            ...(existing ? { old_values: toHealthRecordAuditSnapshot(existing, studentFullName) } : {}),
             new_values: toHealthRecordAuditSnapshot(newRecord, studentFullName),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
@@ -396,7 +413,7 @@ export class HealthRecordService {
 
     const getRequest = Validation.validate(HealthRecordValidation.GET, request);
 
-    await assertStudentExists(getRequest.student_id);
+    await assertCanViewStudentInScope(admin, getRequest.student_id);
 
     const record = await prismaClient.healthRecord.findFirst({
       where: { student_id: getRequest.student_id, deleted_at: null },

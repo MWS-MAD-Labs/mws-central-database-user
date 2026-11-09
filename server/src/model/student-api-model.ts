@@ -16,6 +16,7 @@ import type {
   PassionConnectionActivity,
   Person,
   Religion,
+  SpecialNeedType,
   Student,
   StudentClassEnrollment,
 } from "../generated/prisma/client";
@@ -94,6 +95,23 @@ export function toStudentLookupResponse(
 // One item of the internal student list: the profile, plus when the current enrollment began.
 export type StudentListItemResponse = StudentLookupResponse & {
   enrollment_start_date: string | null;
+};
+
+export type SpecialEducationStudentResponse = {
+  id: string;
+  person_id: string;
+  nis: string | null;
+  full_name: string;
+  nick_name: string;
+  email: string;
+  current_grade_id: string;
+  current_grade: string;
+  current_class_id: string;
+  current_class: string;
+  need_types: SpecialNeedType[];
+  learning_support_summary: string | null;
+  accommodations: string | null;
+  updated_at: string;
 };
 
 export type StudentListPerson = StudentLookupPerson & {

@@ -37,6 +37,7 @@ const HEALTH_SCOPE = "students:health:read";
 const CONSENT_SCOPE = "students:consent:read";
 const SUPPORT_CONTACTS_SCOPE = "students:support_contacts:read";
 const ROSTER_EXPORT_SCOPE = "students:roster_export:read";
+const SPECIAL_EDUCATION_SCOPE = "students:special_education:read";
 
 function authHeader(token: string) {
   return { Authorization: `Bearer ${token}` };
@@ -1205,6 +1206,56 @@ describe("Student internal API", () => {
     it("should reject if no Authorization header is provided", async () => {
       const response = await TestRequest.get("/api/internal/students");
       expect(response.status).toBe(401);
+    });
+  });
+
+  describe("GET /api/internal/students/special-education", () => {
+    it("lists only active eligible students with classes and their learning support summary", async () => {
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [SPECIAL_EDUCATION_SCOPE] });
+      const eligible = await StudentTest.create({
+        email: "special_education_list@millennia21.id",
+        nis: "9500498",
+        status: StudentStatus.ACTIVE,
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+        currentClassId: classId,
+        sn: true,
+      });
+      await prismaClient.studentSpecialNeedsProfile.create({
+        data: { student_id: eligible.student!.id, learning_support_summary: "Uses visual prompts.", needs: { create: { need_type: "OTHER", description: "Reads below grade level." } } },
+      });
+      await StudentTest.create({
+        email: "legacy_incomplete_special_education@millennia21.id",
+        nis: "9500497",
+        status: StudentStatus.ACTIVE,
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+        currentClassId: classId,
+        sn: true,
+      });
+      await StudentTest.create({ email: "not_special_education_list@millennia21.id", nis: "9500499", status: StudentStatus.ACTIVE, currentGradeId: gradeId, joinGradeId: gradeId, joinAcademicYearId: academicYearId, currentClassId: classId });
+
+      const response = await TestRequest.get("/api/internal/students/special-education", undefined, authHeader(token));
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0]).toMatchObject({
+        id: eligible.student!.id,
+        need_types: ["OTHER"],
+        learning_support_summary: "Uses visual prompts.",
+        accommodations: null,
+        current_class_id: classId,
+      });
+      expect(body.data[0].blood_type).toBeUndefined();
+      expect(body.data[0].has_professional_report).toBeUndefined();
+    });
+
+    it("rejects a client with only the general student scope", async () => {
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [READ_SCOPE] });
+      expect((await TestRequest.get("/api/internal/students/special-education", undefined, authHeader(token))).status).toBe(403);
     });
   });
 

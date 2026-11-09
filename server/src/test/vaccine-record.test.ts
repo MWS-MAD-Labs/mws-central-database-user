@@ -188,7 +188,7 @@ describe("Vaccine Record", () => {
       expect(response.status).toBe(400);
     });
 
-    it("should allow recreating a vaccine_type after the previous record was soft-deleted", async () => {
+    it("should reactivate the same vaccine row after it was soft-deleted", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
       const created = await VaccineRecordTest.create({
@@ -205,7 +205,9 @@ describe("Vaccine Record", () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.data.id).not.toBe(created.id);
+      expect(body.data.id).toBe(created.id);
+      expect(body.data.deleted_at).toBeNull();
+      expect(await prismaClient.vaccineRecord.count({ where: { student_id: studentId, vaccine_type: VaccineType.POLIO } })).toBe(1);
     });
   });
 

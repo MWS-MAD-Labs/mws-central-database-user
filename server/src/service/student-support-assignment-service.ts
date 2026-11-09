@@ -1,5 +1,6 @@
 import {
   AdminRole,
+  ClassStatus,
   AuditAction,
   AuditSource,
   EmployeeStatus,
@@ -48,6 +49,7 @@ import { StudentSupportAssignmentValidation } from "../validation/student-suppor
 import { Validation } from "../validation/validation";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { lockInternWorkforce, lockSupportCaseload } from "../utils/intern-workforce-lock";
+import { lockStudentSpecialNeeds } from "../utils/student-special-needs-lock";
 import { SupportCaseloadRuleService } from "./support-caseload-rule-service";
 
 const ASSIGNMENT_INCLUDE = {
@@ -207,6 +209,32 @@ async function assertSameUnit(
       400,
       "This workforce member's unit doesn't match the student's unit - a Special Education teacher can only support students in their own unit.",
     );
+  }
+}
+
+async function assertStudentIsSpecialNeeds(
+  tx: Prisma.TransactionClient,
+  studentId: string,
+): Promise<void> {
+  const student = await tx.student.findUnique({
+    where: { id: studentId },
+    select: {
+      sn: true,
+      deleted_at: true,
+      current_class_id: true,
+      current_class: { select: { status: true } },
+      special_needs_profile: { select: { deleted_at: true } },
+    },
+  });
+  if (!student || student.deleted_at || !student.sn) {
+    throw new ResponseError(400, "Only students marked Special Needs can be assigned an SE Teacher.");
+  }
+  if (!student.special_needs_profile || student.special_needs_profile.deleted_at) {
+    // Legacy students carry only the flag; they must be profiled before new support.
+    throw new ResponseError(400, "Complete the student's Special Needs profile before assigning an SE Teacher.");
+  }
+  if (!student.current_class_id || student.current_class?.status !== ClassStatus.ACTIVE) {
+    throw new ResponseError(400, "A student must have an active class before an SE Teacher can be assigned.");
   }
 }
 
@@ -594,10 +622,12 @@ export class StudentSupportAssignmentService {
       context,
     );
     const createdId = await prismaClient.$transaction(async (tx) => {
+      await lockStudentSpecialNeeds(tx, assignRequest.student_id);
       if (assignRequest.intern_id) {
         await lockInternWorkforce(tx, assignRequest.intern_id);
       }
       await lockSupportCaseload(tx, assignRequest.employee_id ?? assignRequest.intern_id!);
+      await assertStudentIsSpecialNeeds(tx, assignRequest.student_id);
       const workforceTarget = await assertWorkforceMemberIsEligible(
         tx,
         assignRequest.employee_id,
@@ -605,6 +635,12 @@ export class StudentSupportAssignmentService {
         now,
       );
       await assertSameUnit(workforceTarget.unitId, assignRequest.student_id);
+      const activeForStudent = await tx.studentSupportAssignment.count({
+        where: { student_id: assignRequest.student_id, role: assignRequest.role, end_date: null, deleted_at: null },
+      });
+      if (activeForStudent > 0) {
+        throw new ResponseError(400, "This student already has an active Special Education Teacher assignment.");
+      }
       const duplicate = await tx.studentSupportAssignment.findFirst({
         where: {
           student_id: assignRequest.student_id,
@@ -769,6 +805,7 @@ export class StudentSupportAssignmentService {
     );
     const previousEndDate = existing.end_date.toISOString();
     await prismaClient.$transaction(async (tx) => {
+      await lockStudentSpecialNeeds(tx, existing.student_id);
       if (existing.intern_id) {
         await lockInternWorkforce(tx, existing.intern_id);
       }
@@ -780,6 +817,13 @@ export class StudentSupportAssignmentService {
         now,
       );
       await assertSameUnit(workforceTarget.unitId, existing.student_id);
+      await assertStudentIsSpecialNeeds(tx, existing.student_id);
+      const activeForStudent = await tx.studentSupportAssignment.count({
+        where: { student_id: existing.student_id, role: existing.role, end_date: null, deleted_at: null, NOT: { id: existing.id } },
+      });
+      if (activeForStudent > 0) {
+        throw new ResponseError(400, "This student already has an active Special Education Teacher assignment.");
+      }
       const duplicate = await tx.studentSupportAssignment.findFirst({
         where: {
           student_id: existing.student_id,

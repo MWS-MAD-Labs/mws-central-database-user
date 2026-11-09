@@ -22,6 +22,7 @@ import {
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
 import {
+  assertCanViewStudentInScope,
   assertCanViewSensitiveData,
   assertStudentInAdminUnit,
   canViewSensitiveData,
@@ -379,17 +380,13 @@ export class ParentGuardianService {
       request,
     );
 
-    await assertStudentExists(listRequest.student_id);
+    const studentName = await assertCanViewStudentInScope(admin, listRequest.student_id);
     // Phone, email and address are only released with an audit entry.
     if (canViewSensitiveData(admin)) {
-      const student = await prismaClient.student.findUnique({
-        where: { id: listRequest.student_id },
-        select: { person: { select: { full_name: true } } },
-      });
       await auditStudentPiiAccess(
         admin,
         listRequest.student_id,
-        student?.person.full_name ?? null,
+        studentName,
         context,
       );
     }

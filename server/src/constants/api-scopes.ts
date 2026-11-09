@@ -4,6 +4,7 @@ export const API_SCOPES = {
   INTERNS_READ: "interns:read",
   STUDENTS_ACADEMIC_HISTORY_READ: "students:academic_history:read",
   STUDENTS_HEALTH_READ: "students:health:read",
+  STUDENTS_SPECIAL_EDUCATION_READ: "students:special_education:read",
   STUDENTS_CONSENT_READ: "students:consent:read",
   STUDENTS_SUPPORT_CONTACTS_READ: "students:support_contacts:read",
   // Sensitive roster export fields require a dedicated scope.

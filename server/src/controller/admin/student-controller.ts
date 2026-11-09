@@ -47,6 +47,12 @@ export class StudentController {
     }
 
     const request = (await c.req.json()) as UpdateStudentRequest;
+    if (request.sn !== undefined) {
+      throw new ResponseError(
+        400,
+        "Special Needs eligibility must be managed through special_needs_profile",
+      );
+    }
 
     const response = await StudentService.update(
       admin,

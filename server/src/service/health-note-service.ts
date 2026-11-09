@@ -2,6 +2,7 @@ import {
   AdminRole,
   AuditAction,
   AuditSource,
+  HealthNoteCategory,
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
@@ -21,6 +22,7 @@ import { AuditService } from "./audit-service";
 import { withLookupCache } from "../lib/lookup-cache";
 import { assertCanWriteNow } from "../utils/office-hours";
 import {
+  assertCanViewStudentInScope,
   assertCanViewSensitiveData,
   assertStudentInAdminUnit,
 } from "../utils/sensitive-data";
@@ -209,6 +211,9 @@ export class HealthNoteService {
     if (!existing) {
       throw new ResponseError(404, "Health note not found");
     }
+    if (existing.category === HealthNoteCategory.SPECIAL_NEEDS) {
+      throw new ResponseError(400, "Special Needs must be managed through the Special Needs Profile");
+    }
     if (existing.deleted_at !== null) {
       throw new ResponseError(
         400,
@@ -391,12 +396,13 @@ export class HealthNoteService {
       request,
     );
 
-    await assertStudentExists(listRequest.student_id);
+    await assertCanViewStudentInScope(admin, listRequest.student_id);
 
     const notes = await prismaClient.healthNote.findMany({
       where: {
         student_id: listRequest.student_id,
         deleted_at: listRequest.is_deleted ? { not: null } : null,
+        category: listRequest.category,
       },
       orderBy: { noted_date: "desc" },
     });

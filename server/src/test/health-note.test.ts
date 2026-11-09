@@ -45,14 +45,14 @@ describe("Health Note", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/health-notes`,
-        { category: "SPECIAL_NEEDS", description: "Needs extra time on tests" },
+        { category: "HEALTH_INFO", description: "Needs extra health monitoring" },
         accessToken,
       );
       const body = await response.json();
       logger.debug(body);
 
       expect(response.status).toBe(200);
-      expect(body.data.category).toBe("SPECIAL_NEEDS");
+      expect(body.data.category).toBe("HEALTH_INFO");
       expect(body.data.status).toBe("ACTIVE");
 
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
@@ -62,6 +62,18 @@ describe("Health Note", () => {
         where: { action: AuditAction.CREATE_HEALTH_NOTE, admin_id: admin.id },
       });
       expect(auditLog.entity_type).toBe("HealthNote");
+    });
+
+    it("rejects Special Needs notes from the admin Health endpoint", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/health-notes`,
+        { category: "SPECIAL_NEEDS", description: "Use the profile instead" },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+      expect((await response.json()).errors).toContain("Special Needs Profile");
     });
 
     it("should roll back health note creation entirely if the audit log write fails", async () => {
@@ -74,7 +86,7 @@ describe("Health Note", () => {
       try {
         const response = await TestRequest.post(
           `/api/admin/students/${studentId}/health-notes`,
-          { category: "SPECIAL_NEEDS", description: "Rollback test note" },
+          { category: "HEALTH_INFO", description: "Rollback test note" },
           accessToken,
         );
 
@@ -222,6 +234,21 @@ describe("Health Note", () => {
       expect(auditLogs[0]!.entity_id).toBe(studentId);
     });
 
+    it("filters health information from legacy Special Needs notes", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await HealthNoteTest.create({ studentId, category: HealthNoteCategory.HEALTH_INFO, description: "Health information" });
+      await HealthNoteTest.create({ studentId, category: HealthNoteCategory.SPECIAL_NEEDS, description: "Legacy Special Needs note" });
+
+      const response = await TestRequest.get(
+        `/api/admin/students/${studentId}/health-notes?category=HEALTH_INFO`,
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.map((note: { description: string }) => note.description)).toEqual(["Health information"]);
+    });
+
     it("should reject (404) for a nonexistent student", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -314,6 +341,20 @@ describe("Health Note", () => {
       );
 
       expect(response.status).toBe(400);
+    });
+
+    it("rejects editing a legacy Special Needs note through Health", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const note = await HealthNoteTest.create({ studentId, category: HealthNoteCategory.SPECIAL_NEEDS });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/health-notes/${note.id}`,
+        { description: "Use the profile instead" },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+      expect((await response.json()).errors).toContain("Special Needs Profile");
     });
   });
 

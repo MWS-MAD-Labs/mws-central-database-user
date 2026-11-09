@@ -1,3 +1,5 @@
+import type { SpecialNeedsEligibilityStatus, SpecialNeedsProfileRequest } from "./special-needs-profile-model";
+import { specialNeedsEligibilityStatus } from "./special-needs-profile-model";
 import type {
   BloodType,
   Class,
@@ -111,6 +113,8 @@ export type CreateStudentRequest = {
   graduation_grade?: string;
   leave_year?: string;
   sn?: boolean;
+  // Optional create-time summary. Stored as a sensitive SPECIAL_NEEDS health note.
+  special_needs_profile?: SpecialNeedsProfileRequest;
 
   // The parent or guardian who is the first contact. Saved with the student, as the primary one.
   parent?: {
@@ -152,6 +156,8 @@ export type UpdateStudentRequest = {
   graduation_grade?: string;
   leave_year?: string;
   sn?: boolean;
+  // Omitted leaves the profile unchanged; object saves/restores; null removes it.
+  special_needs_profile?: SpecialNeedsProfileRequest | null;
   entry_type?: StudentEntryType;
   pickup_drop_service?: boolean;
   catering_service?: boolean;
@@ -266,6 +272,8 @@ export type StudentResponse = {
   };
 
   status: StudentStatus;
+  // Present only when the caller includes the Special Needs profile.
+  special_needs_status?: SpecialNeedsEligibilityStatus;
   created_at: string;
 };
 
@@ -295,6 +303,7 @@ export type StudentDetailResponse = Omit<
       expected_grade: { id: string; name: string } | null;
     } | null;
     sn: boolean;
+    special_needs_status?: SpecialNeedsEligibilityStatus;
     entry_type: StudentEntryType;
     pickup_drop_service: boolean;
     catering_service: boolean;
@@ -328,6 +337,8 @@ export type StudentWithGrades = Student & {
   join_grade: Grade;
   current_class?: Class | null;
   health?: HealthRecord | null;
+  // Present only when the caller includes the profile; status is derived then.
+  special_needs_profile?: { deleted_at: Date | null } | null;
   _count?: { enrollments: number };
 };
 
@@ -339,6 +350,8 @@ export function toStudentResponse(
   hasUnresolvedPlaceholderClass: boolean = false,
 ): StudentResponse {
   const student = person.student!;
+  // Only callers that include the profile expose the effective eligibility status.
+  const withProfile = "special_needs_profile" in student;
 
   return {
     id: student.id,
@@ -373,6 +386,8 @@ export function toStudentResponse(
     },
 
     status: student.status,
+    // The eligibility source of truth is the profile; the legacy flag alone is LEGACY_INCOMPLETE.
+    ...(withProfile ? { special_needs_status: specialNeedsEligibilityStatus(student) } : {}),
     created_at: student.created_at.toISOString(),
   };
 }
@@ -410,6 +425,7 @@ export function toStudentDetailResponse(
       has_active_enrollment_history: hasActiveEnrollmentHistory,
       next_unenrolled_academic_year: nextUnenrolledAcademicYear,
       sn: student.sn,
+      special_needs_status: "special_needs_profile" in student ? specialNeedsEligibilityStatus(student) : undefined,
       entry_type: student.entry_type,
       pickup_drop_service: student.pickup_drop_service,
       catering_service: student.catering_service,

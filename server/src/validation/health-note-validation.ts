@@ -76,5 +76,10 @@ export class HealthNoteValidation {
   static readonly GET_LIST = z.object({
     student_id: z.string().min(1, "Student ID is required"),
     is_deleted: z.boolean().default(false).optional(),
+    category: z
+      .enum(HEALTH_NOTE_CATEGORY_VALUES, {
+        message: "Category must be a valid format",
+      })
+      .optional(),
   });
 }

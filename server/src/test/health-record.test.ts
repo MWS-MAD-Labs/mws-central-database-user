@@ -170,6 +170,25 @@ describe("Health Record", () => {
 
       expect(response.status).toBe(400);
     });
+
+    it("should reactivate a deleted health record through create", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const existing = await HealthRecordTest.create({ studentId, bloodType: "O", needsAssistance: true, deletedAt: new Date() });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/health-record`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.id).toBe(existing.id);
+      expect(body.data.deleted_at).toBeNull();
+      expect(body.data.blood_type).toBeNull();
+      expect(body.data.needs_assistance).toBe(false);
+      expect(await prismaClient.healthRecord.count({ where: { student_id: studentId } })).toBe(1);
+    });
   });
 
   describe("GET /api/admin/students/:id/health-record", () => {
@@ -446,7 +465,7 @@ describe("Health Record", () => {
       expect(response.status).toBe(400);
     });
 
-    it("should allow creating a fresh health record after Super Admin restores instead of recreating", async () => {
+    it("should allow Create to reactivate a deleted health record", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       await HealthRecordTest.create({ studentId, deletedAt: new Date() });
 
@@ -456,7 +475,7 @@ describe("Health Record", () => {
         accessToken,
       );
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(200);
     });
   });
 });

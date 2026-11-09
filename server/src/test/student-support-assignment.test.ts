@@ -3,6 +3,7 @@ import {
   TestRequest,
   AdminUserTest,
   StudentTest,
+  ClassTest,
   EmployeeTest,
   InternTest,
   GradeTest,
@@ -100,6 +101,20 @@ async function createEligibleSupportIntern(email: string) {
   });
 }
 
+async function makeEligibleForSupport(person: Awaited<ReturnType<typeof StudentTest.create>>) {
+  const student = person.student!;
+  const klass = await ClassTest.create({
+    gradeId: student.current_grade_id,
+    academicYearId: student.join_academic_year_id,
+  });
+  await prismaClient.student.update({ where: { id: student.id }, data: { sn: true, current_class_id: klass.id } });
+  // New SE assignments need an active profile, not just the legacy flag.
+  await prismaClient.studentSpecialNeedsProfile.create({
+    data: { student_id: student.id, needs: { create: { need_type: "OTHER", description: "Test Special Needs profile." } } },
+  });
+  return person;
+}
+
 describe("Student Support Assignment", () => {
   let studentId: string;
 
@@ -122,8 +137,17 @@ describe("Student Support Assignment", () => {
     const student = await StudentTest.create({
       email: "test_support_assignment@millennia21.id",
       nis: "9500002",
+      sn: true,
     });
     studentId = student.student!.id;
+    const klass = await ClassTest.create({
+      gradeId: student.student!.current_grade_id,
+      academicYearId: student.student!.join_academic_year_id,
+    });
+    await prismaClient.student.update({ where: { id: studentId }, data: { current_class_id: klass.id } });
+    await prismaClient.studentSpecialNeedsProfile.create({
+      data: { student_id: studentId, needs: { create: { need_type: "OTHER", description: "Test Special Needs profile." } } },
+    });
   });
 
   afterEach(async () => {
@@ -131,6 +155,35 @@ describe("Student Support Assignment", () => {
   });
 
   describe("POST /api/admin/students/:id/support-assignments", () => {
+    it("should reject a student not marked Special Needs", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee("test_support_teacher_not_sn@millennia21.id");
+      await prismaClient.student.update({ where: { id: studentId }, data: { sn: false } });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+      expect((await response.json()).errors).toContain("marked Special Needs");
+    });
+
+    it("should reject a flagged student whose Special Needs profile is missing", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee("test_support_teacher_no_profile@millennia21.id");
+      await prismaClient.studentSpecialNeedsProfile.deleteMany({ where: { student_id: studentId } });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+      expect((await response.json()).errors).toContain("Complete the student's Special Needs profile");
+    });
     it("should assign a student support teacher as SUPER_ADMIN", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const teacher = await createTeachingEmployee(
@@ -295,11 +348,11 @@ describe("Student Support Assignment", () => {
           unit_id: otherUnit.id,
         },
       });
-      const otherUnitStudent = await StudentTest.create({
+    const otherUnitStudent = await makeEligibleForSupport(await StudentTest.create({
         email: "test_support_cross_unit_student@millennia21.id",
         nis: "9500004",
         currentGradeId: otherGrade.id,
-      });
+      }));
 
       const response = await TestRequest.post(
         `/api/admin/students/${otherUnitStudent.student!.id}/support-assignments`,
@@ -346,7 +399,7 @@ describe("Student Support Assignment", () => {
       const body = await response.json();
 
       expect(response.status).toBe(400);
-      expect(body.errors).toContain("already has an active assignment");
+      expect(body.errors).toContain("already has an active Special Education Teacher assignment");
     });
 
     it("should return 404 when the student does not exist", async () => {
@@ -568,10 +621,10 @@ describe("Student Support Assignment", () => {
       const teacher = await createTeachingEmployee(
         "test_support_teacher_caseload@millennia21.id",
       );
-      const otherStudent = await StudentTest.create({
+      const otherStudent = await makeEligibleForSupport(await StudentTest.create({
         email: "test_support_assignment_second@millennia21.id",
         nis: "9500003",
-      });
+      }));
       await TestRequest.post(
         `/api/admin/students/${studentId}/support-assignments`,
         { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
@@ -905,7 +958,7 @@ describe("Student Support Assignment", () => {
       const body = await response.json();
 
       expect(response.status).toBe(400);
-      expect(body.errors).toContain("already has an active assignment");
+      expect(body.errors).toContain("already has an active Special Education Teacher assignment");
     });
 
     it("should reject when caller is VIEWER", async () => {
@@ -1239,18 +1292,18 @@ describe("GET /api/admin/support-assignments/caseload", () => {
     const teacherB = await createTeachingEmployee(
       "test_caseload_teacher_b@millennia21.id",
     );
-    const studentOne = await StudentTest.create({
+    const studentOne = await makeEligibleForSupport(await StudentTest.create({
       email: "test_caseload_student_1@millennia21.id",
       nis: "9500010",
-    });
-    const studentTwo = await StudentTest.create({
+    }));
+    const studentTwo = await makeEligibleForSupport(await StudentTest.create({
       email: "test_caseload_student_2@millennia21.id",
       nis: "9500011",
-    });
-    const studentThree = await StudentTest.create({
+    }));
+    const studentThree = await makeEligibleForSupport(await StudentTest.create({
       email: "test_caseload_student_3@millennia21.id",
       nis: "9500012",
-    });
+    }));
 
     // teacherA: 2 active (student 1, 2)
     await TestRequest.post(
@@ -1330,14 +1383,14 @@ describe("GET /api/admin/support-assignments/active-student-ids", () => {
     const teacher = await createTeachingEmployee(
       "test_active_ids_teacher@millennia21.id",
     );
-    const studentWithActive = await StudentTest.create({
+    const studentWithActive = await makeEligibleForSupport(await StudentTest.create({
       email: "test_active_ids_student_active@millennia21.id",
       nis: "9500013",
-    });
-    const studentWithEnded = await StudentTest.create({
+    }));
+    const studentWithEnded = await makeEligibleForSupport(await StudentTest.create({
       email: "test_active_ids_student_ended@millennia21.id",
       nis: "9500014",
-    });
+    }));
     const studentWithNone = await StudentTest.create({
       email: "test_active_ids_student_none@millennia21.id",
       nis: "9500015",
@@ -1421,10 +1474,10 @@ describe("Special Education caseload limit", () => {
   async function students(count: number) {
     const made: string[] = [];
     for (let index = 0; index < count; index++) {
-      const student = await StudentTest.create({
+      const student = await makeEligibleForSupport(await StudentTest.create({
         email: `test_limit_student_${index}@millennia21.id`,
         nis: `95001${index}0`,
-      });
+      }));
       made.push(student.student!.id);
     }
     return made;

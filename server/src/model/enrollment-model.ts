@@ -11,6 +11,7 @@ import type {
 import type { AuditValue } from "./audit-log-model";
 import type { BulkActionResponse } from "./bulk-action-model";
 import type { StudentResponse } from "./student-model";
+import { specialNeedsEligibilityStatus, type SpecialNeedsEligibilityStatus } from "./special-needs-profile-model";
 
 // name/nis sort by the student, grade by the enrollment's grade level.
 export const ENROLLMENT_SORT_FIELDS = [
@@ -224,7 +225,11 @@ export type EnrollmentCandidatesResponse = {
 export type EnrollmentWithRelations = StudentClassEnrollment & {
   class: Class;
   academic_year: AcademicYear;
-  student: Student & { person: Person };
+  student: Student & {
+    person: Person;
+    // Present only when the caller includes the profile.
+    special_needs_profile?: { deleted_at: Date | null } | null;
+  };
 };
 
 export type EnrollmentResponse = {
@@ -238,6 +243,8 @@ export type EnrollmentResponse = {
     gender: Gender;
     // Search flags any unresolved placeholder class in the student's history.
     has_unresolved_placeholder_class: boolean;
+    // Present only when the caller includes the Special Needs profile.
+    special_needs_status?: SpecialNeedsEligibilityStatus;
   };
   class: {
     id: string;
@@ -266,6 +273,8 @@ export function toEnrollmentResponse(
   // Only search computes the placeholder-history flag.
   hasUnresolvedPlaceholderClass: boolean = false,
 ): EnrollmentResponse {
+  // Only callers that include the profile expose the effective eligibility status.
+  const withProfile = "special_needs_profile" in enrollment.student;
   return {
     id: enrollment.id,
     student: {
@@ -275,6 +284,7 @@ export function toEnrollmentResponse(
       status: enrollment.student.status,
       gender: enrollment.student.person.gender,
       has_unresolved_placeholder_class: hasUnresolvedPlaceholderClass,
+      ...(withProfile ? { special_needs_status: specialNeedsEligibilityStatus(enrollment.student) } : {}),
     },
     class: {
       id: enrollment.class.id,

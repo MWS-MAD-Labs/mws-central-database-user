@@ -34,6 +34,15 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
+    path: "/api/internal/students/special-education",
+    scope: API_SCOPES.STUDENTS_SPECIAL_EDUCATION_READ,
+    title: "Special Education students",
+    group: "Students",
+    purpose: "Lists active students marked Special Needs with their class and education support summary.",
+    note: "Does not return blood type or general health information.",
+  },
+  {
+    method: "GET",
     path: "/api/internal/students/{student_id}/academic-history",
     scope: API_SCOPES.STUDENTS_ACADEMIC_HISTORY_READ,
     title: "Student class and grade history",

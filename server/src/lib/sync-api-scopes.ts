@@ -1,13 +1,12 @@
 import { prismaClient } from "./prisma";
-import { API_SCOPES, REQUIRED_CONNECT_SCOPES } from "../constants/api-scopes";
+import { API_SCOPES, REQUIRED_CONNECT_SCOPES, type ApiScopeName } from "../constants/api-scopes";
 import { APPLICATION_INTEGRATION_PROFILES } from "../constants/application-integration-profiles";
 import { getIntegrationEnvironment } from "../utils/integration-environment";
 
 // Upsert scope definitions on boot without changing existing grants.
-const SCOPE_DEFINITIONS: Record<
-  string,
-  { description: string; is_sensitive?: boolean }
-> = {
+type ScopeDefinition = { description: string; is_sensitive?: boolean };
+
+const SCOPE_DEFINITIONS = {
   [API_SCOPES.EMPLOYEES_READ]: { description: "Read employee profile data" },
   [API_SCOPES.STUDENTS_READ]: { description: "Read student profile data" },
   [API_SCOPES.INTERNS_READ]: { description: "Read intern profile data" },
@@ -16,6 +15,11 @@ const SCOPE_DEFINITIONS: Record<
   },
   [API_SCOPES.STUDENTS_HEALTH_READ]: {
     description: "Read student health records",
+    is_sensitive: true,
+  },
+  [API_SCOPES.STUDENTS_SPECIAL_EDUCATION_READ]: {
+    description:
+      "Read active students with completed Special Needs profiles for Special Education integration",
     is_sensitive: true,
   },
   [API_SCOPES.STUDENTS_CONSENT_READ]: {
@@ -48,12 +52,12 @@ const SCOPE_DEFINITIONS: Record<
   [API_SCOPES.APPLICATION_PERMISSIONS_WRITE]: {
     description: "Publish the permissions an application understands",
   },
-};
+} satisfies Record<ApiScopeName, ScopeDefinition>;
 
 export async function syncApiScopes(): Promise<void> {
   await prismaClient.$transaction(async (tx) => {
     for (const name of Object.values(API_SCOPES)) {
-      const definition = SCOPE_DEFINITIONS[name];
+      const definition: ScopeDefinition = SCOPE_DEFINITIONS[name];
       await tx.apiScope.upsert({
         where: { name },
         update: {

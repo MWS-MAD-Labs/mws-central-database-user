@@ -157,6 +157,16 @@ enum PCDay {
   THURSDAY
 }
 
+enum SpecialNeedType {
+  LEARNING
+  COGNITIVE
+  COMMUNICATION
+  SOCIAL_EMOTIONAL
+  PHYSICAL
+  SENSORY
+  OTHER
+}
+
 enum HealthNoteCategory {
   HEALTH_INFO
   SPECIAL_NEEDS
@@ -297,6 +307,9 @@ enum AuditAction {
   CREATE_VACCINE_RECORD
   UPDATE_VACCINE_RECORD
   DELETE_VACCINE_RECORD
+  CREATE_SPECIAL_NEEDS_PROFILE
+  UPDATE_SPECIAL_NEEDS_PROFILE
+  DELETE_SPECIAL_NEEDS_PROFILE
   ASSIGN_STUDENT_SUPPORT
   END_STUDENT_SUPPORT_ASSIGNMENT
   DELETE_STUDENT_SUPPORT_ASSIGNMENT
@@ -799,6 +812,7 @@ model Student {
   consents            ConsentRecord[]
   health              HealthRecord?
   health_notes        HealthNote[]
+  special_needs_profile StudentSpecialNeedsProfile?
   pc                  PassionConnectionActivity[]
   vaccine_records     VaccineRecord[]
   support_assignments StudentSupportAssignment[]
@@ -1353,6 +1367,37 @@ model HealthRecord {
 
   // Soft-deleted records are restored rather than recreated.
   @@map("health_records")
+}
+
+// One profile per Special Needs student, filled when the flag is set. Free text is sensitive.
+model StudentSpecialNeedsProfile {
+  id                       String           @id @default(cuid())
+  student_id               String           @unique
+  student                  Student          @relation(fields: [student_id], references: [id])
+  needs                    StudentSpecialNeed[]
+  learning_support_summary String?          @db.VarChar(500)
+  accommodations           String?          @db.VarChar(1000)
+  has_professional_report  Boolean          @default(false)
+  report_date              DateTime?        @db.Date
+  identified_date          DateTime?        @db.Date
+  created_at               DateTime         @default(now())
+  updated_at               DateTime         @updatedAt
+  deleted_at               DateTime?
+
+  @@map("student_special_needs_profiles")
+}
+
+model StudentSpecialNeed {
+  id          String                     @id @default(cuid())
+  profile_id  String
+  profile     StudentSpecialNeedsProfile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  need_type   SpecialNeedType
+  description String                     @db.VarChar(1000)
+  created_at  DateTime                   @default(now())
+  updated_at  DateTime                   @updatedAt
+
+  @@unique([profile_id, need_type])
+  @@map("student_special_needs")
 }
 
 model HealthNote {

@@ -3464,6 +3464,9 @@ export class ImportService {
             buildUpdateRequest(row),
             context,
             now,
+            false,
+            false,
+            true,
           );
           row.committed_student_id = row.matched_student_id;
         }
@@ -3578,6 +3581,9 @@ export class ImportService {
             buildRevertRequest(row),
             context,
             now,
+            false,
+            false,
+            true,
           );
         }
         row.committed_student_id = null;

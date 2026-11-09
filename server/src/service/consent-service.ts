@@ -19,7 +19,7 @@ import {
 } from "../model/consent-model";
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
-import { assertStudentInAdminUnit } from "../utils/sensitive-data";
+import { assertCanViewStudentInScope, assertStudentInAdminUnit } from "../utils/sensitive-data";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { ConsentValidation } from "../validation/consent-validation";
 import { Validation } from "../validation/validation";
@@ -361,14 +361,12 @@ export class ConsentService {
     admin: AdminUser,
     request: GetConsentListRequest,
   ): Promise<ConsentResponse[]> {
-    void admin;
-
     const listRequest = Validation.validate(
       ConsentValidation.GET_LIST,
       request,
     );
 
-    await assertStudentExists(listRequest.student_id);
+    await assertCanViewStudentInScope(admin, listRequest.student_id);
 
     const consents = await prismaClient.consentRecord.findMany({
       where: {

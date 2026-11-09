@@ -8,6 +8,7 @@ import {
   AuditSource,
   EnrollmentStatus,
   GoogleSyncStatus,
+  HealthNoteCategory,
   PersonType,
   Prisma,
   StudentMutationField,
@@ -51,16 +52,19 @@ import {
 import type { ResourceVersionResponse } from "../model/resource-version-model";
 import { toEnrollmentAuditSnapshot } from "../model/enrollment-model";
 import { AuditService } from "./audit-service";
+import { SpecialNeedsProfileService } from "./special-needs-profile-service";
 import { toParentGuardianAuditSnapshot } from "../model/parent-guardian-model";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { canApproveEntity } from "../utils/change-request-approver";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
+import { lockStudentSpecialNeeds } from "../utils/student-special-needs-lock";
 import { generateNis, tryPromoteLegacyNis } from "../utils/nis-generator";
 import {
   assertCanViewSensitiveData,
   canViewSensitiveData,
 } from "../utils/sensitive-data";
+import { toHealthNoteAuditSnapshot } from "../model/health-note-model";
 import { auditStudentPiiAccess } from "../utils/student-pii-access";
 import {
   assertCanViewStudentData,
@@ -609,6 +613,11 @@ export class StudentService {
       StudentValidation.CREATE,
       request,
     );
+    if (createRequest.sn === true || createRequest.special_needs_profile) await assertCanViewSensitiveData(admin, context);
+    // The form fills the details together with the flag. Imports and legacy graduates bring the flag alone.
+    if (options.requireParentContact && createRequest.sn === true && createRequest.status !== StudentStatus.GRADUATED && !createRequest.special_needs_profile) {
+      throw new ResponseError(400, "Special Needs details are required when a student is marked Special Needs");
+    }
 
     if (options.requireParentContact && !createRequest.parent) {
       throw new ResponseError(400, "A parent or guardian with an email is required");
@@ -849,7 +858,7 @@ export class StudentService {
                   entry_type: createRequest.entry_type,
                   graduation_grade: createRequest.graduation_grade,
                   leave_year: createRequest.leave_year,
-                  sn: createRequest.sn,
+                  sn: createRequest.sn ?? Boolean(createRequest.special_needs_profile),
                 },
               },
             },
@@ -913,6 +922,17 @@ export class StudentService {
             );
           }
 
+          if (createRequest.special_needs_profile) {
+            await SpecialNeedsProfileService.writeInTransaction(
+              tx,
+              admin,
+              personForAudit.student.id,
+              personForAudit.full_name,
+              createRequest.special_needs_profile,
+              context,
+            );
+          }
+
           await recordStudentMutation(
             tx,
             personForAudit.student.id,
@@ -969,6 +989,7 @@ export class StudentService {
           include: {
             current_grade: true,
             join_grade: true,
+            special_needs_profile: { select: { deleted_at: true } },
             _count: { select: { enrollments: true } },
           },
         },
@@ -1178,6 +1199,7 @@ export class StudentService {
           include: {
             current_grade: true,
             join_grade: true,
+            special_needs_profile: { select: { deleted_at: true } },
             _count: { select: { enrollments: true } },
           },
         },
@@ -1254,6 +1276,7 @@ export class StudentService {
           include: {
             current_grade: true,
             join_grade: true,
+            special_needs_profile: { select: { deleted_at: true } },
             _count: { select: { enrollments: true } },
           },
         },
@@ -1328,6 +1351,7 @@ export class StudentService {
           include: {
             current_grade: true,
             join_grade: true,
+            special_needs_profile: { select: { deleted_at: true } },
             _count: { select: { enrollments: true } },
           },
         },
@@ -1353,6 +1377,8 @@ export class StudentService {
     bypassIdentifierLock = false,
     // Set only by Change Email (email-change-service.ts): an email is never changed by a plain edit.
     allowEmailChange = false,
+    // Import and rollback may preserve the historical SN flag. UI edits use the profile endpoint.
+    allowLegacySpecialNeedsFlag = false,
   ): Promise<StudentResponse> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedStudentAction(
@@ -1369,10 +1395,20 @@ export class StudentService {
     bypassIdentifierLock =
       bypassIdentifierLock || (await canApproveEntity(admin, "Student"));
 
+    const { sn: _legacySn, ...requestWithoutLegacySn } = request;
     const updateRequest = Validation.validate(
       StudentValidation.UPDATE,
-      request,
+      allowLegacySpecialNeedsFlag ? requestWithoutLegacySn : request,
     );
+    const legacySpecialNeedsFlag =
+      allowLegacySpecialNeedsFlag && typeof request.sn === "boolean"
+        ? request.sn
+        : undefined;
+    const hasSpecialNeedsProfileChange =
+      updateRequest.special_needs_profile !== undefined;
+    if (legacySpecialNeedsFlag !== undefined || hasSpecialNeedsProfileChange) {
+      await assertCanViewSensitiveData(admin, context);
+    }
 
     const existing = await prismaClient.person.findFirst({
       where: {
@@ -1383,6 +1419,7 @@ export class StudentService {
           include: {
             current_grade: true,
             join_grade: true,
+            special_needs_profile: { select: { deleted_at: true } },
             _count: { select: { enrollments: true } },
           },
         },
@@ -1392,6 +1429,8 @@ export class StudentService {
     if (!existing || !existing.student) {
       throw new ResponseError(404, "Student not found");
     }
+    const existingStudentId = existing.student.id;
+    const existingWasSpecialNeeds = existing.student.sn;
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
       if (!admin.can_write_student_data) {
@@ -1844,7 +1883,6 @@ export class StudentService {
                   ? null
                   : effectiveGraduationGrade,
                 leave_year: clearGraduationFields ? null : effectiveLeaveYear,
-                sn: updateRequest.sn,
                 entry_type: updateRequest.entry_type,
                 pickup_drop_service: updateRequest.pickup_drop_service,
                 catering_service: updateRequest.catering_service,
@@ -1856,6 +1894,41 @@ export class StudentService {
             },
           },
         });
+
+        if (updateRequest.special_needs_profile) {
+          await SpecialNeedsProfileService.writeInTransaction(
+            tx,
+            admin,
+            existingStudentId,
+            existing.full_name,
+            updateRequest.special_needs_profile,
+            context,
+          );
+        } else if (updateRequest.special_needs_profile === null) {
+          await SpecialNeedsProfileService.removeInTransaction(
+            tx,
+            admin,
+            existingStudentId,
+            existing.full_name,
+            context,
+            now,
+          );
+        } else if (legacySpecialNeedsFlag === false && existingWasSpecialNeeds) {
+          await SpecialNeedsProfileService.removeInTransaction(
+            tx,
+            admin,
+            existingStudentId,
+            existing.full_name,
+            context,
+            now,
+          );
+        } else if (legacySpecialNeedsFlag === true) {
+          await lockStudentSpecialNeeds(tx, existingStudentId);
+          await tx.student.update({
+            where: { id: existingStudentId },
+            data: { sn: true },
+          });
+        }
 
         if (enrollmentsToClose.length > 0 && closingEnrollmentStatus) {
           await tx.studentClassEnrollment.updateMany({
@@ -2113,6 +2186,7 @@ export class StudentService {
           include: {
             current_grade: true,
             join_grade: true,
+            special_needs_profile: { select: { deleted_at: true } },
             _count: { select: { enrollments: true } },
           },
         },
@@ -2178,6 +2252,7 @@ export class StudentService {
             current_grade: true,
             join_grade: true,
             current_class: true,
+            special_needs_profile: { select: { deleted_at: true } },
             _count: { select: { enrollments: true } },
           },
         },
@@ -2267,6 +2342,7 @@ export class StudentService {
                   current_grade: true,
                   current_class: true,
                   join_grade: true,
+                  special_needs_profile: { select: { deleted_at: true } },
                   _count: { select: { enrollments: true } },
                 },
               },
@@ -2382,6 +2458,7 @@ export class StudentService {
                 include: {
                   current_grade: true,
                   join_grade: true,
+                  special_needs_profile: { select: { deleted_at: true } },
                   _count: { select: { enrollments: true } },
                 },
               },
@@ -2576,6 +2653,7 @@ export class StudentService {
           include: {
             current_grade: true,
             join_grade: true,
+            special_needs_profile: { select: { deleted_at: true } },
             _count: { select: { enrollments: true } },
           },
         },

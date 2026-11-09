@@ -3879,7 +3879,29 @@ describe("Student Class Enrollment", () => {
       expect(response.status).toBe(200);
       expect(body.data.length).toBe(1);
       expect(body.data[0].student.id).toBe(studentId);
+      expect(body.data[0].student.special_needs_status).toBe("NONE");
       expect(body.data[0].academic_year.id).toBe(yearAId);
+    });
+
+    it("reports the effective Special Needs eligibility in the roster", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await prismaClient.student.update({ where: { id: studentId }, data: { sn: true } });
+      await prismaClient.studentSpecialNeedsProfile.create({
+        data: { student_id: studentId, needs: { create: { need_type: "OTHER", description: "Roster eligibility test." } } },
+      });
+      await EnrollmentTest.create({
+        studentId,
+        classId: classGrade1YearA,
+        academicYearId: yearAId,
+        gradeLevel: "Grade 1",
+      });
+
+      const profiled = await (await TestRequest.get(`/api/admin/enrollments?class_id=${classGrade1YearA}`, accessToken)).json();
+      expect(profiled.data[0].student.special_needs_status).toBe("PROFILED");
+
+      await prismaClient.studentSpecialNeedsProfile.deleteMany({ where: { student_id: studentId } });
+      const legacy = await (await TestRequest.get(`/api/admin/enrollments?class_id=${classGrade1YearA}`, accessToken)).json();
+      expect(legacy.data[0].student.special_needs_status).toBe("LEGACY_INCOMPLETE");
     });
 
     it("should filter a class roster by class_id + academic_year_id", async () => {

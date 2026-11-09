@@ -81,7 +81,7 @@ import { toStudentResponse } from "../model/student-model";
 const ENROLLMENT_INCLUDE = {
   class: true,
   academic_year: true,
-  student: { include: { person: true } },
+  student: { include: { person: true, special_needs_profile: { select: { deleted_at: true } } } },
 } as const;
 
 const DUPLICATE_ENROLLMENT_MESSAGE =
@@ -796,14 +796,15 @@ export class EnrollmentService {
         skip,
         orderBy: { full_name: "asc" },
         include: {
-          student: {
-            include: {
-              current_grade: true,
-              join_grade: true,
-              current_class: true,
-              _count: { select: { enrollments: true } },
-            },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            current_class: true,
+            special_needs_profile: { select: { deleted_at: true } },
+            _count: { select: { enrollments: true } },
           },
+        },
         },
       }),
       prismaClient.studentClassEnrollment.count({

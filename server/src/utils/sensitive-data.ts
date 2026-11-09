@@ -8,7 +8,11 @@ import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import { AuditService } from "../service/audit-service";
 import { prismaClient } from "../lib/prisma";
-import { isUnitWritable, type AdminWithOptionalScope } from "./admin-permissions";
+import {
+  assertCanViewStudentData,
+  isUnitWritable,
+  type AdminWithOptionalScope,
+} from "./admin-permissions";
 
 // Keep only the last four characters in audit snapshots.
 export function maskSensitiveValue(value: string | null): string | null {
@@ -82,6 +86,32 @@ export async function assertStudentInAdminUnit(
     403,
     "Forbidden: This student is outside your unit scope",
   );
+}
+
+// Relation reads mirror GET student: permission plus non-disclosing unit scope.
+export async function assertCanViewStudentInScope(
+  admin: AdminUser & { student_view_units?: { unit_id: string }[] },
+  studentId: string,
+): Promise<string> {
+  assertCanViewStudentData(admin);
+  const student = await prismaClient.student.findFirst({
+    where: { id: studentId, deleted_at: null },
+    select: {
+      current_grade: { select: { unit_id: true } },
+      person: { select: { full_name: true } },
+    },
+  });
+  const custom = admin.student_view_units?.map((row) => row.unit_id) ?? [];
+  const scope =
+    admin.role === AdminRole.SUPER_ADMIN || admin.can_view_all_student_units
+      ? undefined
+      : custom.length > 0
+        ? custom
+        : [admin.unit_id];
+  if (!student || (scope !== undefined && !scope.includes(student.current_grade.unit_id))) {
+    throw new ResponseError(404, "Student not found");
+  }
+  return student.person.full_name;
 }
 
 // DATABASE_ADMIN may write employee photos only within their unit scope.

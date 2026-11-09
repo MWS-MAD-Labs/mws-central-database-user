@@ -21,6 +21,7 @@ import { AuditService } from "./audit-service";
 import { withLookupCache } from "../lib/lookup-cache";
 import { assertCanWriteNow } from "../utils/office-hours";
 import {
+  assertCanViewStudentInScope,
   assertCanViewSensitiveData,
   assertStudentInAdminUnit,
 } from "../utils/sensitive-data";
@@ -158,22 +159,48 @@ export class VaccineRecordService {
     let created;
     try {
       created = await prismaClient.$transaction(async (tx) => {
-        const newRecord = await tx.vaccineRecord.create({
-          data: {
+        const active = await tx.vaccineRecord.findFirst({
+          where: {
             student_id: createRequest.student_id,
             vaccine_type: createRequest.vaccine_type,
-            received: createRequest.received,
-            date: createRequest.date ? new Date(createRequest.date) : undefined,
+            deleted_at: null,
           },
         });
+        if (active) throw new ResponseError(400, DUPLICATE_VACCINE_RECORD_MESSAGE);
+        const deleted = await tx.vaccineRecord.findFirst({
+          where: {
+            student_id: createRequest.student_id,
+            vaccine_type: createRequest.vaccine_type,
+            deleted_at: { not: null },
+          },
+          orderBy: { updated_at: "desc" },
+        });
+        const newRecord = deleted
+          ? await tx.vaccineRecord.update({
+              where: { id: deleted.id },
+              data: {
+                received: createRequest.received ?? false,
+                date: createRequest.date ? new Date(createRequest.date) : null,
+                deleted_at: null,
+              },
+            })
+          : await tx.vaccineRecord.create({
+              data: {
+                student_id: createRequest.student_id,
+                vaccine_type: createRequest.vaccine_type,
+                received: createRequest.received ?? false,
+                date: createRequest.date ? new Date(createRequest.date) : undefined,
+              },
+            });
 
         await AuditService.record(
           {
-            action: AuditAction.CREATE_VACCINE_RECORD,
+            action: deleted ? AuditAction.UPDATE_VACCINE_RECORD : AuditAction.CREATE_VACCINE_RECORD,
             source: AuditSource.UI,
             entity_type: "VaccineRecord",
             entity_id: newRecord.id,
             admin_id: admin.id,
+            ...(deleted ? { old_values: toVaccineRecordAuditSnapshot(deleted, studentFullName) } : {}),
             new_values: toVaccineRecordAuditSnapshot(newRecord, studentFullName),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
@@ -391,7 +418,7 @@ export class VaccineRecordService {
       request,
     );
 
-    await assertStudentExists(listRequest.student_id);
+    await assertCanViewStudentInScope(admin, listRequest.student_id);
 
     const records = await prismaClient.vaccineRecord.findMany({
       where: {

@@ -5,6 +5,7 @@ import { EnrollmentController } from "../../controller/admin/enrollment-controll
 import { ParentGuardianController } from "../../controller/admin/parent-guardian-controller";
 import { ConsentController } from "../../controller/admin/consent-controller";
 import { HealthRecordController } from "../../controller/admin/health-record-controller";
+import { SpecialNeedsProfileController } from "../../controller/admin/special-needs-profile-controller";
 import { HealthNoteController } from "../../controller/admin/health-note-controller";
 import { VaccineRecordController } from "../../controller/admin/vaccine-record-controller";
 import { ConsentAttachmentController } from "../../controller/admin/consent-attachment-controller";
@@ -187,6 +188,16 @@ studentRouter.patch("/:id/health-notes/delete/:noteId", (c) =>
 );
 studentRouter.patch("/:id/health-notes/restore/:noteId", (c) =>
   HealthNoteController.restore(c),
+);
+
+studentRouter.put("/:id/special-needs-profile", (c) =>
+  SpecialNeedsProfileController.save(c),
+);
+studentRouter.get("/:id/special-needs-profile", (c) =>
+  SpecialNeedsProfileController.get(c),
+);
+studentRouter.patch("/:id/special-needs-profile/delete", (c) =>
+  SpecialNeedsProfileController.remove(c),
 );
 
 studentRouter.post("/:id/vaccine-records", (c) =>
