@@ -38,8 +38,8 @@ class SmtpMailer implements Mailer {
 
 export type GmailConfig = { sender: string; name: string };
 
-// Same service account as Google Workspace (GOOGLE_WORKSPACE_CREDENTIALS_B64). The account needs the gmail.send scope in
-// its domain-wide delegation, the way Woko has it. GMAIL_SENDER_EMAIL turns this on.
+// GMAIL_SENDER_EMAIL turns this on. The key is GMAIL_CREDENTIALS_B64, or the Google Workspace one when that is empty. Either
+// service account needs the gmail.send scope in its domain-wide delegation.
 export function readGmailConfig(env: Record<string, string | undefined> = process.env): GmailConfig | null {
   const sender = env.GMAIL_SENDER_EMAIL?.trim();
   if (!sender) return null;
@@ -68,8 +68,12 @@ class GmailApiMailer implements Mailer {
   }
 }
 
+const gmailKeyName = (env: Record<string, string | undefined> = process.env) =>
+  env.GMAIL_CREDENTIALS_B64?.trim() ? "GMAIL_CREDENTIALS_B64" : "GOOGLE_WORKSPACE_CREDENTIALS_B64";
+
 function gmailRawSender(sender: string): RawSender {
-  const key = readServiceAccountKey(process.env.GOOGLE_WORKSPACE_CREDENTIALS_B64);
+  const name = gmailKeyName();
+  const key = readServiceAccountKey(process.env[name], name);
   const client = gmail({
     version: "v1",
     auth: new auth.JWT({ email: key.client_email, key: key.private_key, scopes: ["https://www.googleapis.com/auth/gmail.send"], subject: sender }),
@@ -117,7 +121,7 @@ export function getMailer(): Mailer {
 
   // Gmail API first, SMTP stays for local Mailpit or a future relay.
   const gmailConfig = readGmailConfig();
-  if (gmailConfig && process.env.GOOGLE_WORKSPACE_CREDENTIALS_B64?.trim()) {
+  if (gmailConfig && process.env[gmailKeyName()]?.trim()) {
     cached = new GmailApiMailer(`${JSON.stringify(gmailConfig.name)} <${gmailConfig.sender}>`, gmailRawSender(gmailConfig.sender));
     return cached;
   }

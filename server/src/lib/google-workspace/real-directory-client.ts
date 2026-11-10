@@ -11,13 +11,13 @@ const SCOPES = ["https://www.googleapis.com/auth/admin.directory.user"];
 
 type ServiceAccountKey = { client_email: string; private_key: string };
 
-export function readServiceAccountKey(encoded: string | undefined): ServiceAccountKey {
-  if (!encoded?.trim()) throw new Error("GOOGLE_WORKSPACE_CREDENTIALS_B64 is not set");
+export function readServiceAccountKey(encoded: string | undefined, name = "GOOGLE_WORKSPACE_CREDENTIALS_B64"): ServiceAccountKey {
+  if (!encoded?.trim()) throw new Error(`${name} is not set`);
   let key: Partial<ServiceAccountKey>;
   try {
     key = JSON.parse(Buffer.from(encoded.trim(), "base64").toString("utf8"));
   } catch {
-    throw new Error("GOOGLE_WORKSPACE_CREDENTIALS_B64 is not base64 of the service account JSON");
+    throw new Error(`${name} is not base64 of the service account JSON`);
   }
   if (!key.client_email || !key.private_key) {
     throw new Error("The service account JSON has no client_email or private_key");

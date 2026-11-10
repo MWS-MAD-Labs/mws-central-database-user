@@ -79,8 +79,8 @@ services:
       - GOOGLE_WORKSPACE_CREDENTIALS_B64=${GOOGLE_WORKSPACE_CREDENTIALS_B64:-}
       - GOOGLE_WORKSPACE_ADMIN_SUBJECT=${GOOGLE_WORKSPACE_ADMIN_SUBJECT:-}
       - GOOGLE_WORKSPACE_TEST_PREFIX=${GOOGLE_WORKSPACE_TEST_PREFIX:-}
-      # Mail for the first sign-in details of a new Google account. GMAIL_SENDER_EMAIL sends through the Gmail API with the
-      # Google Workspace key above, SMTP_* is the fallback. Both empty turns Send Email off.
+      # Mail for the first sign-in details of a new Google account. GMAIL_SENDER_EMAIL sends through the Gmail API with
+      # GMAIL_CREDENTIALS_B64 (the Workspace key above when empty), SMTP_* is the fallback. Both empty turns Send Email off.
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-}
       - SMTP_SECURE=${SMTP_SECURE:-}
@@ -90,6 +90,7 @@ services:
       - SMTP_FROM=${SMTP_FROM:-}
       - GMAIL_SENDER_EMAIL=${GMAIL_SENDER_EMAIL:-}
       - GMAIL_SENDER_NAME=${GMAIL_SENDER_NAME:-}
+      - GMAIL_CREDENTIALS_B64=${GMAIL_CREDENTIALS_B64:-}
       - GOOGLE_SUSPEND_ON_OFFBOARD=${GOOGLE_SUSPEND_ON_OFFBOARD:-}
       - GOOGLE_OU_EMPLOYEE=${GOOGLE_OU_EMPLOYEE:-}
       - GOOGLE_OU_INTERN=${GOOGLE_OU_INTERN:-}

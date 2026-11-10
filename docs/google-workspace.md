@@ -155,14 +155,15 @@ Check Google answers with `check: { outcome, changes, checked_at }`. `outcome` i
 
 Email goes out one of two ways, checked in this order. Without either, Send Email is off and says so.
 
-**Gmail API (preferred).** Central sends with the same service account as the Google Workspace sync (`GOOGLE_WORKSPACE_CREDENTIALS_B64`), acting as a sender mailbox. No password to keep. The client ID of that service account must have the scope `https://www.googleapis.com/auth/gmail.send` in the Admin Console domain-wide delegation (an app that already sends through the Gmail API with the same account, Woko for one, proves it is there). Then set:
+**Gmail API (preferred).** Central sends through a service account, acting as a sender mailbox. No password to keep. The client ID of that service account must have the scope `https://www.googleapis.com/auth/gmail.send` in the Admin Console domain-wide delegation. The Workspace sync account usually only has the directory scope, so give Central the key of an account that already has `gmail.send` (the one another app sends with, for example). Then set:
 
 | Variable | Value |
 |---|---|
 | `GMAIL_SENDER_EMAIL` | the sender mailbox, for example `no-reply@millennia21.id`. Turns this way on |
+| `GMAIL_CREDENTIALS_B64` | that service account JSON, base64 on one line. When empty, the Workspace key (`GOOGLE_WORKSPACE_CREDENTIALS_B64`) is used |
 | `GMAIL_SENDER_NAME` | the name people see, `Millennia Central` when empty |
 
-If Google answers `unauthorized_client`, the scope is not in the delegation yet. The password is then given back on screen (`not_sent: FAILED`), the same as any failed mail.
+If Google answers `unauthorized_client` or `access_denied: Requested client not authorized`, the key's client ID does not have the scope in the delegation yet. The password is then given back on screen (`not_sent: FAILED`), the same as any failed mail.
 
 **SMTP (fallback, and Mailpit in development).** Needs a mailbox's login for sending. Use the same block as MTSS or Exima: copy their `SMTP_*` lines from Komodo (MTSS already sends from `no-reply@millennia21.id`). It is only used when `GMAIL_SENDER_EMAIL` is empty.
 
