@@ -4,6 +4,8 @@ import {
   AdminUserTest,
   MasterDataTest,
   StudentTest,
+  ClassTest,
+  GradeTest,
   EmployeeTest,
   InternTest,
   ApiClientTest,
@@ -56,6 +58,8 @@ describe("Student Support Assignment API (internal)", () => {
     await InternTest.delete();
     await EmployeeTest.delete();
     await AdminUserTest.delete();
+    // Delete grades before their units.
+    await GradeTest.delete();
     await MasterDataTest.delete();
   }
 
@@ -68,6 +72,15 @@ describe("Student Support Assignment API (internal)", () => {
       nis: "9600001",
     });
     studentId = student.student!.id;
+    // New SE assignments need a Special Needs student with a profile and an active class.
+    const klass = await ClassTest.create({
+      gradeId: student.student!.current_grade_id,
+      academicYearId: student.student!.join_academic_year_id,
+    });
+    await prismaClient.student.update({ where: { id: studentId }, data: { sn: true, current_class_id: klass.id } });
+    await prismaClient.studentSpecialNeedsProfile.create({
+      data: { student_id: studentId, needs: { create: { need_type: "OTHER", description: "Test Special Needs profile." } } },
+    });
   });
 
   afterEach(async () => {
