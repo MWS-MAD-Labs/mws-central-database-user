@@ -24,9 +24,11 @@ export function PanelFrame({
               </h2>
               <LiveIndicator isSyncing={isFetching} />
             </div>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-(--mws-muted)">
-              {description}
-            </p>
+            {description ? (
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-(--mws-muted)">
+                {description}
+              </p>
+            ) : null}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">

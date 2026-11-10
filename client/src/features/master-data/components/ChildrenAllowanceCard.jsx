@@ -126,7 +126,6 @@ export function ChildrenAllowanceCard() {
   return (
     <PanelFrame
       title="Children Allowance"
-      description="Which children of an employee count for the allowance."
       icon={Baby}
       isFetching={query.isFetching}
     >

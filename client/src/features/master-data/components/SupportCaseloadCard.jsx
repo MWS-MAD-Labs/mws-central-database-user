@@ -72,7 +72,6 @@ export function SupportCaseloadCard() {
   return (
     <PanelFrame
       title="Special Ed Caseload"
-      description="The most students one Special Education teacher can support at once."
       icon={HeartHandshake}
       isFetching={query.isFetching}
     >
