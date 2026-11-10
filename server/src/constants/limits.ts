@@ -5,7 +5,7 @@ export const LIMITS = {
   MASTER_NAME_MAX: 50,
   GRADE_NAME_MAX: 30,
   CLASS_NAME_MAX: 30,
-  APPLICATION_DESCRIPTION_MAX: 50,
+  APPLICATION_DESCRIPTION_MAX: 100,
   // A whole email address, the same cap as the email of an employee or student.
   EMAIL_MAX: 50,
   // The only domain people sign in with.

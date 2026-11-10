@@ -7,6 +7,7 @@
 // they show in the Hub only after roles and groups are set up and they are published.
 import { readFileSync } from "fs";
 import { isHubIcon } from "../src/constants/hub-icons";
+import { LIMITS } from "../src/constants/limits";
 import { prismaClient } from "../src/lib/prisma";
 import { resolveOrganizationId } from "../src/service/application-entitlement-service";
 import { addressProblem } from "../src/utils/application-id";
@@ -56,8 +57,8 @@ export function planApplication(row: HubRow, knownCategories: string[] = HUB_CAT
   if (trimmedName !== name) notes.push("name shortened to 60 characters");
 
   const description = (row.description ?? "").replace(/\s+/g, " ").replace(/[<>]/g, "").trim();
-  const trimmedDescription = clip(description, 50);
-  if (trimmedDescription !== description) notes.push("description shortened to 50 characters");
+  const trimmedDescription = clip(description, LIMITS.APPLICATION_DESCRIPTION_MAX);
+  if (trimmedDescription !== description) notes.push(`description shortened to ${LIMITS.APPLICATION_DESCRIPTION_MAX} characters`);
 
   let icon: string | null = row.icon ?? null;
   if (icon && !isHubIcon(icon)) {

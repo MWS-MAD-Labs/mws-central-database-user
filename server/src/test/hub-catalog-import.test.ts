@@ -31,14 +31,14 @@ describe("importing the Hub catalog", () => {
     const plan = planApplication({
       id: "tool",
       name: "T".repeat(80),
-      description: "x".repeat(80),
+      description: "x".repeat(150),
       icon: "Cash",
       category: "Finance",
       href: "http://public.example.com/path",
     }) as ReturnType<typeof planApplication> & { notes: string[] };
     expect(plan).toMatchObject({ icon: null, category: "utilities", launch_url: null });
     expect((plan as { name: string }).name.length).toBe(60);
-    expect((plan as { description: string }).description.length).toBe(50);
+    expect((plan as { description: string }).description.length).toBe(100);
     expect(plan.notes.join(" ")).toContain("name shortened");
     expect(plan.notes.join(" ")).toContain("icon \"Cash\"");
     expect(plan.notes.join(" ")).toContain("category \"Finance\"");

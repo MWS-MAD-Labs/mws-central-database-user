@@ -437,23 +437,23 @@ describe('AppCreatePage', () => {
     expect(screen.getByRole('button', { name: 'Logo' })).toHaveTextContent('Default (AppWindow)')
   })
 
-  it('stops the description at 50 characters and counts them', async () => {
+  it('stops the description at 100 characters and counts them', async () => {
     globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
     const { user } = await renderPage()
-    await user.type(screen.getByLabelText('Description'), 'x'.repeat(80))
-    expect(screen.getByLabelText('Description')).toHaveValue('x'.repeat(50))
-    expect(screen.getByText(/50\/50/)).toBeVisible()
+    await user.type(screen.getByLabelText('Description'), 'x'.repeat(150))
+    expect(screen.getByLabelText('Description')).toHaveValue('x'.repeat(100))
+    expect(screen.getByText(/100\/100/)).toBeVisible()
   })
 
   it('keeps a very long name and description inside the preview card', async () => {
     globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
     const { user } = await renderPage()
     await user.type(screen.getByLabelText('Name'), 'A'.repeat(60))
-    await user.type(screen.getByLabelText('Description'), 'y'.repeat(50))
+    await user.type(screen.getByLabelText('Description'), 'y'.repeat(100))
     const name = screen.getAllByText('A'.repeat(60)).find((node) => node.tagName === 'P')
     expect(name.className).toContain('truncate')
     expect(name).toHaveAttribute('title', 'A'.repeat(60))
-    const description = screen.getAllByText('y'.repeat(50)).find((node) => node.tagName === 'P')
+    const description = screen.getAllByText('y'.repeat(100)).find((node) => node.tagName === 'P')
     expect(description.className).toContain('line-clamp-2')
     expect(description.className).toContain('break-all')
   })
