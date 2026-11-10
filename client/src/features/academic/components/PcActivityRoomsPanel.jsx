@@ -262,7 +262,6 @@ export function PcActivityRoomsPanel() {
   return (
     <PanelFrame
       title="PC Activity Rooms"
-      description="Rooms are scoped to units and optional grades rather than a single class. Assign any eligible student here."
       icon={Puzzle}
       isFetching={query.isFetching}
       toolbar={

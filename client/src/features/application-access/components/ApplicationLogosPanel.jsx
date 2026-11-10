@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ImagePlus, Pencil, Trash2 } from "lucide-react";
+import { ImagePlus, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -82,7 +82,6 @@ function UploadDialog({ onClose }) {
   return (
     <CrudDialog
       title="Add Logo"
-      description="Saved as a 256 x 256 picture with a transparent background. A wide or tall logo is fitted inside, never cropped."
       onClose={onClose}
       panelClassName="max-w-lg"
       footer={
@@ -115,25 +114,26 @@ function UploadDialog({ onClose }) {
   );
 }
 
-function RenameDialog({ logo, onClose }) {
+function LogoDialog({ logo, onClose, onDelete }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(logo.name);
   const mutation = useMutation({
     mutationFn: () => applicationLogosApi.rename(logo.id, name.trim()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: LOGOS_KEY });
-      showSuccessToast("Logo renamed.");
+      showSuccessToast("Logo saved.");
       onClose();
     },
-    onError: (error) => showErrorToast(error, "The logo could not be renamed."),
+    onError: (error) => showErrorToast(error, "The logo could not be saved."),
   });
   return (
     <CrudDialog
-      title="Rename Logo"
+      title={logo.name}
       onClose={onClose}
       panelClassName="max-w-md"
       footer={
         <>
+          <Button type="button" variant="danger" className="mr-auto" onClick={() => onDelete(logo)}>Delete</Button>
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="button" disabled={!name.trim() || name.trim() === logo.name || mutation.isPending} onClick={() => mutation.mutate()}>
             Save
@@ -141,9 +141,17 @@ function RenameDialog({ logo, onClose }) {
         </>
       }
     >
-      <Field label="Name" required>
-        <TextInput value={name} maxLength={64} onChange={(event) => setName(event.target.value)} />
-      </Field>
+      <div className="flex gap-4">
+        <LogoImage id={logo.id} version={logo.version} alt={logo.name} size={96} className="bg-(--mws-soft)" />
+        <div className="min-w-0 flex-1 space-y-3">
+          <Field label="Name" required>
+            <TextInput value={name} maxLength={64} onChange={(event) => setName(event.target.value)} />
+          </Field>
+          <p className="text-sm text-(--mws-muted)">
+            {logo.used_by.length > 0 ? `Used by ${logo.used_by.map((item) => item.name).join(", ")}` : "Not used by any application"}
+          </p>
+        </div>
+      </div>
     </CrudDialog>
   );
 }
@@ -154,7 +162,7 @@ export function ApplicationLogosPanel() {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
-  const [renaming, setRenaming] = useState(null);
+  const [selected, setSelected] = useState(null);
 
   const removal = useMutation({
     mutationFn: (id) => applicationLogosApi.remove(id),
@@ -172,18 +180,19 @@ export function ApplicationLogosPanel() {
       confirmLabel: "Delete",
       tone: "danger",
     });
-    if (confirmed) removal.mutate(logo.id);
+    if (confirmed) {
+      setSelected(null);
+      removal.mutate(logo.id);
+    }
   }
 
   return (
     <PanelFrame
       title="Logos"
-      description="The pictures an application can show on its Hub card. Each is saved square and the same size, so they sit alike."
       icon={ImagePlus}
       action={
-        <Button type="button" onClick={() => setUploading(true)}>
-          <ImagePlus size={16} aria-hidden="true" />
-          Add Logo
+        <Button type="button" size="icon" aria-label="New Logo" title="New Logo" onClick={() => setUploading(true)}>
+          <Plus size={16} />
         </Button>
       }
     >
@@ -192,30 +201,23 @@ export function ApplicationLogosPanel() {
       ) : logos.length === 0 ? (
         <p className="p-6 text-sm text-(--mws-muted)">No logos yet. Add the first one.</p>
       ) : (
-        <ul className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="grid grid-cols-3 gap-3 p-4 sm:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
           {logos.map((logo) => (
-            <li key={logo.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-(--mws-line) p-3">
-              <LogoImage id={logo.id} version={logo.version} alt={logo.name} size={56} className="bg-(--mws-soft)" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-display text-sm font-bold text-(--mws-charcoal)" title={logo.name}>{logo.name}</p>
-                <p className="mt-1 text-xs text-(--mws-muted)" title={logo.used_by.map((item) => item.name).join(", ") || undefined}>
-                  {logo.used_by.length > 0 ? `Used by ${logo.used_by.length}` : "Not used"}
-                </p>
-              </div>
-              <div className="flex shrink-0 gap-1">
-                <Button type="button" variant="ghost" size="icon" aria-label={`Rename ${logo.name}`} title="Rename" onClick={() => setRenaming(logo)}>
-                  <Pencil size={16} aria-hidden="true" />
-                </Button>
-                <Button type="button" variant="ghost" size="icon" aria-label={`Delete ${logo.name}`} title="Delete" onClick={() => remove(logo)}>
-                  <Trash2 size={16} aria-hidden="true" />
-                </Button>
-              </div>
+            <li key={logo.id} className="min-w-0">
+              <button
+                type="button"
+                onClick={() => setSelected(logo)}
+                className="flex w-full min-w-0 flex-col items-center gap-2 rounded-xl border border-(--mws-line) p-3 transition hover:border-(--mws-burgundy) hover:bg-(--mws-soft) focus-visible:outline-2 focus-visible:outline-offset-2"
+              >
+                <LogoImage id={logo.id} version={logo.version} alt="" size={64} />
+                <span className="w-full truncate text-center text-xs font-semibold text-(--mws-charcoal)" title={logo.name}>{logo.name}</span>
+              </button>
             </li>
           ))}
         </ul>
       )}
       {uploading ? <UploadDialog onClose={() => setUploading(false)} /> : null}
-      {renaming ? <RenameDialog logo={renaming} onClose={() => setRenaming(null)} /> : null}
+      {selected ? <LogoDialog logo={selected} onClose={() => setSelected(null)} onDelete={remove} /> : null}
     </PanelFrame>
   );
 }

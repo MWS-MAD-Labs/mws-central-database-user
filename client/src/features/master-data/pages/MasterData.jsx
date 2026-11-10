@@ -34,7 +34,6 @@ const resources = [
     id: 'units',
     label: 'Units',
     singular: 'Unit',
-    description: 'School branches and organization units used by employees and admin access scope.',
     icon: Building2,
     api: unitsApi,
     itemLabel: 'units',
@@ -43,7 +42,6 @@ const resources = [
     id: 'job-positions',
     label: 'Job Positions',
     singular: 'Job Position',
-    description: 'Position names used in employee records, reporting, and internal directories.',
     icon: BriefcaseBusiness,
     api: jobPositionsApi,
     itemLabel: 'positions',
@@ -76,7 +74,6 @@ const resources = [
     id: 'job-levels',
     label: 'Job Levels',
     singular: 'Job Level',
-    description: 'Employment levels, including whether a level counts as a teaching role.',
     icon: Layers3,
     api: jobLevelsApi,
     itemLabel: 'levels',
@@ -96,7 +93,6 @@ const resources = [
     id: 'buildings',
     label: 'Buildings',
     singular: 'Building',
-    description: 'Reusable building names used by employee records and import validation.',
     icon: MapPinned,
     api: buildingsApi,
     itemLabel: 'buildings',
@@ -105,7 +101,6 @@ const resources = [
     id: 'pc-activities',
     label: 'PC Activities',
     singular: 'PC Activity',
-    description: 'Reusable Passion Connection activity names. Create PC Activity Rooms per unit/grade from Academic > PC Activity Rooms.',
     icon: Puzzle,
     api: pcActivitiesApi,
     itemLabel: 'PC activities',
@@ -116,7 +111,6 @@ const institutionResource = {
   id: 'institutions',
   label: 'Institutions',
   singular: 'Institution',
-  description: 'Canonical education institution names, suggested when filling in an employee\'s education history.',
   icon: GraduationCap,
   api: institutionsApi,
   itemLabel: 'institutions',
@@ -126,7 +120,6 @@ const majorResource = {
   id: 'majors',
   label: 'Majors',
   singular: 'Major',
-  description: 'Canonical major/field-of-study names, suggested when filling in an employee\'s education history.',
   icon: GraduationCap,
   api: majorsApi,
   itemLabel: 'majors',
@@ -136,7 +129,6 @@ const scopeResource = {
   id: 'application-scopes',
   label: 'Scopes',
   singular: 'Scope',
-  description: 'The product space an application belongs to, like Safespace. Applications pick one in their details.',
   icon: Shapes,
   api: applicationScopesApi,
   itemLabel: 'scopes',
@@ -146,7 +138,6 @@ const categoryResource = {
   id: 'application-categories',
   label: 'Categories',
   singular: 'Category',
-  description: 'The kind of tool an application is, like Reporting. The Hub groups its cards by it.',
   icon: Tags,
   api: applicationCategoriesApi,
   itemLabel: 'categories',
@@ -226,7 +217,6 @@ export default function MasterData() {
     <div className="min-w-0">
       <PageHeader
         title="Master Data"
-        description="Manage reusable data lists that are stored in the database and referenced across employee and admin workflows."
       />
 
       {isAcademic ? (

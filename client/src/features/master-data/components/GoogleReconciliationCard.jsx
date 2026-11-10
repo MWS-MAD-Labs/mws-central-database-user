@@ -30,7 +30,6 @@ export function GoogleReconciliationCard() {
   return (
     <PanelFrame
       title="Central And Google"
-      description="Where the people in Central and the accounts in Google disagree."
       icon={Scale}
       isFetching={run.isPending}
       action={

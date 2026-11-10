@@ -65,7 +65,6 @@ export function GoogleAccountsCard() {
   return (
     <PanelFrame
       title="Google Accounts"
-      description="How the people in Central stand against Google."
       icon={Users}
       isFetching={query.isFetching}
       action={

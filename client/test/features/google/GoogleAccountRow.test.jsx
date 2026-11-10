@@ -530,7 +530,7 @@ describe("GoogleAccountRow", () => {
   it("shows whether the person has set their own password", async () => {
     setup(status({ password_state: "PENDING" }));
     expect(
-      await screen.findByText("Waiting for the first sign-in"),
+      await screen.findByText(/^Waiting for the first sign-in/),
     ).toBeVisible();
     expect(screen.queryByText("Password not set")).not.toBeInTheDocument();
   });
@@ -632,7 +632,7 @@ describe("GoogleAccountRow", () => {
   it("does not say so once the details were emailed", async () => {
     setup(status({ password_state: "PENDING", details_sent: true }));
     expect(
-      await screen.findByText("Waiting for the first sign-in"),
+      await screen.findByText(/^Waiting for the first sign-in/),
     ).toBeVisible();
     expect(screen.queryByText(/were not emailed/)).not.toBeInTheDocument();
   });

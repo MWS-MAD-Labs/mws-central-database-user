@@ -134,7 +134,7 @@ function passwordNote(status) {
         tone: "warn",
       };
     }
-    return { text: "Waiting for the first sign-in", tone: "muted" };
+    return { text: "Waiting for the first sign-in. Not received? Use Make temporary password to send a new one.", tone: "muted" };
   }
   return null;
 }

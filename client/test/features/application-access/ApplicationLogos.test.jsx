@@ -44,13 +44,19 @@ function renderPanel() {
 }
 
 describe('ApplicationLogosPanel', () => {
-  it('lists the logos with how many applications use each', async () => {
+  it('shows each logo as a plain tile, and opens it to see who uses it', async () => {
     globalThis.fetch = createFetchRouter(routes())
-    renderPanel()
+    const { user } = renderPanel()
     expect(await screen.findByText('Millennia')).toBeVisible()
-    expect(screen.getByText('Used by 2')).toBeVisible()
     expect(screen.getByText('Safespace')).toBeVisible()
-    expect(screen.getByText('Not used')).toBeVisible()
+    expect(screen.queryByText(/Used by/)).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Millennia' }))
+    const dialog = screen.getByRole('dialog', { name: 'Millennia' })
+    expect(within(dialog).getByText('Used by Daily Check-in, MTSS')).toBeVisible()
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await user.click(screen.getByRole('button', { name: 'Safespace' }))
+    expect(within(screen.getByRole('dialog', { name: 'Safespace' })).getByText('Not used by any application')).toBeVisible()
   })
 
   it('adds a logo: the name follows the file until it is typed, and the file goes up as a form', async () => {
@@ -60,7 +66,7 @@ describe('ApplicationLogosPanel', () => {
     globalThis.fetch = fetchMock
     const { user } = renderPanel()
     await screen.findByText('Millennia')
-    await user.click(screen.getByRole('button', { name: 'Add Logo' }))
+    await user.click(screen.getByRole('button', { name: 'New Logo' }))
     const dialog = screen.getByRole('dialog', { name: 'Add Logo' })
     const submit = within(dialog).getByRole('button', { name: 'Add Logo' })
     expect(submit).toBeDisabled()
@@ -79,7 +85,7 @@ describe('ApplicationLogosPanel', () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPanel()
     await screen.findByText('Millennia')
-    await user.click(screen.getByRole('button', { name: 'Add Logo' }))
+    await user.click(screen.getByRole('button', { name: 'New Logo' }))
     const dialog = screen.getByRole('dialog', { name: 'Add Logo' })
     await user.upload(within(dialog).getByLabelText('Picture'), svgFile('Logo (1).png'))
 
@@ -93,7 +99,7 @@ describe('ApplicationLogosPanel', () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPanel()
     await screen.findByText('Millennia')
-    await user.click(screen.getByRole('button', { name: 'Add Logo' }))
+    await user.click(screen.getByRole('button', { name: 'New Logo' }))
     const dialog = screen.getByRole('dialog', { name: 'Add Logo' })
     await user.upload(within(dialog).getByLabelText('Picture'), new File(['just some words'], 'notes.png', { type: 'image/png' }))
 
@@ -106,7 +112,7 @@ describe('ApplicationLogosPanel', () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPanel()
     await screen.findByText('Millennia')
-    await user.click(screen.getByRole('button', { name: 'Add Logo' }))
+    await user.click(screen.getByRole('button', { name: 'New Logo' }))
     const dialog = screen.getByRole('dialog', { name: 'Add Logo' })
     const input = within(dialog).getByLabelText('Picture')
     const preview = () => within(dialog).getByLabelText('How the logo will look').querySelector('img')
@@ -131,7 +137,7 @@ describe('ApplicationLogosPanel', () => {
     globalThis.fetch = fetchMock
     const { user } = renderPanel()
     await screen.findByText('Millennia')
-    await user.click(screen.getByRole('button', { name: 'Add Logo' }))
+    await user.click(screen.getByRole('button', { name: 'New Logo' }))
     const dialog = screen.getByRole('dialog', { name: 'Add Logo' })
     const big = new File(['x'], 'big.png', { type: 'image/png' })
     Object.defineProperty(big, 'size', { value: 3 * 1024 * 1024 })
@@ -140,7 +146,7 @@ describe('ApplicationLogosPanel', () => {
     expect(within(dialog).getByRole('button', { name: 'Add Logo' })).toBeDisabled()
   })
 
-  it('deletes after a confirm, and renames', async () => {
+  it('renames from the tile dialog, and deletes after a confirm', async () => {
     const fetchMock = createFetchRouter(routes([
       { path: '/api/admin/application-logos/logo-2', method: 'DELETE', response: () => jsonResponse({ data: { id: 'logo-2' } }) },
       { path: '/api/admin/application-logos/logo-2', method: 'PATCH', response: () => jsonResponse({ data: logos[1] }) },
@@ -149,16 +155,18 @@ describe('ApplicationLogosPanel', () => {
     const { user } = renderPanel()
     await screen.findByText('Safespace')
 
-    await user.click(screen.getByRole('button', { name: 'Rename Safespace' }))
-    const dialog = screen.getByRole('dialog', { name: 'Rename Logo' })
+    await user.click(screen.getByRole('button', { name: 'Safespace' }))
+    const dialog = screen.getByRole('dialog', { name: 'Safespace' })
     const input = within(dialog).getByDisplayValue('Safespace')
     await user.clear(input)
     await user.type(input, 'Safespace Kids')
     await user.click(within(dialog).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'PATCH' && JSON.parse(options.body).name === 'Safespace Kids')).toBe(true))
 
-    await user.click(screen.getByRole('button', { name: 'Delete Safespace' }))
-    await user.click(await screen.findByRole('button', { name: 'Delete' }))
+    await user.click(screen.getByRole('button', { name: 'Safespace' }))
+    await user.click(within(screen.getByRole('dialog', { name: 'Safespace' })).getByRole('button', { name: 'Delete' }))
+    const confirmDialog = await screen.findByRole('dialog', { name: 'Delete Logo' })
+    await user.click(within(confirmDialog).getByRole('button', { name: 'Delete' }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(true))
   })
 })
