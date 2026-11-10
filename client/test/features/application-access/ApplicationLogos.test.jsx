@@ -103,8 +103,19 @@ describe('ApplicationLogosPanel', () => {
     const dialog = screen.getByRole('dialog', { name: 'Add Logo' })
     await user.upload(within(dialog).getByLabelText('Picture'), new File(['just some words'], 'notes.png', { type: 'image/png' }))
 
-    expect(await within(dialog).findByText(/not a picture the server can use/)).toBeVisible()
+    expect(await within(dialog).findByText('Only SVG or PNG files can be used as a logo.')).toBeVisible()
     expect(within(dialog).getByLabelText('How the logo will look').querySelector('img')).toBeNull()
+    expect(within(dialog).getByRole('button', { name: 'Add Logo' })).toBeDisabled()
+  })
+
+  it('turns down a JPG even when it is named .png', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPanel()
+    await screen.findByText('Millennia')
+    await user.click(screen.getByRole('button', { name: 'Add Logo' }))
+    const dialog = screen.getByRole('dialog', { name: 'Add Logo' })
+    await user.upload(within(dialog).getByLabelText('Picture'), new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0])], 'logo.png', { type: 'image/png' }))
+    expect(await within(dialog).findByText('Only SVG or PNG files can be used as a logo.')).toBeVisible()
     expect(within(dialog).getByRole('button', { name: 'Add Logo' })).toBeDisabled()
   })
 
@@ -142,7 +153,7 @@ describe('ApplicationLogosPanel', () => {
     const big = new File(['x'], 'big.png', { type: 'image/png' })
     Object.defineProperty(big, 'size', { value: 3 * 1024 * 1024 })
     await user.upload(within(dialog).getByLabelText('Picture'), big)
-    expect(within(dialog).getByText('The picture is too large, 2 MB at most.')).toBeVisible()
+    expect(await within(dialog).findByText('The file is too large, 2 MB at most.')).toBeVisible()
     expect(within(dialog).getByRole('button', { name: 'Add Logo' })).toBeDisabled()
   })
 
@@ -172,26 +183,88 @@ describe('ApplicationLogosPanel', () => {
 })
 
 describe('IconPicker with logos', () => {
-  it('offers the logos above the icons, and picking one or the other reports which', async () => {
+  it('keeps icons on the Icon tab and logos on the Upload tab, and reports which was picked', async () => {
     globalThis.fetch = createFetchRouter(routes())
     const picked = []
     const { user } = renderWithProviders(
       <IconPicker value="" logoId="" onChange={(icon) => picked.push(['icon', icon])} onPickLogo={(id) => picked.push(['logo', id])} />,
     )
-    await user.click(screen.getByRole('button', { name: 'Icon' }))
+    await user.click(screen.getByRole('button', { name: 'Logo' }))
+    expect(screen.getByRole('tab', { name: 'Icon' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('listbox', { name: 'Logos' })).toBeNull()
+    await user.click(screen.getByRole('tab', { name: 'Upload' }))
     const logoList = await screen.findByRole('listbox', { name: 'Logos' })
     await user.click(within(logoList).getByRole('option', { name: 'Millennia' }))
     expect(picked).toEqual([['logo', 'logo-1']])
 
-    await user.click(screen.getByRole('button', { name: 'Icon' }))
+    await user.click(screen.getByRole('button', { name: 'Logo' }))
+    await user.click(screen.getByRole('tab', { name: 'Icon' }))
     await user.click(within(screen.getByRole('listbox', { name: 'Icons' })).getAllByRole('option')[0])
     expect(picked[1][0]).toBe('icon')
   })
 
-  it('shows no Logos section when none are asked for or none exist', async () => {
-    globalThis.fetch = createFetchRouter([{ path: '/api/admin/application-logos', method: 'GET', response: () => jsonResponse({ data: [] }) }])
+  it('opens on the Upload tab when a logo is picked', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderWithProviders(<IconPicker value="" logoId="logo-1" onChange={() => undefined} onPickLogo={() => undefined} />)
+    await user.click(screen.getByRole('button', { name: 'Logo' }))
+    expect(screen.getByRole('tab', { name: 'Upload' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('shows no tabs when logos are not asked for', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderWithProviders(<IconPicker value="" onChange={() => undefined} />)
+    await user.click(screen.getByRole('button', { name: 'Logo' }))
+    expect(screen.queryByRole('tab')).toBeNull()
+    expect(screen.getByRole('listbox', { name: 'Icons' })).toBeVisible()
+  })
+
+  it('turns down a file that is not SVG or PNG, and takes the same file again after', async () => {
+    globalThis.fetch = createFetchRouter(routes())
     const { user } = renderWithProviders(<IconPicker value="" onChange={() => undefined} onPickLogo={() => undefined} />)
-    await user.click(screen.getByRole('button', { name: 'Icon' }))
-    expect(screen.queryByRole('listbox', { name: 'Logos' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Logo' }))
+    await user.click(screen.getByRole('tab', { name: 'Upload' }))
+    const input = screen.getByLabelText('Logo file')
+    await user.upload(input, new File(['just some words'], 'logo.svg', { type: 'image/svg+xml' }))
+    expect(await screen.findByText('Only SVG or PNG files can be used as a logo.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Upload' })).toBeNull()
+    expect(input.value).toBe('')
+  })
+
+  it('uploads an SVG under the file name and picks it', async () => {
+    let sent = null
+    const fetchMock = createFetchRouter(routes([
+      {
+        path: '/api/admin/application-logos',
+        method: 'POST',
+        response: ({ options }) => {
+          sent = options.body
+          return jsonResponse({ data: { id: 'logo-3', name: 'Brand', version: 1, used_by: [] } }, 201)
+        },
+      },
+    ]))
+    globalThis.fetch = fetchMock
+    const picked = []
+    const { user } = renderWithProviders(<IconPicker value="" onChange={() => undefined} onPickLogo={(id) => picked.push(id)} />)
+    await user.click(screen.getByRole('button', { name: 'Logo' }))
+    await user.click(screen.getByRole('tab', { name: 'Upload' }))
+    await user.upload(screen.getByLabelText('Logo file'), svgFile('Brand.svg'))
+    expect(await screen.findByLabelText('Logo name')).toHaveValue('Brand')
+    expect(madeFrom.at(-1)).toBe('image/svg+xml')
+    await user.click(screen.getByRole('button', { name: 'Upload' }))
+    await waitFor(() => expect(picked).toEqual(['logo-3']))
+    expect(sent.get('name')).toBe('Brand')
+    expect(screen.queryByRole('tab')).toBeNull()
+  })
+
+  it('takes a PNG as well', async () => {
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderWithProviders(<IconPicker value="" onChange={() => undefined} onPickLogo={() => undefined} />)
+    await user.click(screen.getByRole('button', { name: 'Logo' }))
+    await user.click(screen.getByRole('tab', { name: 'Upload' }))
+    await user.upload(screen.getByLabelText('Logo file'), new File([PNG_BYTES], 'Vendor.png', { type: 'image/png' }))
+    expect(await screen.findByLabelText('Logo name')).toHaveValue('Vendor')
+    expect(screen.getByRole('button', { name: 'Upload' })).toBeEnabled()
+    expect(screen.getByLabelText('Logo preview').querySelector('img')).not.toBeNull()
+    expect(madeFrom.at(-1)).toBe('image/png')
   })
 })

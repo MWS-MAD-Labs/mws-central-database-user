@@ -158,9 +158,24 @@ describe("application logos", () => {
     });
     const published = await ApplicationOnboardingService.listPublished();
     const row = published.find((item) => item.id === "test-logo-hub");
-    expect(row?.logo).toEqual({ version: 1 });
+    expect(row?.logo).toEqual({ version: logo.version });
     const image = await ApplicationOnboardingService.publishedLogo("test-logo-hub");
     expect(image.contentType).toBe("image/webp");
     await expect(ApplicationOnboardingService.publishedLogo("test-logo-none")).rejects.toThrow(/no logo/);
+  });
+
+  it("changes the version the Hub sees when the application picks another logo", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const admin = await prismaClient.adminUser.findFirstOrThrow({ where: { email: "test_superadmin@millennia21.id" } });
+    const first = (await (await upload(accessToken, "TEST_First", await png(300, 300))).json()).data;
+    const second = (await (await upload(accessToken, "TEST_Second", await png(300, 300))).json()).data;
+    expect(second.version).not.toBe(first.version);
+    await prismaClient.application.create({
+      data: { application_id: "test-logo-swap", name: "Swap", published: true, launch_url: "https://swap.example.org/sso", logo_id: first.id },
+    });
+    const versionSeen = async () => (await ApplicationOnboardingService.listPublished()).find((item) => item.id === "test-logo-swap")?.logo?.version;
+    const before = await versionSeen();
+    await ApplicationOnboardingService.update(admin, { application_id: "test-logo-swap", logo_id: second.id });
+    expect(await versionSeen()).not.toBe(before);
   });
 });

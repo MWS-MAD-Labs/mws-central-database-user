@@ -417,12 +417,12 @@ describe('AppCreatePage', () => {
     const { user } = await renderPage()
     await user.type(screen.getByLabelText('Name'), 'Demo')
     await user.type(screen.getByLabelText('Application Address'), 'demo.example.com')
-    await user.click(screen.getByRole('button', { name: 'Icon' }))
+    await user.click(screen.getByRole('button', { name: 'Logo' }))
     expect(screen.getByRole('option', { name: 'Wallet' })).toBeVisible()
     await user.type(screen.getByLabelText('Search icons'), 'wall')
     expect(screen.queryByRole('option', { name: 'Archive' })).toBeNull()
     await user.click(screen.getByRole('option', { name: 'Wallet' }))
-    expect(screen.getByRole('button', { name: 'Icon' })).toHaveTextContent('Wallet')
+    expect(screen.getByRole('button', { name: 'Logo' })).toHaveTextContent('Wallet')
     expect(await screen.findByText('The application answers.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Add Application' }))
     await waitFor(() => {
@@ -434,7 +434,7 @@ describe('AppCreatePage', () => {
   it('starts on the default icon', async () => {
     globalThis.fetch = createFetchRouter([SCOPES, HUB_EXISTS, CONTEXT, TAXONOMY, APP_OK])
     await renderPage()
-    expect(screen.getByRole('button', { name: 'Icon' })).toHaveTextContent('Default (AppWindow)')
+    expect(screen.getByRole('button', { name: 'Logo' })).toHaveTextContent('Default (AppWindow)')
   })
 
   it('stops the description at 50 characters and counts them', async () => {

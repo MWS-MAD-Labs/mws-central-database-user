@@ -8,12 +8,9 @@ import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { PanelFrame } from "../../master-data/components/PanelFrame.jsx";
 import { applicationLogosApi } from "../api/applicationLogosApi.js";
-import { sniffImageType } from "../utils/imageSniff.js";
+import { checkLogoFile, LOGO_ACCEPT, LOGO_HINT } from "../utils/imageSniff.js";
 import { LOGOS_KEY, useApplicationLogos } from "../hooks/useApplicationLogos.js";
 import { LogoImage } from "./LogoImage.jsx";
-
-const ACCEPT = "image/png,image/jpeg,image/webp,image/avif,image/svg+xml,.svg";
-const MAX_BYTES = 2 * 1024 * 1024;
 
 // How the picture will sit in the saved logo: a square, the picture fitted inside with a little room around it.
 function SavedLook({ address }) {
@@ -64,13 +61,10 @@ function UploadDialog({ onClose }) {
       setProblem("");
       return;
     }
-    if (picked.size > MAX_BYTES) {
-      setProblem("The picture is too large, 2 MB at most.");
-      return;
-    }
-    const type = await sniffImageType(picked);
-    if (!type) {
-      setProblem("This file is not a picture the server can use. Use a PNG, JPG, WebP, AVIF or SVG.");
+    const { type, problem: reason } = await checkLogoFile(picked);
+    if (reason) {
+      setProblem(reason);
+      event.target.value = "";
       return;
     }
     setProblem("");
@@ -99,10 +93,10 @@ function UploadDialog({ onClose }) {
           <Field label="Name" required counter={{ value: name, max: 64, count: (value) => value.length }}>
             <TextInput value={name} maxLength={64} onChange={(event) => setName(event.target.value)} placeholder="e.g. Millennia" />
           </Field>
-          <Field label="Picture" required hint="PNG, JPG, WebP, AVIF or SVG, 2 MB at most. A PNG or JPG needs at least 128 px on the longest side." error={problem}>
+          <Field label="Picture" required hint={LOGO_HINT} error={problem}>
             <input
               type="file"
-              accept={ACCEPT}
+              accept={LOGO_ACCEPT}
               aria-label="Picture"
               onChange={choose}
               className="block w-full text-sm text-(--mws-charcoal) file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-(--mws-line) file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-semibold"
