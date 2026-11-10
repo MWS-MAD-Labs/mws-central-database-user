@@ -3,7 +3,6 @@ import { LiveIndicator } from '../../../components/ui/LiveIndicator.jsx'
 export function PanelFrame({
   title,
   description,
-  icon: Icon,
   action,
   toolbar,
   isFetching,
@@ -13,10 +12,7 @@ export function PanelFrame({
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
       <div className="flex min-w-0 flex-col gap-3 border-b border-(--mws-line) p-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
-            <Icon size={18} />
-          </div>
+        <div className="flex min-w-0 items-start">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-semibold text-(--mws-charcoal)">
