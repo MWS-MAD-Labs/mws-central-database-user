@@ -1,11 +1,13 @@
+import { auth, gmail } from "@googleapis/gmail";
 import nodemailer, { type Transporter } from "nodemailer";
+import { readServiceAccountKey } from "./google-workspace/real-directory-client";
 
 // `html` is the designed version of the same mail; `text` always goes with it for the apps that show no page.
 export type MailAttachment = { filename: string; content: Buffer; cid: string; contentType: string };
 export type OutgoingMail = { to: string; subject: string; text: string; html?: string; attachments?: MailAttachment[] };
 
 export interface Mailer {
-  // False when no SMTP is set up, so the page can say so instead of failing.
+  // False when no email is set up, so the page can say so instead of failing.
   enabled: boolean;
   send(mail: OutgoingMail): Promise<void>;
 }
@@ -32,6 +34,50 @@ class SmtpMailer implements Mailer {
       ...(mail.attachments?.length ? { attachments: mail.attachments } : {}),
     });
   }
+}
+
+export type GmailConfig = { sender: string; name: string };
+
+// Same service account as Google Workspace (GOOGLE_WORKSPACE_CREDENTIALS_B64). The account needs the gmail.send scope in
+// its domain-wide delegation, the way Woko has it. GMAIL_SENDER_EMAIL turns this on.
+export function readGmailConfig(env: Record<string, string | undefined> = process.env): GmailConfig | null {
+  const sender = env.GMAIL_SENDER_EMAIL?.trim();
+  if (!sender) return null;
+  return { sender, name: env.GMAIL_SENDER_NAME?.trim() || "Millennia Central" };
+}
+
+const rawBuilder = nodemailer.createTransport({ streamTransport: true, buffer: true });
+
+// The whole message (html, text, inline logo) as the base64url string the Gmail API wants.
+export async function buildRawMessage(from: string, mail: OutgoingMail): Promise<string> {
+  const built = await rawBuilder.sendMail({ from, to: mail.to, subject: mail.subject, text: mail.text, ...(mail.html ? { html: mail.html } : {}),
+    ...(mail.attachments?.length ? { attachments: mail.attachments } : {}),
+  });
+  return Buffer.from(built.message as Buffer).toString("base64url");
+}
+
+export type RawSender = (raw: string) => Promise<void>;
+
+class GmailApiMailer implements Mailer {
+  enabled = true;
+
+  constructor(private from: string, private sendRaw: RawSender) {}
+
+  async send(mail: OutgoingMail): Promise<void> {
+    await this.sendRaw(await buildRawMessage(this.from, mail));
+  }
+}
+
+function gmailRawSender(sender: string): RawSender {
+  const key = readServiceAccountKey(process.env.GOOGLE_WORKSPACE_CREDENTIALS_B64);
+  const client = gmail({
+    version: "v1",
+    auth: new auth.JWT({ email: key.client_email, key: key.private_key, scopes: ["https://www.googleapis.com/auth/gmail.send"], subject: sender }),
+  });
+  return async (raw) => {
+    const response = await client.users.messages.send({ userId: "me", requestBody: { raw } });
+    if (!response.data.id) throw new Error("Gmail API did not return a message ID");
+  };
 }
 
 const disabled: Mailer = {
@@ -69,6 +115,13 @@ export function getMailer(): Mailer {
     return cached;
   }
 
+  // Gmail API first, SMTP stays for local Mailpit or a future relay.
+  const gmailConfig = readGmailConfig();
+  if (gmailConfig && process.env.GOOGLE_WORKSPACE_CREDENTIALS_B64?.trim()) {
+    cached = new GmailApiMailer(`${JSON.stringify(gmailConfig.name)} <${gmailConfig.sender}>`, gmailRawSender(gmailConfig.sender));
+    return cached;
+  }
+
   const config = readSmtpConfig();
   if (!config) {
     cached = disabled;
@@ -82,6 +135,11 @@ export function getMailer(): Mailer {
   });
   cached = new SmtpMailer(config.from, transport);
   return cached;
+}
+
+// Tests reach the Gmail mailer without the network by passing their own sender.
+export function gmailMailerForTests(from: string, sendRaw: RawSender): Mailer {
+  return new GmailApiMailer(from, sendRaw);
 }
 
 export function setMailerForTests(mailer: Mailer | null): void {

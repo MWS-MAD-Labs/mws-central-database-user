@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { readSmtpConfig } from "../lib/mailer";
+import { buildRawMessage, gmailMailerForTests, readGmailConfig, readSmtpConfig } from "../lib/mailer";
 
 describe("smtp settings", () => {
   it("is off until a host and a sender are set", () => {
@@ -45,5 +45,42 @@ describe("smtp settings", () => {
     const config = readSmtpConfig({ SMTP_HOST: "smtp-relay.gmail.com", SMTP_FROM: "a@b.id" });
     expect(config?.user).toBeUndefined();
     expect(config?.pass).toBeUndefined();
+  });
+});
+
+describe("gmail api mailer", () => {
+  it("is off until a sender is set, and names itself Millennia Central by default", () => {
+    expect(readGmailConfig({})).toBeNull();
+    expect(readGmailConfig({ GMAIL_SENDER_EMAIL: " no-reply@millennia21.id " })).toEqual({ sender: "no-reply@millennia21.id", name: "Millennia Central" });
+    expect(readGmailConfig({ GMAIL_SENDER_EMAIL: "a@b.id", GMAIL_SENDER_NAME: "Central" })?.name).toBe("Central");
+  });
+
+  it("builds a base64url message with both parts and the inline logo", async () => {
+    const raw = await buildRawMessage('"Central" <no-reply@millennia21.id>', {
+      to: "person@example.org",
+      subject: "Your sign-in details",
+      text: "plain body",
+      html: "<p>html body</p><img src=\"cid:logo\">",
+      attachments: [{ filename: "logo.png", content: Buffer.from("png"), cid: "logo", contentType: "image/png" }],
+    });
+    expect(raw).toMatch(/^[A-Za-z0-9_-]+$/);
+    const mime = Buffer.from(raw, "base64url").toString("utf8");
+    expect(mime).toContain("To: person@example.org");
+    expect(mime).toContain("Subject: Your sign-in details");
+    expect(mime).toContain("no-reply@millennia21.id");
+    expect(mime).toContain("text/plain");
+    expect(mime).toContain("text/html");
+    expect(mime).toContain("Content-ID: <logo>");
+  });
+
+  it("hands the built message to the sender and passes its failure on", async () => {
+    const sent: string[] = [];
+    await gmailMailerForTests("a@b.id", async (raw) => void sent.push(raw)).send({ to: "x@y.id", subject: "s", text: "t" });
+    expect(sent).toHaveLength(1);
+    await expect(
+      gmailMailerForTests("a@b.id", async () => {
+        throw new Error("unauthorized_client");
+      }).send({ to: "x@y.id", subject: "s", text: "t" }),
+    ).rejects.toThrow("unauthorized_client");
   });
 });

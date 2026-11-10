@@ -32,7 +32,7 @@ Only addresses that start with a test prefix are sent to Google, so nothing else
 | `GOOGLE_WORKSPACE_TEST_PREFIX` | leave empty in production. Only for trying it from elsewhere, see above |
 | `GOOGLE_OU_EMPLOYEE`, `GOOGLE_OU_INTERN`, `GOOGLE_OU_STUDENT` | optional, the org unit path for each kind, for example `/Employees` |
 
-The sign-in email needs an SMTP server too, see Sending the first sign-in details.
+The sign-in email needs a sender too (Gmail API or SMTP), see Sending the first sign-in details.
 
 The key is a secret. Keep it out of Git and out of chat, and make a new one if it was ever shared.
 
@@ -153,7 +153,18 @@ An action inside its wait is refused with 429 and the time left. Those read from
 
 Check Google answers with `check: { outcome, changes, checked_at }`. `outcome` is `checked`, `simulated` (this environment does not talk to the real Google, so nothing was asked), `unreachable` (Google did not answer; the last answer is kept) or `skipped`. `changes` lists what differs from before: the status of the account, the password state and a new sign-in. The page shows a message, and under the account "Checked 14:32. Nothing changed." or the changes, and "Last checked 14:32" before anything is pressed.
 
-Email needs an SMTP server, which is a mailbox's login for sending, not something Central makes. Use the same block as MTSS or Exima: copy their `SMTP_*` lines from Komodo (MTSS already sends from `no-reply@millennia21.id`). Without these variables Send Email is off and says so.
+Email goes out one of two ways, checked in this order. Without either, Send Email is off and says so.
+
+**Gmail API (preferred).** Central sends with the same service account as the Google Workspace sync (`GOOGLE_WORKSPACE_CREDENTIALS_B64`), acting as a sender mailbox. No password to keep. The client ID of that service account must have the scope `https://www.googleapis.com/auth/gmail.send` in the Admin Console domain-wide delegation (an app that already sends through the Gmail API with the same account, Woko for one, proves it is there). Then set:
+
+| Variable | Value |
+|---|---|
+| `GMAIL_SENDER_EMAIL` | the sender mailbox, for example `no-reply@millennia21.id`. Turns this way on |
+| `GMAIL_SENDER_NAME` | the name people see, `Millennia Central` when empty |
+
+If Google answers `unauthorized_client`, the scope is not in the delegation yet. The password is then given back on screen (`not_sent: FAILED`), the same as any failed mail.
+
+**SMTP (fallback, and Mailpit in development).** Needs a mailbox's login for sending. Use the same block as MTSS or Exima: copy their `SMTP_*` lines from Komodo (MTSS already sends from `no-reply@millennia21.id`). It is only used when `GMAIL_SENDER_EMAIL` is empty.
 
 | Variable | Where it comes from |
 |---|---|
