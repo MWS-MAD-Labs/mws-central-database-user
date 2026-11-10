@@ -112,7 +112,7 @@ describe('ApplicationLogosPanel', () => {
     globalThis.fetch = createFetchRouter(routes())
     const { user } = renderPanel()
     await screen.findByText('Millennia')
-    await user.click(screen.getByRole('button', { name: 'Add Logo' }))
+    await user.click(screen.getByRole('button', { name: 'New Logo' }))
     const dialog = screen.getByRole('dialog', { name: 'Add Logo' })
     await user.upload(within(dialog).getByLabelText('Picture'), new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0])], 'logo.png', { type: 'image/png' }))
     expect(await within(dialog).findByText('Only SVG or PNG files can be used as a logo.')).toBeVisible()
