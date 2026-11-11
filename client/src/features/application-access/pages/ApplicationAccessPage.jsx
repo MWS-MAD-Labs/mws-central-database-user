@@ -148,14 +148,14 @@ export function ApplicationAccessPage() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {noHub ? null : (
-              <Button asChild variant="secondary" size="icon" aria-label="Guide" title="Guide">
+              <Button asChild variant="secondary" size="icon" className="size-9 min-w-9" aria-label="Guide" title="Guide">
                 <Link to={startGuideHref()}><BookOpen size={16} /></Link>
               </Button>
             )}
             <Button
               type="button"
               onClick={() => navigate("/application-access/apps/new")}
-              size="icon" aria-label="Add Application" title="Add Application"
+              size="icon" className="size-9 min-w-9 border border-transparent" aria-label="Add Application" title="Add Application"
             >
               <Plus size={16} />
             </Button>
