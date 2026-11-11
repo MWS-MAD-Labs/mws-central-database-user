@@ -2040,7 +2040,7 @@ export class ApplicationAccessService {
     if (applicationId === "me") throw new ResponseError(400, "This name makes a reserved id. Pick another name");
     // The Hub has no card and no address.
     const input = parsed.is_hub
-      ? { ...parsed, application_id: applicationId, name: "HUB", description: null, icon: null, category: null, scope: null, launch_url: null, logout_url: null }
+      ? { ...parsed, application_id: applicationId, name: "HUB", description: null, icon: null, icon_bg: null, category: null, scope: null, launch_url: null, logout_url: null }
       : { ...parsed, application_id: applicationId };
     const [organization, roles, rules, entitlements, existing] = await Promise.all([
       prismaClient.applicationOrganization.count({ where: { application_id: input.application_id } }),
@@ -2070,6 +2070,7 @@ export class ApplicationAccessService {
         // One picture at a time: a logo replaces the icon.
         icon: input.logo_id ? null : input.icon || null,
         logo_id: input.logo_id || null,
+        icon_bg: input.icon_bg || null,
         category: input.category || null,
         scope: input.scope || null,
         launch_url: input.launch_url || null,

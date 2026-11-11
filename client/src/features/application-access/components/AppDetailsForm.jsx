@@ -15,6 +15,7 @@ import { AddressCheckStatus } from "./AddressCheckStatus.jsx";
 import { AddressInput } from "./AddressInput.jsx";
 import { AppCardPreview } from "./AppCardPreview.jsx";
 import { IconPicker } from "./IconPicker.jsx";
+import { IconBackgroundPicker } from "./IconBackgroundPicker.jsx";
 import { NextStepsCard } from "./NextStepsCard.jsx";
 import { HubSetupWizard } from "./HubSetupWizard.jsx";
 import { ScopePicker } from "./ScopePicker.jsx";
@@ -83,6 +84,7 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
     icon: HUB_ICON_NAMES.includes(initial?.icon) ? initial.icon : "",
     // A logo of the master data replaces the icon.
     logo_id: initial?.logo_id ?? "",
+    icon_bg: initial?.icon_bg ?? "",
     category: initial?.category ?? "",
     scope: initial?.scope ?? "",
     hub_status: initial?.hub_status ?? "active",
@@ -266,6 +268,8 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
       icon: values.icon.trim(),
       // Only sent when there is one, or when one is being taken off.
       ...(values.logo_id || initial?.logo_id ? { logo_id: values.logo_id } : {}),
+      // Only sent when there is one, or when one is being taken off.
+      ...(values.icon_bg || initial?.icon_bg ? { icon_bg: values.icon_bg } : {}),
       category: values.category,
       scope: values.scope,
       hub_status: values.hub_status,
@@ -384,6 +388,12 @@ export function AppDetailsForm({ initial, idLocked = false, isHub = false, layou
               logoId={values.logo_id}
               onChange={(icon) => setValues((current) => ({ ...current, icon, logo_id: "" }))}
               onPickLogo={(logoId) => setValues((current) => ({ ...current, logo_id: logoId, icon: "" }))}
+            />
+          </Field>
+          <Field label="Icon background" hint="The colour behind the icon or logo on the Hub card. Default keeps the Hub colour.">
+            <IconBackgroundPicker
+              value={values.icon_bg}
+              onChange={(icon_bg) => setValues((current) => ({ ...current, icon_bg }))}
             />
           </Field>
           <Field label="Status" hint="Maintenance and Coming Soon keep the card from opening and say why.">

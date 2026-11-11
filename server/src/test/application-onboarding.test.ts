@@ -310,6 +310,7 @@ describe("application onboarding", () => {
         name: "TEST_Onboard",
         description: null,
         icon: "Wallet",
+        icon_bg: null,
         category: null,
         scope: null,
         logo: null,

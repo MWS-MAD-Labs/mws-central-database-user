@@ -173,6 +173,7 @@ export type ApplicationDetails = {
   description?: string | null;
   icon?: string | null;
   logo_id?: string | null;
+  icon_bg?: string | null;
   category?: string | null;
   scope?: string | null;
   launch_url?: string | null;

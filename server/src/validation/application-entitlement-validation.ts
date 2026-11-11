@@ -69,6 +69,14 @@ const applicationDetails = {
     .nullable(),
   // The id of a logo in the master data. When set it replaces the icon. Empty or null takes the logo off.
   logo_id: z.string().trim().max(64, "Logo is not valid").optional().nullable(),
+  // Hex colour behind the icon or logo on the Hub card, like #1F2A44. Empty or null goes back to the Hub default.
+  icon_bg: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || /^#[0-9a-fA-F]{6}$/.test(value), "Background colour must look like #1F2A44")
+    .transform((value) => value.toUpperCase())
+    .optional()
+    .nullable(),
   // Keys from the master data lists, checked against them when saved.
   category: z.string().trim().max(64, "Category is too long").optional().nullable(),
   scope: z.string().trim().max(64, "Scope is too long").optional().nullable(),

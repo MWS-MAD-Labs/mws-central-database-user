@@ -1883,6 +1883,8 @@ model Application {
   // A picture from the master data. When set it is shown instead of the icon.
   logo_id                   String?
   logo                      ApplicationLogo?       @relation(fields: [logo_id], references: [id], onDelete: SetNull)
+  // Hex colour behind the icon or logo on the Hub card. Null keeps the Hub default.
+  icon_bg                   String?
   category                  String?
   // The product space, like Safespace. Optional. Both hold the key of a row in the master data.
   scope                     String?

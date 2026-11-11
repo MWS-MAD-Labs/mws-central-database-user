@@ -178,4 +178,25 @@ describe("application logos", () => {
     await ApplicationOnboardingService.update(admin, { application_id: "test-logo-swap", logo_id: second.id });
     expect(await versionSeen()).not.toBe(before);
   });
+  it("saves the icon background, hands it to the Hub and clears it when emptied", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const admin = await prismaClient.adminUser.findFirstOrThrow({ where: { email: "test_superadmin@millennia21.id" } });
+    await prismaClient.application.create({
+      data: { application_id: "test-logo-bg", name: "Bg App", published: true, launch_url: "https://bg.example.org/sso" },
+    });
+    const seen = async () => (await ApplicationOnboardingService.listPublished()).find((item) => item.id === "test-logo-bg")?.icon_bg;
+    expect(await seen()).toBeNull();
+
+    const set = await ApplicationOnboardingService.update(admin, { application_id: "test-logo-bg", icon_bg: "#1f2a44" });
+    expect(set.icon_bg).toBe("#1F2A44");
+    expect(await seen()).toBe("#1F2A44");
+
+    await expect(ApplicationOnboardingService.update(admin, { application_id: "test-logo-bg", icon_bg: "red" })).rejects.toThrow(/colour/);
+    await expect(ApplicationOnboardingService.update(admin, { application_id: "test-logo-bg", icon_bg: "#12345" })).rejects.toThrow(/colour/);
+
+    const cleared = await ApplicationOnboardingService.update(admin, { application_id: "test-logo-bg", icon_bg: "" });
+    expect(cleared.icon_bg).toBeNull();
+    expect(await seen()).toBeNull();
+    void accessToken;
+  });
 });

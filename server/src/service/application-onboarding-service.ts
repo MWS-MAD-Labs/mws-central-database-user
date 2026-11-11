@@ -38,6 +38,7 @@ export type ApplicationDetail = {
   description: string | null;
   icon: string | null;
   logo_id: string | null;
+  icon_bg: string | null;
   category: string | null;
   scope: string | null;
   launch_url: string | null;
@@ -159,6 +160,7 @@ const FIELD_LABEL: Record<string, string> = {
   description: "description",
   icon: "icon",
   logo_id: "logo",
+  icon_bg: "icon background",
   category: "category",
   scope: "scope",
   launch_url: "address",
@@ -258,6 +260,7 @@ function toDetail(row: {
   description: string | null;
   icon: string | null;
   logo_id: string | null;
+  icon_bg: string | null;
   category: string | null;
   scope: string | null;
   launch_url: string | null;
@@ -276,6 +279,7 @@ function toDetail(row: {
     description: row.description,
     icon: row.icon,
     logo_id: row.logo_id,
+    icon_bg: row.icon_bg,
     category: row.category,
     scope: row.scope,
     launch_url: row.launch_url,
@@ -447,6 +451,7 @@ export class ApplicationOnboardingService {
       ...(input.name !== undefined && { name: input.name }),
       ...(input.description !== undefined && { description: input.description || null }),
       ...pictureChange(input),
+      ...(input.icon_bg !== undefined && { icon_bg: input.icon_bg || null }),
       ...(input.category !== undefined && { category: input.category || null }),
       ...(input.scope !== undefined && { scope: input.scope || null }),
       ...(input.uses_hub !== undefined && { uses_hub: input.uses_hub }),
@@ -1202,6 +1207,7 @@ export class ApplicationOnboardingService {
       name: row.name,
       description: row.description,
       icon: row.icon,
+      icon_bg: row.icon_bg,
       // The picture, when it has one. The Hub fetches it from /api/internal/applications/:id/logo, by version.
       logo: row.logo ? { version: row.logo.version } : null,
       category: row.category,
