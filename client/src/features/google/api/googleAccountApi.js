@@ -1,5 +1,8 @@
 import { apiRequest } from '../../../lib/api.js'
 
+// The bulk link and its numbers are for staff (employees and interns) or, with kind "students", for students.
+const kindQuery = (kind) => (kind === 'students' ? '?kind=students' : '')
+
 // The Google Workspace account behind an employee's or an intern's email. `resource` is "employees" or "interns".
 export const googleAccountApi = {
   // Whether an email can be given to a new employee or intern: free, used in Central, already in Google, not allowed here.
@@ -57,8 +60,8 @@ export const googleAccountApi = {
     return response.data
   },
   // The people with no Google link whose email is already a Google account. The preview changes nothing.
-  async linkPreview() {
-    const response = await apiRequest('/api/admin/google/link-existing')
+  async linkPreview(kind = 'staff') {
+    const response = await apiRequest(`/api/admin/google/link-existing${kindQuery(kind)}`)
     return response.data
   },
   // Where Central and Google disagree, from a full read of both. Super Admin only; nothing is changed.
@@ -66,8 +69,8 @@ export const googleAccountApi = {
     const response = await apiRequest('/api/admin/google/reconcile')
     return response.data
   },
-  async linkExisting() {
-    const response = await apiRequest('/api/admin/google/link-existing', { method: 'POST' })
+  async linkExisting(kind = 'staff') {
+    const response = await apiRequest(`/api/admin/google/link-existing${kindQuery(kind)}`, { method: 'POST' })
     return response.data
   },
 }

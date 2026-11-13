@@ -304,6 +304,16 @@ describe('MasterData', () => {
       expect(screen.getByRole('tab', { name: 'Special Ed Caseload' })).toHaveAttribute('aria-selected', 'true')
     })
 
+    it('has a Google Accounts sub tab for the students, asking for the students and not the staff', async () => {
+      const students = { applied: false, linked: 0, matches: [], blocked: [], skipped: { admin: 0, linked_elsewhere: 0, not_allowed: 0 }, linked_total: 3, not_in_google: 0, not_checked: 0, suspended: 0, missing: 0, failed: 0, suspended_list: [], missing_list: [], failed_list: [] }
+      const linkRoute = { path: '/api/admin/google/link-existing?kind=students', method: 'GET', response: () => jsonResponse({ data: students }) }
+      const { user, fetchMock } = renderPage({ route: '/master-data?tab=academic', routes: [pcRoute, limitRoute, linkRoute] })
+      await screen.findByText('Robotics')
+      await user.click(screen.getByRole('tab', { name: 'Google Accounts' }))
+      expect(await screen.findByText('Student Google Accounts')).toBeVisible()
+      expect(fetchMock.mock.calls.some(([url]) => String(url) === '/api/admin/google/link-existing')).toBe(false)
+    })
+
     it('is no longer a sub tab of Employment', async () => {
       renderPage({ route: '/master-data?tab=employment', routes: [{ path: /^\/api\/admin\/units\?.*$/, response: jsonResponse(listPayload([unit])) }] })
       expect(await screen.findByText('Elementary')).toBeVisible()

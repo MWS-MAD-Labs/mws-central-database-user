@@ -183,6 +183,7 @@ function EmploymentTab({ section, onSection }) {
 const ACADEMIC_SECTIONS = [
   { id: 'pc-activities', label: 'PC Activities' },
   { id: 'special-ed-caseload', label: 'Special Ed Caseload' },
+  { id: 'google-accounts', label: 'Google Accounts' },
 ]
 
 function AcademicTab({ section, onSection }) {
@@ -192,6 +193,8 @@ function AcademicTab({ section, onSection }) {
       <Tabs label="Academic master data" tabs={ACADEMIC_SECTIONS} active={active} onChange={onSection} />
       {active === 'special-ed-caseload' ? (
         <SupportCaseloadCard />
+      ) : active === 'google-accounts' ? (
+        <GoogleAccountsCard kind="students" />
       ) : (
         <MasterResourcePanel resource={resources.find((resource) => resource.id === 'pc-activities')} />
       )}

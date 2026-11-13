@@ -7,7 +7,7 @@ import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { googleAccountApi } from '../../google/api/googleAccountApi.js'
 import { PanelFrame } from './PanelFrame.jsx'
 
-const KEY = ['google-link-preview']
+const keyOf = (kind) => ['google-link-preview', kind]
 
 // What the tiles read while the answer is not in yet, so nothing below ever reads a property of nothing.
 const EMPTY = {
@@ -19,23 +19,57 @@ const EMPTY = {
   failed: 0,
   suspended: 0,
   missing: 0,
+  blocked: [],
+  suspended_list: [],
+  missing_list: [],
+  failed_list: [],
 }
 
-function Tile({ label, value }) {
+const TYPE_NAME = { EMPLOYEE: 'Employee', INTERN: 'Intern', STUDENT: 'Student' }
+
+// The people behind a number: the name, then who they are and what Google said. A name alone does not say who to look at.
+function peopleGroup(list = []) {
+  return [
+    {
+      hideCount: true,
+      items: list.map((person) => ({
+        label: person.full_name,
+        hint: [person.email, TYPE_NAME[person.person_type], person.reason].filter(Boolean).join(' · '),
+      })),
+    },
+  ]
+}
+
+// A number, and when it is more than none and Central knows who they are, the number opens that list.
+function Tile({ label, value, people }) {
   return (
     <div className="rounded-2xl border border-(--mws-line) bg-(--mws-soft) p-4">
       <p className="text-xs font-semibold text-(--mws-muted)">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-(--mws-charcoal)">{value}</p>
+      {people && value > 0 ? (
+        <ListPopover
+          label={String(value)}
+          count={value}
+          dialogLabel={label}
+          icon={false}
+          mono={false}
+          groups={peopleGroup(people)}
+          className="mt-1 [&>button]:text-2xl [&>button]:font-semibold [&>button]:text-(--mws-charcoal)"
+        />
+      ) : (
+        <p className="mt-1 text-2xl font-semibold text-(--mws-charcoal)">{value}</p>
+      )}
     </div>
   )
 }
 
 // How the people in Central stand against Google, and the one action that fixes the common gap: people made before the
 // Google accounts whose email is already there.
-export function GoogleAccountsCard() {
+export function GoogleAccountsCard({ kind = 'staff' }) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
-  const query = useQuery({ queryKey: KEY, queryFn: googleAccountApi.linkPreview, retry: false, staleTime: 60_000 })
+  const students = kind === 'students'
+  const KEY = keyOf(kind)
+  const query = useQuery({ queryKey: KEY, queryFn: () => googleAccountApi.linkPreview(kind), retry: false, staleTime: 60_000 })
   const data = query.data
   // Only a whole answer is shown; anything else (still loading, an odd reply) reads as loading.
   const ready = Array.isArray(data?.matches)
@@ -44,7 +78,7 @@ export function GoogleAccountsCard() {
   const skipped = view.skipped ?? EMPTY.skipped
 
   const link = useMutation({
-    mutationFn: googleAccountApi.linkExisting,
+    mutationFn: () => googleAccountApi.linkExisting(kind),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: KEY })
       queryClient.invalidateQueries({ queryKey: ['google-account'] })
@@ -56,7 +90,7 @@ export function GoogleAccountsCard() {
   async function handleLink() {
     const confirmed = await confirm({
       title: 'Link Existing Accounts',
-      description: `${matches.length} ${matches.length === 1 ? 'person has' : 'people have'} an email that is already a Google account. Linking connects them and changes nothing in Google.`,
+      description: `${matches.length} ${students ? (matches.length === 1 ? 'student has' : 'students have') : matches.length === 1 ? 'person has' : 'people have'} an email that is already a Google account. Linking connects them and changes nothing in Google.`,
       confirmLabel: 'Link',
     })
     if (confirmed) link.mutate()
@@ -64,7 +98,7 @@ export function GoogleAccountsCard() {
 
   return (
     <PanelFrame
-      title="Google Accounts"
+      title={students ? 'Student Google Accounts' : 'Google Accounts'}
       icon={Users}
       isFetching={query.isFetching}
       action={
@@ -90,20 +124,20 @@ export function GoogleAccountsCard() {
           <>
             <div className="grid gap-3 sm:grid-cols-3">
               <Tile label="Linked" value={view.linked_total} />
-              <Tile label="Suspended" value={view.suspended} />
-              <Tile label="Deleted In Google" value={view.missing} />
-              <Tile label="Failed" value={view.failed} />
+              <Tile label="Suspended" value={view.suspended} people={view.suspended_list} />
+              <Tile label="Deleted In Google" value={view.missing} people={view.missing_list} />
+              <Tile label="Failed" value={view.failed} people={view.failed_list} />
               <Tile label="In Google, Not Linked" value={matches.length} />
               <Tile label="Not In Google" value={view.not_in_google} />
               <Tile label="Not Checked" value={view.not_checked ?? 0} />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm text-(--mws-muted)">
-                <span>People who can be linked</span>
+                <span>{students ? 'Students who can be linked' : 'People who can be linked'}</span>
                 <ListPopover
                   label="List"
                   count={matches.length}
-                  dialogLabel="People who can be linked"
+                  dialogLabel={students ? 'Students who can be linked' : 'People who can be linked'}
                   mono={false}
                   groups={[
                     {
@@ -117,6 +151,18 @@ export function GoogleAccountsCard() {
                 Link
               </Button>
             </div>
+            {students && (view.blocked ?? []).length > 0 ? (
+              <div className="flex items-center gap-2 text-sm text-(--mws-muted)">
+                <span>Cannot be linked</span>
+                <ListPopover
+                  label="List"
+                  count={view.blocked.length}
+                  dialogLabel="Students who cannot be linked"
+                  mono={false}
+                  groups={peopleGroup(view.blocked)}
+                />
+              </div>
+            ) : null}
             {(view.not_checked ?? 0) > 0 ? (
               <p className="text-xs text-(--mws-muted)">
                 Not Checked are the people whose address Central may not look up from here. Outside production only addresses

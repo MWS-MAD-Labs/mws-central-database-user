@@ -6,6 +6,10 @@ import { GoogleWorkspaceService } from "../../service/google-workspace-service";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type { AdminVariables } from "../../type/hono-context";
 
+// Staff (employees and interns) unless the page asks for students.
+const kindOf = (c: Context<{ Variables: AdminVariables }>): "staff" | "students" =>
+  c.req.query("kind") === "students" ? "students" : "staff";
+
 export class GoogleController {
   // Whether an email can be given to a new employee or intern. For the admins who can create them.
   static async emailAvailability(c: Context<{ Variables: AdminVariables }>) {
@@ -23,7 +27,7 @@ export class GoogleController {
     if (c.var.admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(403, "Forbidden: only a Super Admin can link Google accounts");
     }
-    return c.json({ data: await GoogleWorkspaceService.linkExisting({ link: false }) });
+    return c.json({ data: await GoogleWorkspaceService.linkExisting({ link: false, kind: kindOf(c) }) });
   }
 
   // Where Central and Google disagree. Reads only. Super Admins only.
@@ -40,6 +44,7 @@ export class GoogleController {
     }
     const data = await GoogleWorkspaceService.linkExisting({
       link: true,
+      kind: kindOf(c),
       admin: c.var.admin,
       context: getAuditRequestContext(c),
     });

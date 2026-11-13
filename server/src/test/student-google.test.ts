@@ -420,6 +420,78 @@ describe("the Google account of a student", () => {
       expect((await TestRequest.get(url(id), dba.accessToken).then((r) => r.json())).data.can.link_existing).toBe(false);
     });
   });
+  describe("linking the students at once", () => {
+    const gUser = (id: string, email: string, name: [string, string], over: Record<string, unknown> = {}) =>
+      google.users.set(id, {
+        id, primaryEmail: email, givenName: name[0], familyName: name[1],
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null, ...over,
+      } as never);
+    const legacy = (token: string, email: string, over: Record<string, unknown> = {}) =>
+      makeStudent(token, { email, legacy_nis: `OLD-${email.length}${Math.round(Math.random() * 1e5)}`, nis: undefined, ...over }, true);
+    const preview = async (token: string, kind = "students") =>
+      (await (await TestRequest.get(`/api/admin/google/link-existing?kind=${kind}`, token)).json()).data;
+
+    it("links the legacy students whose name matches, and says who could not be linked and why", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      const match = await legacy(accessToken, "test_google_ba@millennia21.id");
+      const gone = await legacy(accessToken, "test_google_bb@millennia21.id");
+      const wrongName = await legacy(accessToken, "test_google_bc@millennia21.id");
+      const notLegacy = await makeStudent(accessToken, { email: "test_google_bd@millennia21.id" }, true);
+      await legacy(accessToken, "test_google_be@millennia21.id");
+      gUser("g-a", "test_google_ba@millennia21.id", ["Ari", "Putra"]);
+      gUser("g-b", "test_google_bb@millennia21.id", ["Ari", "Putra"], { suspended: true });
+      gUser("g-c", "test_google_bc@millennia21.id", ["Orang", "Lain"]);
+      gUser("g-d", "test_google_bd@millennia21.id", ["Ari", "Putra"]);
+      // The ones that were created with the student have no account here, like a legacy student before the link.
+      await prismaClient.person.updateMany({ where: { student: { id: { in: [notLegacy] } } }, data: { google_user_id: null, google_sync_status: GoogleSyncStatus.NONE } });
+
+      // What the setup did in Google is not what the link does.
+      google.created.length = 0;
+      google.updated.length = 0;
+      google.passwords.length = 0;
+
+      const before = await preview(accessToken);
+      expect(before).toMatchObject({ kind: "students", applied: false });
+      expect(before.matches.map((item: { email: string }) => item.email).sort()).toEqual([
+        "test_google_ba@millennia21.id", "test_google_bb@millennia21.id",
+      ]);
+      const reasons = Object.fromEntries(before.blocked.map((item: { email: string; reason: string }) => [item.email, item.reason]));
+      expect(reasons["test_google_bc@millennia21.id"]).toContain("Orang Lain");
+      expect(reasons["test_google_bd@millennia21.id"]).toContain("legacy");
+      expect((await personOf(match)).google_user_id).toBeNull();
+
+      const auditBefore = await prismaClient.auditLog.count({ where: { action: AuditAction.GOOGLE_ACCOUNT_PROVISION } });
+      const done = (await (await TestRequest.post("/api/admin/google/link-existing?kind=students", {}, accessToken)).json()).data;
+      expect(done).toMatchObject({ applied: true, linked: 2 });
+      expect(await personOf(match)).toMatchObject({ google_user_id: "g-a", google_sync_status: GoogleSyncStatus.ACTIVE, google_keeps_name: true });
+      expect(await personOf(gone)).toMatchObject({ google_user_id: "g-b", google_sync_status: GoogleSyncStatus.SUSPENDED });
+      expect((await personOf(wrongName)).google_user_id).toBeNull();
+      expect((await personOf(notLegacy)).google_user_id).toBeNull();
+      expect(google.created).toHaveLength(0);
+      expect(google.updated).toHaveLength(0);
+      expect(google.passwords).toHaveLength(0);
+      expect((await prismaClient.auditLog.count({ where: { action: AuditAction.GOOGLE_ACCOUNT_PROVISION } })) - auditBefore).toBe(2);
+    });
+
+    it("keeps students and staff apart, and names the students who failed or were deleted in Google", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      const failed = await legacy(accessToken, "test_google_bf@millennia21.id");
+      const deleted = await legacy(accessToken, "test_google_bg@millennia21.id");
+      await prismaClient.person.update({ where: { id: (await personOf(failed)).id }, data: { google_sync_status: GoogleSyncStatus.FAILED, google_last_error: "Google refused the request" } });
+      await prismaClient.person.update({
+        where: { id: (await personOf(deleted)).id },
+        data: { google_user_id: "g-gone", google_sync_status: GoogleSyncStatus.MISSING, google_last_error: "Deleted in Google, can be restored for about 20 days" },
+      });
+
+      const students = await preview(accessToken);
+      expect(students).toMatchObject({ failed: 1, missing: 1 });
+      expect(students.failed_list).toEqual([expect.objectContaining({ full_name: "Ari Putra", email: "test_google_bf@millennia21.id", person_type: "STUDENT", reason: "Google refused the request" })]);
+      expect(students.missing_list).toEqual([expect.objectContaining({ email: "test_google_bg@millennia21.id", reason: expect.stringContaining("Deleted in Google") })]);
+
+      const staff = await preview(accessToken, "staff");
+      expect(staff).toMatchObject({ kind: "staff", failed: 0, missing: 0, failed_list: [], missing_list: [] });
+    });
+  });
   describe("the photo of a student", () => {
     const photoForm = () => {
       const form = new FormData();

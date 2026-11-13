@@ -175,8 +175,28 @@ export const resetSignInEmailLimitForTests = () => sentByAdmin.clear();
 export const restorableUntil = (deletedAt: Date): Date => new Date(deletedAt.getTime() + RESTORE_WINDOW_DAYS * 86_400_000);
 
 // Names compared loosely: case, punctuation and word order do not count.
+// How many names the list behind a number carries. The number itself is always the whole count.
+const LIST_LIMIT = 200;
+
 export function nameKey(value: string): string {
   return value.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean).sort().join(" ");
+}
+
+// Why a student cannot be linked to the Google account that has their email, or null when they can. The same rule for the
+// one-by-one link and for the bulk one. Only a legacy student may be linked, and only when the names agree.
+export function studentLegacyProblem(
+  status: GoogleSyncStatus,
+  student: { nis: string | null; legacy_nis: string | null } | null,
+): string | null {
+  const legacy = status === GoogleSyncStatus.PENDING_CLAIM || Boolean(student && (student.legacy_nis || !student.nis));
+  return legacy ? null : "Google already has this email. Only a legacy student can be linked to it. Use another email for this student";
+}
+
+export function studentNameProblem(user: { givenName: string; familyName: string }, fullName: string): string | null {
+  const googleName = `${user.givenName} ${user.familyName}`;
+  return nameKey(googleName) === nameKey(fullName)
+    ? null
+    : `The name in Google (${googleName.trim()}) is not the name here (${fullName}), so it is not linked`;
 }
 
 function deletedMessage(deletedAt?: Date | null): string {
@@ -658,18 +678,12 @@ export class GoogleWorkspaceService {
       throw new ResponseError(403, "Forbidden: only a Super Admin can link a Google account that already exists");
     }
     const student = await prismaClient.student.findFirst({ where: { person_id: personId }, select: { nis: true, legacy_nis: true } });
-    const legacy = person.google_sync_status === GoogleSyncStatus.PENDING_CLAIM || Boolean(student && (student.legacy_nis || !student.nis));
-    if (!legacy) {
-      throw new ResponseError(409, "Google already has this email. Only a legacy student can be linked to it. Use another email for this student");
-    }
+    const legacyProblem = studentLegacyProblem(person.google_sync_status, student);
+    if (legacyProblem) throw new ResponseError(409, legacyProblem);
     if (user.isAdmin) throw new ResponseError(400, "That email belongs to a Workspace admin, which is not managed from here");
     await assertNotLinkedElsewhere(user.id, person.id);
-    if (nameKey(`${user.givenName} ${user.familyName}`) !== nameKey(person.full_name)) {
-      throw new ResponseError(
-        409,
-        `The name in Google (${`${user.givenName} ${user.familyName}`.trim()}) is not the name here (${person.full_name}), so it is not linked`,
-      );
-    }
+    const nameProblem = studentNameProblem(user, person.full_name);
+    if (nameProblem) throw new ResponseError(409, nameProblem);
     const status = user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE;
     await markStatus(person.id, status, { google_user_id: user.id, user });
     await prismaClient.person.update({ where: { id: person.id }, data: { google_keeps_name: true } });
@@ -1410,8 +1424,13 @@ export class GoogleWorkspaceService {
   // The people in Central with no Google link, matched against the Google accounts by email. With `link` the matches
   // are linked; without it nothing changes, so the page can show what would happen first.
   static async linkExisting(
-    options: { link: boolean; admin?: Pick<AdminUser, "id">; context?: AuditRequestContext } = { link: false },
+    options: { link: boolean; kind?: "staff" | "students"; admin?: Pick<AdminUser, "id">; context?: AuditRequestContext } = {
+      link: false,
+    },
   ) {
+    const kind = options.kind ?? "staff";
+    const students = kind === "students";
+    const personTypes = students ? [PersonType.STUDENT] : [PersonType.EMPLOYEE, PersonType.INTERN];
     const client = getDirectoryClient();
     if (client.mode === "simulated") {
       throw new ResponseError(400, "Linking needs the real Google. This environment only simulates it");
@@ -1422,11 +1441,19 @@ export class GoogleWorkspaceService {
         where: {
           deleted_at: null,
           google_user_id: null,
-          // Someone waiting to claim their account proves it by signing in, not by being on this list.
-          google_sync_status: { not: GoogleSyncStatus.PENDING_CLAIM },
-          person_type: { in: [PersonType.EMPLOYEE, PersonType.INTERN] },
+          // Staff waiting to claim their account prove it by signing in, not by being on this list. A legacy student
+          // cannot sign in, so a Super Admin links that one (the same rule as one by one).
+          ...(students ? {} : { google_sync_status: { not: GoogleSyncStatus.PENDING_CLAIM } }),
+          person_type: { in: personTypes },
         },
-        select: { id: true, email: true, full_name: true, person_type: true, google_sync_status: true },
+        select: {
+          id: true,
+          email: true,
+          full_name: true,
+          person_type: true,
+          google_sync_status: true,
+          student: { select: { nis: true, legacy_nis: true } },
+        },
         orderBy: { full_name: "asc" },
       }),
       client.listUsers({ deleted: false }),
@@ -1439,7 +1466,11 @@ export class GoogleWorkspaceService {
     );
 
     const matches: { person_id: string; full_name: string; email: string; person_type: PersonType }[] = [];
+    // Students only: who has an account in Google that cannot be linked to them, and why.
+    const blocked: { person_id: string; full_name: string; email: string; person_type: PersonType; reason: string }[] = [];
     const skipped = { admin: 0, linked_elsewhere: 0, not_allowed: 0 };
+    const block = (person: (typeof people)[number], reason: string) =>
+      blocked.push({ person_id: person.id, full_name: person.full_name, email: person.email, person_type: person.person_type, reason });
     const found = new Map<string, DirectoryUser>();
     let notInGoogle = 0;
     for (const person of people) {
@@ -1454,6 +1485,19 @@ export class GoogleWorkspaceService {
       if (!user) {
         notInGoogle += 1;
         continue;
+      }
+      if (students) {
+        const problem =
+          studentLegacyProblem(person.google_sync_status, person.student) ??
+          (user.isAdmin ? "That email belongs to a Workspace admin, which is not managed from here" : null) ??
+          (linkedElsewhere.has(user.id) ? "That Google account is already linked to someone else in Central" : null) ??
+          studentNameProblem(user, person.full_name);
+        if (problem) {
+          if (user.isAdmin) skipped.admin += 1;
+          else if (linkedElsewhere.has(user.id)) skipped.linked_elsewhere += 1;
+          block(person, problem);
+          continue;
+        }
       }
       if (user.isAdmin) {
         skipped.admin += 1;
@@ -1473,7 +1517,12 @@ export class GoogleWorkspaceService {
         const user = found.get(match.person_id)!;
         const person = await load(match.person_id);
         try {
-          await markStatus(person.id, GoogleSyncStatus.ACTIVE, { google_user_id: user.id, user });
+          await markStatus(person.id, students && user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE, {
+            google_user_id: user.id,
+            user,
+          });
+          // The name in Google stays: it is never written over.
+          if (students) await prismaClient.person.update({ where: { id: person.id }, data: { google_keeps_name: true } });
           await record("GOOGLE_ACCOUNT_PROVISION", person, options.admin, options.context ?? {}, {
             outcome: "linked",
             mode: client.mode,
@@ -1486,18 +1535,40 @@ export class GoogleWorkspaceService {
       }
     }
 
-    const staff = { deleted_at: null, person_type: { in: [PersonType.EMPLOYEE, PersonType.INTERN] } };
-    const count = (status: GoogleSyncStatus, linkedOnly: boolean) =>
-      prismaClient.person.count({
-        where: { ...staff, google_sync_status: status, ...(linkedOnly ? { google_user_id: { not: null } } : {}) },
-      });
-    const [active, suspended, missing, failed] = await Promise.all([
+    const group = { deleted_at: null, person_type: { in: personTypes } };
+    const where = (status: GoogleSyncStatus, linkedOnly: boolean) => ({
+      ...group,
+      google_sync_status: status,
+      ...(linkedOnly ? { google_user_id: { not: null } } : {}),
+    });
+    const count = (status: GoogleSyncStatus, linkedOnly: boolean) => prismaClient.person.count({ where: where(status, linkedOnly) });
+    // The people behind a number, with what Google said, so an admin can look into each one.
+    const listOf = async (status: GoogleSyncStatus, linkedOnly: boolean) =>
+      (
+        await prismaClient.person.findMany({
+          where: where(status, linkedOnly),
+          select: { id: true, full_name: true, email: true, person_type: true, google_last_error: true },
+          orderBy: { full_name: "asc" },
+          take: LIST_LIMIT,
+        })
+      ).map((row) => ({
+        person_id: row.id,
+        full_name: row.full_name,
+        email: row.email,
+        person_type: row.person_type,
+        reason: row.google_last_error,
+      }));
+    const [active, suspended, missing, failed, suspendedList, missingList, failedList] = await Promise.all([
       count(GoogleSyncStatus.ACTIVE, true),
       count(GoogleSyncStatus.SUSPENDED, true),
       count(GoogleSyncStatus.MISSING, true),
       count(GoogleSyncStatus.FAILED, false),
+      listOf(GoogleSyncStatus.SUSPENDED, true),
+      listOf(GoogleSyncStatus.MISSING, true),
+      listOf(GoogleSyncStatus.FAILED, false),
     ]);
     return {
+      kind,
       applied: options.link,
       linked,
       matches,
@@ -1510,6 +1581,10 @@ export class GoogleWorkspaceService {
       failed,
       suspended,
       missing,
+      blocked,
+      suspended_list: suspendedList,
+      missing_list: missingList,
+      failed_list: failedList,
     };
   }
 
