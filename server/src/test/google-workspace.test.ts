@@ -78,7 +78,7 @@ describe("google workspace accounts", () => {
       religion: Religion.ISLAM,
       birth_place: "Jakarta",
       birth_date: "1995-01-01T00:00:00.000Z",
-      employee_id: `99.99.8${String(seq).padStart(2, "0")}`,
+      employee_id: `99.99.${800 + seq}`,
       marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
