@@ -69,6 +69,11 @@ export const googleAccountApi = {
     const response = await apiRequest('/api/admin/google/reconcile')
     return response.data
   },
+  // Students the rule refused, linked anyway by a protected Super Admin. Up to 100 ids; one answer for each.
+  async linkStudentsAnyway(personIds) {
+    const response = await apiRequest('/api/admin/google/link-students', { method: 'POST', body: { person_ids: personIds } })
+    return response.data
+  },
   async linkExisting(kind = 'staff') {
     const response = await apiRequest(`/api/admin/google/link-existing${kindQuery(kind)}`, { method: 'POST' })
     return response.data

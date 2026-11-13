@@ -197,8 +197,10 @@ export function namesFit(googleName: string, centralName: string): "exact" | "pa
 
 // The other students a name in Google could also be. A partial name that fits more than one of them says nothing about
 // which one the account is.
-export function rivalsOf(googleName: string, personId: string, students: { id: string; full_name: string }[]): string[] {
-  return students.filter((student) => student.id !== personId && namesFit(googleName, student.full_name) !== "none").map((student) => student.full_name);
+export function rivalsOf(googleName: string, personId: string, students: { id: string; full_name: string; email: string }[]): string[] {
+  return students
+    .filter((student) => student.id !== personId && namesFit(googleName, student.full_name) !== "none")
+    .map((student) => `${student.full_name} (${student.email})`);
 }
 
 // Why a student cannot be linked to the Google account that has their email, or null when they can. The same rule for the
@@ -211,16 +213,41 @@ export function studentLegacyProblem(
   return legacy ? null : "Google already has this email. Only a legacy student can be linked to it. Use another email for this student";
 }
 
-export function studentNameProblem(user: { givenName: string; familyName: string }, fullName: string, rivals: string[] = []): string | null {
+export function studentNameProblem(
+  user: { givenName: string; familyName: string },
+  fullName: string,
+  rivals: string[] = [],
+  email?: string,
+): string | null {
   const googleName = `${user.givenName} ${user.familyName}`.trim();
   const fit = namesFit(googleName, fullName);
   if (fit === "exact") return null;
   if (fit === "partial") {
     return rivals.length === 0
       ? null
-      : `The name in Google (${googleName}) fits more than one student: ${[fullName, ...rivals].sort().join(", ")}`;
+      : `The name in Google (${googleName}) fits more than one student: ${[email ? `${fullName} (${email})` : fullName, ...rivals].sort().join(", ")}`;
   }
   return `The name in Google (${googleName}) is not the name here (${fullName}), so it is not linked`;
+}
+
+export type StudentLinkCode = "NOT_LEGACY" | "NAME_DIFFERS" | "AMBIGUOUS_NAME" | "ADMIN_ACCOUNT" | "LINKED_ELSEWHERE";
+
+// Why a student cannot be linked to the account that has their email, as a code, a message, and whether a protected Super
+// Admin may link it anyway. An account of a Workspace admin or of someone else is never linked anyway.
+export function studentLinkProblem(
+  person: { id: string; full_name: string; email: string; google_sync_status: GoogleSyncStatus; student: { nis: string | null; legacy_nis: string | null } | null },
+  user: { givenName: string; familyName: string; isAdmin: boolean; id: string },
+  linkedElsewhere: boolean,
+  students: { id: string; full_name: string; email: string }[],
+): { code: StudentLinkCode; message: string; forceable: boolean } | null {
+  if (user.isAdmin) return { code: "ADMIN_ACCOUNT", message: "That email belongs to a Workspace admin, which is not managed from here", forceable: false };
+  if (linkedElsewhere) return { code: "LINKED_ELSEWHERE", message: "That Google account is already linked to someone else in Central", forceable: false };
+  const legacy = studentLegacyProblem(person.google_sync_status, person.student);
+  if (legacy) return { code: "NOT_LEGACY", message: legacy, forceable: true };
+  const googleName = `${user.givenName} ${user.familyName}`;
+  const name = studentNameProblem(user, person.full_name, rivalsOf(googleName, person.id, students), person.email);
+  if (name) return { code: namesFit(googleName.trim(), person.full_name) === "partial" ? "AMBIGUOUS_NAME" : "NAME_DIFFERS", message: name, forceable: true };
+  return null;
 }
 
 function deletedMessage(deletedAt?: Date | null): string {
@@ -707,10 +734,10 @@ export class GoogleWorkspaceService {
     if (user.isAdmin) throw new ResponseError(400, "That email belongs to a Workspace admin, which is not managed from here");
     await assertNotLinkedElsewhere(user.id, person.id);
     const classmates = await prismaClient.person.findMany({
-      where: { deleted_at: null, person_type: PersonType.STUDENT, id: { not: person.id } },
-      select: { id: true, full_name: true },
+      where: { deleted_at: null, person_type: PersonType.STUDENT, id: { not: person.id }, student: { status: { not: StudentStatus.ARCHIVED } } },
+      select: { id: true, full_name: true, email: true },
     });
-    const nameProblem = studentNameProblem(user, person.full_name, rivalsOf(`${user.givenName} ${user.familyName}`, person.id, classmates));
+    const nameProblem = studentNameProblem(user, person.full_name, rivalsOf(`${user.givenName} ${user.familyName}`, person.id, classmates), person.email);
     if (nameProblem) throw new ResponseError(409, nameProblem);
     const status = user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE;
     await markStatus(person.id, status, { google_user_id: user.id, user });
@@ -1489,7 +1516,10 @@ export class GoogleWorkspaceService {
     const byEmail = new Map(users.map((user) => [user.primaryEmail.toLowerCase(), user]));
     // Every student in Central, linked or not: a short name in Google must not fit more than one of them.
     const allStudents = students
-      ? await prismaClient.person.findMany({ where: { deleted_at: null, person_type: PersonType.STUDENT }, select: { id: true, full_name: true } })
+      ? await prismaClient.person.findMany({
+          where: { deleted_at: null, person_type: PersonType.STUDENT, student: { status: { not: StudentStatus.ARCHIVED } } },
+          select: { id: true, full_name: true, email: true },
+        })
       : [];
     const linkedElsewhere = new Set(
       (await prismaClient.person.findMany({ where: { google_user_id: { not: null } }, select: { google_user_id: true } })).map(
@@ -1499,10 +1529,22 @@ export class GoogleWorkspaceService {
 
     const matches: { person_id: string; full_name: string; email: string; person_type: PersonType }[] = [];
     // Students only: who has an account in Google that cannot be linked to them, and why.
-    const blocked: { person_id: string; full_name: string; email: string; person_type: PersonType; reason: string }[] = [];
+    const blocked: {
+      person_id: string;
+      full_name: string;
+      email: string;
+      person_type: PersonType;
+      reason: string;
+      code: StudentLinkCode;
+      google_name: string;
+      forceable: boolean;
+    }[] = [];
     const skipped = { admin: 0, linked_elsewhere: 0, not_allowed: 0 };
-    const block = (person: (typeof people)[number], reason: string) =>
-      blocked.push({ person_id: person.id, full_name: person.full_name, email: person.email, person_type: person.person_type, reason });
+    const block = (
+      person: (typeof people)[number],
+      reason: string,
+      extra: { code: StudentLinkCode; google_name: string; forceable: boolean },
+    ) => blocked.push({ person_id: person.id, full_name: person.full_name, email: person.email, person_type: person.person_type, reason, ...extra });
     const found = new Map<string, DirectoryUser>();
     let notInGoogle = 0;
     for (const person of people) {
@@ -1519,15 +1561,11 @@ export class GoogleWorkspaceService {
         continue;
       }
       if (students) {
-        const problem =
-          studentLegacyProblem(person.google_sync_status, person.student) ??
-          (user.isAdmin ? "That email belongs to a Workspace admin, which is not managed from here" : null) ??
-          (linkedElsewhere.has(user.id) ? "That Google account is already linked to someone else in Central" : null) ??
-          studentNameProblem(user, person.full_name, rivalsOf(`${user.givenName} ${user.familyName}`, person.id, allStudents));
+        const problem = studentLinkProblem(person, user, linkedElsewhere.has(user.id), allStudents);
         if (problem) {
-          if (user.isAdmin) skipped.admin += 1;
-          else if (linkedElsewhere.has(user.id)) skipped.linked_elsewhere += 1;
-          block(person, problem);
+          if (problem.code === "ADMIN_ACCOUNT") skipped.admin += 1;
+          else if (problem.code === "LINKED_ELSEWHERE") skipped.linked_elsewhere += 1;
+          block(person, problem.message, { code: problem.code, google_name: `${user.givenName} ${user.familyName}`.trim(), forceable: problem.forceable });
           continue;
         }
       }
@@ -1618,6 +1656,77 @@ export class GoogleWorkspaceService {
       missing_list: missingList,
       failed_list: failedList,
     };
+  }
+
+  // A protected Super Admin links students whose email Google already has although the rule did not agree: not a legacy
+  // student, or the name in Google is not the name here. Everything else is checked again here, so only those two are
+  // skipped. Nothing is changed in Google and no password is made. One answer per student, a failure never stops the rest.
+  static async linkStudentsAnyway(
+    personIds: string[],
+    admin: Pick<AdminUser, "id">,
+    context: AuditRequestContext = {},
+  ): Promise<{ linked: number; results: { person_id: string; outcome: "linked" | "failed"; message: string | null }[] }> {
+    const client = getDirectoryClient();
+    if (client.mode === "simulated") {
+      throw new ResponseError(400, "Linking needs the real Google. This environment only simulates it");
+    }
+    const everyone = await prismaClient.person.findMany({
+      where: { deleted_at: null, person_type: PersonType.STUDENT, student: { status: { not: StudentStatus.ARCHIVED } } },
+      select: { id: true, full_name: true, email: true },
+    });
+    const taken = new Set(
+      (await prismaClient.person.findMany({ where: { google_user_id: { not: null } }, select: { google_user_id: true } })).map(
+        (row) => row.google_user_id as string,
+      ),
+    );
+    const results: { person_id: string; outcome: "linked" | "failed"; message: string | null }[] = [];
+    let linked = 0;
+    for (const personId of [...new Set(personIds)]) {
+      const fail = (message: string) => results.push({ person_id: personId, outcome: "failed", message });
+      try {
+        const row = await prismaClient.person.findFirst({
+          where: { id: personId, deleted_at: null, person_type: PersonType.STUDENT },
+          select: { id: true, full_name: true, email: true, google_user_id: true, google_sync_status: true, student: { select: { nis: true, legacy_nis: true } } },
+        });
+        if (!row) {
+          fail("Student not found");
+          continue;
+        }
+        if (row.google_user_id) {
+          fail("Already linked to a Google account");
+          continue;
+        }
+        assertAllowedTarget(row.email);
+        await this.assertNotLocked(row.id);
+        const user = await client.findUser(row.email);
+        if (!user) {
+          fail("Google has no account for this email");
+          continue;
+        }
+        const problem = studentLinkProblem(row, user, taken.has(user.id), everyone);
+        if (problem && !problem.forceable) {
+          fail(problem.message);
+          continue;
+        }
+        const person = await load(row.id);
+        await markStatus(person.id, user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE, { google_user_id: user.id, user });
+        await prismaClient.person.update({ where: { id: person.id }, data: { google_keeps_name: true } });
+        await record("GOOGLE_ACCOUNT_PROVISION", person, admin, context, {
+          outcome: "linked",
+          mode: client.mode,
+          recovery_email_set: false,
+          forced: Boolean(problem),
+          reason: problem?.code ?? null,
+        });
+        taken.add(user.id);
+        linked += 1;
+        results.push({ person_id: personId, outcome: "linked", message: null });
+      } catch (error) {
+        logger.error(`Linking the Google account of student ${personId} anyway failed`, error);
+        fail(error instanceof ResponseError ? error.message : "It could not be linked");
+      }
+    }
+    return { linked, results };
   }
 
   // `refresh` forces a new look at Google. Without it Google is asked only when the last look is more than a few

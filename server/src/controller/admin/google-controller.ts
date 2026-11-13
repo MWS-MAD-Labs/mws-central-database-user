@@ -3,6 +3,7 @@ import { AdminRole } from "../../generated/prisma/client";
 import { ResponseError } from "../../error/response-error";
 import { GoogleReconcileService } from "../../service/google-reconcile-service";
 import { GoogleWorkspaceService } from "../../service/google-workspace-service";
+import { isProtectedSuperAdminEmail } from "../../utils/protected-admin";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type { AdminVariables } from "../../type/hono-context";
 
@@ -49,5 +50,20 @@ export class GoogleController {
       context: getAuditRequestContext(c),
     });
     return c.json({ data });
+  }
+
+  // Students the rule refused, linked by a protected Super Admin who looked at the two names. The same checks as the
+  // bulk link stay, except the legacy rule and the name.
+  static async linkStudents(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    if (admin.role !== AdminRole.SUPER_ADMIN || !isProtectedSuperAdminEmail(admin.email)) {
+      throw new ResponseError(403, "Forbidden: only a protected Super Admin can link students the rule refused");
+    }
+    const body = (await c.req.json().catch(() => ({}))) as { person_ids?: unknown };
+    const ids = Array.isArray(body.person_ids) ? body.person_ids : null;
+    if (!ids || ids.length === 0 || ids.length > 100 || ids.some((id) => typeof id !== "string" || !id)) {
+      throw new ResponseError(400, "person_ids must be 1 to 100 student ids");
+    }
+    return c.json({ data: await GoogleWorkspaceService.linkStudentsAnyway(ids as string[], admin, getAuditRequestContext(c)) });
   }
 }

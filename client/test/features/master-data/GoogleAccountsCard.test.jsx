@@ -3,6 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { GoogleAccountsCard } from '../../../src/features/master-data/components/GoogleAccountsCard.jsx'
 import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
+import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 
@@ -25,13 +26,23 @@ const base = {
 
 const person = (over) => ({ person_id: 'p', full_name: 'Ari Putra', email: 'ari@millennia21.id', person_type: 'EMPLOYEE', reason: null, ...over })
 
-function renderCard(kind, data, extra = []) {
+const protectedAdmin = { id: 'a1', type: 'admin', role: 'SUPER_ADMIN', is_protected: true }
+const plainAdmin = { id: 'a2', type: 'admin', role: 'SUPER_ADMIN', is_protected: false }
+
+function renderCard(kind, data, extra = [], user = protectedAdmin) {
   const fetchMock = createFetchRouter([
     { path: `/api/admin/google/link-existing${kind === 'students' ? '?kind=students' : ''}`, method: 'GET', response: jsonResponse({ data }) },
     ...extra,
   ])
   globalThis.fetch = fetchMock
-  return { ...renderWithProviders(<ConfirmProvider><GoogleAccountsCard kind={kind} /></ConfirmProvider>), fetchMock }
+  return {
+    ...renderWithProviders(
+      <AuthContext.Provider value={{ user }}>
+        <ConfirmProvider><GoogleAccountsCard kind={kind} /></ConfirmProvider>
+      </AuthContext.Provider>,
+    ),
+    fetchMock,
+  }
 }
 
 const many = (count, over = {}) =>
@@ -135,5 +146,45 @@ describe('GoogleAccountsCard', () => {
     renderCard('staff', base)
     await screen.findByText('Linked')
     expect(screen.queryByText('Cannot Be Linked')).toBeNull()
+  })
+  describe('linking the students the rule refused', () => {
+    const blocked = [
+      person({ person_id: 's1', full_name: 'Alradya Hafzah Adienda', email: 'radya@millennia21.id', person_type: 'STUDENT', code: 'NAME_DIFFERS', forceable: true, google_name: 'Alradya Hafsah Adienda', reason: 'The name in Google (Alradya Hafsah Adienda) is not the name here (Alradya Hafzah Adienda), so it is not linked' }),
+      person({ person_id: 's2', full_name: 'Ari Putra', email: 'ari@millennia21.id', person_type: 'STUDENT', code: 'ADMIN_ACCOUNT', forceable: false, google_name: 'Ari Putra', reason: 'That email belongs to a Workspace admin, which is not managed from here' }),
+      person({ person_id: 's3', full_name: 'Aleysia Cyra Shakila', email: 'aleysia@millennia21.id', person_type: 'STUDENT', code: 'NOT_LEGACY', forceable: true, google_name: 'Aleysia Cyra Shakila', reason: 'Google already has this email. Only a legacy student can be linked to it.' }),
+    ]
+    const data = { ...base, kind: 'students', blocked }
+    const route = { path: '/api/admin/google/link-students', method: 'POST', response: jsonResponse({ data: { linked: 2, results: [] } }) }
+
+    it('lets a protected Super Admin tick the ones that can be linked, sees both names, and links only those', async () => {
+      const { user, fetchMock } = renderCard('students', data, [route])
+      await user.click(await screen.findByRole('button', { name: 'Cannot Be Linked, 3, show people' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Cannot Be Linked' })
+      expect(within(dialog).getByText('Google: Alradya Hafsah Adienda · Central: Alradya Hafzah Adienda')).toBeVisible()
+      // The admin account cannot be ticked.
+      expect(within(dialog).getByRole('checkbox', { name: 'Link Ari Putra anyway' })).toBeDisabled()
+      expect(within(dialog).getByRole('button', { name: 'Link Selected (0)' })).toBeDisabled()
+
+      await user.click(within(dialog).getByRole('checkbox', { name: 'Select everyone who can be linked anyway' }))
+      expect(within(dialog).getByRole('checkbox', { name: 'Link Ari Putra anyway' })).not.toBeChecked()
+      await user.click(within(dialog).getByRole('button', { name: 'Link Selected (2)' }))
+      const confirmDialog = await screen.findByRole('dialog', { name: 'Link Selected Students' })
+      expect(within(confirmDialog).getByText(/2 students are linked to the Google account that has their email/)).toBeVisible()
+      await user.click(within(confirmDialog).getByRole('button', { name: 'Link' }))
+      await waitFor(() => {
+        const post = fetchMock.mock.calls.find(([url, options]) => String(url) === '/api/admin/google/link-students' && options?.method === 'POST')
+        expect(post).toBeTruthy()
+        expect(JSON.parse(post[1].body).person_ids.sort()).toEqual(['s1', 's3'])
+      })
+    })
+
+    it('offers no tick boxes to a Super Admin who is not protected', async () => {
+      const { user } = renderCard('students', data, [route], plainAdmin)
+      await user.click(await screen.findByRole('button', { name: 'Cannot Be Linked, 3, show people' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Cannot Be Linked' })
+      expect(within(dialog).getByText('Alradya Hafzah Adienda')).toBeVisible()
+      expect(within(dialog).queryByRole('checkbox')).toBeNull()
+      expect(within(dialog).queryByRole('button', { name: /Link Selected/ })).toBeNull()
+    })
   })
 })

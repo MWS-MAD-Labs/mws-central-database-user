@@ -5,6 +5,7 @@ import { Button } from '../../../components/ui/Button.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { googleAccountApi } from '../../google/api/googleAccountApi.js'
+import { useAuth } from '../../auth/hooks/useAuth.js'
 import { PanelFrame } from './PanelFrame.jsx'
 import { PeopleListDialog } from './PeopleListDialog.jsx'
 
@@ -55,6 +56,9 @@ export function GoogleAccountsCard({ kind = 'staff' }) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
   const students = kind === 'students'
+  const { user } = useAuth()
+  // Linking a student the rule refused is for protected Super Admins; the server checks it again.
+  const canForce = students && Boolean(user?.is_protected)
   const KEY = keyOf(kind)
   const query = useQuery({ queryKey: KEY, queryFn: () => googleAccountApi.linkPreview(kind), retry: false, staleTime: 60_000 })
   const data = query.data
@@ -76,6 +80,28 @@ export function GoogleAccountsCard({ kind = 'staff' }) {
     },
     onError: (error) => showErrorToast(error, 'Accounts were not linked.'),
   })
+
+  const linkAnyway = useMutation({
+    mutationFn: (ids) => googleAccountApi.linkStudentsAnyway(ids),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: KEY })
+      queryClient.invalidateQueries({ queryKey: ['google-account'] })
+      const failed = result.results.filter((item) => item.outcome === 'failed')
+      if (failed.length === 0) showSuccessToast(`${result.linked} ${result.linked === 1 ? 'Student' : 'Students'} Linked.`)
+      else showErrorToast(new Error(failed[0].message || 'It could not be linked'), `${result.linked} linked, ${failed.length} not linked.`)
+      setOpen(null)
+    },
+    onError: (error) => showErrorToast(error, 'Students were not linked.'),
+  })
+
+  async function handleLinkAnyway(ids) {
+    const confirmed = await confirm({
+      title: 'Link Selected Students',
+      description: `${ids.length} ${ids.length === 1 ? 'student is' : 'students are'} linked to the Google account that has their email, although the name or the legacy rule did not agree. Check the two names first. Nothing is changed in Google.`,
+      confirmLabel: 'Link',
+    })
+    if (confirmed) linkAnyway.mutate(ids)
+  }
 
   async function handleLink() {
     const confirmed = await confirm({
@@ -147,7 +173,17 @@ export function GoogleAccountsCard({ kind = 'staff' }) {
           </>
         )}
       </div>
-      {open ? <PeopleListDialog title={open.title} people={open.people} total={open.total} onClose={() => setOpen(null)} /> : null}
+      {open ? (
+        <PeopleListDialog
+          title={open.title}
+          people={open.people}
+          total={open.total}
+          onClose={() => setOpen(null)}
+          selectable={canForce && open.title === 'Cannot Be Linked'}
+          onLinkSelected={handleLinkAnyway}
+          isLinking={linkAnyway.isPending}
+        />
+      ) : null}
     </PanelFrame>
   )
 }
