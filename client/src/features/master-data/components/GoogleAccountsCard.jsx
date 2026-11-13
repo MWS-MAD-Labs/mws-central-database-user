@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { RefreshCw, Users } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronRight, RefreshCw, Users } from 'lucide-react'
 import { Button } from '../../../components/ui/Button.jsx'
-import { ListPopover } from '../../../components/ui/ListPopover.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { googleAccountApi } from '../../google/api/googleAccountApi.js'
 import { PanelFrame } from './PanelFrame.jsx'
+import { PeopleListDialog } from './PeopleListDialog.jsx'
 
 const keyOf = (kind) => ['google-link-preview', kind]
 
@@ -25,40 +26,26 @@ const EMPTY = {
   failed_list: [],
 }
 
-const TYPE_NAME = { EMPLOYEE: 'Employee', INTERN: 'Intern', STUDENT: 'Student' }
-
-// The people behind a number: the name, then who they are and what Google said. A name alone does not say who to look at.
-function peopleGroup(list = []) {
-  return [
-    {
-      hideCount: true,
-      items: list.map((person) => ({
-        label: person.full_name,
-        hint: [person.email, TYPE_NAME[person.person_type], person.reason].filter(Boolean).join(' · '),
-      })),
-    },
-  ]
-}
-
-// A number, and when it is more than none and Central knows who they are, the number opens that list.
-function Tile({ label, value, people }) {
+// One look for every number. When Central knows who is behind it (and it is more than none), the whole tile opens them.
+function Tile({ label, value, people, onOpen }) {
+  const look = 'rounded-2xl border border-(--mws-line) bg-(--mws-soft) p-4 text-left'
+  const body = (
+    <>
+      <span className="block text-xs font-semibold text-(--mws-muted)">{label}</span>
+      <span className="mt-1 block text-2xl font-semibold text-(--mws-charcoal)">{value}</span>
+    </>
+  )
+  if (!people || value <= 0) return <div className={look}>{body}</div>
   return (
-    <div className="rounded-2xl border border-(--mws-line) bg-(--mws-soft) p-4">
-      <p className="text-xs font-semibold text-(--mws-muted)">{label}</p>
-      {people && value > 0 ? (
-        <ListPopover
-          label={String(value)}
-          count={value}
-          dialogLabel={label}
-          icon={false}
-          mono={false}
-          groups={peopleGroup(people)}
-          className="mt-1 [&>button]:text-2xl [&>button]:font-semibold [&>button]:text-(--mws-charcoal)"
-        />
-      ) : (
-        <p className="mt-1 text-2xl font-semibold text-(--mws-charcoal)">{value}</p>
-      )}
-    </div>
+    <button
+      type="button"
+      aria-label={`${label}, ${value}, show people`}
+      onClick={onOpen}
+      className={`${look} relative cursor-pointer transition-colors hover:border-(--mws-burgundy) hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--mws-burgundy)`}
+    >
+      {body}
+      <ChevronRight size={16} aria-hidden="true" className="absolute right-3 top-3 text-(--mws-muted)" />
+    </button>
   )
 }
 
@@ -76,6 +63,9 @@ export function GoogleAccountsCard({ kind = 'staff' }) {
   const view = ready ? data : EMPTY
   const matches = view.matches ?? []
   const skipped = view.skipped ?? EMPTY.skipped
+  // The list that is open: its title, the people, and the whole count behind the number.
+  const [open, setOpen] = useState(null)
+  const show = (title, people, total) => () => setOpen({ title, people: people ?? [], total })
 
   const link = useMutation({
     mutationFn: () => googleAccountApi.linkExisting(kind),
@@ -124,45 +114,24 @@ export function GoogleAccountsCard({ kind = 'staff' }) {
           <>
             <div className="grid gap-3 sm:grid-cols-3">
               <Tile label="Linked" value={view.linked_total} />
-              <Tile label="Suspended" value={view.suspended} people={view.suspended_list} />
-              <Tile label="Deleted In Google" value={view.missing} people={view.missing_list} />
-              <Tile label="Failed" value={view.failed} people={view.failed_list} />
-              <Tile label="In Google, Not Linked" value={matches.length} />
+              <Tile label="Suspended" value={view.suspended} people={view.suspended_list} onOpen={show('Suspended', view.suspended_list, view.suspended)} />
+              <Tile label="Deleted In Google" value={view.missing} people={view.missing_list} onOpen={show('Deleted In Google', view.missing_list, view.missing)} />
+              <Tile label="Failed" value={view.failed} people={view.failed_list} onOpen={show('Failed', view.failed_list, view.failed)} />
+              <Tile label="In Google, Not Linked" value={matches.length} people={matches} onOpen={show('In Google, Not Linked', matches, matches.length)} />
               <Tile label="Not In Google" value={view.not_in_google} />
               <Tile label="Not Checked" value={view.not_checked ?? 0} />
+              {students ? (
+                <Tile label="Cannot Be Linked" value={(view.blocked ?? []).length} people={view.blocked} onOpen={show('Cannot Be Linked', view.blocked, (view.blocked ?? []).length)} />
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm text-(--mws-muted)">
-                <span>{students ? 'Students who can be linked' : 'People who can be linked'}</span>
-                <ListPopover
-                  label="List"
-                  count={matches.length}
-                  dialogLabel={students ? 'Students who can be linked' : 'People who can be linked'}
-                  mono={false}
-                  groups={[
-                    {
-                      hideCount: true,
-                      items: matches.map((match) => ({ label: match.full_name, hint: match.email })),
-                    },
-                  ]}
-                />
-              </div>
+              <p className="text-sm text-(--mws-muted)">
+                {matches.length} {students ? (matches.length === 1 ? 'student' : 'students') : matches.length === 1 ? 'person' : 'people'} can be linked
+              </p>
               <Button type="button" loading={link.isPending} disabled={matches.length === 0} onClick={handleLink}>
                 Link
               </Button>
             </div>
-            {students && (view.blocked ?? []).length > 0 ? (
-              <div className="flex items-center gap-2 text-sm text-(--mws-muted)">
-                <span>Cannot be linked</span>
-                <ListPopover
-                  label="List"
-                  count={view.blocked.length}
-                  dialogLabel="Students who cannot be linked"
-                  mono={false}
-                  groups={peopleGroup(view.blocked)}
-                />
-              </div>
-            ) : null}
             {(view.not_checked ?? 0) > 0 ? (
               <p className="text-xs text-(--mws-muted)">
                 Not Checked are the people whose address Central may not look up from here. Outside production only addresses
@@ -178,6 +147,7 @@ export function GoogleAccountsCard({ kind = 'staff' }) {
           </>
         )}
       </div>
+      {open ? <PeopleListDialog title={open.title} people={open.people} total={open.total} onClose={() => setOpen(null)} /> : null}
     </PanelFrame>
   )
 }
