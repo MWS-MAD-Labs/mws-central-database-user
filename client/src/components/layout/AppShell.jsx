@@ -26,6 +26,7 @@ import {
 import { Suspense, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { Button } from "../ui/Button.jsx";
+import { UserAvatar } from "../ui/UserAvatar.jsx";
 import { QueryLoadingBar, RouteLoadingBar } from "../ui/RouteLoadingBar.jsx";
 import { FloatingRefreshButton } from "../ui/FloatingRefreshButton.jsx";
 import { BulkPhotoUploadStatusBar } from "./BulkPhotoUploadStatusBar.jsx";
@@ -395,9 +396,11 @@ export function AppShell() {
               sidebarOpen ? "gap-3" : "justify-center gap-0",
             )}
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] font-display text-sm font-bold text-[#8a6419]">
-              {getUserInitials(user)}
-            </div>
+            <UserAvatar
+              src={user?.avatar_url}
+              initials={getUserInitials(user)}
+              className="h-10 w-10 text-sm"
+            />
             <div
               className={cn(
                 "min-w-0 transition-opacity duration-200",

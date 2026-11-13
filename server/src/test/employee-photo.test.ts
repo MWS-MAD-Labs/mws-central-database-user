@@ -25,6 +25,7 @@ const VALID_PNG = Buffer.from(
 
 describe("Employee Photo", () => {
   let employeeId: string;
+  let personId: string;
   let masterData: Awaited<ReturnType<typeof MasterDataTest.create>>;
 
   async function cleanup() {
@@ -46,6 +47,7 @@ describe("Employee Photo", () => {
       buildingId: masterData.building.id,
     });
     employeeId = employee.employee!.id;
+    personId = employee.id;
   });
 
   afterEach(async () => {
@@ -614,6 +616,21 @@ describe("Employee Photo", () => {
       );
 
       expect(response.status).toBe(403);
+    });
+  });
+
+  describe("the photo an admin who is this employee sees", () => {
+    it("is the employee photo first, then the picture from Google", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await prismaClient.adminUser.update({
+        where: { email: "test_superadmin@millennia21.id" },
+        data: { person_id: personId, avatar_url: "https://lh3.googleusercontent.com/google-picture" },
+      });
+      const avatarOf = async () => (await (await TestRequest.get("/api/auth/me", accessToken)).json()).data.avatar_url as string;
+
+      expect(await avatarOf()).toBe("https://lh3.googleusercontent.com/google-picture");
+      await prismaClient.person.update({ where: { id: personId }, data: { photo_object_key: "employee-photos/x/new.avif" } });
+      expect(await avatarOf()).toContain("employee-photos/x/new.avif");
     });
   });
 });

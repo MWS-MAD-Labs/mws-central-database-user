@@ -1,10 +1,14 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import {
   AdminRole,
   AuditAction,
   AuditSource,
+  EmployeeStatus,
+  GoogleSyncStatus,
   type AdminUser,
 } from "../generated/prisma/client";
+import { getDirectoryClient } from "../lib/google-workspace";
+import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 import {
   MINIO_BUCKET,
@@ -30,7 +34,7 @@ import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertEmployeeInAdminUnit } from "../utils/sensitive-data";
 import { detectImageMimeType, processPhoto, processPhotoForGoogle } from "../utils/image-processing";
-import { GoogleWorkspaceService } from "./google-workspace-service";
+import { GoogleWorkspaceService, assertAllowedTarget } from "./google-workspace-service";
 import { EmployeePhotoValidation } from "../validation/employee-photo-validation";
 import { Validation } from "../validation/validation";
 import { resolveWriteUnitScope } from "../utils/admin-permissions";
@@ -108,6 +112,18 @@ async function assertEmployeeExists(
 async function removeObjectIfExists(objectKey: string | null): Promise<void> {
   if (!objectKey) return;
   await minioClient.removeObject(MINIO_BUCKET, objectKey).catch(() => {});
+}
+
+const sha256 = (data: Buffer) => createHash("sha256").update(data).digest("hex");
+
+// After a photo went to Google, note what Google now holds, so the next sync does not take Google's own copy of it back.
+async function rememberGooglePhoto(personId: string): Promise<void> {
+  try {
+    const photo = await GoogleWorkspaceService.getPhoto(personId);
+    if (photo) await prismaClient.person.update({ where: { id: personId }, data: { google_photo_hash: sha256(photo.data) } });
+  } catch (error) {
+    logger.error(`Noting the Google photo failed for person ${personId}`, error);
+  }
 }
 
 export async function resolveEmployeePhotoUrl(
@@ -209,7 +225,7 @@ export class EmployeePhotoService {
       await prismaClient.$transaction(async (tx) => {
         await tx.person.update({
           where: { id: person.id },
-          data: { photo_object_key: objectKey },
+          data: { photo_object_key: objectKey, photo_updated_at: new Date() },
         });
 
         await AuditService.record(
@@ -234,6 +250,14 @@ export class EmployeePhotoService {
     // Only after the new object is safely committed - avoids leaving the
     // employee photoless if something above failed.
     await removeObjectIfExists(previousObjectKey);
+
+    // Google wins on the next sync, so it gets this photo too. Best effort: the photo in Central stays if it fails.
+    try {
+      const sent = await GoogleWorkspaceService.setPhoto(person.id, await processPhotoForGoogle(rawBuffer), "image/jpeg");
+      if (sent) await rememberGooglePhoto(person.id);
+    } catch (error) {
+      logger.error(`Sending the photo to Google failed for person ${person.id}`, error);
+    }
 
     return true;
   }
@@ -271,7 +295,7 @@ export class EmployeePhotoService {
     await this.saveOwnPhoto(personId, employeeId, processedBuffer, context, {});
 
     // Google follows when the account is linked. If it fails, the photo in Central stays and the next change retries.
-    await GoogleWorkspaceService.setPhoto(personId, googleBuffer, "image/jpeg");
+    if (await GoogleWorkspaceService.setPhoto(personId, googleBuffer, "image/jpeg")) await rememberGooglePhoto(personId);
     return true;
   }
 
@@ -282,6 +306,7 @@ export class EmployeePhotoService {
     processedBuffer: Buffer,
     context: AuditRequestContext,
     extra: Record<string, unknown>,
+    googlePhotoHash?: string,
   ): Promise<void> {
     const objectKey = `employee-photos/${employeeId}/${randomUUID()}.avif`;
 
@@ -296,7 +321,10 @@ export class EmployeePhotoService {
     });
     try {
       await prismaClient.$transaction(async (tx) => {
-        await tx.person.update({ where: { id: personId }, data: { photo_object_key: objectKey } });
+        await tx.person.update({
+          where: { id: personId },
+          data: { photo_object_key: objectKey, photo_updated_at: new Date(), ...(googlePhotoHash ? { google_photo_hash: googlePhotoHash } : {}) },
+        });
         await AuditService.record(
           {
             action: AuditAction.UPLOAD_OWN_PHOTO,
@@ -317,24 +345,67 @@ export class EmployeePhotoService {
     await removeObjectIfExists(previous?.photo_object_key ?? null);
   }
 
-  // Takes the photo of the linked Google account when Central has none. A photo Central already has is never touched,
-  // and nothing is sent back to Google. Returns whether a photo was taken.
-  static async pullFromGoogle(personId: string, context: AuditRequestContext = {}): Promise<boolean> {
+  // Takes the photo of the linked Google account. Google wins for an employee: a photo that differs from the last one seen
+  // replaces the one in Central. The first time, a photo Central already has is kept and only noted as the starting
+  // point, so a photo that was never sent to Google is not lost; Google changes after that win. `force` (the Use Google
+  // photo button) takes it whatever Central holds. Returns whether the photo in Central changed.
+  static async syncFromGoogle(
+    personId: string,
+    context: AuditRequestContext = {},
+    options: { force?: boolean } = {},
+  ): Promise<boolean> {
     const person = await prismaClient.person.findFirst({
       where: { id: personId, deleted_at: null, employee: { deleted_at: null } },
-      select: { photo_object_key: true, photo_url: true, employee: { select: { id: true } } },
+      select: { email: true, photo_object_key: true, photo_url: true, google_photo_hash: true, employee: { select: { id: true } } },
     });
-    if (!person?.employee || person.photo_object_key || person.photo_url) return false;
+    if (!person?.employee) return false;
+    try {
+      assertAllowedTarget(person.email);
+    } catch {
+      return false;
+    }
     const photo = await GoogleWorkspaceService.getPhoto(personId);
     if (!photo || !detectImageMimeType(photo.data)) return false;
+    const hash = sha256(photo.data);
+    if (!options.force) {
+      if (hash === person.google_photo_hash) return false;
+      if (!person.google_photo_hash && (person.photo_object_key || person.photo_url)) {
+        await prismaClient.person.update({ where: { id: personId }, data: { google_photo_hash: hash } });
+        return false;
+      }
+    }
     let processed: Buffer;
     try {
       processed = await processPhoto(photo.data);
     } catch {
       return false;
     }
-    await this.saveOwnPhoto(personId, person.employee.id, processed, context, { source: "google" });
+    await this.saveOwnPhoto(personId, person.employee.id, processed, context, { source: "google" }, hash);
     return true;
+  }
+
+  // The hourly sweep: every linked employee, one after another, so Google is not asked all at once. Does nothing while
+  // Google is simulated. A failure for one person never stops the rest.
+  static async syncAllFromGoogle(): Promise<number> {
+    if (getDirectoryClient().mode === "simulated") return 0;
+    const linked = await prismaClient.person.findMany({
+      where: {
+        deleted_at: null,
+        google_user_id: { not: null },
+        google_sync_status: GoogleSyncStatus.ACTIVE,
+        employee: { deleted_at: null, status: EmployeeStatus.ACTIVE },
+      },
+      select: { id: true },
+    });
+    let changed = 0;
+    for (const { id } of linked) {
+      try {
+        if (await this.syncFromGoogle(id)) changed += 1;
+      } catch (error) {
+        logger.error(`Google photo sync failed for person ${id}`, error);
+      }
+    }
+    return changed;
   }
 
   static async remove(
@@ -365,7 +436,7 @@ export class EmployeePhotoService {
     await prismaClient.$transaction(async (tx) => {
       await tx.person.update({
         where: { id: person.id },
-        data: { photo_object_key: null },
+        data: { photo_object_key: null, photo_updated_at: new Date() },
       });
 
       await AuditService.record(

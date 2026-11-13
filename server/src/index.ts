@@ -3,6 +3,7 @@ import { web } from "./application/web";
 import { logger } from "./lib/logger";
 import { EmployeeService } from "./service/employee-service";
 import { DisciplinaryActionService } from "./service/disciplinary-action-service";
+import { EmployeePhotoService } from "./service/employee-photo-service";
 import { GoogleWorkspaceService } from "./service/google-workspace-service";
 import { PCActivityRoomService } from "./service/pc-activity-room-service";
 import { syncApiScopes } from "./lib/sync-api-scopes";
@@ -12,6 +13,7 @@ const AUTO_RESIGN_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const DISCIPLINARY_ACTION_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const PC_ACTIVITY_ROOM_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
+const GOOGLE_PHOTO_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour, to take a photo someone changed in Google
 const GOOGLE_STATUS_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour, to lock an account someone turned on again in Google
 
 declare global {
@@ -25,6 +27,8 @@ declare global {
   var __pcActivityRoomSweepInterval: ReturnType<typeof setInterval> | undefined;
   // eslint-disable-next-line no-var
   var __googleStatusSweepInterval: ReturnType<typeof setInterval> | undefined;
+  // eslint-disable-next-line no-var
+  var __googlePhotoSweepInterval: ReturnType<typeof setInterval> | undefined;
 }
 
 async function runAutoResignSweep(): Promise<void> {
@@ -79,6 +83,17 @@ async function runGoogleStatusSweep(): Promise<void> {
   }
 }
 
+async function runGooglePhotoSweep(): Promise<void> {
+  try {
+    const count = await EmployeePhotoService.syncAllFromGoogle();
+    if (count > 0) {
+      logger.info(`Google photo sweep: ${count} photo(s) taken from Google.`);
+    }
+  } catch (error) {
+    logger.error("Google photo sweep failed", error);
+  }
+}
+
 // Clear intervals left by hot reloads.
 if (globalThis.__autoResignSweepInterval) {
   clearInterval(globalThis.__autoResignSweepInterval);
@@ -112,6 +127,14 @@ globalThis.__googleStatusSweepInterval = setInterval(
   GOOGLE_STATUS_SWEEP_INTERVAL_MS,
 );
 
+if (globalThis.__googlePhotoSweepInterval) {
+  clearInterval(globalThis.__googlePhotoSweepInterval);
+}
+globalThis.__googlePhotoSweepInterval = setInterval(
+  runGooglePhotoSweep,
+  GOOGLE_PHOTO_SWEEP_INTERVAL_MS,
+);
+
 startApplicationHealthChecks();
 
 // The server must not accept traffic with a stale profile/scope catalog.
@@ -126,6 +149,7 @@ void (async () => {
   await runDisciplinaryActionSweep();
   await runPcActivityRoomSweep();
   await runGoogleStatusSweep();
+  await runGooglePhotoSweep();
   // Catch a misconfigured approver setup early instead of letting it fail
   // silently (no one able to approve identifier change requests).
   await validateChangeRequestApproverConfig().catch((error) =>

@@ -74,6 +74,8 @@ export type AdminEmployeeProfile = {
 
 export type EmployeeAuthResponse = EmployeeDetailResponse & {
   type: "employee";
+  // The employee photo, a fresh link each time. Same name the admin session uses.
+  avatar_url: string | null;
 };
 
 export type GoogleLoginResponse = AdminResponse | EmployeeAuthResponse;
@@ -101,7 +103,7 @@ export async function toAdminResponse(
 ): Promise<AdminResponse> {
   const isSuperAdmin = admin.role === AdminRole.SUPER_ADMIN;
   const isHeadOfCareValue = headOfCare ?? (await isHeadOfCare(admin));
-  const [studentViewUnits, employeeViewUnits, linkedEmployeeProfile] =
+  const [studentViewUnits, employeeViewUnits, linkedEmployeeProfile, linkedPersonPhoto] =
     await Promise.all([
       admin.student_view_units ??
         prismaClient.adminUserStudentViewUnit.findMany({
@@ -127,6 +129,13 @@ export async function toAdminResponse(
               },
             })
           : null,
+      // The photo of the employee this admin is, so a change in Profile or in Google shows here too.
+      admin.person_id
+        ? prismaClient.person.findUnique({
+            where: { id: admin.person_id },
+            select: { photo_object_key: true, photo_url: true },
+          })
+        : null,
     ]);
 
   const response: AdminResponse = {
@@ -135,13 +144,12 @@ export async function toAdminResponse(
     email: admin.email,
     full_name: admin.full_name,
     role: admin.role,
-    // MinIO-cached copy when one exists (see cacheGoogleAvatar) - falls
-    // back to the raw Google URL for admins who haven't logged in since
-    // this was added.
-    avatar_url: await resolvePersonPhotoUrl(
-      admin.avatar_object_key,
-      admin.avatar_url,
-    ),
+    // The employee photo when this admin is an employee, else the MinIO copy of the Google picture (see
+    // cacheGoogleAvatar), else the raw Google URL for admins who haven't logged in since that was added.
+    avatar_url:
+      linkedPersonPhoto && (linkedPersonPhoto.photo_object_key || linkedPersonPhoto.photo_url)
+        ? await resolvePersonPhotoUrl(linkedPersonPhoto.photo_object_key, linkedPersonPhoto.photo_url)
+        : await resolvePersonPhotoUrl(admin.avatar_object_key, admin.avatar_url),
     unit_id: admin.unit_id,
     job_position: linkedEmployeeProfile?.job_position.name ?? null,
     job_position_id: linkedEmployeeProfile?.job_position_id ?? null,
@@ -181,11 +189,12 @@ export async function toAdminResponse(
 
   return response;
 }
-export function toEmployeeAuthResponse(
+export async function toEmployeeAuthResponse(
   person: PersonWithEmployee,
-): EmployeeAuthResponse {
+): Promise<EmployeeAuthResponse> {
   return {
     ...toEmployeeDetailResponse(person, { role: AdminRole.SUPER_ADMIN }),
     type: "employee",
+    avatar_url: await resolvePersonPhotoUrl(person.photo_object_key, person.photo_url),
   };
 }

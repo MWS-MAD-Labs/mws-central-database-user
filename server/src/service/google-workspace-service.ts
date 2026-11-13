@@ -1235,15 +1235,26 @@ export class GoogleWorkspaceService {
     return getDirectoryClient().getPhoto(person.google_user_id);
   }
 
-  // Takes the Google photo when Central has none. A failure never reaches the caller: the next trigger tries again.
+  // Takes the Google photo when it changed. A failure never reaches the caller: the next trigger tries again.
   static async tryPullPhoto(personId: string): Promise<void> {
     try {
       // Loaded on demand: the photo service already imports this one.
       const { EmployeePhotoService } = await import("./employee-photo-service");
-      await EmployeePhotoService.pullFromGoogle(personId);
+      await EmployeePhotoService.syncFromGoogle(personId);
     } catch (error) {
       logger.error(`Taking the Google photo failed for person ${personId}`, error);
     }
+  }
+
+  // At sign in: the Google photo may have changed since last time. Waits a few seconds at most, so the sign in is never
+  // held up, and a failure only means the next trigger tries again.
+  static async syncPhotoOnSignIn(email: string): Promise<void> {
+    const person = await prismaClient.person.findFirst({
+      where: { email, deleted_at: null, google_user_id: { not: null }, employee: { deleted_at: null } },
+      select: { id: true },
+    });
+    if (!person) return;
+    await Promise.race([this.tryPullPhoto(person.id), new Promise<void>((resolve) => setTimeout(resolve, 3000))]);
   }
 
   // Ask Google how a linked account is doing and keep the answer. It only reads: nothing in Google is changed, and

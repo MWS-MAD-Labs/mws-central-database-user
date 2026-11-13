@@ -92,6 +92,15 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
+    path: "/api/internal/employees/photo?person_id=person-id",
+    scope: API_SCOPES.EMPLOYEES_READ,
+    title: "Employee photo",
+    group: "Employees",
+    purpose: "Gets the photo of an active employee as an image, so another app can show it.",
+    note: "The lookup says has_photo and photo_version. Fetch the photo again when the version changes.",
+  },
+  {
+    method: "GET",
     path: "/api/internal/students/support-contacts?email=student@millennia21.id",
     scope: API_SCOPES.STUDENTS_SUPPORT_CONTACTS_READ,
     title: "A student's class teachers",

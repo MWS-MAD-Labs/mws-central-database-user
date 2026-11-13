@@ -85,7 +85,7 @@ export class AuthController {
 
   static async employeeMe(c: Context<{ Variables: EmployeeVariables }>) {
     const employee = c.var.employee;
-    return c.json({ data: toEmployeeAuthResponse(employee) });
+    return c.json({ data: await toEmployeeAuthResponse(employee) });
   }
 
   // The signed-in employee's own photo. The person is the one in the session, nothing in the request names one.

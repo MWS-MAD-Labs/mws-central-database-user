@@ -44,6 +44,9 @@ export type EmployeeLookupResponse = {
   email: string;
   gender: Gender;
   photo_url: string | null;
+  // Whether Central holds a photo, and when it last changed, so an app knows when to fetch it again.
+  has_photo: boolean;
+  photo_version: string | null;
   unit: string;
   unit_id: string;
   job_position: string;
@@ -76,6 +79,8 @@ export function toEmployeeLookupResponse(
     email: person.email,
     gender: person.gender,
     photo_url: person.photo_url,
+    has_photo: Boolean(person.photo_object_key || person.photo_url),
+    photo_version: person.photo_updated_at ? new Date(person.photo_updated_at).toISOString() : null,
     unit: employee.unit.name,
     unit_id: employee.unit_id,
     job_position: employee.job_position.name,

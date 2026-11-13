@@ -5,7 +5,9 @@ import {
   PersonType,
   type Prisma,
 } from "../generated/prisma/client";
+import { MINIO_BUCKET, minioClient } from "../lib/minio";
 import { prismaClient } from "../lib/prisma";
+import { streamToBuffer } from "../utils/file-attachment";
 import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import { paginate, type Pageable } from "../model/page-model";
@@ -35,6 +37,23 @@ export const EMPLOYEE_INCLUDE = {
 } as const;
 
 export class EmployeeApiService {
+  // The photo Central holds for an active employee, as the bytes, so an app can show it without reaching MinIO. The
+  // object key changes with every new photo, so it doubles as the version for the browser cache.
+  static async photo(personId: string): Promise<{ buffer: Buffer; contentType: string; etag: string }> {
+    const person = await prismaClient.person.findFirst({
+      where: {
+        id: personId,
+        person_type: PersonType.EMPLOYEE,
+        deleted_at: null,
+        employee: { status: EmployeeStatus.ACTIVE, deleted_at: null },
+      },
+      select: { photo_object_key: true },
+    });
+    if (!person?.photo_object_key) throw new ResponseError(404, "Photo not found");
+    const buffer = await streamToBuffer(await minioClient.getObject(MINIO_BUCKET, person.photo_object_key));
+    return { buffer, contentType: "image/avif", etag: `"${person.photo_object_key.split("/").pop()}"` };
+  }
+
   static async lookup(
     client: ApiClientVariables,
     request: EmployeeLookupRequest,

@@ -36,6 +36,20 @@ export class EmployeeApiController {
     return c.json({ success: true, data: response });
   }
 
+  static async photo(c: Context<{ Variables: ApiClientVariables }>) {
+    const personId = c.req.query("person_id");
+    if (!personId) {
+      throw new ResponseError(400, "Query parameter 'person_id' is required");
+    }
+    const { buffer, contentType, etag } = await EmployeeApiService.photo(personId);
+    if (c.req.header("if-none-match") === etag) {
+      return new Response(null, { status: 304, headers: { ETag: etag } });
+    }
+    return new Response(new Uint8Array(buffer), {
+      headers: { "Content-Type": contentType, "Cache-Control": "private, max-age=300", ETag: etag },
+    });
+  }
+
   static async list(c: Context<{ Variables: ApiClientVariables }>) {
     const page = c.req.query("page") ? Number(c.req.query("page")) : 1;
     const size = c.req.query("size") ? Number(c.req.query("size")) : 10;

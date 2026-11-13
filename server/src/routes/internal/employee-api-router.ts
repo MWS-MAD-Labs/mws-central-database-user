@@ -12,3 +12,6 @@ employeeApiRouter.get("/", requireScope(API_SCOPES.EMPLOYEES_READ), (c) =>
 employeeApiRouter.get("/lookup", requireScope(API_SCOPES.EMPLOYEES_READ), (c) =>
   EmployeeApiController.lookup(c),
 );
+employeeApiRouter.get("/photo", requireScope(API_SCOPES.EMPLOYEES_READ), (c) =>
+  EmployeeApiController.photo(c),
+);

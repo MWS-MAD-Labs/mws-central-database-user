@@ -184,7 +184,14 @@ Use a mailbox made for this, not an admin's own. In development run Mailpit (`do
 
 ## Photos
 
-Central owns the photo. It is kept in MinIO and shown from there. An employee who changes their own photo on the Profile page sends it to their Google account too. An admin who uploads a photo for an employee, single or bulk, keeps it in Central only. A photo an admin uploads for a student, single or bulk, also goes to the student's linked Google account (one after the other, best effort, skipped for a student who left); a student cannot change their own photo. Nothing in Google overwrites a photo in Central: when Central has none, the photo of the linked Google account is taken once, when the account is claimed or linked, when a Super Admin checks the account, or with the Use Google photo button on the employee page (`POST /api/admin/employees/:id/google/photo`). A photo changed in Google afterwards is not read.
+Central keeps the photo in MinIO and shows it from there, and keeps it in step with Google without anyone pressing a button.
+
+- **Employees: Google wins.** Central reads the Google photo when someone signs in and every hour for every linked, active employee. A photo that differs from the last one Central saw replaces the one in Central. An unchanged one is skipped (Central keeps a hash of it, `google_photo_hash`). If Google has no photo, the one in Central stays. The first time, a photo Central already had is kept and only noted as the starting point, so a photo that was never sent to Google is not lost. Changes in Google after that win.
+- **Central to Google.** A photo an employee changes in Profile, or an admin uploads for an employee (single or bulk), goes to the Google account too, so the next sync does not undo it. A photo an admin uploads for a student goes to the student's account (one after the other, best effort, skipped for a student who left). A student cannot change their own photo, and nothing is read back from Google for a student. A failed send leaves the photo in Central, and the hourly sync is not affected.
+- **Use Google photo** on the employee page (`POST /api/admin/employees/:id/google/photo`) takes the Google photo now, whatever Central holds.
+- Nothing is synced while Google is simulated, and outside production only test addresses are touched.
+- **Where it shows.** The sidebar and Profile show the photo of the signed-in person. For an admin who is also an employee (or an employee whose email was made an admin) it is the employee photo, so a change in Profile or Google shows in both. An admin who is not an employee keeps the picture from their Google sign in.
+- **Other apps.** The employee lookup says `has_photo` and `photo_version` (when the photo last changed). The photo itself comes from `GET /api/internal/employees/photo?person_id=...` (scope `employees:read`) as an image with an `ETag`, so an app can fetch it again only when the version changes and never needs to reach MinIO.
 
 ## Students
 
