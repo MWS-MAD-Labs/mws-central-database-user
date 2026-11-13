@@ -33,6 +33,7 @@ import {
   type DirectoryUser,
   type UpdateDirectoryUser,
 } from "../lib/google-workspace/directory-client";
+import { EmployeePhotoService } from "../service/employee-photo-service";
 import { GoogleWorkspaceService, generateTemporaryPassword, resetCheckCooldownForTests, resetSignInEmailLimitForTests, splitName } from "../service/google-workspace-service";
 import { detectImageMimeType } from "../utils/image-processing";
 import sharp from "sharp";
@@ -1771,6 +1772,18 @@ describe("google workspace accounts", () => {
       expect(await prismaClient.auditLog.count({ where: { action: AuditAction.UPLOAD_OWN_PHOTO } })).toBe(1);
     });
 
+    it("sends a photo an admin uploads for an employee to Google too, so Google does not undo it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken);
+      const form = new FormData();
+      form.append("file", new File([await png()], "staff.png", { type: "image/png" }));
+      const response = await TestRequest.postMultipart(`/api/admin/employees/${json.data.id}/photo`, form, accessToken);
+      expect(response.status).toBe(200);
+      expect((await personOf(json.data.id)).photo_object_key).toContain(`employee-photos/${json.data.id}/`);
+      expect(google.photos).toHaveLength(1);
+      expect(google.photos[0].mimeType).toBe("image/jpeg");
+    });
+
     describe("the photo Google already has", () => {
       it("is taken when Central has none, and never sent back", async () => {
         const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
@@ -1788,7 +1801,7 @@ describe("google workspace accounts", () => {
         expect(JSON.stringify(entry.new_values)).toContain("google");
       });
 
-      it("never replaces a photo Central already has", async () => {
+      it("replaces the photo in Central when the button is pressed, because Google wins", async () => {
         const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
         const { json } = await create(accessToken);
         const person = await personOf(json.data.id);
@@ -1796,8 +1809,68 @@ describe("google workspace accounts", () => {
         google.googlePhotos.set(person.google_user_id!, await png());
 
         const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/photo`, {}, accessToken);
-        expect((await response.json()).data.pulled).toBe(false);
-        expect((await personOf(json.data.id)).photo_object_key).toBe("employee-photos/keep/own.avif");
+        expect((await response.json()).data.pulled).toBe(true);
+        const after = await personOf(json.data.id);
+        expect(after.photo_object_key).toContain(`employee-photos/${json.data.id}/`);
+        expect(after.google_photo_hash).not.toBeNull();
+        expect(after.photo_updated_at).not.toBeNull();
+      });
+
+      describe("the automatic sync", () => {
+        const other = () => sharp({ create: { width: 200, height: 300, channels: 3, background: "#123456" } }).png().toBuffer();
+
+        it("takes a photo that changed in Google, and skips one that did not", async () => {
+          const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+          const { json } = await create(accessToken);
+          const person = await personOf(json.data.id);
+          google.googlePhotos.set(person.google_user_id!, await png());
+          expect(await EmployeePhotoService.syncFromGoogle(person.id)).toBe(true);
+          const first = await personOf(json.data.id);
+
+          expect(await EmployeePhotoService.syncFromGoogle(person.id)).toBe(false);
+          expect((await personOf(json.data.id)).photo_object_key).toBe(first.photo_object_key);
+
+          google.googlePhotos.set(person.google_user_id!, await other());
+          expect(await EmployeePhotoService.syncFromGoogle(person.id)).toBe(true);
+          const second = await personOf(json.data.id);
+          expect(second.photo_object_key).not.toBe(first.photo_object_key);
+          expect(second.google_photo_hash).not.toBe(first.google_photo_hash);
+        });
+
+        it("keeps a photo Central already had the first time and only notes where Google stood", async () => {
+          const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+          const { json } = await create(accessToken);
+          const person = await personOf(json.data.id);
+          await prismaClient.person.update({ where: { id: person.id }, data: { photo_object_key: "employee-photos/keep/own.avif" } });
+          google.googlePhotos.set(person.google_user_id!, await png());
+
+          expect(await EmployeePhotoService.syncFromGoogle(person.id)).toBe(false);
+          const noted = await personOf(json.data.id);
+          expect(noted.photo_object_key).toBe("employee-photos/keep/own.avif");
+          expect(noted.google_photo_hash).not.toBeNull();
+
+          google.googlePhotos.set(person.google_user_id!, await other());
+          expect(await EmployeePhotoService.syncFromGoogle(person.id)).toBe(true);
+          expect((await personOf(json.data.id)).photo_object_key).toContain(`employee-photos/${json.data.id}/`);
+        });
+
+        it("does not remove the photo in Central when Google has none", async () => {
+          const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+          const { json } = await create(accessToken);
+          const person = await personOf(json.data.id);
+          await prismaClient.person.update({ where: { id: person.id }, data: { photo_object_key: "employee-photos/keep/own.avif" } });
+          expect(await EmployeePhotoService.syncFromGoogle(person.id)).toBe(false);
+          expect((await personOf(json.data.id)).photo_object_key).toBe("employee-photos/keep/own.avif");
+        });
+
+        it("sweeps every linked employee and counts the photos taken", async () => {
+          const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+          const { json } = await create(accessToken);
+          const person = await personOf(json.data.id);
+          google.googlePhotos.set(person.google_user_id!, await png());
+          expect(await EmployeePhotoService.syncAllFromGoogle()).toBe(1);
+          expect(await EmployeePhotoService.syncAllFromGoogle()).toBe(0);
+        });
       });
 
       it("says no when Google has no photo either, and only a Super Admin may ask", async () => {

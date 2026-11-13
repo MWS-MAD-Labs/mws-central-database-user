@@ -735,6 +735,10 @@ model Person {
   photo_url                   String?
   // Private object key. Presigned URLs are generated on read and never stored.
   photo_object_key            String?
+  // When the photo in Central last changed. Other apps use it to know when to fetch the photo again.
+  photo_updated_at            DateTime?
+  // SHA-256 of the Google photo last taken or seen, so an unchanged one is not taken again.
+  google_photo_hash           String?
   // The Google Workspace account behind this email. Central makes and updates it, see service/google-workspace-service.ts.
   google_user_id              String?          @unique
   google_sync_status          GoogleSyncStatus @default(NONE)

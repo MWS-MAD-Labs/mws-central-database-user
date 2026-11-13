@@ -75,6 +75,7 @@ export class AuthService {
 
     // Google just verified this mailbox: if a Google account waits for its owner, it is linked now.
     await GoogleWorkspaceService.claimOnSignIn(googlePayload.email, context);
+    await GoogleWorkspaceService.syncPhotoOnSignIn(googlePayload.email);
 
     const admin = await prismaClient.adminUser.findUnique({
       where: {

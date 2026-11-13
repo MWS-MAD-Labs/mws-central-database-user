@@ -273,12 +273,12 @@ export class GoogleAccountController {
     };
   }
 
-  // Takes the Google photo for an employee who has none in Central. Says whether a photo was taken.
+  // Takes the Google photo for an employee, replacing the one in Central. Says whether a photo was taken.
   static pullPhoto(kind: Kind) {
     return async (c: Context<{ Variables: AdminVariables }>) => {
       assertSuperAdmin(c);
       const personId = await personIdOf(kind, c.req.param("id"), c.var.admin);
-      const pulled = await EmployeePhotoService.pullFromGoogle(personId, getAuditRequestContext(c));
+      const pulled = await EmployeePhotoService.syncFromGoogle(personId, getAuditRequestContext(c), { force: true });
       return c.json({ data: { pulled } });
     };
   }
