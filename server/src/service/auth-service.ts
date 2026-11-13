@@ -202,7 +202,7 @@ export class AuthService {
     });
 
     return {
-      data: toEmployeeAuthResponse(person),
+      data: await toEmployeeAuthResponse(person),
       accessToken,
     };
   }
