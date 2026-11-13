@@ -1585,6 +1585,8 @@ export class GoogleWorkspaceService {
         person.google_sync_status === GoogleSyncStatus.MISSING && person.google_deleted_at
           ? restorableUntil(person.google_deleted_at).toISOString()
           : null,
+      // A protected admin's account is never managed from here, so the page offers nothing to do with it.
+      protected_account: isProtectedSuperAdminEmail(person.email),
       mode: getDirectoryClient().mode,
       email_enabled: getMailer().enabled,
       ...(person.google_user_id ? await this.cooldownsOf(person) : {}),

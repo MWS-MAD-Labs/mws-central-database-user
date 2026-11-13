@@ -208,7 +208,6 @@ describe("GoogleAccountRow", () => {
     await screen.findByText("Linked");
     expect(buttonNames()).toEqual([
       "Sign-in instructions",
-      "Use Google photo",
       "Suspend Google account",
       "Check Google again",
     ]);
@@ -219,7 +218,6 @@ describe("GoogleAccountRow", () => {
     await screen.findByText("Linked");
     expect(buttonNames()).toEqual([
       "Sign-in instructions",
-      "Use Google photo",
       "Suspend Google account",
       "Check Google again",
       "Change recovery email",
@@ -307,18 +305,8 @@ describe("GoogleAccountRow", () => {
     ).toBeVisible();
   });
 
-  it("takes the Google photo from the row and says when nothing was taken", async () => {
-    const { user, fetchMock } = setup(status(), [
-      { path: "/api/admin/employees/e1/google/photo", method: "POST", response: jsonResponse({ data: { pulled: false } }) },
-    ]);
-    await user.click(await screen.findByRole("button", { name: "Use Google photo" }));
-    await waitFor(() =>
-      expect(fetchMock.mock.calls.some(([url, options]) => String(url).endsWith("/google/photo") && options?.method === "POST")).toBe(true),
-    );
-  });
-
-  it("offers the Google photo only to a Super Admin, for a linked active account", async () => {
-    setup(status({ can: { create: true, manage: false, takeover: false } }));
+  it("has no button for the Google photo, because it is taken without anyone asking", async () => {
+    setup(status());
     await screen.findByRole("button", { name: "Sign-in instructions" });
     expect(screen.queryByRole("button", { name: "Use Google photo" })).not.toBeInTheDocument();
   });

@@ -303,6 +303,21 @@ describe("google workspace accounts", () => {
       expect(google.passwords).toHaveLength(0);
     });
 
+    it("offers nothing to do with the account of a protected admin, so the page asks Google nothing about it", async () => {
+      process.env.GOOGLE_WORKSPACE_TEST_PREFIX = "test_super";
+      google.users.set("own-1", {
+        id: "own-1", primaryEmail: PROTECTED_EMAIL, givenName: "Super", familyName: "Admin",
+        suspended: false, isAdmin: true, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken, { email: PROTECTED_EMAIL });
+      const response = await TestRequest.get(`/api/admin/employees/${json.data.id}/google`, accessToken);
+      expect(response.status).toBe(200);
+      const data = (await response.json()).data;
+      expect(data).toMatchObject({ linked: true, status: "ACTIVE", protected_account: true });
+      expect(data.can).toEqual({ create: false, link_existing: false, manage: false, takeover: false });
+    });
+
     it("does not link it when somebody else makes the record", async () => {
       google.users.set("own-1", {
         id: "own-1", primaryEmail: PROTECTED_EMAIL, givenName: "Super", familyName: "Admin",
@@ -1792,28 +1807,11 @@ describe("google workspace accounts", () => {
         expect(person.photo_object_key).toBeNull();
         google.googlePhotos.set(person.google_user_id!, await png());
 
-        const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/photo`, {}, accessToken);
-        expect(response.status).toBe(200);
-        expect((await response.json()).data.pulled).toBe(true);
+        expect(await EmployeePhotoService.syncFromGoogle(person.id)).toBe(true);
         expect((await personOf(json.data.id)).photo_object_key).toContain(`employee-photos/${json.data.id}/`);
         expect(google.photos).toHaveLength(0);
         const entry = await prismaClient.auditLog.findFirstOrThrow({ where: { action: AuditAction.UPLOAD_OWN_PHOTO } });
         expect(JSON.stringify(entry.new_values)).toContain("google");
-      });
-
-      it("replaces the photo in Central when the button is pressed, because Google wins", async () => {
-        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
-        const { json } = await create(accessToken);
-        const person = await personOf(json.data.id);
-        await prismaClient.person.update({ where: { id: person.id }, data: { photo_object_key: "employee-photos/keep/own.avif" } });
-        google.googlePhotos.set(person.google_user_id!, await png());
-
-        const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/photo`, {}, accessToken);
-        expect((await response.json()).data.pulled).toBe(true);
-        const after = await personOf(json.data.id);
-        expect(after.photo_object_key).toContain(`employee-photos/${json.data.id}/`);
-        expect(after.google_photo_hash).not.toBeNull();
-        expect(after.photo_updated_at).not.toBeNull();
       });
 
       describe("the automatic sync", () => {
@@ -1873,13 +1871,12 @@ describe("google workspace accounts", () => {
         });
       });
 
-      it("says no when Google has no photo either, and only a Super Admin may ask", async () => {
+      it("says no when Google has no photo either", async () => {
         const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
         const { json } = await create(accessToken);
-        const response = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/photo`, {}, accessToken);
-        expect((await response.json()).data.pulled).toBe(false);
-        const { accessToken: other } = await AdminUserTest.createDatabaseAdmin(master.unit.id);
-        expect((await TestRequest.post(`/api/admin/employees/${json.data.id}/google/photo`, {}, other)).status).toBe(403);
+        const person = await personOf(json.data.id);
+        expect(await EmployeePhotoService.syncFromGoogle(person.id)).toBe(false);
+        expect((await personOf(json.data.id)).photo_object_key).toBeNull();
       });
 
       it("is taken when Check finds the linked account, and a failure does not break the check", async () => {
