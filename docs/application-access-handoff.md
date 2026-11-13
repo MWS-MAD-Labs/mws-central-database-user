@@ -146,6 +146,8 @@ Deploy the Hub first (it accepts both kinds), then Central. When every applicati
 
 Staging and production each run their own Central (`DEPLOYMENT_ENVIRONMENT` tells it which: `staging` or `production`; without it the Central calls itself `DEVELOPMENT` and names its connections that way. The variable has to be listed in `docker-compose.yml`, a value in the stack's `.env` alone does not reach the server), and a connection belongs to the Central that made it. So an application needs a connection in each: a different token, a different Organization ID and a different Hub secret. In GitHub, make two Environments, `staging` and `production`, and add the same names in each with the values of that Central. The deploy workflow picks the environment from the branch (`staging` or `main`), and the Setup Guide has the job to copy. The same values also go into the environment the application runs in on the server.
 
+On the staging Central only, set `PRODUCTION_URL` to the address of the real Central (for example `https://central.example.org`, no trailing slash). A bar on top of every page then says this is a test version and links to the real one (`GET /api/public-config`, no sign in needed, so the login page shows it too). Leave it empty in production and nothing is shown. Hub has the same variable.
+
 Set `HUB_PUBLIC_URL` on each Central so Add Hub suggests the address of that environment instead of a production-shaped example. Staging uses `https://hub-stg.example.org`; production uses `https://hub.example.org`. The value is only a starting point in the form and is still checked against the Hub JWKS endpoint before it can be saved.
 
 ## The Setup Guide, in order

@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 import { AppShell } from '../components/layout/AppShell.jsx'
+import { EnvironmentBanner } from '../components/layout/EnvironmentBanner.jsx'
 import { ProtectedRoute } from '../routes/ProtectedRoute.jsx'
 import { CapabilityRoute } from '../routes/CapabilityRoute.jsx'
 import {
@@ -58,6 +59,7 @@ function LoginFallback() {
 export default function App() {
   return (
     <Suspense fallback={<LoginFallback />}>
+      <EnvironmentBanner />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
 

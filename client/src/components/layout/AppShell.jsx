@@ -195,10 +195,10 @@ export function AppShell() {
   }
 
   return (
-    <div className="min-h-svh overflow-x-clip bg-[#fffafa] text-(--mws-charcoal)">
+    <div className="min-h-svh overflow-x-clip bg-[#fffafa] pt-[var(--env-banner-h,0px)] text-(--mws-charcoal)">
       <QueryLoadingBar />
       <FloatingRefreshButton />
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-(--mws-line) bg-white/95 pl-4 pr-12 backdrop-blur md:hidden">
+      <header className="sticky top-[var(--env-banner-h,0px)] z-30 flex h-14 items-center justify-between border-b border-(--mws-line) bg-white/95 pl-4 pr-12 backdrop-blur md:hidden">
         <button
           type="button"
           aria-label="Open Navigation"
@@ -224,7 +224,7 @@ export function AppShell() {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-72 flex-col overflow-hidden border-r border-(--mws-line) bg-white transition-[width,transform] duration-300 ease-in-out md:translate-x-0",
+          "fixed bottom-0 left-0 top-[var(--env-banner-h,0px)] z-50 flex w-72 flex-col overflow-hidden border-r border-(--mws-line) bg-white transition-[width,transform] duration-300 ease-in-out md:translate-x-0",
           sidebarOpen ? "md:w-72" : "md:w-20",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}

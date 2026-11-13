@@ -66,6 +66,8 @@ services:
       - PROTECTED_SUPER_ADMIN_EMAILS=${PROTECTED_SUPER_ADMIN_EMAILS:-}
       # Read by the server, so they must be listed here: a value in the stack's .env alone never reaches the container.
       - DEPLOYMENT_ENVIRONMENT=${DEPLOYMENT_ENVIRONMENT:-}
+      # Staging only: the address of the real Central. The app then says it is a test version.
+      - PRODUCTION_URL=${PRODUCTION_URL:-}
       - HUB_PUBLIC_URL=${HUB_PUBLIC_URL:-}
       - HUB_APPLICATION_ID=${HUB_APPLICATION_ID:-}
       - CENTRAL_API_PUBLIC_URL=${CENTRAL_API_PUBLIC_URL:-}
