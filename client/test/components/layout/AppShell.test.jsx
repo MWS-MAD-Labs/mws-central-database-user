@@ -55,7 +55,7 @@ describe('AppShell', () => {
     await screen.findByText('Sam Admin')
     const header = document.querySelector('header')
     expect(header).toHaveClass('pr-12')
-    expect(screen.getByRole('button', { name: 'Refresh all data' })).toHaveClass('right-2', 'top-3')
+    expect(screen.getByRole('button', { name: 'Refresh all data' })).toHaveClass('right-2', 'top-[calc(var(--env-banner-h,0px)+0.75rem)]')
   })
 
   it('shows super-admin navigation, profile identity, and closes the mobile menu after navigation', async () => {
