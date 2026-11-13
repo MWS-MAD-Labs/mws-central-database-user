@@ -14,6 +14,7 @@ import type {
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
+import { MINIO_BUCKET, ensureBucketExists, minioClient } from "../lib/minio";
 
 const READ_SCOPE = "employees:read";
 
@@ -789,5 +790,80 @@ describe("GET /api/internal/employees (list)", () => {
   it("should reject if no Authorization header is provided", async () => {
     const response = await TestRequest.get("/api/internal/employees");
     expect(response.status).toBe(401);
+  });
+});
+
+const minioAvailable = await minioClient.listBuckets().then(
+  () => true,
+  () => false,
+);
+
+describe("employee photo for other apps", () => {
+  let masterData: Awaited<ReturnType<typeof MasterDataTest.create>>;
+  let person: Awaited<ReturnType<typeof EmployeeTest.create>>;
+  const objectKey = () => `employee-photos/${person.employee!.id}/test-photo.avif`;
+
+  beforeEach(async () => {
+    await EmployeeTest.delete();
+    await ApiClientTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+    person = await EmployeeTest.create({
+      email: "lookup_photo@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+  });
+
+  afterEach(async () => {
+    await minioClient.removeObject(MINIO_BUCKET, objectKey()).catch(() => {});
+    await EmployeeTest.delete();
+    await ApiClientTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("says in the lookup whether there is a photo and which version", async () => {
+    const { token } = await ApiClientTest.createWithToken({ scopeNames: [READ_SCOPE] });
+    const lookup = async () =>
+      (await (await TestRequest.get(`/api/internal/employees/lookup?person_id=${person.id}`, undefined, authHeader(token))).json()).data;
+
+    const before = await lookup();
+    expect(before.has_photo).toBe(false);
+    expect(before.photo_version).toBeNull();
+
+    const changedAt = new Date("2026-11-10T08:00:00.000Z");
+    await prismaClient.person.update({ where: { id: person.id }, data: { photo_object_key: objectKey(), photo_updated_at: changedAt } });
+    const after = await lookup();
+    expect(after.has_photo).toBe(true);
+    expect(after.photo_version).toBe(changedAt.toISOString());
+  });
+
+  it("refuses a missing person_id and a token without the scope, and says 404 when there is no photo", async () => {
+    const { token } = await ApiClientTest.createWithToken({ scopeNames: [READ_SCOPE] });
+    expect((await TestRequest.get("/api/internal/employees/photo", undefined, authHeader(token))).status).toBe(400);
+    expect((await TestRequest.get(`/api/internal/employees/photo?person_id=${person.id}`, undefined, authHeader(token))).status).toBe(404);
+
+    const { token: noScope } = await ApiClientTest.createWithToken({ scopeNames: ["students:read"] });
+    expect((await TestRequest.get(`/api/internal/employees/photo?person_id=${person.id}`, undefined, authHeader(noScope))).status).toBe(403);
+  });
+
+  it.skipIf(!minioAvailable)("sends the photo bytes with an ETag, and 304 when the app already has that version", async () => {
+    await ensureBucketExists();
+    const bytes = Buffer.from("not-really-avif");
+    await minioClient.putObject(MINIO_BUCKET, objectKey(), bytes, bytes.length, { "Content-Type": "image/avif" });
+    await prismaClient.person.update({ where: { id: person.id }, data: { photo_object_key: objectKey(), photo_updated_at: new Date() } });
+    const { token } = await ApiClientTest.createWithToken({ scopeNames: [READ_SCOPE] });
+
+    const response = await TestRequest.get(`/api/internal/employees/photo?person_id=${person.id}`, undefined, authHeader(token));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/avif");
+    expect(Buffer.from(await response.arrayBuffer()).toString()).toBe("not-really-avif");
+    const etag = response.headers.get("etag")!;
+    expect(etag).toBe('"test-photo.avif"');
+
+    const again = await TestRequest.get(`/api/internal/employees/photo?person_id=${person.id}`, undefined, { ...authHeader(token), "If-None-Match": etag });
+    expect(again.status).toBe(304);
   });
 });
