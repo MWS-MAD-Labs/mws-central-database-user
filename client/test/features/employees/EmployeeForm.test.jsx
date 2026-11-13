@@ -292,6 +292,14 @@ describe('EmployeeForm', () => {
     expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('photo_url')
   })
 
+  it('keeps the hidden-details note out of the grid, so Gender sits right beside Email', async () => {
+    renderEmployeeForm({ mode: 'edit' })
+    const note = screen.queryByText('Sensitive details are hidden.')
+    expect(note).toBeVisible()
+    expect(note.compareDocumentPosition(field('full_name')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(field('email_local').nextElementSibling).toBe(field('gender'))
+  })
+
   it('says right away that an Employee ID is used, and does not let the form pass with it', async () => {
     const { user, onSubmit } = renderEmployeeForm({ mode: 'create', idAvailability: { available: false, reason: 'IN_USE', message: 'This Employee ID is already used' } })
     await user.type(field('employee_id').querySelector('input'), '1111111')

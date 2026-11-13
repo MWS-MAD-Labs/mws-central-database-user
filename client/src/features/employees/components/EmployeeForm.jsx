@@ -699,6 +699,9 @@ export function EmployeeForm({
               </div>
             </div>
           ) : null}
+          {!sensitiveFieldsRevealed ? (
+            <SensitiveHiddenNote className="mb-4 text-sm text-(--mws-muted)" />
+          ) : null}
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
             <LimitedField
               label="Full Name"
@@ -785,9 +788,6 @@ export function EmployeeForm({
                 />
               ) : null}
               </div>
-            ) : null}
-            {!sensitiveFieldsRevealed ? (
-              <SensitiveHiddenNote className="text-sm text-(--mws-muted) md:col-span-2" />
             ) : null}
             <Field label="Gender" name="gender" error={errors.gender} required>
               {sensitiveFieldsRevealed ? (
