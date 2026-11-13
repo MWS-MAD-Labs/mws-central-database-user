@@ -3,6 +3,7 @@ import { Camera } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
+import { UserAvatar } from "../../../components/ui/UserAvatar.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import { employeesApi } from "../../employees/api/employeesApi.js";
 import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from "../../../lib/fileSize.js";
@@ -152,17 +153,11 @@ export function ProfilePage() {
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="flex items-center gap-4 border-b border-(--mws-line) p-5">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#fff4d8] font-display text-lg font-bold text-[#8a6419]">
-            {isAdmin && user.avatar_url ? (
-              <img
-                src={user.avatar_url}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              getUserInitials(user)
-            )}
-          </div>
+          <UserAvatar
+            src={user.avatar_url}
+            initials={getUserInitials(user)}
+            className="h-14 w-14 text-lg"
+          />
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-lg font-semibold text-(--mws-charcoal)">
               {getUserDisplayName(user)}

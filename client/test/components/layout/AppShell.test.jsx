@@ -50,6 +50,17 @@ function scopedAdmin(overrides = {}) {
 }
 
 describe('AppShell', () => {
+  it('shows the photo of the signed-in person beside Logout, and the initials without one', async () => {
+    const { unmount } = renderShell(scopedAdmin({ avatar_url: 'https://example.org/sam.avif' }))
+    expect(await screen.findByText('Scoped Admin')).toBeVisible()
+    expect(document.querySelector('img[src="https://example.org/sam.avif"]')).not.toBeNull()
+    unmount()
+
+    renderShell(scopedAdmin({ avatar_url: null }))
+    expect(await screen.findByText('Scoped Admin')).toBeVisible()
+    expect(document.querySelector('img[src="https://example.org/sam.avif"]')).toBeNull()
+  })
+
   it('leaves room in the mobile header so the refresh button does not sit on the title', async () => {
     renderShell({ id: 'admin-1', type: 'admin', role: 'SUPER_ADMIN', full_name: 'Sam Admin', email: 'sam@example.test' })
     await screen.findByText('Sam Admin')
