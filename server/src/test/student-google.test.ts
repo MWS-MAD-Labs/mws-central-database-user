@@ -492,6 +492,77 @@ describe("the Google account of a student", () => {
       expect(staff).toMatchObject({ kind: "staff", failed: 0, missing: 0, failed_list: [], missing_list: [] });
     });
   });
+  describe("a shorter name in Google", () => {
+    const gUser = (id: string, email: string, name: [string, string]) =>
+      google.users.set(id, {
+        id, primaryEmail: email, givenName: name[0], familyName: name[1],
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
+      } as never);
+    const legacy = (token: string, email: string, full_name: string) =>
+      makeStudent(token, { email, full_name, legacy_nis: `OLD-${Math.round(Math.random() * 1e6)}`, nis: undefined }, true);
+    const link = (token: string, id: string) => TestRequest.post(url(id, "/provision"), {}, token);
+    const preview = async (token: string) =>
+      (await (await TestRequest.get("/api/admin/google/link-existing?kind=students", token)).json()).data;
+
+    it("is linked when its words are all in the name here, one by one and in bulk", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      const single = await legacy(accessToken, "test_google_ca@millennia21.id", "Syahlaa Khansaira Arghani");
+      const bulk = await legacy(accessToken, "test_google_cb@millennia21.id", "Nadia Putri Lestari");
+      gUser("g-a", "test_google_ca@millennia21.id", ["Syahlaa", "Khansaira"]);
+      gUser("g-b", "test_google_cb@millennia21.id", ["Nadia", "Putri"]);
+
+      expect((await preview(accessToken)).matches.map((item: { email: string }) => item.email).sort()).toEqual([
+        "test_google_ca@millennia21.id", "test_google_cb@millennia21.id",
+      ]);
+      const response = await link(accessToken, single);
+      expect(response.status).toBe(200);
+      expect((await personOf(single)).google_user_id).toBe("g-a");
+      await TestRequest.post("/api/admin/google/link-existing?kind=students", {}, accessToken);
+      expect((await personOf(bulk)).google_user_id).toBe("g-b");
+    });
+
+    it("is not enough with a single word", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      const id = await legacy(accessToken, "test_google_cc@millennia21.id", "Ari Putra");
+      gUser("g-c", "test_google_cc@millennia21.id", ["Ari", ""]);
+      const response = await link(accessToken, id);
+      expect(response.status).toBe(409);
+      expect(JSON.stringify(await response.json())).toContain("is not the name here");
+      expect((await preview(accessToken)).blocked).toEqual([expect.objectContaining({ email: "test_google_cc@millennia21.id" })]);
+    });
+
+    it("is refused for two students it could be, and says which two", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      const seira = await legacy(accessToken, "test_google_cd@millennia21.id", "Rizqi Nava Seira");
+      await legacy(accessToken, "test_google_ce@millennia21.id", "Rizqi Nava Vivy");
+      gUser("g-d", "test_google_cd@millennia21.id", ["Rizqi", "Nava"]);
+      gUser("g-e", "test_google_ce@millennia21.id", ["Rizqi", "Nava"]);
+
+      const data = await preview(accessToken);
+      expect(data.matches).toEqual([]);
+      expect(data.blocked).toHaveLength(2);
+      for (const item of data.blocked) expect(item.reason).toContain("Rizqi Nava Seira, Rizqi Nava Vivy");
+
+      const response = await link(accessToken, seira);
+      expect(response.status).toBe(409);
+      expect(JSON.stringify(await response.json())).toContain("fits more than one student");
+      expect((await personOf(seira)).google_user_id).toBeNull();
+    });
+
+    it("still counts a student who is already linked as one it could be", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(unitId);
+      const seira = await legacy(accessToken, "test_google_cf@millennia21.id", "Rizqi Nava Seira");
+      const vivy = await legacy(accessToken, "test_google_cg@millennia21.id", "Rizqi Nava Vivy");
+      // Seira has the whole name in Google, so she is linked by the exact rule.
+      gUser("g-f", "test_google_cf@millennia21.id", ["Rizqi Nava", "Seira"]);
+      expect((await link(accessToken, seira)).status).toBe(200);
+
+      gUser("g-g", "test_google_cg@millennia21.id", ["Rizqi", "Nava"]);
+      const response = await link(accessToken, vivy);
+      expect(response.status).toBe(409);
+      expect(JSON.stringify(await response.json())).toContain("Rizqi Nava Seira");
+    });
+  });
   describe("the photo of a student", () => {
     const photoForm = () => {
       const form = new FormData();

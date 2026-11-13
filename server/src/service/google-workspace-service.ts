@@ -174,12 +174,31 @@ export const resetSignInEmailLimitForTests = () => sentByAdmin.clear();
 
 export const restorableUntil = (deletedAt: Date): Date => new Date(deletedAt.getTime() + RESTORE_WINDOW_DAYS * 86_400_000);
 
-// Names compared loosely: case, punctuation and word order do not count.
 // How many names the list behind a number carries. The number itself is always the whole count.
 const LIST_LIMIT = 200;
 
+// The words of a name: case and punctuation do not count.
+const nameTokens = (value: string): string[] => value.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean);
+
+// Names compared loosely: case, punctuation and word order do not count.
 export function nameKey(value: string): string {
-  return value.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean).sort().join(" ");
+  return nameTokens(value).sort().join(" ");
+}
+
+// How a name in Google fits a name in Central. `partial` is a shorter name whose words (at least two) are all in the
+// longer one: Google often holds "Syahlaa Khansaira" for "Syahlaa Khansaira Arghani".
+export function namesFit(googleName: string, centralName: string): "exact" | "partial" | "none" {
+  if (nameKey(googleName) === nameKey(centralName)) return "exact";
+  const google = new Set(nameTokens(googleName));
+  const central = new Set(nameTokens(centralName));
+  const [small, large] = google.size <= central.size ? [google, central] : [central, google];
+  return small.size >= 2 && [...small].every((word) => large.has(word)) ? "partial" : "none";
+}
+
+// The other students a name in Google could also be. A partial name that fits more than one of them says nothing about
+// which one the account is.
+export function rivalsOf(googleName: string, personId: string, students: { id: string; full_name: string }[]): string[] {
+  return students.filter((student) => student.id !== personId && namesFit(googleName, student.full_name) !== "none").map((student) => student.full_name);
 }
 
 // Why a student cannot be linked to the Google account that has their email, or null when they can. The same rule for the
@@ -192,11 +211,16 @@ export function studentLegacyProblem(
   return legacy ? null : "Google already has this email. Only a legacy student can be linked to it. Use another email for this student";
 }
 
-export function studentNameProblem(user: { givenName: string; familyName: string }, fullName: string): string | null {
-  const googleName = `${user.givenName} ${user.familyName}`;
-  return nameKey(googleName) === nameKey(fullName)
-    ? null
-    : `The name in Google (${googleName.trim()}) is not the name here (${fullName}), so it is not linked`;
+export function studentNameProblem(user: { givenName: string; familyName: string }, fullName: string, rivals: string[] = []): string | null {
+  const googleName = `${user.givenName} ${user.familyName}`.trim();
+  const fit = namesFit(googleName, fullName);
+  if (fit === "exact") return null;
+  if (fit === "partial") {
+    return rivals.length === 0
+      ? null
+      : `The name in Google (${googleName}) fits more than one student: ${[fullName, ...rivals].sort().join(", ")}`;
+  }
+  return `The name in Google (${googleName}) is not the name here (${fullName}), so it is not linked`;
 }
 
 function deletedMessage(deletedAt?: Date | null): string {
@@ -682,7 +706,11 @@ export class GoogleWorkspaceService {
     if (legacyProblem) throw new ResponseError(409, legacyProblem);
     if (user.isAdmin) throw new ResponseError(400, "That email belongs to a Workspace admin, which is not managed from here");
     await assertNotLinkedElsewhere(user.id, person.id);
-    const nameProblem = studentNameProblem(user, person.full_name);
+    const classmates = await prismaClient.person.findMany({
+      where: { deleted_at: null, person_type: PersonType.STUDENT, id: { not: person.id } },
+      select: { id: true, full_name: true },
+    });
+    const nameProblem = studentNameProblem(user, person.full_name, rivalsOf(`${user.givenName} ${user.familyName}`, person.id, classmates));
     if (nameProblem) throw new ResponseError(409, nameProblem);
     const status = user.suspended ? GoogleSyncStatus.SUSPENDED : GoogleSyncStatus.ACTIVE;
     await markStatus(person.id, status, { google_user_id: user.id, user });
@@ -1459,6 +1487,10 @@ export class GoogleWorkspaceService {
       client.listUsers({ deleted: false }),
     ]);
     const byEmail = new Map(users.map((user) => [user.primaryEmail.toLowerCase(), user]));
+    // Every student in Central, linked or not: a short name in Google must not fit more than one of them.
+    const allStudents = students
+      ? await prismaClient.person.findMany({ where: { deleted_at: null, person_type: PersonType.STUDENT }, select: { id: true, full_name: true } })
+      : [];
     const linkedElsewhere = new Set(
       (await prismaClient.person.findMany({ where: { google_user_id: { not: null } }, select: { google_user_id: true } })).map(
         (row) => row.google_user_id as string,
@@ -1491,7 +1523,7 @@ export class GoogleWorkspaceService {
           studentLegacyProblem(person.google_sync_status, person.student) ??
           (user.isAdmin ? "That email belongs to a Workspace admin, which is not managed from here" : null) ??
           (linkedElsewhere.has(user.id) ? "That Google account is already linked to someone else in Central" : null) ??
-          studentNameProblem(user, person.full_name);
+          studentNameProblem(user, person.full_name, rivalsOf(`${user.givenName} ${user.familyName}`, person.id, allStudents));
         if (problem) {
           if (user.isAdmin) skipped.admin += 1;
           else if (linkedElsewhere.has(user.id)) skipped.linked_elsewhere += 1;
