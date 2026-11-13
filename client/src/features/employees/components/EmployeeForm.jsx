@@ -786,21 +786,6 @@ export function EmployeeForm({
               ) : null}
               </div>
             ) : null}
-            {!isCreate ? (
-              <Field
-                label="Photo URL"
-                hint="Old links only. Upload new photos from the detail page."
-              >
-                <TextInput
-                  type="url"
-                  value={values.photo_url}
-                  maxLength={500}
-                  onChange={(event) =>
-                    updateValue("photo_url", event.target.value)
-                  }
-                />
-              </Field>
-            ) : null}
             {!sensitiveFieldsRevealed ? (
               <SensitiveHiddenNote className="text-sm text-(--mws-muted) md:col-span-2" />
             ) : null}
@@ -1566,7 +1551,6 @@ function getInitialValues(mode, employee, options) {
     religion_other: identity.religion_other || "",
     birth_place: identity.birth_place || "",
     birth_date: dateInputFromIso(identity.birth_date),
-    photo_url: identity.photo_url || "",
     employee_id: formatEmployeeId(employment.employee_id || ""),
     status: statusInfo.status || (mode === "create" ? "ACTIVE" : ""),
     employment_type:
@@ -1663,7 +1647,6 @@ function buildFullPayload(values) {
         : null,
     birth_place: trimmedOrUndefined(values.birth_place),
     birth_date: isoFromDateInput(values.birth_date),
-    photo_url: trimmedOrUndefined(values.photo_url),
     employee_id: trimmedOrUndefined(formatEmployeeId(values.employee_id)),
     status: values.status,
     employment_type: values.employment_type,
@@ -1892,7 +1875,6 @@ const EMPLOYEE_DIFF_EXCLUDED_KEYS = ["contract_duration_months", "recovery_email
 
 const EMPLOYEE_DIFF_LABELS = {
   ...REQUIRED_FIELD_LABELS,
-  photo_url: "Photo URL",
   is_kpj_number: "Uses KPJ number",
   is_pc_mentor_eligible: "PC mentor eligible",
   pc_mentor_unit_ids: "PC mentor units",
@@ -1911,7 +1893,6 @@ const EMPLOYEE_FIELD_SECTIONS = {
   religion_other: "Identity",
   birth_place: "Identity",
   birth_date: "Identity",
-  photo_url: "Identity",
   mobile_phone: "Identity",
   residential_address: "Identity",
   marital_status: "Identity",

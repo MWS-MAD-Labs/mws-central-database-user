@@ -283,6 +283,15 @@ describe('EmployeeForm', () => {
     expect(screen.getByText('Only a Super Admin can change an email.')).toBeVisible()
   })
 
+  it('has no Photo URL field when editing, and never sends the link of the photo', async () => {
+    const { onSubmit } = renderEmployeeForm({ mode: 'edit' })
+    expect(screen.queryByText('Photo URL')).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue('https://example.test/employee.jpg')).not.toBeInTheDocument()
+    fireEvent.submit(document.querySelector('form'))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('photo_url')
+  })
+
   it('says right away that an Employee ID is used, and does not let the form pass with it', async () => {
     const { user, onSubmit } = renderEmployeeForm({ mode: 'create', idAvailability: { available: false, reason: 'IN_USE', message: 'This Employee ID is already used' } })
     await user.type(field('employee_id').querySelector('input'), '1111111')
