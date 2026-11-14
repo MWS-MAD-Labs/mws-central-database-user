@@ -1,5 +1,5 @@
 import { describe, afterEach, it, expect } from "bun:test";
-import { StudentTest, GradeTest, AcademicYearTest } from "./test-utils";
+import { StudentTest, GradeTest, AcademicYearTest, MasterDataTest } from "./test-utils";
 import { StudentEntryType } from "../generated/prisma/client";
 import { computeNisPrefix, generateNis } from "../utils/nis-generator";
 
@@ -56,6 +56,9 @@ describe("generateNis", () => {
     await StudentTest.delete();
     await GradeTest.delete();
     await AcademicYearTest.delete();
+    // StudentTest makes a TEST_UNIT_SHIELD unit for its grade. Left behind, the next file that calls
+    // MasterDataTest.create() fails on the unique unit name, depending on the order the files run in.
+    await MasterDataTest.delete();
   });
 
   it("allocates sequence 001 for a prefix with no existing students", async () => {
