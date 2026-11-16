@@ -68,7 +68,7 @@ function renderDetail({ user = superAdminUser, routes = detailRoutes() } = {}) {
 
 describe('EmployeeDetailPage', () => {
   it('renders loading, identity, actions, and sensitive-field privacy', async () => {
-    renderDetail()
+    const { user } = renderDetail()
     expect(screen.getByText('Loading employee...')).toBeVisible()
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Ari Employee' })).toBeVisible()
@@ -79,7 +79,22 @@ describe('EmployeeDetailPage', () => {
     expect(screen.getByRole('button', { name: 'Change Photo' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Show Sensitive Fields' })).toBeVisible()
     expect(screen.queryByText('1990')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Records' }))
     expect(await screen.findByText('No mutation history found.')).toBeVisible()
+  })
+
+  it('splits the page into tabs and keeps the heading above them', async () => {
+    const { user } = renderDetail()
+    await screen.findByRole('heading', { level: 1, name: 'Ari Employee' })
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('Contact')).toBeVisible()
+    expect(screen.queryByText('Job Position')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Employment' }))
+    expect(await screen.findByText('Job Position')).toBeVisible()
+    expect(screen.getByText('Google Account')).toBeVisible()
+    expect(screen.queryByText('Contact')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Ari Employee' })).toBeVisible()
   })
 
   it('renders a non-disclosing error state', async () => {
@@ -97,6 +112,7 @@ describe('EmployeeDetailPage', () => {
       ],
     })
     await screen.findByRole('heading', { level: 1, name: 'Ari Employee' })
+    await user.click(screen.getByRole('tab', { name: 'Records' }))
     // Disciplinary history is masked-by-default - reveal it before checking.
     await user.click(await screen.findByRole('button', { name: 'Show Disciplinary Actions' }))
     const revealDialog = await screen.findByRole('dialog', { name: 'View disciplinary history' })
@@ -121,6 +137,7 @@ describe('EmployeeDetailPage', () => {
     }]
     const { user, fetchMock } = renderDetail({ routes: detailRoutes({ history }) })
     await screen.findByRole('heading', { level: 1, name: 'Ari Employee' })
+    await user.click(screen.getByRole('tab', { name: 'Records' }))
 
     await user.click(await screen.findByTitle('Undo this Status change'))
     const dialog = screen.getByRole('dialog', { name: 'Roll back change' })

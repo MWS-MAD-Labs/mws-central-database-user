@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronRight, RefreshCw, Users } from 'lucide-react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
@@ -10,6 +10,9 @@ import { PanelFrame } from './PanelFrame.jsx'
 import { PeopleListDialog } from './PeopleListDialog.jsx'
 
 const keyOf = (kind) => ['google-link-preview', kind]
+
+// Looking at Google again asks it about everyone, so the button rests for a moment after each press.
+const CHECK_WAIT_MS = 15_000
 
 // What the tiles read while the answer is not in yet, so nothing below ever reads a property of nothing.
 const EMPTY = {
@@ -71,6 +74,29 @@ export function GoogleAccountsCard({ kind = 'staff' }) {
   const [open, setOpen] = useState(null)
   const show = (title, people, total) => () => setOpen({ title, people: people ?? [], total })
 
+  const [waitUntil, setWaitUntil] = useState(0)
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (waitUntil <= Date.now()) return undefined
+    const id = setInterval(() => {
+      const t = Date.now()
+      setNow(t)
+      if (t >= waitUntil) clearInterval(id)
+    }, 500)
+    return () => clearInterval(id)
+  }, [waitUntil])
+  const waiting = Math.max(0, Math.ceil((waitUntil - now) / 1000))
+  function checkAgain() {
+    if (waiting > 0 || query.isFetching) return
+    const t = Date.now()
+    setNow(t)
+    setWaitUntil(t + CHECK_WAIT_MS)
+    query.refetch()
+  }
+  const checkedAt = query.dataUpdatedAt
+    ? new Date(query.dataUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : null
+
   const link = useMutation({
     mutationFn: () => googleAccountApi.linkExisting(kind),
     onSuccess: (result) => {
@@ -118,17 +144,20 @@ export function GoogleAccountsCard({ kind = 'staff' }) {
       icon={Users}
       isFetching={query.isFetching}
       action={
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Check Google again"
-          title="Check Google again"
-          disabled={query.isFetching}
-          onClick={() => query.refetch()}
-        >
-          <RefreshCw size={15} />
-        </Button>
+        <div className="flex items-center gap-2">
+          {checkedAt ? <span className="text-xs text-(--mws-muted)">Checked {checkedAt}</span> : null}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Check Google again"
+            title={waiting > 0 ? `Check again in ${waiting}s` : 'Check Google again'}
+            disabled={query.isFetching || waiting > 0}
+            onClick={checkAgain}
+          >
+            <RefreshCw size={15} />
+          </Button>
+        </div>
       }
     >
       <div className="space-y-5 p-5">

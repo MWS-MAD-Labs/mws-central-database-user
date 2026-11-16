@@ -315,7 +315,27 @@ describe("google workspace accounts", () => {
       expect(response.status).toBe(200);
       const data = (await response.json()).data;
       expect(data).toMatchObject({ linked: true, status: "ACTIVE", protected_account: true });
-      expect(data.can).toEqual({ create: false, link_existing: false, manage: false, takeover: false });
+      // The owner gets the sign-in details, password and recovery email, and looking again; never Suspend.
+      expect(data.can).toEqual({ create: true, link_existing: false, manage: false, takeover: true, check: true });
+    });
+
+    it("leaves a protected account to its owner: another Super Admin may only look again", async () => {
+      process.env.GOOGLE_WORKSPACE_TEST_PREFIX = "test_super";
+      google.users.set("own-1", {
+        id: "own-1", primaryEmail: PROTECTED_EMAIL, givenName: "Super", familyName: "Admin",
+        suspended: false, isAdmin: true, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken, { email: PROTECTED_EMAIL });
+      const admin = await prismaClient.adminUser.findFirstOrThrow({ where: { email: PROTECTED_EMAIL } });
+      await prismaClient.adminUser.update({ where: { id: admin.id }, data: { email: "test_other_admin@millennia21.id" } });
+      process.env.PROTECTED_SUPER_ADMIN_EMAILS = `${process.env.PROTECTED_SUPER_ADMIN_EMAILS ?? ""},${PROTECTED_EMAIL}`;
+
+      const data = (await (await TestRequest.get(`/api/admin/employees/${json.data.id}/google`, accessToken)).json()).data;
+      expect(data.can).toEqual({ create: false, link_existing: false, manage: false, takeover: false, check: true });
+      const reset = await TestRequest.post(`/api/admin/employees/${json.data.id}/google/reset-password`, { language: "en" }, accessToken);
+      expect(reset.status).toBe(403);
+      expect(google.passwords).toHaveLength(0);
     });
 
     it("does not link it when somebody else makes the record", async () => {
@@ -1056,6 +1076,18 @@ describe("google workspace accounts", () => {
       expect((await personOf(a.employee!.id)).google_user_id).toBe("g-a");
       expect((await personOf(taken.employee!.id)).google_user_id).toBeNull();
       expect(await prismaClient.auditLog.count({ where: { action: AuditAction.GOOGLE_ACCOUNT_PROVISION } })).toBe(2);
+    });
+
+    it("takes the Google photo of each staff member it links, over the one Central had", async () => {
+      google.users.set("g-ph", gUser("g-ph", "test_google_photo@millennia21.id"));
+      google.googlePhotos.set("g-ph", await sharp({ create: { width: 200, height: 200, channels: 3, background: "#336699" } }).png().toBuffer());
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const a = await unlinked("test_google_photo@millennia21.id");
+      await prismaClient.person.update({ where: { id: a.id }, data: { photo_object_key: "employee-photos/old/own.avif" } });
+
+      const done = (await (await TestRequest.post("/api/admin/google/link-existing", {}, accessToken)).json()).data;
+      expect(done).toMatchObject({ applied: true, linked: 1 });
+      expect((await personOf(a.employee!.id)).photo_object_key).toContain(`employee-photos/${a.employee!.id}/`);
     });
 
     it("says what it could and could not find out about an unlinked person", async () => {
@@ -1835,21 +1867,17 @@ describe("google workspace accounts", () => {
           expect(second.google_photo_hash).not.toBe(first.google_photo_hash);
         });
 
-        it("keeps a photo Central already had the first time and only notes where Google stood", async () => {
+        it("replaces a photo Central already had, the first time too", async () => {
           const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
           const { json } = await create(accessToken);
           const person = await personOf(json.data.id);
           await prismaClient.person.update({ where: { id: person.id }, data: { photo_object_key: "employee-photos/keep/own.avif" } });
           google.googlePhotos.set(person.google_user_id!, await png());
 
-          expect(await EmployeePhotoService.syncFromGoogle(person.id)).toBe(false);
-          const noted = await personOf(json.data.id);
-          expect(noted.photo_object_key).toBe("employee-photos/keep/own.avif");
-          expect(noted.google_photo_hash).not.toBeNull();
-
-          google.googlePhotos.set(person.google_user_id!, await other());
           expect(await EmployeePhotoService.syncFromGoogle(person.id)).toBe(true);
-          expect((await personOf(json.data.id)).photo_object_key).toContain(`employee-photos/${json.data.id}/`);
+          const taken = await personOf(json.data.id);
+          expect(taken.photo_object_key).toContain(`employee-photos/${json.data.id}/`);
+          expect(taken.google_photo_hash).not.toBeNull();
         });
 
         it("does not remove the photo in Central when Google has none", async () => {

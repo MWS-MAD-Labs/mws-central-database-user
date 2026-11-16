@@ -457,7 +457,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
           </span>
         ) : null}
       </div>
-      {can.create || can.manage || can.takeover ? (
+      {can.create || can.manage || can.takeover || can.check ? (
         <div className="flex gap-1">
           {can.create && status.linked && email && !locked && !isStudent ? (
             <Button
@@ -513,7 +513,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
               <Play size={15} />
             </CooldownButton>
           ) : null}
-          {can.manage && status.linked ? (
+          {(can.manage || can.check) && status.linked ? (
             <CooldownButton
               until={status.check_available_at}
               total={cd.check}

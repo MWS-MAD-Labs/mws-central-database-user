@@ -4,9 +4,10 @@ import { ListPopover } from '../../../components/ui/ListPopover.jsx'
 import { ArrowLeft, Camera, CalendarClock, Edit, Mail, Phone, Trash2, UserRound, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
+import { Tabs } from '../../../components/ui/Tabs.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
@@ -195,6 +196,29 @@ export function EmployeeDetailPage() {
     fetchPii()
   }, [piiAllowed, pii, isSelfView, sensitiveFieldsRevealed, fetchPii])
 
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'employment', label: 'Employment' },
+    { id: 'assignments', label: 'Assignments' },
+    { id: 'records', label: 'Records' },
+  ]
+  const requestedTab = searchParams.get('tab') || 'overview'
+  const activeTab = tabs.some((tab) => tab.id === requestedTab) ? requestedTab : 'overview'
+
+  useEffect(() => {
+    if (requestedTab === activeTab) return
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', activeTab)
+    setSearchParams(next, { replace: true })
+  }, [activeTab, requestedTab, searchParams, setSearchParams])
+
+  function changeTab(tab) {
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', tab)
+    setSearchParams(next)
+  }
+
   async function handleDelete() {
     const confirmed = await confirm({
       title: 'Archive employee',
@@ -355,46 +379,12 @@ export function EmployeeDetailPage() {
               </div>
             </div>
 
-            <dl className="p-5">
-              <DetailRow label="Nick Name" value={employee.identity.nick_name} />
-              <DetailRow label="Employee ID" value={employee.employment.employee_id} />
-              <DetailRow label="Unit" value={employee.employment.unit} />
-              <DetailRow label="Job Position" value={employee.employment.job_position} />
-              <DetailRow label="Job Level" value={employee.employment.job_level} />
-              <DetailRow
-                label="PC Mentor Eligible"
-                value={
-                  employee.employment.is_pc_mentor_eligible
-                    ? employee.employment.pc_mentor_units?.length
-                      ? `Yes (${employee.employment.pc_mentor_units.map((unit) => unit.name).join(', ')})`
-                      : 'Yes (own unit only)'
-                    : 'No'
-                }
-              />
-              <DetailRow label="Building" value={employee.employment.building} />
-              <DetailRow
-                label="Join Date"
-                value={formatDate(employee.employment.join_date)}
-                warning={joinDateWarning}
-              />
-              <DetailRow
-                label="Days Worked"
-                value={formatTenure(
-                  employee.employment.join_date,
-                  employee.status_info.last_working_date,
-                )}
-              />
-              {employee.status_info.employment_type !== 'PERMANENT' ? (
-                <DetailRow
-                  label="Contract End Date"
-                  value={formatDate(employee.status_info.contract_end_date)}
-                  warning={contractEndDateWarning}
-                />
-              ) : null}
-              <DetailRow label="Created At" value={formatDate(employee.created_at)} />
-            </dl>
           </section>
 
+          <Tabs label="Employee detail sections" tabs={tabs} active={activeTab} onChange={changeTab} />
+
+          {activeTab === 'overview' ? (
+            <>
           <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
             <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
               Contact
@@ -405,7 +395,6 @@ export function EmployeeDetailPage() {
                 icon={Phone}
                 value={employee.identity.mobile_phone || '-'}
               />
-              <GoogleAccountRow resource="employees" id={employeeId} email={employee.identity.email} name={employee.identity.full_name} />
             </div>
             {'residential_address' in employee.identity ? (
               <dl className="mt-3 border-t border-(--mws-line) pt-1">
@@ -514,6 +503,62 @@ export function EmployeeDetailPage() {
           </section>
         ) : null}
 
+            </>
+          ) : null}
+
+          {activeTab === 'employment' ? (
+            <>
+          <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
+              Employment
+            </h2>
+            <dl>
+              <DetailRow label="Nick Name" value={employee.identity.nick_name} />
+              <DetailRow label="Employee ID" value={employee.employment.employee_id} />
+              <DetailRow label="Unit" value={employee.employment.unit} />
+              <DetailRow label="Job Position" value={employee.employment.job_position} />
+              <DetailRow label="Job Level" value={employee.employment.job_level} />
+              <DetailRow
+                label="PC Mentor Eligible"
+                value={
+                  employee.employment.is_pc_mentor_eligible
+                    ? employee.employment.pc_mentor_units?.length
+                      ? `Yes (${employee.employment.pc_mentor_units.map((unit) => unit.name).join(', ')})`
+                      : 'Yes (own unit only)'
+                    : 'No'
+                }
+              />
+              <DetailRow label="Building" value={employee.employment.building} />
+              <DetailRow
+                label="Join Date"
+                value={formatDate(employee.employment.join_date)}
+                warning={joinDateWarning}
+              />
+              <DetailRow
+                label="Days Worked"
+                value={formatTenure(
+                  employee.employment.join_date,
+                  employee.status_info.last_working_date,
+                )}
+              />
+              {employee.status_info.employment_type !== 'PERMANENT' ? (
+                <DetailRow
+                  label="Contract End Date"
+                  value={formatDate(employee.status_info.contract_end_date)}
+                  warning={contractEndDateWarning}
+                />
+              ) : null}
+              <DetailRow label="Created At" value={formatDate(employee.created_at)} />
+            </dl>
+          </section>
+
+          <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
+              Google Account
+            </h2>
+            <GoogleAccountRow resource="employees" id={employeeId} email={employee.identity.email} name={employee.identity.full_name} />
+          </section>
+
         <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
           <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
             Offboarding
@@ -524,6 +569,11 @@ export function EmployeeDetailPage() {
           </dl>
         </section>
 
+            </>
+          ) : null}
+
+          {activeTab === 'records' ? (
+            <>
         {canViewDisciplinary ? (
           <EmployeeDisciplinaryActionsPanel
             employeeId={employeeId}
@@ -534,6 +584,11 @@ export function EmployeeDetailPage() {
           />
         ) : null}
         <EmployeeMutationHistoryPanel employeeId={employeeId} canWrite={canWrite} />
+            </>
+          ) : null}
+
+          {activeTab === 'assignments' ? (
+            <>
         <EmployeeTeachingAssignmentsPanel
           employeeId={employeeId}
           isTeachingRole={employee.employment.is_teaching_role}
@@ -547,6 +602,8 @@ export function EmployeeDetailPage() {
           employeeId={employeeId}
           isTeachingRole={employee.employment.is_teaching_role}
         />
+            </>
+          ) : null}
         </div>
       ) : null}
 

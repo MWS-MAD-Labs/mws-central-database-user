@@ -2,9 +2,10 @@ import { SensitiveHiddenNote, SensitiveToggle } from "../../../components/ui/Sen
 import { ArrowLeft, Edit, Mail, Phone, Trash2, UserRound } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
+import { Tabs } from '../../../components/ui/Tabs.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { FlagBadgeList } from '../../../components/ui/FlagBadgeList.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
@@ -142,6 +143,29 @@ export function InternDetailPage() {
     }
   }
 
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'employment', label: 'Employment' },
+    { id: 'assignments', label: 'Assignments' },
+    { id: 'records', label: 'Records' },
+  ]
+  const requestedTab = searchParams.get('tab') || 'overview'
+  const activeTab = tabs.some((tab) => tab.id === requestedTab) ? requestedTab : 'overview'
+
+  useEffect(() => {
+    if (requestedTab === activeTab) return
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', activeTab)
+    setSearchParams(next, { replace: true })
+  }, [activeTab, requestedTab, searchParams, setSearchParams])
+
+  function changeTab(tab) {
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', tab)
+    setSearchParams(next)
+  }
+
   return (
     <div className="min-w-0">
       <PageHeader
@@ -204,28 +228,12 @@ export function InternDetailPage() {
               </div>
             </div>
 
-            <dl className="p-5">
-              <DetailRow label="Nick Name" value={intern.identity.nick_name} />
-              <DetailRow label="Unit" value={intern.employment.unit} />
-              <DetailRow label="Job Position" value={intern.employment.job_position} />
-              <DetailRow
-                label="PC Mentor Eligible"
-                value={
-                  intern.employment.is_pc_mentor_eligible
-                    ? intern.employment.pc_mentor_units?.length
-                      ? `Yes (${intern.employment.pc_mentor_units.map((unit) => unit.name).join(', ')})`
-                      : 'Yes (own unit only)'
-                    : 'No'
-                }
-              />
-              <DetailRow label="Building" value={intern.employment.building} />
-              <DetailRow label="Join Date" value={formatDate(intern.employment.join_date)} warning={joinDateWarning} />
-              <DetailRow label="End Date" value={formatDate(intern.employment.end_date)} warning={endDateWarning} />
-              <DetailRow label="Notes" value={intern.notes} />
-              <DetailRow label="Created At" value={formatDate(intern.created_at)} />
-            </dl>
           </section>
 
+          <Tabs label="Intern detail sections" tabs={tabs} active={activeTab} onChange={changeTab} />
+
+          {activeTab === 'overview' ? (
+            <>
           <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
             <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
               Contact
@@ -235,7 +243,6 @@ export function InternDetailPage() {
               {canViewContactPii ? (
                 <ContactRow icon={Phone} value={intern.identity.mobile_phone || '-'} />
               ) : null}
-              <GoogleAccountRow resource="interns" id={internId} email={intern.identity.email} name={intern.identity.full_name} />
             </div>
 
             {hasDetail ? (
@@ -278,6 +285,48 @@ export function InternDetailPage() {
             ) : null}
           </section>
 
+            </>
+          ) : null}
+
+          {activeTab === 'employment' ? (
+            <>
+          <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
+              Employment
+            </h2>
+            <dl>
+              <DetailRow label="Nick Name" value={intern.identity.nick_name} />
+              <DetailRow label="Unit" value={intern.employment.unit} />
+              <DetailRow label="Job Position" value={intern.employment.job_position} />
+              <DetailRow
+                label="PC Mentor Eligible"
+                value={
+                  intern.employment.is_pc_mentor_eligible
+                    ? intern.employment.pc_mentor_units?.length
+                      ? `Yes (${intern.employment.pc_mentor_units.map((unit) => unit.name).join(', ')})`
+                      : 'Yes (own unit only)'
+                    : 'No'
+                }
+              />
+              <DetailRow label="Building" value={intern.employment.building} />
+              <DetailRow label="Join Date" value={formatDate(intern.employment.join_date)} warning={joinDateWarning} />
+              <DetailRow label="End Date" value={formatDate(intern.employment.end_date)} warning={endDateWarning} />
+              <DetailRow label="Notes" value={intern.notes} />
+              <DetailRow label="Created At" value={formatDate(intern.created_at)} />
+            </dl>
+          </section>
+
+          <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
+              Google Account
+            </h2>
+            <GoogleAccountRow resource="interns" id={internId} email={intern.identity.email} name={intern.identity.full_name} />
+          </section>
+            </>
+          ) : null}
+
+          {activeTab === 'assignments' ? (
+            <>
           <InternTeachingAssignmentsPanel
             internId={internId}
             isTeachingRole={intern.employment.is_teaching_position}
@@ -291,7 +340,12 @@ export function InternDetailPage() {
             internId={internId}
             isTeachingRole={intern.employment.is_teaching_position}
           />
-          <InternMutationHistoryPanel internId={internId} canWrite={canWrite} />
+            </>
+          ) : null}
+
+          {activeTab === 'records' ? (
+            <InternMutationHistoryPanel internId={internId} canWrite={canWrite} />
+          ) : null}
         </div>
       ) : null}
     </div>

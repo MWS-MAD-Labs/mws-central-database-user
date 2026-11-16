@@ -51,6 +51,20 @@ const many = (count, over = {}) =>
   )
 
 describe('GoogleAccountsCard', () => {
+  it('rests the Check Google again button for a moment after each press', async () => {
+    const { user, fetchMock } = renderCard('staff', base)
+    await screen.findByText('Linked')
+    const check = screen.getByRole('button', { name: 'Check Google again' })
+    const calls = () => fetchMock.mock.calls.filter(([url]) => String(url).includes('/google/link-existing')).length
+    expect(calls()).toBe(1)
+
+    await user.click(check)
+    await waitFor(() => expect(calls()).toBe(2))
+    expect(screen.getByRole('button', { name: 'Check Google again' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Check Google again' })).toHaveAttribute('title', expect.stringMatching(/^Check again in \d+s$/))
+    expect(screen.getByText(/^Checked /)).toBeVisible()
+  })
+
   it('opens the names behind Failed, with what Google said', async () => {
     renderCard('staff', {
       ...base,

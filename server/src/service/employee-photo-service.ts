@@ -345,18 +345,17 @@ export class EmployeePhotoService {
     await removeObjectIfExists(previous?.photo_object_key ?? null);
   }
 
-  // Takes the photo of the linked Google account. Google wins for an employee: a photo that differs from the last one seen
-  // replaces the one in Central. The first time, a photo Central already has is kept and only noted as the starting
-  // point, so a photo that was never sent to Google is not lost; Google changes after that win. Returns whether the
-  // photo in Central changed.
+  // Takes the photo of the linked Google account. Google always wins for an employee: a photo that differs from the last
+  // one seen replaces the one in Central, the first time too. Returns whether the photo in Central changed.
   static async syncFromGoogle(personId: string, context: AuditRequestContext = {}): Promise<boolean> {
     const person = await prismaClient.person.findFirst({
       where: { id: personId, deleted_at: null, employee: { deleted_at: null } },
-      select: { email: true, photo_object_key: true, photo_url: true, google_photo_hash: true, employee: { select: { id: true } } },
+      select: { email: true, google_photo_hash: true, employee: { select: { id: true } } },
     });
     if (!person?.employee) return false;
     try {
-      assertAllowedTarget(person.email);
+      // Reading the photo of a protected Super Admin's own account changes nothing in Google.
+      assertAllowedTarget(person.email, { allowProtected: true });
     } catch {
       return false;
     }
@@ -364,10 +363,6 @@ export class EmployeePhotoService {
     if (!photo || !detectImageMimeType(photo.data)) return false;
     const hash = sha256(photo.data);
     if (hash === person.google_photo_hash) return false;
-    if (!person.google_photo_hash && (person.photo_object_key || person.photo_url)) {
-      await prismaClient.person.update({ where: { id: personId }, data: { google_photo_hash: hash } });
-      return false;
-    }
     let processed: Buffer;
     try {
       processed = await processPhoto(photo.data);

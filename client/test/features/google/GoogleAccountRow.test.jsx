@@ -203,6 +203,12 @@ describe("GoogleAccountRow", () => {
     expect(buttonNames()).toEqual(["Sign-in instructions"]);
   });
 
+  it("shows a Super Admin looking at a protected account only the check, and never Suspend", async () => {
+    setup(only({ check: true }));
+    await screen.findByText("Linked");
+    expect(buttonNames()).toEqual(["Check Google again"]);
+  });
+
   it("shows a Super Admin the account work but not the two takeover actions", async () => {
     setup(only({ create: true, manage: true }));
     await screen.findByText("Linked");

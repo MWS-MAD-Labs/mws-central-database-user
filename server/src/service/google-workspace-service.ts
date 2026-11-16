@@ -306,6 +306,11 @@ function organizationalUnitFor(person: Pick<Person, "person_type">): string | un
   return process.env[key]?.trim() || undefined;
 }
 
+// A protected Super Admin's own account: they may manage it themselves, nobody else may.
+export function isOwnProtectedAccount(email: string, admin?: { email?: string }): boolean {
+  return Boolean(admin?.email) && admin!.email!.trim().toLowerCase() === email.trim().toLowerCase() && isProtectedSuperAdminEmail(email);
+}
+
 // Only people held in Central, on the organization's domain, and never an admin account. Outside production, a client
 // that talks to the real Google only takes addresses that start with GOOGLE_WORKSPACE_TEST_PREFIX, because staging and
 // development share the production Workspace.
@@ -639,7 +644,7 @@ export class GoogleWorkspaceService {
   static async deliverPassword(
     personId: string,
     input: { to?: string; password: string; parentName?: string; reset?: boolean; language?: SignInLanguage },
-    admin: Pick<AdminUser, "id">,
+    admin: Pick<AdminUser, "id" | "email">,
     context: AuditRequestContext = {},
   ): Promise<{ delivered_to: string } | { not_sent: NotSentReason }> {
     try {
@@ -674,7 +679,7 @@ export class GoogleWorkspaceService {
     result: GoogleSyncResult,
     personId: string,
     input: { to: string; parentName?: string; language?: SignInLanguage },
-    admin: Pick<AdminUser, "id">,
+    admin: Pick<AdminUser, "id" | "email">,
     context: AuditRequestContext = {},
   ): Promise<GoogleSyncResult> {
     if (!result.temporary_password) return result;
@@ -784,7 +789,7 @@ export class GoogleWorkspaceService {
   // name in Central, so a mailbox that belongs to somebody else is left alone.
   static async resetWaiting(
     personId: string,
-    admin: Pick<AdminUser, "id">,
+    admin: Pick<AdminUser, "id" | "email">,
     input: { language: SignInLanguage },
     context: AuditRequestContext = {},
   ): Promise<{ sent_to: string }> {
@@ -792,7 +797,7 @@ export class GoogleWorkspaceService {
     if (person.google_sync_status !== GoogleSyncStatus.PENDING_CLAIM) {
       throw new ResponseError(400, "This account is not waiting for its owner to sign in");
     }
-    assertAllowedTarget(person.email);
+    assertAllowedTarget(person.email, { allowProtected: isOwnProtectedAccount(person.email, admin) });
     await this.assertNotLocked(personId);
     const mailer = getMailer();
     if (!mailer.enabled) throw new ResponseError(503, "Email is not set up on this server");
@@ -929,11 +934,11 @@ export class GoogleWorkspaceService {
   // The new password is returned once to the admin who asked. It is not stored, logged or put in the audit entry.
   static async resetPassword(
     personId: string,
-    admin: Pick<AdminUser, "id">,
+    admin: Pick<AdminUser, "id" | "email">,
     context: AuditRequestContext = {},
   ): Promise<{ password: string }> {
     const person = await load(personId);
-    assertAllowedTarget(person.email);
+    assertAllowedTarget(person.email, { allowProtected: isOwnProtectedAccount(person.email, admin) });
     if (!person.google_user_id) {
       throw new ResponseError(404, "This person has no Google account yet. Create it first");
     }
@@ -990,7 +995,7 @@ export class GoogleWorkspaceService {
     personId: string,
     // `parentName` is set for a student: the mail is written to that parent or guardian, and `to` is theirs.
     input: { to?: string; language: SignInLanguage; password: string; parentName?: string; reset?: boolean },
-    admin: Pick<AdminUser, "id">,
+    admin: Pick<AdminUser, "id" | "email">,
     context: AuditRequestContext = {},
   ): Promise<{ sent: true }> {
     const mailer = getMailer();
@@ -1009,7 +1014,7 @@ export class GoogleWorkspaceService {
       },
     });
     if (!person) throw new ResponseError(404, "Person not found");
-    assertAllowedTarget(person.email);
+    assertAllowedTarget(person.email, { allowProtected: isOwnProtectedAccount(person.email, admin) });
     if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet. Create it first");
     await this.assertNotLocked(personId);
     // Without an address the mail goes to the recovery email Google holds, which this server reads and never returns.
@@ -1140,10 +1145,10 @@ export class GoogleWorkspaceService {
   }
 
   // The recovery email lives only in Google. This shows it with most of it hidden, read from Google each time.
-  static async recoveryEmailOf(personId: string): Promise<{ recovery_email: string | null }> {
+  static async recoveryEmailOf(personId: string, admin?: { email?: string }): Promise<{ recovery_email: string | null }> {
     const person = await load(personId);
     if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet");
-    assertAllowedTarget(person.email);
+    assertAllowedTarget(person.email, { allowProtected: isOwnProtectedAccount(person.email, admin) });
     try {
       const user = await getDirectoryClient().findUser(person.google_user_id);
       if (!user) throw new ResponseError(404, "The account is not in Google Workspace any more");
@@ -1174,12 +1179,12 @@ export class GoogleWorkspaceService {
   static async changeRecoveryEmail(
     personId: string,
     recoveryEmail: string,
-    admin: Pick<AdminUser, "id">,
+    admin: Pick<AdminUser, "id" | "email">,
     context: AuditRequestContext = {},
     options: { onlyIfEmpty?: boolean } = {},
   ): Promise<void> {
     const person = await load(personId);
-    assertAllowedTarget(person.email);
+    assertAllowedTarget(person.email, { allowProtected: isOwnProtectedAccount(person.email, admin) });
     if (!person.google_user_id) throw new ResponseError(404, "This person has no Google account yet");
     this.assertRecoveryIsNotOwn(recoveryEmail, person.email);
     await assertDomainCanReceiveEmail(recoveryEmail);
@@ -1339,7 +1344,8 @@ export class GoogleWorkspaceService {
       return "simulated";
     }
     try {
-      assertAllowedTarget(person.email);
+      // Only reads: a protected account may be looked at again, never changed.
+      assertAllowedTarget(person.email, { allowProtected: true });
     } catch {
       return "skipped";
     }
@@ -1599,6 +1605,8 @@ export class GoogleWorkspaceService {
             recovery_email_set: false,
           });
           linked += 1;
+          // Staff take the Google photo right away, so the list does not keep an older one until the next sweep.
+          if (!students) await this.tryPullPhoto(person.id);
         } catch (error) {
           logger.error(`Linking the Google account of person ${person.id} failed`, error);
         }

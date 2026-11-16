@@ -139,6 +139,13 @@ async function guardianOf(studentId: string, parentId?: string) {
   return { ...guardian, email: guardian.email };
 }
 
+// On a protected account only looking again is open to every Super Admin. The owner also gets the sign-in details, the
+// password and the recovery email, but never Suspend, so nobody locks themselves out. The server asks again.
+function protectedFlags(admin: Admin, email: string) {
+  const owner = isProtected(admin) && admin.email.trim().toLowerCase() === email.trim().toLowerCase();
+  return { create: owner, link_existing: false, manage: false, takeover: owner, check: isSuperAdmin(admin) };
+}
+
 export class GoogleAccountController {
   static status(kind: Kind) {
     return async (c: Context<{ Variables: AdminVariables }>) => {
@@ -147,6 +154,9 @@ export class GoogleAccountController {
       // Looking again at Google on demand is for Super Admins.
       const refresh = c.req.query("refresh") === "true" && isSuperAdmin(admin);
       const status = await GoogleWorkspaceService.statusOf(target.personId, { refresh });
+      const email = status.protected_account
+        ? ((await prismaClient.person.findUnique({ where: { id: target.personId }, select: { email: true } }))?.email ?? "")
+        : "";
       // What this admin may do, so the page only shows those buttons.
       const guardians = target.studentId ? await guardiansOf(target.studentId, admin) : undefined;
       // Linking an account Google already has: a student's is for a Super Admin and a legacy student only.
@@ -160,7 +170,7 @@ export class GoogleAccountController {
         data: {
           ...status,
           can: status.protected_account
-            ? { create: false, link_existing: false, manage: false, takeover: false }
+            ? protectedFlags(admin, email)
             : { create: canCreate(admin, target), link_existing: linkExisting, manage: isSuperAdmin(admin), takeover: isProtected(admin) },
           ...(guardians ? { guardians } : {}),
         },
@@ -288,7 +298,7 @@ export class GoogleAccountController {
       assertSuperAdmin(c);
       const personId = await personIdOf(kind, c.req.param("id"), c.var.admin);
       c.header("Cache-Control", "no-store");
-      return c.json({ data: await GoogleWorkspaceService.recoveryEmailOf(personId) });
+      return c.json({ data: await GoogleWorkspaceService.recoveryEmailOf(personId, c.var.admin) });
     };
   }
 

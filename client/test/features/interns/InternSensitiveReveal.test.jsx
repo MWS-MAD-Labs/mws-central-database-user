@@ -75,6 +75,21 @@ function renderDetail(extraRoutes = []) {
 }
 
 describe('Intern sensitive identity', () => {
+  it('splits the page into tabs: contact on Overview, details and Google on Employment', async () => {
+    const { user } = renderDetail()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Rina Intern' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('Contact')).toBeVisible()
+    expect(screen.queryByText('Job Position')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Employment' }))
+    expect(await screen.findByText('Job Position')).toBeVisible()
+    expect(screen.getByText('Google Account')).toBeVisible()
+
+    await user.click(screen.getByRole('tab', { name: 'Records' }))
+    expect(screen.queryByText('Job Position')).not.toBeInTheDocument()
+  })
+
   it('keeps gender, religion and birth details hidden until Show, and Hide forgets the reveal', async () => {
     const { user, fetchMock } = renderDetail()
     expect(await screen.findByRole('heading', { level: 1, name: 'Rina Intern' })).toBeVisible()
