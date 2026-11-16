@@ -386,21 +386,19 @@ describe('MasterData', () => {
       expect(screen.getByText(/1 Workspace admin/)).toBeVisible()
       expect(screen.getByText('Not Checked')).toBeVisible()
       expect(screen.getByText(/may not look up from here/)).toBeVisible()
-      expect(screen.getByRole('button', { name: 'Link' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Sync Now' })).toBeEnabled()
     })
 
-    it('asks first and then links', async () => {
+    it('syncs in one press, without asking first', async () => {
       const { user, fetchMock } = renderPage({
         route: '/master-data?tab=employment&section=google-accounts',
         routes: routes([
-          { path: '/api/admin/google/link-existing', method: 'POST', response: jsonResponse({ data: { ...preview, applied: true, linked: 2, matches: [] } }) },
+          { path: '/api/admin/google/sync', method: 'POST', response: () => jsonResponse({ data: { linked: 2, refreshed: 1, photos: 3 } }) },
         ]),
       })
-      await user.click(await screen.findByRole('button', { name: 'Link' }))
-      const dialog = await screen.findByRole('dialog', { name: 'Link Existing Accounts' })
-      await user.click(within(dialog).getByRole('button', { name: 'Link' }))
+      await user.click(await screen.findByRole('button', { name: 'Sync Now' }))
       await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
-        String(url).endsWith('/google/link-existing') && options.method === 'POST')).toBe(true))
+        String(url).endsWith('/google/sync') && options.method === 'POST')).toBe(true))
     })
 
     it('does not break while the answer is not in yet, or when the reply is not a whole answer', async () => {
@@ -418,13 +416,13 @@ describe('MasterData', () => {
       expect(await screen.findByText('Loading...')).toBeVisible()
     })
 
-    it('has nothing to link when everyone is already linked', async () => {
+    it('keeps Sync Now available when everyone is already linked', async () => {
       renderPage({
         route: '/master-data?tab=employment&section=google-accounts',
         routes: [{ path: '/api/admin/google/link-existing', method: 'GET', response: jsonResponse({ data: { ...preview, matches: [] } }) }],
       })
       expect(await screen.findByText('In Google, Not Linked')).toBeVisible()
-      expect(screen.getByRole('button', { name: 'Link' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Sync Now' })).toBeEnabled()
     })
   })
 })
