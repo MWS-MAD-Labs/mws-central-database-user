@@ -52,6 +52,15 @@ export class GoogleController {
     return c.json({ data });
   }
 
+  // Link, look again and take the Google photos in one go. Super Admins only; it rests between runs.
+  static async sync(c: Context<{ Variables: AdminVariables }>) {
+    if (c.var.admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(403, "Forbidden: only a Super Admin can sync Google accounts");
+    }
+    const data = await GoogleWorkspaceService.syncNow({ kind: kindOf(c), admin: c.var.admin, context: getAuditRequestContext(c) });
+    return c.json({ data });
+  }
+
   // Students the rule refused, linked by a protected Super Admin who looked at the two names. The same checks as the
   // bulk link stay, except the legacy rule and the name.
   static async linkStudents(c: Context<{ Variables: AdminVariables }>) {

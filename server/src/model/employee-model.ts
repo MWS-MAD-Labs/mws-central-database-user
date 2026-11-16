@@ -258,6 +258,8 @@ export type EmployeeResponse = {
     residential_address?: string | null;
     // Expose only the warning, not the sensitive birth date.
     has_birth_date_warning: boolean;
+    // Linked to Google: the photo comes from there and is not changed in Central.
+    photo_from_google: boolean;
   };
 
   employment: {
@@ -497,6 +499,7 @@ export function toEmployeeResponse(
       nick_name: person.nick_name,
       email: person.email,
       has_birth_date_warning: hasBirthDateWarning(person.birth_date),
+      photo_from_google: Boolean(person.google_user_id),
       ...(canViewContact && {
         mobile_phone: employee.mobile_phone,
         residential_address: employee.residential_address,

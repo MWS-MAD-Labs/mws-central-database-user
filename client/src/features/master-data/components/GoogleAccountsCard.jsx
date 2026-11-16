@@ -13,6 +13,7 @@ const keyOf = (kind) => ['google-link-preview', kind]
 
 // Looking at Google again asks it about everyone, so the button rests for a moment after each press.
 const CHECK_WAIT_MS = 15_000
+const SYNC_WAIT_MS = 15_000
 
 // What the tiles read while the answer is not in yet, so nothing below ever reads a property of nothing.
 const EMPTY = {
@@ -28,6 +29,27 @@ const EMPTY = {
   suspended_list: [],
   missing_list: [],
   failed_list: [],
+}
+
+// Counts down the seconds left after start(), so a button can rest without anyone keeping time.
+function useCooldown(ms) {
+  const [until, setUntil] = useState(0)
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (until <= Date.now()) return undefined
+    const id = setInterval(() => {
+      const t = Date.now()
+      setNow(t)
+      if (t >= until) clearInterval(id)
+    }, 500)
+    return () => clearInterval(id)
+  }, [until])
+  function start() {
+    const t = Date.now()
+    setNow(t)
+    setUntil(t + ms)
+  }
+  return [Math.max(0, Math.ceil((until - now) / 1000)), start]
 }
 
 // One look for every number. When Central knows who is behind it (and it is more than none), the whole tile opens them.
@@ -74,37 +96,29 @@ export function GoogleAccountsCard({ kind = 'staff' }) {
   const [open, setOpen] = useState(null)
   const show = (title, people, total) => () => setOpen({ title, people: people ?? [], total })
 
-  const [waitUntil, setWaitUntil] = useState(0)
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (waitUntil <= Date.now()) return undefined
-    const id = setInterval(() => {
-      const t = Date.now()
-      setNow(t)
-      if (t >= waitUntil) clearInterval(id)
-    }, 500)
-    return () => clearInterval(id)
-  }, [waitUntil])
-  const waiting = Math.max(0, Math.ceil((waitUntil - now) / 1000))
+  const [waiting, restCheck] = useCooldown(CHECK_WAIT_MS)
+  const [syncWaiting, restSync] = useCooldown(SYNC_WAIT_MS)
   function checkAgain() {
     if (waiting > 0 || query.isFetching) return
-    const t = Date.now()
-    setNow(t)
-    setWaitUntil(t + CHECK_WAIT_MS)
+    restCheck()
     query.refetch()
   }
   const checkedAt = query.dataUpdatedAt
     ? new Date(query.dataUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : null
 
-  const link = useMutation({
-    mutationFn: () => googleAccountApi.linkExisting(kind),
+  const sync = useMutation({
+    mutationFn: () => googleAccountApi.sync(kind),
+    onMutate: () => restSync(),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: KEY })
       queryClient.invalidateQueries({ queryKey: ['google-account'] })
-      showSuccessToast(`${result.linked} ${result.linked === 1 ? 'Account' : 'Accounts'} Linked.`)
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      const parts = [`${result.linked} linked`]
+      if (!students) parts.push(`${result.photos} ${result.photos === 1 ? 'photo' : 'photos'} updated`)
+      showSuccessToast(`Sync done. ${parts.join(', ')}.`)
     },
-    onError: (error) => showErrorToast(error, 'Accounts were not linked.'),
+    onError: (error) => showErrorToast(error, 'Sync did not finish.'),
   })
 
   const linkAnyway = useMutation({
@@ -127,15 +141,6 @@ export function GoogleAccountsCard({ kind = 'staff' }) {
       confirmLabel: 'Link',
     })
     if (confirmed) linkAnyway.mutate(ids)
-  }
-
-  async function handleLink() {
-    const confirmed = await confirm({
-      title: 'Link Existing Accounts',
-      description: `${matches.length} ${students ? (matches.length === 1 ? 'student has' : 'students have') : matches.length === 1 ? 'person has' : 'people have'} an email that is already a Google account. Linking connects them and changes nothing in Google.`,
-      confirmLabel: 'Link',
-    })
-    if (confirmed) link.mutate()
   }
 
   return (
@@ -183,8 +188,8 @@ export function GoogleAccountsCard({ kind = 'staff' }) {
               <p className="text-sm text-(--mws-muted)">
                 {matches.length} {students ? (matches.length === 1 ? 'student' : 'students') : matches.length === 1 ? 'person' : 'people'} can be linked
               </p>
-              <Button type="button" loading={link.isPending} disabled={matches.length === 0} onClick={handleLink}>
-                Link
+              <Button type="button" loading={sync.isPending} disabled={syncWaiting > 0} onClick={() => sync.mutate()}>
+                {syncWaiting > 0 && !sync.isPending ? `Sync Now (${syncWaiting}s)` : 'Sync Now'}
               </Button>
             </div>
             {(view.not_checked ?? 0) > 0 ? (

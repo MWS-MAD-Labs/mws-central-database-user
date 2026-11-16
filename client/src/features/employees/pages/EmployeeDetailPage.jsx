@@ -175,7 +175,9 @@ export function EmployeeDetailPage() {
   const canDelete = user?.role === 'SUPER_ADMIN'
   const canViewDisciplinary = canViewEmployeeDisciplinaryData(user)
   const canManageDisciplinary = canManageEmployeeDisciplinaryData(user, employee)
-  const canManagePhoto = canWrite && employee && employee.identity.can_view_pii
+  // Closed for linked accounts: their photo comes from Google. Drop `!photoFromGoogle` to open Central uploads again.
+  const photoFromGoogle = Boolean(employee?.identity?.photo_from_google)
+  const canManagePhoto = canWrite && employee && employee.identity.can_view_pii && !photoFromGoogle
   const canExtendContract =
     canWrite &&
     employee &&
@@ -376,6 +378,9 @@ export function EmployeeDetailPage() {
                     {formatStatus(employee.status_info.employment_type)}
                   </StatusBadge>
                 </div>
+                {photoFromGoogle ? (
+                  <p className="mt-1 text-xs text-(--mws-muted)">The photo comes from the Google account.</p>
+                ) : null}
               </div>
             </div>
 

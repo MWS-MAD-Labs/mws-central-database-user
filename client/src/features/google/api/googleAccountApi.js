@@ -78,4 +78,9 @@ export const googleAccountApi = {
     const response = await apiRequest(`/api/admin/google/link-existing${kindQuery(kind)}`, { method: 'POST' })
     return response.data
   },
+  // Link, look at every linked account again and (staff) take the Google photos. Rests 15 seconds between runs.
+  async sync(kind = 'staff') {
+    const response = await apiRequest(`/api/admin/google/sync${kindQuery(kind)}`, { method: 'POST' })
+    return response.data
+  },
 }

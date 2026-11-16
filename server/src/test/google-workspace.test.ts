@@ -34,7 +34,7 @@ import {
   type UpdateDirectoryUser,
 } from "../lib/google-workspace/directory-client";
 import { EmployeePhotoService } from "../service/employee-photo-service";
-import { GoogleWorkspaceService, generateTemporaryPassword, resetCheckCooldownForTests, resetSignInEmailLimitForTests, splitName } from "../service/google-workspace-service";
+import { GoogleWorkspaceService, generateTemporaryPassword, resetCheckCooldownForTests, resetSignInEmailLimitForTests, resetSyncNowForTests, splitName } from "../service/google-workspace-service";
 import { detectImageMimeType } from "../utils/image-processing";
 import sharp from "sharp";
 import { GoogleAuth } from "../utils/google-auth";
@@ -100,6 +100,7 @@ describe("google workspace accounts", () => {
   const letTimePass = async (employeeId: string) => {
     const person = await personOf(employeeId);
     resetCheckCooldownForTests();
+    resetSyncNowForTests();
     const earlier = new Date(Date.now() - 10 * 60_000);
     await prismaClient.person.update({ where: { id: person.id }, data: { google_password_issued_at: earlier } });
     // Checked a minute ago: past the wait, and still fresh enough that the page does not look at Google again by itself.
@@ -1078,6 +1079,46 @@ describe("google workspace accounts", () => {
       expect(await prismaClient.auditLog.count({ where: { action: AuditAction.GOOGLE_ACCOUNT_PROVISION } })).toBe(2);
     });
 
+    describe("Sync Now", () => {
+      beforeEach(() => resetSyncNowForTests());
+      const picture = (color: string) => sharp({ create: { width: 200, height: 200, channels: 3, background: color } }).png().toBuffer();
+
+      it("links who Google has, takes the photos that changed, and rests between runs", async () => {
+        google.users.set("g-sn", gUser("g-sn", "test_google_syncnow@millennia21.id"));
+        google.googlePhotos.set("g-sn", await picture("#336699"));
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const a = await unlinked("test_google_syncnow@millennia21.id");
+
+        const first = (await (await TestRequest.post("/api/admin/google/sync", {}, accessToken)).json()).data;
+        expect(first).toMatchObject({ linked: 1, photos: 0 });
+        expect((await personOf(a.employee!.id)).google_user_id).toBe("g-sn");
+        expect((await personOf(a.employee!.id)).photo_object_key).toContain(`employee-photos/${a.employee!.id}/`);
+
+        // Too soon: it answers 429 and does nothing.
+        expect((await TestRequest.post("/api/admin/google/sync", {}, accessToken)).status).toBe(429);
+
+        // A new photo in Google is taken by the next run.
+        resetSyncNowForTests();
+        google.googlePhotos.set("g-sn", await picture("#993366"));
+        const second = (await (await TestRequest.post("/api/admin/google/sync", {}, accessToken)).json()).data;
+        expect(second).toMatchObject({ linked: 0, photos: 1 });
+      });
+
+      it("keeps the students separate: they are linked and looked at, but their photos are not read from Google", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const response = await TestRequest.post("/api/admin/google/sync?kind=students", {}, accessToken);
+        expect(response.status).toBe(200);
+        expect((await response.json()).data).toMatchObject({ photos: 0 });
+        // The staff run is not held up by the students' wait.
+        expect((await TestRequest.post("/api/admin/google/sync", {}, accessToken)).status).toBe(200);
+      });
+
+      it("is for Super Admins", async () => {
+        const plain = await AdminUserTest.createDatabaseAdmin(master.unit.id);
+        expect((await TestRequest.post("/api/admin/google/sync", {}, plain.accessToken)).status).toBe(403);
+      });
+    });
+
     it("takes the Google photo of each staff member it links, over the one Central had", async () => {
       google.users.set("g-ph", gUser("g-ph", "test_google_photo@millennia21.id"));
       google.googlePhotos.set("g-ph", await sharp({ create: { width: 200, height: 200, channels: 3, background: "#336699" } }).png().toBuffer());
@@ -1802,33 +1843,67 @@ describe("google workspace accounts", () => {
   describe("own photo", () => {
     const png = () => sharp({ create: { width: 300, height: 200, channels: 3, background: "#7e1518" } }).png().toBuffer();
 
-    it("lets the signed-in employee change their own photo, here and in Google", async () => {
+    const unlink = (id: string) =>
+      prismaClient.person.update({ where: { id }, data: { google_user_id: null, google_sync_status: GoogleSyncStatus.NONE } });
+
+    it("closes the photo of a linked employee in Central: the own route and the admin routes answer 409", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken);
+      const person = await personOf(json.data.id);
+      const token = await generateEmployeeAccessToken(json.data.id, person.email);
+
+      const own = new FormData();
+      own.append("file", new File([await png()], "me.png", { type: "image/png" }));
+      expect((await TestRequest.putMultipart("/api/auth/employee/me/photo", own, token)).status).toBe(409);
+
+      const admin = new FormData();
+      admin.append("file", new File([await png()], "staff.png", { type: "image/png" }));
+      expect((await TestRequest.postMultipart(`/api/admin/employees/${json.data.id}/photo`, admin, accessToken)).status).toBe(409);
+      expect((await TestRequest.delete(`/api/admin/employees/${json.data.id}/photo`, accessToken)).status).toBe(409);
+
+      expect((await personOf(json.data.id)).photo_object_key).toBeNull();
+      expect(google.photos).toHaveLength(0);
+    });
+
+    it("tells the employee detail whether the photo comes from Google, so the page can close the controls", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken);
+      const detail = async () => (await (await TestRequest.get(`/api/admin/employees/${json.data.id}`, accessToken)).json()).data;
+      expect((await detail()).identity.photo_from_google).toBe(true);
+      await unlink((await personOf(json.data.id)).id);
+      expect((await detail()).identity.photo_from_google).toBe(false);
+    });
+
+    it("still lets an employee who is not linked to Google change their own photo", async () => {
       const { accessToken: superToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const { json } = await create(superToken);
       const person = await personOf(json.data.id);
+      await unlink(person.id);
       const token = await generateEmployeeAccessToken(json.data.id, person.email);
 
       const form = new FormData();
       form.append("file", new File([await png()], "me.png", { type: "image/png" }));
       const response = await TestRequest.putMultipart("/api/auth/employee/me/photo", form, token);
       expect(response.status).toBe(200);
-
       expect((await personOf(json.data.id)).photo_object_key).toContain(`employee-photos/${json.data.id}/`);
-      expect(google.photos).toHaveLength(1);
-      expect(google.photos[0].mimeType).toBe("image/jpeg");
+      expect(google.photos).toHaveLength(0);
       expect(await prismaClient.auditLog.count({ where: { action: AuditAction.UPLOAD_OWN_PHOTO } })).toBe(1);
     });
 
-    it("sends a photo an admin uploads for an employee to Google too, so Google does not undo it", async () => {
+    it("still lets an admin upload for an employee who is not linked, and flags the linked ones in the bulk preview", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const { json } = await create(accessToken);
+      const person = await personOf(json.data.id);
+
+      const preview = await TestRequest.post("/api/admin/employees/photos/bulk-preview", { file_names: [`${person.full_name}.png`] }, accessToken);
+      expect((await preview.json()).data[0].candidates[0].google_linked).toBe(true);
+
+      await unlink(person.id);
       const form = new FormData();
       form.append("file", new File([await png()], "staff.png", { type: "image/png" }));
       const response = await TestRequest.postMultipart(`/api/admin/employees/${json.data.id}/photo`, form, accessToken);
       expect(response.status).toBe(200);
       expect((await personOf(json.data.id)).photo_object_key).toContain(`employee-photos/${json.data.id}/`);
-      expect(google.photos).toHaveLength(1);
-      expect(google.photos[0].mimeType).toBe("image/jpeg");
     });
 
     describe("the photo Google already has", () => {

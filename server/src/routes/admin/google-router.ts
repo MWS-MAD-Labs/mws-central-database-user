@@ -9,3 +9,4 @@ googleRouter.get("/link-existing", (c) => GoogleController.linkPreview(c));
 googleRouter.get("/reconcile", (c) => GoogleController.reconcile(c));
 googleRouter.post("/link-existing", (c) => GoogleController.linkExisting(c));
 googleRouter.post("/link-students", (c) => GoogleController.linkStudents(c));
+googleRouter.post("/sync", (c) => GoogleController.sync(c));

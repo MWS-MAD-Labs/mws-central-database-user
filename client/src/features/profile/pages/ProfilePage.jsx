@@ -166,7 +166,8 @@ export function ProfilePage() {
               {getUserEmail(user)}
             </p>
           </div>
-          {hasRecord ? (
+          {/* Closed for linked accounts: their photo comes from Google. Drop the second condition to open it again. */}
+          {hasRecord && !employee?.identity?.photo_from_google ? (
             <>
               <input
                 ref={photoInputRef}

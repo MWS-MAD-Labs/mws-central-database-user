@@ -83,6 +83,14 @@ describe('EmployeeDetailPage', () => {
     expect(await screen.findByText('No mutation history found.')).toBeVisible()
   })
 
+  it('hides the photo controls and says why when the account is linked to Google', async () => {
+    renderDetail({ routes: detailRoutes({ employee: employeeFixture({ identity: { photo_from_google: true } }) }) })
+    await screen.findByRole('heading', { level: 1, name: 'Ari Employee' })
+    expect(screen.getByText('The photo comes from the Google account.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Change Photo' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove Photo' })).not.toBeInTheDocument()
+  })
+
   it('splits the page into tabs and keeps the heading above them', async () => {
     const { user } = renderDetail()
     await screen.findByRole('heading', { level: 1, name: 'Ari Employee' })

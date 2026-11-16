@@ -116,6 +116,13 @@ async function removeObjectIfExists(objectKey: string | null): Promise<void> {
 
 const sha256 = (data: Buffer) => createHash("sha256").update(data).digest("hex");
 
+// Closed for now: the photo of a person linked to Google comes from Google, so it is changed in the Google account.
+// To open uploads from Central again, make this return without throwing.
+async function assertPhotoNotFromGoogle(personId: string): Promise<void> {
+  const row = await prismaClient.person.findUnique({ where: { id: personId }, select: { google_user_id: true } });
+  if (row?.google_user_id) throw new ResponseError(409, "This photo comes from the Google account. Change it there");
+}
+
 // After a photo went to Google, note what Google now holds, so the next sync does not take Google's own copy of it back.
 async function rememberGooglePhoto(personId: string): Promise<void> {
   try {
@@ -157,6 +164,8 @@ async function findCandidatesByName(
     has_photo: Boolean(
       employee.person.photo_object_key || employee.person.photo_url,
     ),
+    // Its photo comes from Google, so a file for it is refused.
+    google_linked: Boolean(employee.person.google_user_id),
   }));
 }
 
@@ -186,6 +195,7 @@ export class EmployeePhotoService {
     );
 
     const person = await assertEmployeeExists(uploadRequest.employee_id);
+    await assertPhotoNotFromGoogle(person.id);
 
     const rawBuffer = Buffer.from(await file.arrayBuffer());
     if (rawBuffer.length > MAX_UPLOAD_SIZE_BYTES) {
@@ -270,6 +280,7 @@ export class EmployeePhotoService {
     file: File,
     context: AuditRequestContext = {},
   ): Promise<boolean> {
+    await assertPhotoNotFromGoogle(personId);
     const rawBuffer = Buffer.from(await file.arrayBuffer());
     if (rawBuffer.length > MAX_UPLOAD_SIZE_BYTES) {
       throw new ResponseError(
@@ -417,6 +428,7 @@ export class EmployeePhotoService {
     );
 
     const person = await assertEmployeeExists(deleteRequest.employee_id);
+    await assertPhotoNotFromGoogle(person.id);
     if (!person.photo_object_key) {
       throw new ResponseError(400, "This employee has no uploaded photo.");
     }

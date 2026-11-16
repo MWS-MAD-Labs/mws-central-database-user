@@ -68,6 +68,11 @@ function markCheckPressed(personId: string): void {
 
 export const resetCheckCooldownForTests = () => checkPressedAt.clear();
 
+// Sync Now asks Google about everyone, so it rests a moment after each run, per kind. Kept in the process like Check.
+const SYNC_NOW_WAIT_MS = 15_000;
+const syncNowAt = new Map<string, number>();
+export const resetSyncNowForTests = () => syncNowAt.clear();
+
 // When each action is next allowed for this person (null: now), from the last time it was done. The password and the
 // check come from the person, the rest from the audit log, so a restart of the server does not forget them.
 async function nextActionAllowedAt(person: CooldownPerson): Promise<Record<CooldownAction, Date | null>> {
@@ -1376,6 +1381,27 @@ export class GoogleWorkspaceService {
       logger.error(`Google status check failed for person ${person.id}`, error);
       return "unreachable";
     }
+  }
+
+  // The one button of the Google Accounts card: links who Google already has, looks at every linked account again and,
+  // for staff, takes their Google photos. Nothing in Google is changed. Waits a few seconds between runs.
+  static async syncNow(options: {
+    kind: "staff" | "students";
+    admin: Pick<AdminUser, "id" | "email">;
+    context?: AuditRequestContext;
+  }): Promise<{ linked: number; refreshed: number; photos: number }> {
+    const left = (syncNowAt.get(options.kind) ?? 0) + SYNC_NOW_WAIT_MS - Date.now();
+    if (left > 0) throw new ResponseError(429, `Sync ran a moment ago. Wait ${waitMessage(left)}`);
+    syncNowAt.set(options.kind, Date.now());
+    const linked = (await this.linkExisting({ link: true, kind: options.kind, admin: options.admin, context: options.context })).linked;
+    const refreshed = await this.refreshAllStatuses();
+    let photos = 0;
+    if (options.kind === "staff") {
+      // Loaded on demand: the photo service already imports this one.
+      const { EmployeePhotoService } = await import("./employee-photo-service");
+      photos = await EmployeePhotoService.syncAllFromGoogle();
+    }
+    return { linked, refreshed, photos };
   }
 
   // Checks every linked account with two list calls instead of one call per person. Returns how many changed.

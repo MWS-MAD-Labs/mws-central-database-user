@@ -152,7 +152,7 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
           item.candidates.length === 1 ? item.candidates[0] : null;
         next.set(item.file_name, {
           employeeId: singleMatch?.id || "",
-          skipped: !singleMatch || Boolean(singleMatch.has_photo),
+          skipped: !singleMatch || Boolean(singleMatch.has_photo) || Boolean(singleMatch.google_linked),
           candidates: item.candidates,
         });
       }
@@ -433,6 +433,11 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
                     {selectedCandidate?.has_photo ? (
                       <StatusBadge tone="neutral" title="This employee already has a photo on file">
                         Has photo
+                      </StatusBadge>
+                    ) : null}
+                    {selectedCandidate?.google_linked ? (
+                      <StatusBadge tone="neutral" title="The photo comes from the Google account, so it is not changed here">
+                        From Google
                       </StatusBadge>
                     ) : null}
                     <Button

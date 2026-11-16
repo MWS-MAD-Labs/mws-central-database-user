@@ -31,7 +31,7 @@ const plainAdmin = { id: 'a2', type: 'admin', role: 'SUPER_ADMIN', is_protected:
 
 function renderCard(kind, data, extra = [], user = protectedAdmin) {
   const fetchMock = createFetchRouter([
-    { path: `/api/admin/google/link-existing${kind === 'students' ? '?kind=students' : ''}`, method: 'GET', response: jsonResponse({ data }) },
+    { path: `/api/admin/google/link-existing${kind === 'students' ? '?kind=students' : ''}`, method: 'GET', response: () => jsonResponse({ data }) },
     ...extra,
   ])
   globalThis.fetch = fetchMock
@@ -128,7 +128,7 @@ describe('GoogleAccountsCard', () => {
   })
 
   it('is the students card with kind students: its own title, the students endpoint, and a Cannot Be Linked tile', async () => {
-    const link = { path: '/api/admin/google/link-existing?kind=students', method: 'POST', response: jsonResponse({ data: { ...base, applied: true, linked: 1 } }) }
+    const link = { path: '/api/admin/google/sync?kind=students', method: 'POST', response: jsonResponse({ data: { linked: 1, refreshed: 0, photos: 0 } }) }
     const { user, fetchMock } = renderCard(
       'students',
       {
@@ -147,13 +147,23 @@ describe('GoogleAccountsCard', () => {
     expect(within(dialog).getByText(/Orang Lain/)).toBeVisible()
     await user.click(within(dialog).getByRole('button', { name: 'Close Dialog' }))
 
-    await user.click(screen.getByRole('button', { name: 'Link' }))
-    const confirmDialog = await screen.findByRole('dialog', { name: 'Link Existing Accounts' })
-    expect(within(confirmDialog).getByText(/1 student has an email that is already a Google account/)).toBeVisible()
-    await user.click(within(confirmDialog).getByRole('button', { name: 'Link' }))
+    await user.click(screen.getByRole('button', { name: 'Sync Now' }))
     await waitFor(() =>
-      expect(fetchMock.mock.calls.some(([url, options]) => String(url) === '/api/admin/google/link-existing?kind=students' && options?.method === 'POST')).toBe(true),
+      expect(fetchMock.mock.calls.some(([url, options]) => String(url) === '/api/admin/google/sync?kind=students' && options?.method === 'POST')).toBe(true),
     )
+  })
+
+  it('has one Sync Now button that stays available when nothing is left to link, and rests after a press', async () => {
+    const sync = { path: '/api/admin/google/sync', method: 'POST', response: () => jsonResponse({ data: { linked: 0, refreshed: 2, photos: 3 } }) }
+    const { user, fetchMock } = renderCard('staff', base, [sync])
+    await screen.findByText('Linked')
+    const button = screen.getByRole('button', { name: 'Sync Now' })
+    expect(button).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Link' })).toBeNull()
+
+    await user.click(button)
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) => String(url) === '/api/admin/google/sync' && options?.method === 'POST')).toBe(true))
+    expect(await screen.findByRole('button', { name: /^Sync Now \(\d+s\)$/ })).toBeDisabled()
   })
 
   it('has no Cannot Be Linked tile for staff', async () => {
