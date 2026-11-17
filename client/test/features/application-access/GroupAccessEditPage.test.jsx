@@ -141,4 +141,52 @@ describe('GroupAccessEditPage', () => {
     await screen.findByLabelText('Group access is on')
     expect(screen.queryByLabelText(/Allow Exceptions/)).not.toBeInTheDocument()
   })
+  it('lets a group of employees take interns too, and sends the audience only when it changed', async () => {
+    const fetchMock = createFetchRouter(routes([
+      { path: '/api/admin/application-access-rules/rule-1', method: 'PATCH', response: () => jsonResponse({ data: rule }) },
+    ]))
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    const interns = await screen.findByRole('checkbox', { name: 'Interns' })
+    expect(screen.getByRole('checkbox', { name: 'Employees' })).toBeChecked()
+    expect(screen.queryByRole('checkbox', { name: 'Students' })).not.toBeInTheDocument()
+    expect(interns).not.toBeChecked()
+
+    await user.click(interns)
+    for (let step = 0; step < 4 && screen.getByRole('button', { name: 'Save' }).disabled; step += 1) {
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+    }
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url, options]) =>
+        url.endsWith('/application-access-rules/rule-1') && options.method === 'PATCH')
+      expect(JSON.parse(call[1].body).audiences).toEqual(['EMPLOYEES', 'INTERNS'])
+    })
+  })
+
+  it('warns when an audience is taken away, and never leaves a group with none', async () => {
+    const original = rule
+    rule = { ...rule, audiences: ['EMPLOYEES', 'INTERNS'] }
+    globalThis.fetch = createFetchRouter(routes())
+    const { user } = renderPage()
+    const interns = await screen.findByRole('checkbox', { name: 'Interns' })
+    expect(screen.queryByText(/lose access to this application/)).not.toBeInTheDocument()
+
+    await user.click(interns)
+    expect(screen.getByText(/lose access to this application/)).toBeVisible()
+    await user.click(screen.getByRole('checkbox', { name: 'Employees' }))
+    expect(screen.getByRole('checkbox', { name: 'Employees' })).toBeChecked()
+    rule = original
+  })
+
+  it('has no audience choice for a group of students', async () => {
+    const original = rule
+    rule = { ...rule, audiences: ['STUDENTS'], allows_exceptions: false }
+    globalThis.fetch = createFetchRouter(routes())
+    renderPage()
+    await screen.findByLabelText('Group access is on')
+    expect(screen.queryByRole('group', { name: 'Audience' })).not.toBeInTheDocument()
+    rule = original
+  })
 })

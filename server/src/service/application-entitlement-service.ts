@@ -16,7 +16,7 @@ import {
   type ApplicationEntitlement,
 } from "../generated/prisma/client";
 import { evaluateRemoval, usedRecently } from "../utils/application-removal";
-import { audiencesOf, flagsOf, type AudienceFlags, type AudienceName } from "../utils/audience";
+import { audienceProblem, audiencesOf, flagsOf, type AudienceFlags, type AudienceName } from "../utils/audience";
 import { hubApplicationId } from "../constants/hub-application";
 import { slugifyApplicationId } from "../utils/application-id";
 import { encryptSecret, newSecret } from "../utils/secret-box";
@@ -1395,6 +1395,19 @@ export class ApplicationRoleService {
   }
 }
 
+// The audience of a group after an update. Employees and interns can move between themselves; students stand alone, so a group
+// of students keeps its audience and no other group can become one.
+function audienceFlagsForUpdate(existing: AudienceFlags, audiences: AudienceName[] | undefined): AudienceFlags {
+  if (audiences === undefined) return pickFlags(existing);
+  const flags = flagsOf(audiences);
+  const problem = audienceProblem(audiences);
+  if (problem) throw new ResponseError(400, problem);
+  if (existing.for_students !== flags.for_students) {
+    throw new ResponseError(400, "The audience of a group cannot be changed to or from students");
+  }
+  return flags;
+}
+
 const pickFlags = (rule: AudienceFlags): AudienceFlags => ({
   for_employees: rule.for_employees,
   for_interns: rule.for_interns,
@@ -1694,12 +1707,15 @@ export class ApplicationAccessRuleService {
     const existing = await prismaClient.applicationAccessRule.findUnique({ where: { id: input.id } });
     if (!existing) throw new ResponseError(404, "Group access not found");
 
+    const flags = audienceFlagsForUpdate(existing, input.audiences);
+    const audienceChanged = flags.for_employees !== existing.for_employees || flags.for_interns !== existing.for_interns;
     const next = {
       application_id: existing.application_id,
-      ...pickFlags(existing),
+      ...flags,
       unit_ids: input.unit_ids ?? existing.unit_ids,
       job_position_ids: input.job_position_ids ?? existing.job_position_ids,
-      job_level_ids: input.job_level_ids ?? existing.job_level_ids,
+      // An intern has no level, so a group that is no longer for employees keeps none.
+      job_level_ids: flags.for_employees ? (input.job_level_ids ?? existing.job_level_ids) : [],
       default_role_key: input.default_role_key ?? existing.default_role_key,
       is_active: input.is_active ?? existing.is_active,
       allows_exceptions:
@@ -1710,7 +1726,7 @@ export class ApplicationAccessRuleService {
     }
     await assertRuleReferences(
       next,
-      input.unit_ids !== undefined || input.job_position_ids !== undefined || input.job_level_ids !== undefined,
+      audienceChanged || input.unit_ids !== undefined || input.job_position_ids !== undefined || input.job_level_ids !== undefined,
       next.is_active,
     );
     if (next.is_active) await assertNoOverlap(existing.application_id, next, existing.id);
@@ -1728,6 +1744,8 @@ export class ApplicationAccessRuleService {
       const rule = await tx.applicationAccessRule.update({
         where: { id: existing.id },
         data: {
+          for_employees: next.for_employees,
+          for_interns: next.for_interns,
           unit_ids: next.unit_ids,
           job_position_ids: next.job_position_ids,
           job_level_ids: next.job_level_ids,

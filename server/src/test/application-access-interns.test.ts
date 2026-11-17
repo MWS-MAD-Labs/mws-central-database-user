@@ -209,6 +209,86 @@ describe("group access for interns (API)", () => {
     expect(String((await overlap.json()).errors)).toContain("overlap");
   });
 
+  describe("changing the audience of a group", () => {
+    const update = (token: string, id: string, body: Record<string, unknown>) => TestRequest.patch(`${RULES}/${id}`, body, token);
+    const makeEmployees = async (token: string, body: Record<string, unknown> = {}) => {
+      const response = await addRule(token, { audiences: ["EMPLOYEES"], default_role_key: "LEAD", ...body });
+      expect(response.status).toBe(200);
+      return (await response.json()).data.id as string;
+    };
+
+    it("lets a group of employees take interns too, and the interns are covered", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const intern = await addIntern("test_intern_aud1@millennia21.id");
+      const id = await makeEmployees(accessToken);
+      const before = (await (await TestRequest.get(`${ACCESS}/apps/${appId}`, accessToken)).json()).data.groups.find((group: { id: string }) => group.id === id);
+      expect(before.audiences).toEqual(["EMPLOYEES"]);
+
+      const changed = await update(accessToken, id, { audiences: ["EMPLOYEES", "INTERNS"] });
+
+      expect(changed.status).toBe(200);
+      expect((await changed.json()).data.audiences).toEqual(["EMPLOYEES", "INTERNS"]);
+      const after = (await (await TestRequest.get(`${ACCESS}/apps/${appId}`, accessToken)).json()).data.groups.find((group: { id: string }) => group.id === id);
+      expect(after.covered_count).toBe(before.covered_count + 1);
+      expect(intern.person_id).toBeTruthy();
+      expect(await prismaClient.auditLog.count({ where: { entity_id: id, action: "APPLICATION_ACCESS_RULE_UPDATE" } })).toBe(1);
+    });
+
+    it("drops the levels when the group is no longer for employees", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const id = await makeEmployees(accessToken, { audiences: ["EMPLOYEES", "INTERNS"], job_level_ids: [masterData.level.id] });
+      expect((await (await TestRequest.get(`${RULES}/${id}`, accessToken)).json()).data.job_level_ids).toEqual([masterData.level.id]);
+
+      const changed = await update(accessToken, id, { audiences: ["INTERNS"], default_role_key: "INTERN_ONLY" });
+
+      expect(changed.status).toBe(200);
+      expect((await changed.json()).data).toMatchObject({ audiences: ["INTERNS"], job_level_ids: [] });
+    });
+
+    it("refuses a role that is not for the new audience", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const employees = await makeEmployees(accessToken, { default_role_key: "STAFF" });
+      await prismaClient.applicationRole.update({ where: { application_id_key: { application_id: appId, key: "STAFF" } }, data: { allows_interns: false } });
+
+      expect((await update(accessToken, employees, { audiences: ["EMPLOYEES", "INTERNS"] })).status).toBe(400);
+      expect((await update(accessToken, employees, { audiences: [] })).status).toBe(400);
+    });
+
+    it("never moves a group to or from students", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await prismaClient.applicationRole.update({ where: { application_id_key: { application_id: appId, key: "LEAD" } }, data: { allows_students: true } });
+      const employees = await makeEmployees(accessToken);
+      const students = await TestRequest.post(RULES, { application_id: appId, audiences: ["STUDENTS"], default_role_key: "LEAD" }, accessToken);
+      expect(students.status).toBe(200);
+      const studentsId = (await students.json()).data.id;
+
+      const toStudents = await update(accessToken, employees, { audiences: ["STUDENTS"] });
+      const fromStudents = await update(accessToken, studentsId, { audiences: ["EMPLOYEES"] });
+
+      expect(toStudents.status).toBe(400);
+      expect(String((await toStudents.json()).errors)).toContain("students");
+      expect(fromStudents.status).toBe(400);
+    });
+
+    it("refuses an audience that would make two groups compete for the same people", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      expect((await addRule(accessToken)).status).toBe(200);
+      const employees = await makeEmployees(accessToken);
+
+      const clash = await update(accessToken, employees, { audiences: ["EMPLOYEES", "INTERNS"] });
+
+      expect(clash.status).toBe(400);
+      expect(String((await clash.json()).errors)).toContain("overlap");
+    });
+
+    it("is for a super admin only", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const id = await makeEmployees(accessToken);
+      const viewer = await AdminUserTest.createViewer(masterData.unit.id);
+      expect((await update(viewer.accessToken, id, { audiences: ["EMPLOYEES", "INTERNS"] })).status).toBe(403);
+    });
+  });
+
   it("counts the interns a group covers, and lists them as candidates for an exception", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const one = await addIntern("test_intern_cov1@millennia21.id");

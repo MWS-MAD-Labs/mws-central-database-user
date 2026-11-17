@@ -397,9 +397,10 @@ export class ApplicationAccessRuleValidation {
     ...accessRuleFields,
   });
 
-  // The application and audience can't change, only who within it and the role.
+  // The application can't change. The audience can move between employees, interns and both; a group of students keeps its own.
   static readonly UPDATE = z.object({
     id: nonemptyId("Rule ID"),
+    audiences: audienceList.optional(),
     unit_ids: idList("Unit").optional(),
     job_position_ids: idList("Job position").optional(),
     job_level_ids: idList("Job level").optional(),

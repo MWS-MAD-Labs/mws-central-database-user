@@ -74,6 +74,7 @@ export type CreateApplicationAccessRuleRequest = {
 
 export type UpdateApplicationAccessRuleRequest = {
   id: string;
+  audiences?: ("EMPLOYEES" | "INTERNS" | "STUDENTS")[];
   unit_ids?: string[];
   job_position_ids?: string[];
   job_level_ids?: string[];

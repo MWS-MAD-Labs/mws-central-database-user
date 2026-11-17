@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
-import { Field, SearchableSelect } from "../../../components/ui/FormControls.jsx";
+import { CheckboxField, Field, SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
@@ -24,7 +24,7 @@ import { useScopeCatalog } from "../hooks/useScopeCatalog.js";
 import { AllowExceptionsField } from "../components/AllowExceptionsField.jsx";
 import { useRoleAvailability } from "../hooks/useRoleAvailability.js";
 import { canManageApplications } from "../utils/canManageApplications.js";
-import { audienceKey, audienceLabelOf, hasStudents } from "../utils/audiences.js";
+import { AUDIENCE_CHOICES, audienceHint, audienceKey, audienceLabelOf, hasStudents, toggleAudience } from "../utils/audiences.js";
 
 export function GroupAccessEditPage() {
   const { user } = useAuth();
@@ -54,8 +54,13 @@ function GroupAccessForm({ rule }) {
   const queryClient = useQueryClient();
   const back = `/application-access/apps/${rule.application_id}`;
   const rules = useScopeCatalog();
-  const audience = audienceKey(rule.audiences);
-  const studentsGroup = audience === "STUDENTS";
+  // A group of students keeps its audience; employees and interns can move between themselves.
+  const studentsGroup = audienceKey(rule.audiences) === "STUDENTS";
+  const [audiences, setAudiences] = useState(rule.audiences);
+  const audience = audienceKey(audiences);
+  const audienceChoices = AUDIENCE_CHOICES.filter((choice) => choice.value !== "STUDENTS");
+  const audienceChanged = !studentsGroup && audienceKey(rule.audiences) !== audience;
+  const audienceLost = !studentsGroup && rule.audiences.some((name) => !audiences.includes(name));
   const state = useGroupFilterState(rule, studentsGroup ? null : rules);
   const [roleKey, setRoleKey] = useState(rule.default_role_key);
   const [isActive, setIsActive] = useState(rule.is_active);
@@ -71,7 +76,7 @@ function GroupAccessForm({ rule }) {
   const knownUnitIds = options.units?.length ? new Set(options.units.filter(isRealUnit).map((unit) => unit.id)) : undefined;
   const unavailable = useRoleAvailability({
     applicationId: rule.application_id,
-    audiences: rule.audiences,
+    audiences,
     scope: groupFilterPayload(state, audience, knownUnitIds),
     groupId: rule.id,
   });
@@ -83,6 +88,7 @@ function GroupAccessForm({ rule }) {
   const mutation = useMutation({
     mutationFn: () =>
       applicationAccessApi.updateRule(rule.id, {
+        ...(audienceChanged ? { audiences } : {}),
         ...groupFilterPayload(state, audience, knownUnitIds),
         default_role_key: chosenRole,
         is_active: isActive,
@@ -96,6 +102,14 @@ function GroupAccessForm({ rule }) {
     onError: (error) => showErrorToast(error, "Could not update this group access."),
   });
 
+  // Ticks or unticks one audience. There is always at least one.
+  function changeAudience(name) {
+    const next = toggleAudience(audiences, name);
+    if (next.length === 0) return;
+    setAudiences(next);
+    setScopeReviewed(false);
+  }
+
   function submit(event) {
     event.preventDefault();
     setAttempted(true);
@@ -106,8 +120,8 @@ function GroupAccessForm({ rule }) {
   return (
     <div className="min-w-0">
       <PageHeader
-        title={`Edit ${audienceLabelOf(rule.audiences)}`}
-        description={`Group access for ${rule.application_id}. The application and audience stay as created.`}
+        title={`Edit ${audienceLabelOf(audiences)}`}
+        description={`Group access for ${rule.application_id}. The application stays as created.`}
         actions={
           <Button asChild variant="secondary" size="icon" aria-label="Back" title="Back">
             <Link to={back}><ArrowLeft size={16} /></Link>
@@ -134,6 +148,25 @@ function GroupAccessForm({ rule }) {
           </section>
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
             <div className="space-y-4 rounded-2xl border border-(--mws-line) bg-white p-5">
+              {studentsGroup ? null : (
+                <Field label="Audience" hint={audienceHint(audiences)}>
+                  <div className="space-y-2" role="group" aria-label="Audience">
+                    {audienceChoices.map((choice) => (
+                      <CheckboxField
+                        key={choice.value}
+                        label={choice.label}
+                        checked={audiences.includes(choice.value)}
+                        onChange={() => changeAudience(choice.value)}
+                      />
+                    ))}
+                  </div>
+                </Field>
+              )}
+              {audienceLost ? (
+                <p role="status" className="text-xs text-(--mws-muted)">
+                  People who only had access through the removed audience lose access to this application.
+                </p>
+              ) : null}
               <Field label="Role" error={attempted && !chosenRole ? "Role is required." : undefined}>
                 <SearchableSelect
                   value={chosenRole}
