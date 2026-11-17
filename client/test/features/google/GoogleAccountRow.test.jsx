@@ -215,6 +215,7 @@ describe("GoogleAccountRow", () => {
     expect(buttonNames()).toEqual([
       "Sign-in instructions",
       "Suspend Google account",
+      "Unlink Google account",
       "Check Google again",
     ]);
   });
@@ -225,6 +226,7 @@ describe("GoogleAccountRow", () => {
     expect(buttonNames()).toEqual([
       "Sign-in instructions",
       "Suspend Google account",
+      "Unlink Google account",
       "Check Google again",
       "Change recovery email",
       "Make temporary password",
@@ -1140,5 +1142,38 @@ describe("GoogleAccountRow", () => {
     });
     expect(within(dialog).getByText(/ari@millennia21\.id/)).toBeVisible();
     expect(within(dialog).getByText(/Forgot password/)).toBeVisible();
+  });
+  it("unlinks the Google account with a reason, only for a Super Admin and a person that is linked", async () => {
+    const { fetchMock, user } = setup(status(), [
+      { path: "/api/admin/employees/e1/google/unlink", method: "POST", response: jsonResponse({ data: { status: "NONE", google_user_id: null } }) },
+    ]);
+    await screen.findByRole("button", { name: "Unlink Google account" });
+    await user.click(screen.getByRole("button", { name: "Unlink Google account" }));
+    const dialog = await screen.findByRole("dialog");
+    const confirm = within(dialog).getByRole("button", { name: "Unlink" });
+    expect(confirm).toBeDisabled();
+
+    await user.type(within(dialog).getByPlaceholderText("Why is it unlinked"), "Wrong account");
+    expect(confirm).toBeEnabled();
+    await user.click(confirm);
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url, options]) => url.endsWith("/employees/e1/google/unlink") && options.method === "POST");
+      expect(JSON.parse(call[1].body)).toEqual({ reason: "Wrong account" });
+    });
+  });
+
+  it("has no Unlink for an admin who may not manage, a person with no link, or an account waiting for its owner", async () => {
+    setup(status({ can: { create: true, manage: false, takeover: false } }));
+    await screen.findByText("Linked");
+    expect(screen.queryByRole("button", { name: "Unlink Google account" })).not.toBeInTheDocument();
+    cleanup();
+    setup(status({ linked: false, status: "NONE", lookup: { state: "absent", message: null } }));
+    await screen.findByText("Not created");
+    expect(screen.queryByRole("button", { name: "Unlink Google account" })).not.toBeInTheDocument();
+    cleanup();
+    setup(status({ status: "PENDING_CLAIM" }));
+    await screen.findByText("Waiting For Sign-in");
+    expect(screen.queryByRole("button", { name: "Unlink Google account" })).not.toBeInTheDocument();
   });
 });

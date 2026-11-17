@@ -9,6 +9,7 @@ import {
   Pause,
   Play,
   RefreshCw,
+  Unlink,
   UserPlus,
 } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -144,6 +145,7 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
   const [dialog, setDialog] = useState(null);
   const [resetLanguage, setResetLanguage] = useState("en");
   const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [unlinkReason, setUnlinkReason] = useState("");
   // For a student the account is made for one of the parents or guardians, chosen here, never typed.
   const [guardianId, setGuardianId] = useState("");
   // The password of an account just made or reset, held only while its dialog is open.
@@ -344,6 +346,17 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
       showErrorToast(error, "Could not change the Google account."),
   });
 
+  const unlink = useMutation({
+    mutationFn: () => googleAccountApi.unlink(resource, id, unlinkReason.trim()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      setDialog(null);
+      setUnlinkReason("");
+      showSuccessToast("Google account unlinked.");
+    },
+    onError: (error) => showErrorToast(error, "Google account was not unlinked."),
+  });
+
   function closeShare() {
     setIssued(null);
     setDialog(null);
@@ -512,6 +525,18 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
             >
               <Play size={15} />
             </CooldownButton>
+          ) : null}
+          {can.manage && status.linked && !waiting ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Unlink Google account"
+              title="Unlink Google account"
+              onClick={() => setDialog("unlink")}
+            >
+              <Unlink size={15} />
+            </Button>
           ) : null}
           {(can.manage || can.check) && status.linked ? (
             <CooldownButton
@@ -885,6 +910,52 @@ export function GoogleAccountRow({ resource, id, email, name = "" }) {
           }
         >
           <p className="text-sm text-(--mws-muted)">{restoreNote(status)}</p>
+        </CrudDialog>
+      ) : null}
+
+      {dialog === "unlink" ? (
+        <CrudDialog
+          title="Unlink Google Account"
+          description="Central stops managing this Google account. Nothing changes in Google. Afterwards the email can be changed to one that another Google account holds, and that account linked."
+          panelClassName="max-w-lg"
+          onClose={() => {
+            setDialog(null);
+            setUnlinkReason("");
+          }}
+          footer={
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setDialog(null);
+                  setUnlinkReason("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                loading={unlink.isPending}
+                disabled={unlinkReason.trim().length < 3}
+                onClick={() => unlink.mutate()}
+              >
+                Unlink
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-(--mws-muted)">{email}</p>
+            <Field label="Reason" required counter={{ value: unlinkReason, max: 500, count: textLength }}>
+              <TextInput
+                maxLength={500}
+                value={unlinkReason}
+                placeholder="Why is it unlinked"
+                onChange={(event) => setUnlinkReason(event.target.value)}
+              />
+            </Field>
+          </div>
         </CrudDialog>
       ) : null}
 

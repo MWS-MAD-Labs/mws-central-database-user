@@ -17,6 +17,7 @@ type Kind = "employee" | "intern" | "student";
 
 const PROVISION = z.object({ recovery_email: recoveryEmail().optional() });
 const CHANGE_RECOVERY = z.object({ recovery_email: recoveryEmail() });
+const UNLINK = z.object({ reason: z.string().trim().min(3).max(500) }).strict();
 const RESET_WAITING = z.object({ language: z.enum(["id", "en"]).default("en") });
 const SEND_SIGN_IN = z.object({
   to: recoveryEmail().optional(),
@@ -280,6 +281,17 @@ export class GoogleAccountController {
       assertSuperAdmin(c);
       const personId = await personIdOf(kind, c.req.param("id"), c.var.admin);
       const result = await GoogleWorkspaceService.restore(personId, c.var.admin, getAuditRequestContext(c));
+      return c.json({ data: result });
+    };
+  }
+
+  // Lets Central stop managing the account and never touches Google, so the person can be linked to another account.
+  static unlink(kind: Kind) {
+    return async (c: Context<{ Variables: AdminVariables }>) => {
+      assertSuperAdmin(c);
+      const personId = await personIdOf(kind, c.req.param("id"), c.var.admin);
+      const { reason } = Validation.validate(UNLINK, await c.req.json().catch(() => ({})));
+      const result = await GoogleWorkspaceService.unlink(personId, c.var.admin, reason, getAuditRequestContext(c));
       return c.json({ data: result });
     };
   }

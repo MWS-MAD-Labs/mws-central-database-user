@@ -55,6 +55,7 @@ internRouter.post("/:id/google/reset-waiting", GoogleAccountController.resetWait
 internRouter.post("/:id/google/send-sign-in", GoogleAccountController.sendSignIn("intern"));
 internRouter.get("/:id/google/recovery-hint", GoogleAccountController.recoveryHint("intern"));
 internRouter.post("/:id/google/restore", GoogleAccountController.restore("intern"));
+internRouter.post("/:id/google/unlink", GoogleAccountController.unlink("intern"));
 internRouter.post("/:id/google/suspend", GoogleAccountController.suspend("intern", true));
 internRouter.post("/:id/google/unsuspend", GoogleAccountController.suspend("intern", false));
 internRouter.get("/:id/google/recovery-email", GoogleAccountController.recoveryEmail("intern"));

@@ -39,6 +39,7 @@ studentRouter.post("/:id/google/provision", GoogleAccountController.provision("s
 studentRouter.post("/:id/google/reset-password", GoogleAccountController.resetPassword("student"));
 studentRouter.post("/:id/google/send-sign-in", GoogleAccountController.sendSignIn("student"));
 studentRouter.post("/:id/google/restore", GoogleAccountController.restore("student"));
+studentRouter.post("/:id/google/unlink", GoogleAccountController.unlink("student"));
 studentRouter.post("/:id/google/suspend", GoogleAccountController.suspend("student", true));
 studentRouter.post("/:id/google/unsuspend", GoogleAccountController.suspend("student", false));
 studentRouter.get("/version", (c) => StudentController.getVersion(c));

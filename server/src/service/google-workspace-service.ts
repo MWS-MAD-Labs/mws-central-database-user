@@ -1266,6 +1266,48 @@ export class GoogleWorkspaceService {
     }
   }
 
+  // Lets Central stop managing the Google account of a person, without touching Google: the account stays as it is and
+  // an admin of the Workspace decides about it. Afterwards the email can be changed to one another account holds, and that
+  // account linked with "link existing". Never goes to Google, so it works while Google is down.
+  static async unlink(
+    personId: string,
+    admin: Pick<AdminUser, "id">,
+    reason: string,
+    context: AuditRequestContext = {},
+  ): Promise<GoogleSyncResult> {
+    const person = await load(personId);
+    // A protected admin signs in with that account, so Central never lets go of it from here.
+    if (isProtectedSuperAdminEmail(person.email)) {
+      throw new ResponseError(400, "A protected admin address is not managed here, so its Google link cannot be removed");
+    }
+    if (!person.google_user_id) throw new ResponseError(409, "This person has no Google account linked");
+    if (person.google_sync_status === GoogleSyncStatus.PENDING_CLAIM) {
+      throw new ResponseError(409, "This person is waiting to claim an existing Google account by signing in");
+    }
+    await prismaClient.person.update({
+      where: { id: person.id },
+      data: {
+        google_user_id: null,
+        google_sync_status: GoogleSyncStatus.NONE,
+        google_last_error: null,
+        google_synced_at: null,
+        google_checked_at: null,
+        google_deleted_at: null,
+        google_password_pending: null,
+        google_password_issued_at: null,
+        google_last_login_at: null,
+        google_suspended_by_central: false,
+        google_keeps_name: false,
+      },
+    });
+    await record("GOOGLE_ACCOUNT_UNLINK", person, admin, context, {
+      reason,
+      google_user_id: person.google_user_id,
+      status_before: person.google_sync_status,
+    });
+    return { status: GoogleSyncStatus.NONE, google_user_id: null, outcome: "unchanged" };
+  }
+
   // Suspend keeps everything and can be undone. It is the way to cut access from Central instead of deleting.
   static async setSuspended(
     personId: string,

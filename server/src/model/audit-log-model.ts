@@ -169,6 +169,7 @@ export const ENTITY_AUDIT_ACTIONS = [
   "GOOGLE_ACCOUNT_RESTORE",
   "GOOGLE_ACCOUNT_SUSPEND",
   "GOOGLE_ACCOUNT_UNSUSPEND",
+  "GOOGLE_ACCOUNT_UNLINK",
   "UPLOAD_OWN_PHOTO",
 ] as const satisfies readonly AuditAction[];
 

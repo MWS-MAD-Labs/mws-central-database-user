@@ -967,6 +967,59 @@ describe("google workspace accounts", () => {
       expect((await put(accessToken, json.data.id, "test_google_someone_else@millennia21.id")).status).toBe(400);
     });
 
+    describe("letting Central go of the Google account of a person", () => {
+      const unlink = (token: string, id: string, body: Record<string, unknown> = { reason: "It is the wrong account" }) =>
+        TestRequest.post(`/api/admin/employees/${id}/google/unlink`, body, token);
+      const gOther = (id: string, email: string) => ({
+        id, primaryEmail: email, givenName: "A", familyName: "B", suspended: false, isAdmin: false,
+        changePasswordAtNextLogin: false, lastLoginTime: null as Date | null,
+      });
+
+      it("removes the link without touching Google, and records why", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken);
+        const before = await personOf(json.data.id);
+        const updated = google.updated.length;
+
+        const response = await unlink(accessToken, json.data.id);
+
+        expect(response.status).toBe(200);
+        const after = await personOf(json.data.id);
+        expect(after).toMatchObject({ google_user_id: null, google_sync_status: GoogleSyncStatus.NONE });
+        expect(google.users.has(before.google_user_id!)).toBe(true);
+        expect(google.updated).toHaveLength(updated);
+        const entry = await prismaClient.auditLog.findFirstOrThrow({ where: { action: "GOOGLE_ACCOUNT_UNLINK", entity_id: before.id } });
+        expect(JSON.stringify(entry.new_values)).toContain("It is the wrong account");
+      });
+
+      it("is for a Super Admin only, needs a reason, and a person that is linked", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken);
+        const viewer = await AdminUserTest.createViewer(master.unit.id);
+
+        expect((await unlink(viewer.accessToken, json.data.id)).status).toBe(403);
+        expect((await unlink(accessToken, json.data.id, {})).status).toBe(400);
+        expect((await unlink(accessToken, json.data.id, { reason: "ok", extra: 1 })).status).toBe(400);
+        expect((await personOf(json.data.id)).google_user_id).not.toBeNull();
+        expect((await unlink(accessToken, json.data.id)).status).toBe(200);
+        expect((await unlink(accessToken, json.data.id)).status).toBe(409);
+      });
+
+      it("lets the email change to one another Google account holds, and that account be linked", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken);
+        google.users.set("gb", gOther("gb", "test_google_flow_b@millennia21.id"));
+
+        expect((await put(accessToken, json.data.id, "test_google_flow_b@millennia21.id")).status).toBe(400);
+        expect((await unlink(accessToken, json.data.id)).status).toBe(200);
+        expect((await put(accessToken, json.data.id, "test_google_flow_b@millennia21.id")).status).toBe(200);
+        const done = (await (await TestRequest.post("/api/admin/google/link-existing", {}, accessToken)).json()).data;
+
+        expect(done).toMatchObject({ applied: true });
+        expect((await personOf(json.data.id)).google_user_id).toBe("gb");
+      });
+    });
+
     it("does not ask Google about someone who has no account", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const person = await EmployeeTest.create({

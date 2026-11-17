@@ -43,6 +43,11 @@ export const googleAccountApi = {
     const response = await apiRequest(`/api/admin/${resource}/${id}/google/restore`, { method: 'POST' })
     return response.data
   },
+  // Central stops managing the account and changes nothing in Google. For a Super Admin, with the reason.
+  async unlink(resource, id, reason) {
+    const response = await apiRequest(`/api/admin/${resource}/${id}/google/unlink`, { method: 'POST', body: { reason } })
+    return response.data
+  },
   async setSuspended(resource, id, suspended) {
     const response = await apiRequest(`/api/admin/${resource}/${id}/google/${suspended ? 'suspend' : 'unsuspend'}`, { method: 'POST' })
     return response.data
