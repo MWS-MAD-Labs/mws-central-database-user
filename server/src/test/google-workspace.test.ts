@@ -948,6 +948,25 @@ describe("google workspace accounts", () => {
       expect(allowed.status).toBe(200);
     });
 
+    it("follows a rename that was already made in Google for the same account, and still refuses another account's address", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+      const { json } = await create(accessToken);
+      const person = await personOf(json.data.id);
+      const mine = google.users.get(person.google_user_id!)!;
+      // A Workspace admin renamed the account before Central was told.
+      google.users.set(mine.id, { ...mine, primaryEmail: "test_google_renamed_first@millennia21.id" });
+
+      const followed = await put(accessToken, json.data.id, "test_google_renamed_first@millennia21.id");
+
+      expect(followed.status).toBe(200);
+      expect((await personOf(json.data.id)).email).toBe("test_google_renamed_first@millennia21.id");
+      google.users.set("other", {
+        id: "other", primaryEmail: "test_google_someone_else@millennia21.id", givenName: "A", familyName: "B",
+        suspended: false, isAdmin: false, changePasswordAtNextLogin: false, lastLoginTime: null,
+      });
+      expect((await put(accessToken, json.data.id, "test_google_someone_else@millennia21.id")).status).toBe(400);
+    });
+
     it("does not ask Google about someone who has no account", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
       const person = await EmployeeTest.create({

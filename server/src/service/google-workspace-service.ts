@@ -567,9 +567,25 @@ export class GoogleWorkspaceService {
   static async assertCanChangeEmail(personId: string, newEmail: string): Promise<void> {
     const person = await prismaClient.person.findUnique({ where: { id: personId }, select: { google_user_id: true } });
     if (!person?.google_user_id) return;
+    // The account of this very person was already renamed in Google (by a Workspace admin): the address is theirs, so Central
+    // only has to follow. Another account holding it still refuses.
+    if (await this.isAlreadyRenamedInGoogle(person.google_user_id, newEmail)) return;
     const check = await this.checkEmailAvailable(newEmail);
     if (check.reason === "IN_GOOGLE" || check.reason === "DELETED_IN_GOOGLE" || check.reason === "NOT_ALLOWED") {
       throw new ResponseError(400, check.message);
+    }
+  }
+
+  // True when the Google account linked to the person already has this address as its primary email. A failed lookup is false,
+  // so the usual check decides.
+  private static async isAlreadyRenamedInGoogle(googleUserId: string, email: string): Promise<boolean> {
+    const client = getDirectoryClient();
+    if (client.mode === "simulated") return false;
+    try {
+      const user = await client.findUser(email.trim().toLowerCase());
+      return Boolean(user && user.id === googleUserId);
+    } catch {
+      return false;
     }
   }
 
