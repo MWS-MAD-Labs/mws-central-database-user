@@ -541,13 +541,13 @@ export class GoogleWorkspaceService {
           : null;
         if (asked && !holder.isAdmin) {
           if (asked.google_user_id && asked.google_user_id === holder.id) {
-            return answer("OWN_GOOGLE", true, "Google already has this address on this person's own account. Central only follows it");
+            return answer("OWN_GOOGLE", true, "This is already the person's Google account");
           }
           if (!asked.google_user_id) {
             return answer(
               "HELD_IN_GOOGLE",
               true,
-              "Another Google account has this address and it is not linked to this person. After the change, link it with Link existing",
+              "Another Google account has this address. Link it after the change",
             );
           }
         }

@@ -95,9 +95,9 @@ describe('ChangeEmailDialog', () => {
 
   it('asks about the person, and does not hold back an address on their own Google account', async () => {
     const user = userEvent.setup()
-    const fetchMock = setupFor({ availability: () => ({ available: true, reason: 'OWN_GOOGLE', message: "Google already has this address on this person's own account" }) })
+    const fetchMock = setupFor({ availability: () => ({ available: true, reason: 'OWN_GOOGLE', message: "This is already the person's Google account" }) })
     const dialog = await typeAndCheck(user)
-    await screen.findByText(/own account/)
+    await screen.findByText(/already the person's Google account/)
     expect(within(dialog).queryByRole('button', { name: 'Unlink Google' })).not.toBeInTheDocument()
     await user.type(field('new_email_again').querySelector('input'), 'ari.baru')
     await user.type(field('email_change_reason').querySelector('textarea'), 'Renamed in Workspace')
@@ -111,7 +111,7 @@ describe('ChangeEmailDialog', () => {
     const fetchMock = setupFor({
       availability: () => (linked
         ? { available: false, reason: 'IN_GOOGLE', message: 'This email already has a Google account' }
-        : { available: true, reason: 'HELD_IN_GOOGLE', message: 'Another Google account has this address and it is not linked to this person' }),
+        : { available: true, reason: 'HELD_IN_GOOGLE', message: 'Another Google account has this address. Link it after the change' }),
       get linked() { return linked },
     })
     const dialog = await typeAndCheck(user)
@@ -124,7 +124,7 @@ describe('ChangeEmailDialog', () => {
     linked = false
     await user.click(unlink)
 
-    await screen.findByText(/not linked to this person/)
+    await screen.findByText(/Link it after the change/)
     const call = fetchMock.mock.calls.find(([url, options]) => url === '/api/admin/employees/e1/google/unlink' && options.method === 'POST')
     expect(JSON.parse(call[1].body)).toEqual({ reason: 'Wrong account linked' })
     await user.type(field('new_email_again').querySelector('input'), 'ari.baru')
