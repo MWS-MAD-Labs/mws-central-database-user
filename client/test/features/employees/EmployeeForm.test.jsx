@@ -319,7 +319,7 @@ describe('EmployeeForm', () => {
   it('keeps the form from saving a new email until it is checked', async () => {
     const { user, onSubmit } = renderEmployeeForm({ mode: 'create' })
     await user.type(field('email_local').querySelector('input'), 'ari.employee')
-    expect(screen.getByText('Check the email before saving.')).toBeVisible()
+    expect(screen.getByText('Not checked yet')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Create employee' })).toBeDisabled()
     fireEvent.submit(document.querySelector('form'))
     expect(onSubmit).not.toHaveBeenCalled()

@@ -41,7 +41,7 @@ describe('checking an email with the button', () => {
     globalThis.fetch = fetchMock
     renderWithProviders(<Harness />)
     await userEvent.type(screen.getByLabelText('email'), 'ari@millennia21.id')
-    expect(screen.getByText('Check the email before saving.')).toBeVisible()
+    expect(screen.getByText('Not checked yet')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
     expect(calls(fetchMock)).toBe(0)
 
@@ -59,7 +59,7 @@ describe('checking an email with the button', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Check' }))
     await screen.findByText('Available')
     await userEvent.type(screen.getByLabelText('email'), 'x')
-    expect(screen.getByText('Check the email before saving.')).toBeVisible()
+    expect(screen.getByText('Not checked yet')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
   })
 
@@ -110,5 +110,19 @@ describe('checking an email with the button', () => {
     await userEvent.type(screen.getByLabelText('email'), 'x')
     await waitFor(() => expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled())
     expect(calls(fetchMock)).toBe(0)
+  })
+  it('writes the unchecked address as a quiet line with Check as a link, and the result with an icon', async () => {
+    globalThis.fetch = createFetchRouter([answer({ available: false, reason: 'IN_CENTRAL', message: 'This email is already used in Central' })])
+    renderWithProviders(<Harness />)
+    await userEvent.type(screen.getByLabelText('email'), 'ari@millennia21.id')
+
+    const note = screen.getByTestId('email-check')
+    expect(note).toHaveTextContent('Not checked yet')
+    expect(note.querySelector('svg')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Check' }))
+
+    expect(await screen.findByText('This email is already used in Central')).toBeVisible()
+    expect(screen.getByTestId('email-check').querySelector('svg')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Check' })).not.toBeInTheDocument()
   })
 })
