@@ -435,7 +435,20 @@ export type GoogleLookupState = "found" | "absent" | "simulated" | "blocked" | "
 export type EmailAvailability = {
   // False only when the email cannot be used for a new person.
   available: boolean;
-  reason: "FREE" | "IN_CENTRAL" | "IN_GOOGLE" | "DELETED_IN_GOOGLE" | "NOT_ALLOWED" | "PROTECTED" | "INVALID" | "NOT_CHECKED" | "CHECK_FAILED";
+  reason:
+    | "FREE"
+    | "IN_CENTRAL"
+    | "IN_GOOGLE"
+    // Only when a person is asked about: Google has the address on that person's own account, or on an account of someone else
+    // while the person has none linked.
+    | "OWN_GOOGLE"
+    | "HELD_IN_GOOGLE"
+    | "DELETED_IN_GOOGLE"
+    | "NOT_ALLOWED"
+    | "PROTECTED"
+    | "INVALID"
+    | "NOT_CHECKED"
+    | "CHECK_FAILED";
   message: string;
   mode: "google" | "simulated";
 };
@@ -476,7 +489,7 @@ export function lockOf(person: LockInput): { locked: boolean; reason: string } {
 export class GoogleWorkspaceService {
   // Whether this email can be given to a new person: clean, on our domain, not in Central, allowed to reach Google and
   // not already a Google account. A Google that cannot be asked, or is not the real one, does not block.
-  static async checkEmailAvailable(rawEmail: string): Promise<EmailAvailability> {
+  static async checkEmailAvailable(rawEmail: string, options: { personId?: string } = {}): Promise<EmailAvailability> {
     const email = rawEmail.trim().toLowerCase();
     const client = getDirectoryClient();
     const answer = (reason: EmailAvailability["reason"], available: boolean, message: string): EmailAvailability => ({
@@ -521,7 +534,23 @@ export class GoogleWorkspaceService {
       return answer("NOT_CHECKED", true, "Not checked against Google in this environment");
     }
     try {
-      if (await client.findUser(email)) {
+      const holder = await client.findUser(email);
+      if (holder) {
+        const asked = options.personId
+          ? await prismaClient.person.findFirst({ where: { id: options.personId, deleted_at: null }, select: { google_user_id: true } })
+          : null;
+        if (asked && !holder.isAdmin) {
+          if (asked.google_user_id && asked.google_user_id === holder.id) {
+            return answer("OWN_GOOGLE", true, "Google already has this address on this person's own account. Central only follows it");
+          }
+          if (!asked.google_user_id) {
+            return answer(
+              "HELD_IN_GOOGLE",
+              true,
+              "Another Google account has this address and it is not linked to this person. After the change, link it with Link existing",
+            );
+          }
+        }
         return answer("IN_GOOGLE", false, "This email already has a Google account");
       }
       // A deleted account keeps its address reserved until Google clears it.

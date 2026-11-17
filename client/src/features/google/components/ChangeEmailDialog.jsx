@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import { Field, TextAreaInput, TextInput } from '../../../components/ui/FormControls.jsx'
 import { sanitizeEmailLocalPart } from '../../../lib/form.js'
-import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
+import { showErrorToast, showInfoToast, showSuccessToast } from '../../../lib/toast.js'
 import { emailChangeApi } from '../api/emailChangeApi.js'
+import { googleAccountApi } from '../api/googleAccountApi.js'
 import { EmailCheckNote } from './EmailCheckNote.jsx'
 import { useEmailCheck } from '../hooks/useEmailCheck.js'
 
@@ -21,10 +22,15 @@ export function ChangeEmailDialog({ resource, id, currentEmail, name, onClose })
   const [reason, setReason] = useState('')
 
   const email = local ? `${local}@${DOMAIN}` : ''
-  const check = useEmailCheck(email)
+  const check = useEmailCheck(email, { person: { resource, id } })
+  // Whether the person has a Google account linked, for the shortcut that lets go of it.
+  const status = useQuery({ queryKey: ['google-account', resource, id], queryFn: () => googleAccountApi.status(resource, id), staleTime: 0 })
   const same = email === currentEmail
   const mismatch = Boolean(again) && again !== local
-  const ready = Boolean(local) && !same && !check.blocked && again === local && reason.trim().length >= 5
+  const reasonOk = reason.trim().length >= 5
+  const ready = Boolean(local) && !same && !check.blocked && again === local && reasonOk
+  // The address is on another Google account and this person has one linked: letting go of theirs frees the way.
+  const canUnlink = check.state === 'taken' && check.reason === 'IN_GOOGLE' && Boolean(status.data?.linked) && Boolean(status.data?.can?.manage)
 
   const change = useMutation({
     mutationFn: () => emailChangeApi.change(resource, id, { email, reason: reason.trim() }),
@@ -32,9 +38,21 @@ export function ChangeEmailDialog({ resource, id, currentEmail, name, onClose })
       queryClient.invalidateQueries({ queryKey: [resource] })
       queryClient.invalidateQueries({ queryKey: ['google-account', resource, id] })
       showSuccessToast('Email changed.')
+      if (check.state === 'held') showInfoToast('Use Link existing to link the Google account that has this address. Check its name in Google first.')
       onClose()
     },
     onError: (error) => showErrorToast(error, 'The email was not changed.'),
+  })
+
+  const unlink = useMutation({
+    mutationFn: () => googleAccountApi.unlink(resource, id, reason.trim()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['google-account', resource, id] })
+      showSuccessToast('Google account unlinked.')
+      // The same address, asked again now that the person has no account linked.
+      check.recheck()
+    },
+    onError: (error) => showErrorToast(error, 'The Google account was not unlinked.'),
   })
 
   return (
@@ -100,6 +118,17 @@ export function ChangeEmailDialog({ resource, id, currentEmail, name, onClose })
             </span>
           </div>
         </Field>
+        {canUnlink ? (
+          <div className="rounded-xl border border-(--mws-line) bg-(--mws-soft) px-4 py-3 text-sm">
+            <p className="text-(--mws-muted)">
+              Another Google account has this address. Unlink the Google account of {name || 'this person'} so the address can be used.
+              Nothing changes in Google. Write the reason below first.
+            </p>
+            <Button type="button" variant="secondary" size="sm" className="mt-2" loading={unlink.isPending} disabled={!reasonOk} onClick={() => unlink.mutate()}>
+              Unlink Google
+            </Button>
+          </div>
+        ) : null}
         <Field label="Reason" name="email_change_reason" required>
           <TextAreaInput rows={3} value={reason} maxLength={200} onChange={(event) => setReason(event.target.value)} />
         </Field>

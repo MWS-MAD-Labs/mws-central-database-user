@@ -6,6 +6,8 @@ const TONES = {
   free: 'text-[#476b43]',
   taken: 'text-[#a43c41] font-medium',
   claimable: 'text-[#8a6419] font-medium',
+  own: 'text-[#476b43]',
+  held: 'text-[#8a6419] font-medium',
   failed: 'text-[#a43c41]',
   'failed-google': 'text-[#8a6419]',
   unchecked: 'text-(--mws-muted)',

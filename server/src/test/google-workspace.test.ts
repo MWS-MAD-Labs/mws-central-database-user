@@ -967,6 +967,41 @@ describe("google workspace accounts", () => {
       expect((await put(accessToken, json.data.id, "test_google_someone_else@millennia21.id")).status).toBe(400);
     });
 
+    describe("telling an address that is the person's own from somebody else's", () => {
+      const availability = async (token: string, email: string, query = "") =>
+        (await (await TestRequest.get(`/api/admin/google/email-availability?email=${encodeURIComponent(email)}${query}`, token)).json()).data;
+      const holder = (id: string, email: string) => ({
+        id, primaryEmail: email, givenName: "A", familyName: "B", suspended: false, isAdmin: false,
+        changePasswordAtNextLogin: false, lastLoginTime: null as Date | null,
+      });
+
+      it("says own, held or taken, and only knows the person when asked about them", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const { json } = await create(accessToken);
+        const mine = google.users.get((await personOf(json.data.id)).google_user_id!)!;
+        google.users.set(mine.id, { ...mine, primaryEmail: "test_google_av_own@millennia21.id" });
+        google.users.set("av-other", holder("av-other", "test_google_av_other@millennia21.id"));
+        const about = `&kind=employee&id=${json.data.id}`;
+
+        expect(await availability(accessToken, "test_google_av_own@millennia21.id", about)).toMatchObject({ available: true, reason: "OWN_GOOGLE" });
+        expect(await availability(accessToken, "test_google_av_other@millennia21.id", about)).toMatchObject({ available: false, reason: "IN_GOOGLE" });
+        expect(await availability(accessToken, "test_google_av_own@millennia21.id")).toMatchObject({ available: false, reason: "IN_GOOGLE" });
+
+        await TestRequest.post(`/api/admin/employees/${json.data.id}/google/unlink`, { reason: "Wrong account" }, accessToken);
+        expect(await availability(accessToken, "test_google_av_other@millennia21.id", about)).toMatchObject({ available: true, reason: "HELD_IN_GOOGLE" });
+        expect(await availability(accessToken, "test_google_av_other@millennia21.id")).toMatchObject({ available: false, reason: "IN_GOOGLE" });
+      });
+
+      it("refuses a kind without an id, a kind that does not exist, and a person that is not there", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id);
+        const get = (query: string) => TestRequest.get(`/api/admin/google/email-availability?email=test_google_av_x@millennia21.id${query}`, accessToken);
+
+        expect((await get("&kind=employee")).status).toBe(400);
+        expect((await get("&kind=parent&id=x")).status).toBe(400);
+        expect((await get("&kind=employee&id=missing")).status).toBe(404);
+      });
+    });
+
     describe("letting Central go of the Google account of a person", () => {
       const unlink = (token: string, id: string, body: Record<string, unknown> = { reason: "It is the wrong account" }) =>
         TestRequest.post(`/api/admin/employees/${id}/google/unlink`, body, token);

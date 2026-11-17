@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { AdminRole } from "../../generated/prisma/client";
+import { prismaClient } from "../../lib/prisma";
 import { ResponseError } from "../../error/response-error";
 import { GoogleReconcileService } from "../../service/google-reconcile-service";
 import { GoogleWorkspaceService } from "../../service/google-workspace-service";
@@ -20,7 +21,24 @@ export class GoogleController {
     }
     const email = c.req.query("email");
     if (!email) throw new ResponseError(400, "Email is required");
-    return c.json({ data: await GoogleWorkspaceService.checkEmailAvailable(email) });
+    // With the person whose email is being changed, the answer can tell their own Google account from somebody else's.
+    const kind = c.req.query("kind");
+    const id = c.req.query("id");
+    let personId: string | undefined;
+    if (kind || id) {
+      if ((kind !== "employee" && kind !== "intern" && kind !== "student") || !id || id.length > 64) {
+        throw new ResponseError(400, "kind and id go together, and kind is employee, intern or student");
+      }
+      const row =
+        kind === "employee"
+          ? await prismaClient.employee.findFirst({ where: { id, deleted_at: null }, select: { person_id: true } })
+          : kind === "intern"
+            ? await prismaClient.intern.findFirst({ where: { id, deleted_at: null }, select: { person_id: true } })
+            : await prismaClient.student.findFirst({ where: { id, deleted_at: null }, select: { person_id: true } });
+      if (!row) throw new ResponseError(404, "Person not found");
+      personId = row.person_id;
+    }
+    return c.json({ data: await GoogleWorkspaceService.checkEmailAvailable(email, { personId }) });
   }
 
   // What a link would do, without doing it. Super Admins only.

@@ -6,8 +6,12 @@ const kindQuery = (kind) => (kind === 'students' ? '?kind=students' : '')
 // The Google Workspace account behind an employee's or an intern's email. `resource` is "employees" or "interns".
 export const googleAccountApi = {
   // Whether an email can be given to a new employee or intern: free, used in Central, already in Google, not allowed here.
-  async emailAvailability(email) {
-    const response = await apiRequest(`/api/admin/google/email-availability?email=${encodeURIComponent(email)}`)
+  // With `person` ({ resource, id }, the person whose email is being changed) the answer also tells that Google holds the
+  // address on that person's own account, or on another account while the person has none linked.
+  async emailAvailability(email, person) {
+    const kinds = { employees: 'employee', interns: 'intern', students: 'student' }
+    const about = person && kinds[person.resource] ? `&kind=${kinds[person.resource]}&id=${encodeURIComponent(person.id)}` : ''
+    const response = await apiRequest(`/api/admin/google/email-availability?email=${encodeURIComponent(email)}${about}`)
     return response.data
   },
   // `refresh` makes the server look at Google again now (Super Admin), instead of when the last look is old.

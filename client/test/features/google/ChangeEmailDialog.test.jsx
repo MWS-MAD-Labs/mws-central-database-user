@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from 'bun:test'
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ChangeEmailDialog } from '../../../src/features/google/components/ChangeEmailDialog.jsx'
 import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
@@ -69,5 +69,80 @@ describe('ChangeEmailDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     const call = fetchMock.mock.calls.find(([url]) => url === '/api/admin/employees/e1/change-email')
     expect(JSON.parse(call[1].body)).toEqual({ email: 'ari.baru@millennia21.id', reason: 'Name was misspelt' })
+  })
+  // The dialog also reads the Google status of the person and answers the check by the address.
+  function setupFor({ availability, linked = true, canManage = true }) {
+    const fetchMock = createFetchRouter([
+      { path: /\/api\/admin\/google\/email-availability/, response: () => jsonResponse({ data: availability() }) },
+      { path: '/api/admin/employees/e1/google', response: () => jsonResponse({ data: { linked, status: linked ? 'ACTIVE' : 'NONE', can: { manage: canManage } } }) },
+      { path: '/api/admin/employees/e1/google/unlink', method: 'POST', response: jsonResponse({ data: { status: 'NONE', google_user_id: null } }) },
+      { path: '/api/admin/employees/e1/change-email', method: 'POST', response: jsonResponse({ data: { id: 'e1', email: 'ari.baru@millennia21.id' } }) },
+    ])
+    globalThis.fetch = fetchMock
+    renderWithProviders(
+      <ConfirmProvider>
+        <ChangeEmailDialog resource="employees" id="e1" currentEmail="ari.lama@millennia21.id" name="Ari" onClose={mock()} />
+      </ConfirmProvider>,
+    )
+    return fetchMock
+  }
+  const typeAndCheck = async (user) => {
+    const dialog = screen.getByRole('dialog', { name: 'Change Email' })
+    await user.type(field('new_email_local').querySelector('input'), 'ari.baru')
+    await user.click(within(dialog).getByRole('button', { name: 'Check' }))
+    return dialog
+  }
+
+  it('asks about the person, and does not hold back an address on their own Google account', async () => {
+    const user = userEvent.setup()
+    const fetchMock = setupFor({ availability: () => ({ available: true, reason: 'OWN_GOOGLE', message: "Google already has this address on this person's own account" }) })
+    const dialog = await typeAndCheck(user)
+    await screen.findByText(/own account/)
+    expect(within(dialog).queryByRole('button', { name: 'Unlink Google' })).not.toBeInTheDocument()
+    await user.type(field('new_email_again').querySelector('input'), 'ari.baru')
+    await user.type(field('email_change_reason').querySelector('textarea'), 'Renamed in Workspace')
+    expect(within(dialog).getByRole('button', { name: 'Change Email' })).toBeEnabled()
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('kind=employee&id=e1'))).toBe(true)
+  })
+
+  it('offers Unlink Google when another Google account has the address, then lets the change through', async () => {
+    const user = userEvent.setup()
+    let linked = true
+    const fetchMock = setupFor({
+      availability: () => (linked
+        ? { available: false, reason: 'IN_GOOGLE', message: 'This email already has a Google account' }
+        : { available: true, reason: 'HELD_IN_GOOGLE', message: 'Another Google account has this address and it is not linked to this person' }),
+      get linked() { return linked },
+    })
+    const dialog = await typeAndCheck(user)
+    await screen.findByText('This email already has a Google account')
+    const unlink = await within(dialog).findByRole('button', { name: 'Unlink Google' })
+    expect(unlink).toBeDisabled()
+
+    await user.type(field('email_change_reason').querySelector('textarea'), 'Wrong account linked')
+    expect(unlink).toBeEnabled()
+    linked = false
+    await user.click(unlink)
+
+    await screen.findByText(/not linked to this person/)
+    const call = fetchMock.mock.calls.find(([url, options]) => url === '/api/admin/employees/e1/google/unlink' && options.method === 'POST')
+    expect(JSON.parse(call[1].body)).toEqual({ reason: 'Wrong account linked' })
+    await user.type(field('new_email_again').querySelector('input'), 'ari.baru')
+    expect(within(dialog).getByRole('button', { name: 'Change Email' })).toBeEnabled()
+  })
+
+  it('has no Unlink Google when the person has no account, or the admin may not manage it', async () => {
+    const taken = () => ({ available: false, reason: 'IN_GOOGLE', message: 'This email already has a Google account' })
+    const user = userEvent.setup()
+    setupFor({ availability: taken, linked: false })
+    let dialog = await typeAndCheck(user)
+    await screen.findByText('This email already has a Google account')
+    expect(within(dialog).queryByRole('button', { name: 'Unlink Google' })).not.toBeInTheDocument()
+    cleanup()
+
+    setupFor({ availability: taken, linked: true, canManage: false })
+    dialog = await typeAndCheck(user)
+    await screen.findByText('This email already has a Google account')
+    expect(within(dialog).queryByRole('button', { name: 'Unlink Google' })).not.toBeInTheDocument()
   })
 })

@@ -10,10 +10,10 @@ import { googleAccountApi } from '../api/googleAccountApi.js'
 // be asked, or is only simulated, passes with its note; a request that failed does not. An address Google already has
 // stays blocked, unless `allowClaim` (a Super Admin on the employee form): then it can pass once `claimExisting` is
 // ticked, and the person is linked when they sign in.
-export function useEmailCheck(email, { initialEmail = '', allowClaim = false, claimExisting = false, ownEmail = '' } = {}) {
+export function useEmailCheck(email, { initialEmail = '', allowClaim = false, claimExisting = false, ownEmail = '', person = null } = {}) {
   const [result, setResult] = useState(null)
   const mutation = useMutation({
-    mutationFn: (value) => googleAccountApi.emailAvailability(value),
+    mutationFn: (value) => googleAccountApi.emailAvailability(value, person),
     onSuccess: (data, value) => {
       setResult({ email: value, data })
       // A Google that is only simulated cannot say anything about the address, so a floating note says so.
@@ -24,7 +24,8 @@ export function useEmailCheck(email, { initialEmail = '', allowClaim = false, cl
 
   const usable = Boolean(email) && !emailProblem(email)
   const answer = result && result.email === email ? result : null
-  const none = { checking: false, canCheck: false, blocked: false, message: null, check: () => {} }
+  // `recheck` asks again for the same address, for when something changed that the answer depended on.
+  const none = { checking: false, canCheck: false, blocked: false, message: null, check: () => {}, recheck: () => mutation.mutate(email) }
 
   if (!usable || (initialEmail && email === initialEmail)) return { ...none, state: 'idle' }
 
@@ -39,7 +40,11 @@ export function useEmailCheck(email, { initialEmail = '', allowClaim = false, cl
   if (!answer.data.available && allowClaim && answer.data.reason === 'IN_GOOGLE') {
     return { ...none, state: 'claimable', blocked: !claimExisting, message: answer.data.message }
   }
-  if (!answer.data.available) return { ...none, state: 'taken', blocked: true, message: answer.data.message }
+  if (!answer.data.available) return { ...none, state: 'taken', reason: answer.data.reason, blocked: true, message: answer.data.message }
+  // For a person whose email is being changed: the address is on their own Google account, or on another account while
+  // they have none linked (it is linked after the change). Neither holds the change back.
+  if (answer.data.reason === 'OWN_GOOGLE') return { ...none, state: 'own', reason: answer.data.reason, message: answer.data.message }
+  if (answer.data.reason === 'HELD_IN_GOOGLE') return { ...none, state: 'held', reason: answer.data.reason, message: answer.data.message }
   if (answer.data.reason === 'FREE') return { ...none, state: 'free', message: answer.data.message }
   // A protected admin address: saved as an employee, never changed in Google. The admin's own is linked.
   if (answer.data.reason === 'PROTECTED') {
