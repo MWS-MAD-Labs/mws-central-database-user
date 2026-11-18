@@ -26,6 +26,11 @@ export type ApplicationEntitlementLookupRequest = {
   application_id?: string;
 };
 
+export type ApplicationEntitlementBatchLookupRequest = {
+  person_id: string;
+  application_ids: string[];
+};
+
 export type GrantApplicationEntitlementRequest = {
   person_id: string;
   application_id: string;

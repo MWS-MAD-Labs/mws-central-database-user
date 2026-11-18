@@ -63,6 +63,11 @@ services:
       - REDIS_HOST=${REDIS_HOST:-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      # The client nginx in front overwrites X-Forwarded-For, so the real caller address is trusted. Without it every
+      # person behind the proxy shares one rate limit bucket. Set false only when the server is reached without nginx.
+      - TRUST_PROXY=${TRUST_PROXY:-true}
+      - INTERNAL_RATE_LIMIT_POINTS=${INTERNAL_RATE_LIMIT_POINTS:-1200}
+      - INTERNAL_PRE_AUTH_RATE_LIMIT_POINTS=${INTERNAL_PRE_AUTH_RATE_LIMIT_POINTS:-3000}
       - PROTECTED_SUPER_ADMIN_EMAILS=${PROTECTED_SUPER_ADMIN_EMAILS:-}
       # Read by the server, so they must be listed here: a value in the stack's .env alone never reaches the container.
       - DEPLOYMENT_ENVIRONMENT=${DEPLOYMENT_ENVIRONMENT:-}

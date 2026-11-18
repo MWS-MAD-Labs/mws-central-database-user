@@ -14,6 +14,12 @@ applicationEntitlementApiRouter.get(
   (c) => ApplicationEntitlementApiController.lookup(c),
 );
 
+applicationEntitlementApiRouter.post(
+  "/lookup-batch",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.lookupBatch(c),
+);
+
 applicationEntitlementApiRouter.get(
   "/",
   requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),

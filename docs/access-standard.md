@@ -1,4 +1,4 @@
-# Access Standard v1.0
+# Access Standard v1.1
 
 Aturan satu-satunya untuk role, permission, dan akses di semua aplikasi MWS. Dokumen ini normatif: aplikasi mana pun yang memakai sesi Hub atau data Central harus mengikutinya. Dokumen lain (README aplikasi, catatan rollout) hanya menunjuk nomor aturan di sini dan tidak mengulang isinya.
 
@@ -73,7 +73,7 @@ Contoh benar: `work-order.create`, `work-order.read-all`, `iep.submit`, `facilit
 - Bentuk: gerbang `be-*` atau aksi di route, lalu cek keanggotaan di handler.
 
 ### AS-10 Menerima entitlement
-- Sumber: `GET /api/internal/application-entitlements/lookup` atau token SSO dari Hub. Aturan di bawah diterapkan satu kali oleh `createAccessResolver` (`mws-central-auth/access`); aplikasi memakainya, tidak menulis ulang.
+- Sumber: `GET /api/internal/application-entitlements/lookup`, batch lookup Central untuk agregator seperti Hub, atau token SSO dari Hub. Aturan di bawah diterapkan satu kali oleh `createAccessResolver` (`mws-central-auth/access`); aplikasi memakainya, tidak menulis ulang.
 - Aplikasi MUST menolak permission yang tidak ada di manifestnya (dan MUST NOT menganggapnya sebagai hak).
 - Aplikasi MUST memeriksa `is_active` dan `organization_id` (harus sama dengan Organization ID aplikasi di Central).
 - Organization ID hanya dibandingkan dengan `CENTRAL_ORGANIZATION_ID`; ketidakcocokan menolak entitlement itu, tidak pernah menghentikan start aplikasi. Pemetaan yang disimpan aplikasi di database MUST mengikuti `CENTRAL_ORGANIZATION_ID` di `.env`. `mws-access doctor` menunjukkan bila nilai di `.env` bukan yang dipakai Central.
@@ -108,3 +108,4 @@ Nomor aturan tidak dipakai ulang. Perubahan menaikkan versi (v1.1 untuk penambah
 | Versi | Tanggal | Catatan |
 | --- | --- | --- |
 | 1.0 | 2026-10-27 | Penyatuan aturan dari `application-access-integration.md`, ADR 0002 Learnspace, dan keputusan "tanpa role lokal". Format key diseragamkan ke titik. |
+| 1.1 | 2026-11-18 | Menambahkan batch entitlement lookup untuk agregator seperti Hub tanpa mengubah aturan validasi entitlement. |
