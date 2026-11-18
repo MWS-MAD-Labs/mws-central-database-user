@@ -394,6 +394,25 @@ share one login bucket. Set it false only when the server is reached without ngi
 `INTERNAL_PRE_AUTH_RATE_LIMIT_POINTS` (default 3000 per minute, per caller address)
 size the internal API buckets.
 
+To see the limits working on a deployed Central (the limiter is skipped when `CI=true`, so
+the test suite cannot), use `server/scripts/rate-limit-check.ts` against **staging** with the
+staging API client's token (`CENTRAL_API_TOKEN`; `CENTRAL_ORGANIZATION_ID` is sent when set).
+A burst spends the limit of the token, so never point it at production.
+
+```
+cd server
+bun run check:rate-limit header --base https://<staging-central>/api/internal --expect-limit 1200
+bun run check:rate-limit burst  --base https://<staging-central>/api/internal --total 300 --concurrency 50 --yes --expect ok
+bun run check:rate-limit burst  --base https://<staging-central>/api/internal --total 1500 --concurrency 100 --yes --expect limited
+bun run check:rate-limit auth   --base https://<staging-central>
+```
+
+`header` shows the bucket size, so a Central that is still the old version says 300. The two
+bursts show nobody is refused below the limit and that requests above it get a 429 with
+`Retry-After`. `auth` prints what is left of the sign-in bucket after each empty request:
+run it from two devices, and if the second starts again at 4 every person has their own
+bucket. A very large burst may also be slowed by the proxy in front before it reaches Central.
+
 ## Audit Logging
 
 Every mutation that matters — employee CRUD, student CRUD, enrollment changes,
