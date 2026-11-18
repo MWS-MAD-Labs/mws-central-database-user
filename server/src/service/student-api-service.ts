@@ -267,7 +267,8 @@ export class StudentApiService {
                       enrollment_status: EnrollmentStatus.ACTIVE,
                       deleted_at: null,
                     },
-                    orderBy: { created_at: "desc" },
+                    // Two rows can share a created_at to the millisecond, so the start date settles the tie.
+                    orderBy: [{ created_at: "desc" }, { start_date: "desc" }],
                     take: 1,
                     select: { start_date: true },
                   },
