@@ -117,7 +117,7 @@ Request
   │
   ├─── /api/auth          → authRouter
   ├─── /api/admin         → adminRouter  (adminAuthMiddleware + adminLimiterMiddleware)
-  └─── /api/internal      → internalRouter (apiClientAuthMiddleware + internalLimiterMiddleware)
+  └─── /api/internal      → internalRouter (pre-auth limiter + apiClientAuthMiddleware + per-client limiter)
 ```
 
 ### 3.1 Entry Point (`src/index.ts`)
@@ -468,7 +468,7 @@ Flow verifikasi:
 
 ### 8.3 Rate Limit Internal
 
-300 request per 60 detik — lebih longgar dari admin karena traffic-nya server-to-server.
+1200 request per 60 detik per API client (`INTERNAL_RATE_LIMIT_POINTS`) — lebih longgar dari admin karena traffic-nya server-to-server dan satu token melayani semua orang yang masuk.
 
 ---
 
@@ -531,14 +531,22 @@ Diimplementasikan via raw migration SQL (bukan `@@unique`) sehingga hanya berlak
 
 ## 10. Rate Limiting
 
-Menggunakan **Redis** via `rate-limiter-flexible`. Key: `{METHOD}_{routePattern}_{IP}`.
+Menggunakan **Redis** via `rate-limiter-flexible`. Route browser memakai key
+`{METHOD}_{routePattern}_{IP}`. Internal API memakai bucket pra-autentikasi per IP,
+lalu bucket utama `{METHOD}_{routePattern}_{apiClientId}` setelah token diverifikasi.
+IP dibaca dari `X-Forwarded-For` bila `TRUST_PROXY=true` (default di `docker-compose.yml`).
+Nginx klien menimpa header itu dengan alamat yang dilihat Cloudflare (`CF-Connecting-IP`),
+atau alamat peer bila tidak ada, bukan menambahkannya ke kiriman penelepon. Dengan
+`TRUST_PROXY=false` server hanya melihat alamat nginx, sama untuk semua orang, sehingga
+satu organisasi berbagi satu bucket login. Set false hanya bila server dijangkau tanpa nginx.
 
 | Limiter | Points | Window | Dipakai di |
 |---------|--------|--------|------------|
 | `authLimiterMiddleware` | 5 | 15 menit | `/api/auth/*` |
-| `readLimiterMiddleware` | 100 | 3 menit | Admin GET |
-| `writeLimiterMiddleware` | 20 | 1 menit | Admin POST/PUT/PATCH/DELETE |
-| `internalLimiterMiddleware` | 300 | 1 menit | `/api/internal/*` |
+| `readLimiterMiddleware` | 300 | 3 menit | Admin GET |
+| `writeLimiterMiddleware` | 40 | 1 menit | Admin POST/PUT/PATCH/DELETE |
+| `internalPreAuthLimiterMiddleware` | 3000 (`INTERNAL_PRE_AUTH_RATE_LIMIT_POINTS`) | 1 menit | `/api/internal/*` sebelum autentikasi, per alamat penelepon |
+| `internalLimiterMiddleware` | 1200 (`INTERNAL_RATE_LIMIT_POINTS`) | 1 menit | `/api/internal/*` per API client |
 
 `adminLimiterMiddleware` otomatis pilih read/write limiter berdasarkan HTTP method.
 

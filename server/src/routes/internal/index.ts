@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import { apiClientAuthMiddleware } from "../../middleware/api-client-auth-middleware";
-import { internalLimiterMiddleware } from "../../middleware/rate-limiter";
+import {
+  internalLimiterMiddleware,
+  internalPreAuthLimiterMiddleware,
+} from "../../middleware/rate-limiter";
 import { employeeApiRouter } from "./employee-api-router";
 import { studentApiRouter } from "./student-api-router";
 import { internApiRouter } from "./intern-api-router";
@@ -14,8 +17,9 @@ import { applicationCatalogApiRouter, applicationEntitlementApiRouter, applicati
 
 export const internalRouter = new Hono<{ Variables: ApiClientVariables }>();
 
-internalRouter.use("*", internalLimiterMiddleware);
+internalRouter.use("*", internalPreAuthLimiterMiddleware);
 internalRouter.use("*", apiClientAuthMiddleware);
+internalRouter.use("*", internalLimiterMiddleware);
 
 internalRouter.route("/employees", employeeApiRouter);
 internalRouter.route("/students", studentApiRouter);

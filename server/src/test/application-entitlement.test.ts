@@ -284,6 +284,100 @@ describe("application entitlements", () => {
     expect(audit?.api_client_id).toBeDefined();
   });
 
+  it("looks up several applications for one person in one request", async () => {
+    const person = await createEmployee();
+    const { accessToken } = await createSuperAdmin();
+    const grantResponse = await TestRequest.post(
+      "/api/admin/application-entitlements",
+      {
+        person_id: person.id,
+        application_id: "exima",
+        role: "STAFF",
+        permissions: STAFF_PERMISSIONS,
+      },
+      accessToken,
+    );
+    const granted = await responseData(grantResponse);
+    expect(grantResponse.status).toBe(200);
+
+    const { token } = await createApiClient([
+      API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    ]);
+    const response = await TestRequest.post(
+      "/api/internal/application-entitlements/lookup-batch",
+      {
+        person_id: person.id,
+        application_ids: ["exima", "daily-checkin"],
+      },
+      undefined,
+      { Authorization: `Bearer ${token}` },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    // This file's setup gives daily-checkin a baseline rule for employees, so it comes back too, as the single lookup
+    // would answer it. Only the explicit row of exima has the id it was granted with.
+    expect(body.data).toHaveLength(2);
+    const byApplication = new Map(
+      body.data.map((entitlement: { application_id: string }) => [entitlement.application_id, entitlement]),
+    );
+    expect(byApplication.get("exima")).toMatchObject({ id: granted.id, role: "STAFF" });
+    expect(byApplication.get("daily-checkin")).toMatchObject({ role: "BASELINE_TEST", is_default: true });
+  });
+
+  it("validates batch entitlement lookup scope and application ids", async () => {
+    const person = await createEmployee();
+    const denied = await createApiClient(["employees:read"]);
+    const forbidden = await TestRequest.post(
+      "/api/internal/application-entitlements/lookup-batch",
+      { person_id: person.id, application_ids: ["exima"] },
+      undefined,
+      { Authorization: `Bearer ${denied.token}` },
+    );
+    expect(forbidden.status).toBe(403);
+
+    const allowed = await createApiClient([
+      API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    ]);
+    const duplicate = await TestRequest.post(
+      "/api/internal/application-entitlements/lookup-batch",
+      { person_id: person.id, application_ids: ["exima", "exima"] },
+      undefined,
+      { Authorization: `Bearer ${allowed.token}` },
+    );
+    expect(duplicate.status).toBe(400);
+
+    const malformed = await TestRequest.post(
+      "/api/internal/application-entitlements/lookup-batch",
+      { person_id: person.id, application_ids: "exima" },
+      undefined,
+      { Authorization: `Bearer ${allowed.token}` },
+    );
+    expect(malformed.status).toBe(400);
+
+    const nullBody = await TestRequest.postRaw(
+      "/api/internal/application-entitlements/lookup-batch",
+      null,
+      undefined,
+      { Authorization: `Bearer ${allowed.token}` },
+    );
+    expect(nullBody.status).toBe(400);
+
+    const tooMany = await TestRequest.post(
+      "/api/internal/application-entitlements/lookup-batch",
+      {
+        person_id: person.id,
+        application_ids: Array.from(
+          { length: 51 },
+          (_, index) => `app-${index}`,
+        ),
+      },
+      undefined,
+      { Authorization: `Bearer ${allowed.token}` },
+    );
+    expect(tooMany.status).toBe(400);
+  });
+
   it("revokes transactionally and increments the version", async () => {
     const person = await createEmployee();
     const { accessToken } = await createSuperAdmin();

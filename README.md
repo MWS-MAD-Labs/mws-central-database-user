@@ -365,15 +365,18 @@ of the Hub. The same explanation is in the app under "How Removing Works".
 
 ## Rate Limiting
 
-All routes are rate-limited via Redis (`rate-limiter-flexible`). Key is
-`{METHOD}_{routePattern}_{clientIP}`.
+All routes are rate-limited via Redis (`rate-limiter-flexible`). Browser-facing
+routes use `{METHOD}_{routePattern}_{clientIP}`. Internal API requests first use
+a pre-authentication IP bucket, then an authenticated
+`{METHOD}_{routePattern}_{apiClientId}` bucket.
 
 | Limiter     | Limit        | Window | Applied to                    |
 | ----------- | ------------ | ------ | ----------------------------- |
 | Auth        | 5 requests   | 15 min | `/api/auth/*`                 |
-| Admin read  | 100 requests | 3 min  | Admin `GET` requests          |
-| Admin write | 20 requests  | 1 min  | Admin `POST/PUT/PATCH/DELETE` |
-| Internal    | 300 requests | 1 min  | `/api/internal/*`             |
+| Admin read  | 300 requests | 3 min  | Admin `GET` requests          |
+| Admin write | 40 requests  | 1 min  | Admin `POST/PUT/PATCH/DELETE` |
+| Internal pre-auth | 3000 requests | 1 min | `/api/internal/*` per caller address before token verification |
+| Internal authenticated | 1200 requests | 1 min | `/api/internal/*` per API client |
 
 When a limit is exceeded the server returns `429` with a
 `Retry-After` header and a JSON body `{ "errors": "Too many requests. Try
@@ -381,6 +384,15 @@ again in Ns." }`. Headers `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
 `X-RateLimit-Reset` are always included on every response.
 
 Rate limiting is **skipped** when `NODE_ENV=test` or `CI=true`.
+`TRUST_PROXY=true` makes the IP buckets use the `X-Forwarded-For` value. The client
+nginx overwrites it with the address Cloudflare saw (`CF-Connecting-IP`), or the peer
+when there is none, so it is safe to trust there, and `docker-compose.yml` turns it on
+by default. With `TRUST_PROXY=false` the server reads the direct peer, which behind
+the nginx container is the same address for everybody: the whole organisation would
+share one login bucket. Set it false only when the server is reached without nginx.
+`INTERNAL_RATE_LIMIT_POINTS` (default 1200 per minute, per API client) and
+`INTERNAL_PRE_AUTH_RATE_LIMIT_POINTS` (default 3000 per minute, per caller address)
+size the internal API buckets.
 
 ## Audit Logging
 
