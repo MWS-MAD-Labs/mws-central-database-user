@@ -140,6 +140,18 @@ export class ApplicationEntitlementValidation {
     application_id: applicationId,
   });
 
+  static readonly BATCH_LOOKUP = z.object({
+    person_id: nonemptyId("Person ID"),
+    application_ids: z
+      .array(applicationId)
+      .min(1, "Application IDs are required")
+      .max(50, "Pick at most 50 applications at a time")
+      .refine(
+        (values) => new Set(values).size === values.length,
+        "Application IDs must be unique",
+      ),
+  });
+
   // Permissions are optional: the registry role decides them.
   static readonly GRANT = z.object({
     person_id: nonemptyId("Person ID"),

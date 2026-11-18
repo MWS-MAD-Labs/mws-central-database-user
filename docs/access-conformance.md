@@ -1,8 +1,8 @@
 # Access Standard: kesesuaian aplikasi
 
-Status tiap aplikasi terhadap [access-standard.md](access-standard.md) (versi 1.0). Diperbarui oleh siapa pun yang mengubah akses sebuah aplikasi, di commit yang sama.
+Status tiap aplikasi terhadap [access-standard.md](access-standard.md) (versi 1.1). Diperbarui oleh siapa pun yang mengubah akses sebuah aplikasi, di commit yang sama.
 
-Tanggal pemeriksaan: 2026-10-27. Isi tabel diambil dari pembacaan kode dan dokumen, bukan dari tes otomatis (belum ada, lihat AS-15). "Belum diperiksa" berarti belum dibaca, bukan berarti sesuai.
+Tanggal pemeriksaan: 2026-11-18. Isi tabel diambil dari pembacaan kode dan dokumen, bukan dari tes otomatis (belum ada, lihat AS-15). "Belum diperiksa" berarti belum dibaca, bukan berarti sesuai.
 
 Lambang: **Ya** sesuai, **Sebagian** ada yang belum, **Tidak** belum, **?** belum diperiksa, **-** tidak berlaku.
 
@@ -36,6 +36,7 @@ Mulai `mws-central-auth` 0.13.0 ada satu implementasi bersama (`definePermission
 ### Hub
 - Manifest di `backend/src/lib/hub-permissions.ts` (`hub.use`, `hub.admin`), sinkron lewat `bun run permissions:sync`.
 - Gerbang di `backend/src/lib/hub-access-gate.ts` (`userHasHubPermission`).
+- Daftar kartu memakai batch entitlement lookup Central, jadi satu pemuatan katalog tidak membuat satu request per aplikasi.
 - Belum diperiksa: apakah setiap route admin lewat gerbang itu.
 
 ### Learnspace

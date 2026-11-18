@@ -5,6 +5,7 @@ import { redis } from "../lib/redis";
 // Disable test and CI bypasses while exercising the real limiter.
 let originalNodeEnv: string | undefined;
 let originalCi: string | undefined;
+let originalTrustProxy: string | undefined;
 
 function uniqueTestIp(label: string): string {
   return `test-${label}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -19,7 +20,9 @@ describe("Rate limiting", () => {
   beforeEach(async () => {
     originalNodeEnv = process.env.NODE_ENV;
     originalCi = process.env.CI;
+    originalTrustProxy = process.env.TRUST_PROXY;
     process.env.NODE_ENV = "development";
+    process.env.TRUST_PROXY = "true";
     delete process.env.CI;
     await clearRateLimitKeys();
   });
@@ -27,6 +30,8 @@ describe("Rate limiting", () => {
   afterEach(async () => {
     process.env.NODE_ENV = originalNodeEnv;
     if (originalCi !== undefined) process.env.CI = originalCi;
+    if (originalTrustProxy === undefined) delete process.env.TRUST_PROXY;
+    else process.env.TRUST_PROXY = originalTrustProxy;
     await clearRateLimitKeys();
   });
 
@@ -53,6 +58,17 @@ describe("Rate limiting", () => {
     expect(blocked.headers.get("X-RateLimit-Remaining")).toBe("0");
     expect(blocked.headers.get("Retry-After")).toBeTruthy();
     expect(body.errors).toContain("Too many requests");
+  });
+
+  it("ignores X-Forwarded-For unless TRUST_PROXY is true: the peer address decides the bucket", async () => {
+    process.env.TRUST_PROXY = "false";
+    // The test server gives each request its own peer address. Six requests that all claim the same address are
+    // therefore six callers, so none is counted against that claim.
+    const claimed = uniqueTestIp("claimed");
+    for (let i = 0; i < 6; i++) {
+      const response = await TestRequest.post("/api/auth/google", {}, undefined, { "x-forwarded-for": claimed });
+      expect(response.status).not.toBe(429);
+    }
   });
 
   it("scopes the limit per IP - a different IP is unaffected", async () => {

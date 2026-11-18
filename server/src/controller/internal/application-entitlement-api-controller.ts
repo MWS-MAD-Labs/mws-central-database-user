@@ -25,6 +25,36 @@ export class ApplicationEntitlementApiController {
     return c.json({ success: true, data: response });
   }
 
+  static async lookupBatch(c: Context<{ Variables: ApiClientVariables }>) {
+    let body: {
+      person_id?: string;
+      application_ids?: string[];
+    };
+    try {
+      const value = await c.req.json();
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new ResponseError(400, "Request body must be a JSON object");
+      }
+      body = value as typeof body;
+    } catch (error) {
+      if (error instanceof ResponseError) throw error;
+      throw new ResponseError(400, "Request body must be valid JSON");
+    }
+    const response = await ApplicationEntitlementService.lookupBatch(
+      {
+        clientId: c.var.clientId,
+        clientName: c.var.clientName,
+        scopes: c.var.scopes,
+      },
+      {
+        person_id: body.person_id ?? "",
+        application_ids: body.application_ids ?? [],
+      },
+      getAuditRequestContext(c),
+    );
+    return c.json({ success: true, data: response });
+  }
+
   static async list(c: Context<{ Variables: ApiClientVariables }>) {
     const page = Number(c.req.query("page") || 1);
     const size = Number(c.req.query("size") || 100);

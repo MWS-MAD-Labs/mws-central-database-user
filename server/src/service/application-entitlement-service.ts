@@ -27,6 +27,7 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toApplicationEntitlementResponse,
   type ApplicationEntitlementLookupRequest,
+  type ApplicationEntitlementBatchLookupRequest,
   type ApplicationAccessRuleResponse,
   type ApplicationEntitlementListItem,
   type BulkGrantApplicationEntitlementRequest,
@@ -367,6 +368,133 @@ export class ApplicationEntitlementService {
     if (entitlement) return toApplicationEntitlementResponse(entitlement);
     if (baseline) return baseline;
     throw new ResponseError(404, "Active application entitlement not found");
+  }
+
+  static async lookupBatch(
+    client: ApiClientVariables,
+    request: ApplicationEntitlementBatchLookupRequest,
+    context: AuditRequestContext = {},
+  ): Promise<ApplicationEntitlementResponse[]> {
+    const input = Validation.validate(
+      ApplicationEntitlementValidation.BATCH_LOOKUP,
+      request,
+    );
+    const [subject, applications, explicitRows, rules] = await Promise.all([
+      loadRuleSubject(input.person_id),
+      prismaClient.application.findMany({
+        where: { application_id: { in: input.application_ids } },
+        select: { application_id: true, retired_at: true },
+      }),
+      prismaClient.applicationEntitlement.findMany({
+        where: {
+          person_id: input.person_id,
+          application_id: { in: input.application_ids },
+        },
+      }),
+      prismaClient.applicationAccessRule.findMany({
+        where: {
+          application_id: { in: input.application_ids },
+          is_active: true,
+        },
+      }),
+    ]);
+    const retired = new Set(
+      applications
+        .filter((application) => application.retired_at)
+        .map((application) => application.application_id),
+    );
+    const explicitByApplication = new Map(
+      explicitRows.map((entitlement) => [
+        entitlement.application_id,
+        entitlement,
+      ]),
+    );
+    const roleKeys = [
+      ...new Set(
+        rules.map((rule) => `${rule.application_id}:${rule.default_role_key}`),
+      ),
+    ];
+    const roles = roleKeys.length
+      ? await prismaClient.applicationRole.findMany({
+          where: {
+            OR: roleKeys.map((value) => {
+              const separator = value.indexOf(":");
+              return {
+                application_id: value.slice(0, separator),
+                key: value.slice(separator + 1),
+              };
+            }),
+            is_active: true,
+          },
+        })
+      : [];
+    const roleByApplicationAndKey = new Map(
+      roles.map((role) => [`${role.application_id}:${role.key}`, role]),
+    );
+    const entitlements: ApplicationEntitlementResponse[] = [];
+    const baselineApplicationIds: string[] = [];
+
+    for (const applicationId of input.application_ids) {
+      if (retired.has(applicationId)) continue;
+      const explicit = explicitByApplication.get(applicationId);
+      if (explicit) {
+        if (explicit.is_active && subject) {
+          entitlements.push(toApplicationEntitlementResponse(explicit));
+        }
+        continue;
+      }
+      if (!subject) continue;
+      const rule = rules
+        .filter(
+          (candidate) =>
+            candidate.application_id === applicationId &&
+            ruleMatches(candidate, subject),
+        )
+        .sort(
+          (left, right) =>
+            ruleSpecificity(right) - ruleSpecificity(left),
+        )[0];
+      if (!rule) continue;
+      const role = roleByApplicationAndKey.get(
+        `${applicationId}:${rule.default_role_key}`,
+      );
+      if (!role) continue;
+      const changedAt =
+        role.updated_at > rule.updated_at ? role.updated_at : rule.updated_at;
+      entitlements.push({
+        id: `group:${rule.id}`,
+        person_id: input.person_id,
+        application_id: applicationId,
+        organization_id: rule.organization_id,
+        role: role.key,
+        permissions: role.permissions,
+        version: Math.floor(changedAt.getTime() / 1000),
+        is_active: true,
+        granted_at: rule.created_at.toISOString(),
+        updated_at: changedAt.toISOString(),
+        is_default: true,
+      });
+      baselineApplicationIds.push(applicationId);
+    }
+
+    await AuditService.record({
+      action: AuditAction.API_ACCESS,
+      source: AuditSource.API,
+      api_client_id: client.clientId,
+      entity_type: "ApplicationEntitlement",
+      new_values: {
+        requested_person_id: input.person_id,
+        requested_application_ids: input.application_ids,
+        found_application_ids: entitlements.map(
+          (entitlement) => entitlement.application_id,
+        ),
+        via_baseline_rule_application_ids: baselineApplicationIds,
+      },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
+    return entitlements;
   }
 
   static async grant(

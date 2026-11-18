@@ -223,6 +223,15 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     note: "Leave out application_id, or write me, to mean the application this token was made for.",
   },
   {
+    method: "POST",
+    path: "/api/internal/application-entitlements/lookup-batch",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Check several applications for one person",
+    group: "Application Access",
+    purpose: "Checks one person's current access to up to 50 applications in one request.",
+    note: 'Send { "person_id": "...", "application_ids": ["hub", "exima"] }. Only active entitlements are returned.',
+  },
+  {
     method: "GET",
     path: "/api/internal/application-entitlements?application_id={application_id}&page=1&size=100",
     scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,

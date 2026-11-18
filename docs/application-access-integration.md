@@ -27,6 +27,25 @@ Group murid hanya menerima unit yang punya grade (Kindergarten, Elementary, Juni
 
 `GET /api/internal/application-entitlements/lookup?person_id=<id>&application_id=<id>` dengan `Authorization: Bearer <token>`.
 
+Hub atau aplikasi yang perlu memeriksa beberapa aplikasi untuk satu orang memakai
+`POST /api/internal/application-entitlements/lookup-batch` agar tidak membuat satu
+request per kartu:
+
+```json
+{
+  "person_id": "<person-id>",
+  "application_ids": ["hub", "exima", "daily-checkin"]
+}
+```
+
+Maksimal 50 application ID unik. Respons `data` hanya berisi entitlement aktif;
+aplikasi yang tidak memberi akses tidak muncul dalam array.
+
+Urutan deploy: **Central dulu, baru aplikasi yang memakai endpoint ini.** Aplikasi yang
+dideploy lebih dulu mendapat 404 dari Central yang lama. Hub lalu memeriksa satu per satu
+secara bersamaan (sampai 50 request sekaligus), tepat pola yang membuat rate limit
+terlampaui saat banyak orang masuk.
+
 Respons 200:
 
 ```
