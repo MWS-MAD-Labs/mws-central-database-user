@@ -658,8 +658,8 @@ describe("AppDetailPage access tabs", () => {
     await user.click(
       screen.getByRole("button", { name: /Actions for Dummy Staff on exima/ }),
     );
-    await user.click(screen.getByRole("button", { name: "Change Role" }));
-    const dialog = await screen.findByRole("dialog", { name: "Change Role" });
+    await user.click(screen.getByRole("button", { name: "Change Role or Units" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change Role or Units" });
     await user.click(within(dialog).getByRole("button", { name: /^ADMIN/ }));
     await user.click(screen.getByRole("option", { name: /STAFF/ }));
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
@@ -695,7 +695,7 @@ describe("AppDetailPage access tabs", () => {
       }),
     );
     expect(
-      screen.queryByRole("button", { name: "Change Role" }),
+      screen.queryByRole("button", { name: /Change Role/ }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Block Access" })).toBeVisible();

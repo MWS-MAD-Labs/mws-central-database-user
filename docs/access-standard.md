@@ -1,4 +1,4 @@
-# Access Standard v1.1
+# Access Standard v1.2
 
 Aturan satu-satunya untuk role, permission, dan akses di semua aplikasi MWS. Dokumen ini normatif: aplikasi mana pun yang memakai sesi Hub atau data Central harus mengikutinya. Dokumen lain (README aplikasi, catatan rollout) hanya menunjuk nomor aturan di sini dan tidak mengulang isinya.
 
@@ -67,6 +67,7 @@ Contoh benar: `work-order.create`, `work-order.read-all`, `iep.submit`, `facilit
 - Scope adalah permission berawalan `scope.`. Apa yang dijangkau tetap data di database aplikasi (unit, grade, penugasan).
 - Dua pertanyaan dijawab terpisah: "boleh melakukan aksi ini?" (permission aksi) dan "pada data siapa?" (permission scope dan data).
 - Bila tidak ada permission scope, jangkauan default MUST sempit (hanya milik sendiri atau yang ditugaskan), bukan luas.
+- Unit yang dijangkau satu orang boleh dipilih di Central, di exception orang itu (`scope_unit_ids` pada entitlement). Kosong berarti unit orang itu sendiri. Aplikasi MUST memakai daftar ini sebagai sumber kebenaran untuk unit tersebut dan MUST NOT punya layar sendiri untuk mengubahnya (AS-1). Daftar ini hanya menjawab "pada data siapa", bukan "boleh melakukan aksi apa".
 
 ### AS-9 Keanggotaan kontekstual
 - Hak seperti "PIC yang ditugaskan pada work order ini" adalah syarat tambahan di dalam handler. Ia MUST NOT menggantikan permission di gerbang route.
@@ -109,3 +110,4 @@ Nomor aturan tidak dipakai ulang. Perubahan menaikkan versi (v1.1 untuk penambah
 | --- | --- | --- |
 | 1.0 | 2026-10-27 | Penyatuan aturan dari `application-access-integration.md`, ADR 0002 Learnspace, dan keputusan "tanpa role lokal". Format key diseragamkan ke titik. |
 | 1.1 | 2026-11-18 | Menambahkan batch entitlement lookup untuk agregator seperti Hub tanpa mengubah aturan validasi entitlement. |
+| 1.2 | 2026-11-20 | AS-8: entitlement membawa `scope_unit_ids`, unit yang dijangkau orang itu, dipilih di exception Central. |

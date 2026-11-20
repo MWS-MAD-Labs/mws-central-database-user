@@ -161,6 +161,11 @@ export function ExceptionsPanel({ applicationId, groupId, groupRole, students = 
               <span title={row.permissions.join(", ")}>
                 <RoleName>{row.role}</RoleName>
               </span>
+              {row.scope_units?.length ? (
+                <span className="block text-xs text-(--mws-muted)">
+                  Units: {row.scope_units.map((unit) => unit.name).join(", ")}
+                </span>
+              ) : null}
             </td>
             <td className={denseCellClass}>
               <StatusBadge tone={row.is_active ? "green" : "neutral"}>
@@ -178,7 +183,7 @@ export function ExceptionsPanel({ applicationId, groupId, groupRole, students = 
                           setRoleTarget(row);
                         }}
                       >
-                        Change Role
+                        {students ? "Change Role" : "Change Role or Units"}
                       </ActionsMenuItem>
                     ) : null}
                     {!row.is_active && canChange ? (

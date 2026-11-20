@@ -20,6 +20,7 @@ import { useApplicationRoles } from "../hooks/useApplicationRoles.js";
 import { GroupSummary } from "../components/GroupSummary.jsx";
 import { Tip } from "../components/Tip.jsx";
 import { PermissionPopover } from "../components/PermissionPopover.jsx";
+import { ScopeUnitsField } from "../components/ScopeUnitsField.jsx";
 import { isRealUnit } from "../utils/legacyUnit.js";
 import { roleOptions } from "../utils/roleOptions.js";
 import { canManageApplications } from "../utils/canManageApplications.js";
@@ -35,6 +36,7 @@ export function ExceptionAddPage() {
   const [roleKey, setRoleKey] = useState("");
   // Blocked shuts the people out instead of giving them another role.
   const [blocked, setBlocked] = useState(false);
+  const [scopeUnitIds, setScopeUnitIds] = useState([]);
   const emptyFilters = { search: "", employment_type: "", unit_id: "", job_position_id: "", job_level_id: "", grade_id: "", class_id: "" };
   const [params, setParams] = useState({ page: 1, size: 10, ...emptyFilters });
   const [selected, setSelected] = useState(() => new Map());
@@ -88,7 +90,12 @@ export function ExceptionAddPage() {
       applicationAccessApi.bulkGrant(
         blocked
           ? { person_ids: Array.from(selected.keys()), application_id: applicationId, blocked: true }
-          : { person_ids: Array.from(selected.keys()), application_id: applicationId, role: roleKey },
+          : {
+              person_ids: Array.from(selected.keys()),
+              application_id: applicationId,
+              role: roleKey,
+              ...(!isStudents && scopeUnitIds.length ? { scope_unit_ids: scopeUnitIds } : {}),
+            },
       ),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["application-access"] });
@@ -373,6 +380,9 @@ export function ExceptionAddPage() {
                     />
                   </Field>
                   {selectedRole ? <PermissionPopover permissions={selectedRole.permissions} applicationId={selectedRole.application_id} /> : null}
+                  {!isStudents ? (
+                    <ScopeUnitsField units={formOptions.units} value={scopeUnitIds} onChange={setScopeUnitIds} />
+                  ) : null}
                   <p className="flex items-center gap-1.5 text-xs leading-none text-(--mws-muted)">
                     Group role {group.default_role_key}
                     <Tip text={`People who already get the role you pick cannot be selected for it.`} label="About Roles" />

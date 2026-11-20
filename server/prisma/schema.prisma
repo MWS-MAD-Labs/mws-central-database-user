@@ -1775,6 +1775,8 @@ model ApplicationEntitlement {
   organization_id String
   role            String
   permissions     String[] @default([])
+  // Units this person's role reaches in the app (AS-8). Empty means their own unit.
+  scope_unit_ids  String[] @default([])
   version         Int      @default(1)
   is_active       Boolean  @default(true)
   granted_at      DateTime @default(now())

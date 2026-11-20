@@ -57,6 +57,7 @@ Respons 200:
     "organization_id": "org_exima_ab12cd",
     "role": "STORE_ADMIN",
     "permissions": ["store.use", "app.admin"],
+    "scope_unit_ids": ["<unitId>"],
     "version": 3,
     "is_active": true,
     "granted_at": "...",
@@ -68,9 +69,11 @@ Respons 200:
 
 `is_default` hanya ada bila aksesnya berasal dari group. 404 berarti orang itu tidak punya akses aktif (tidak tercakup group, atau diblokir).
 
+`scope_unit_ids` adalah unit yang dijangkau role orang itu, dipilih admin di exception (lihat AS-8). Kosong berarti unit orang itu sendiri. Akses dari group selalu kosong. Cocokkan dengan `unit_id` di `/api/internal/employees`, bukan nama unit.
+
 ## Arti `version`
 
-- Akses dari exception (id berupa uuid): penghitung kecil yang naik tiap perubahan role, permission, atau status.
+- Akses dari exception (id berupa uuid): penghitung kecil yang naik tiap perubahan role, permission, unit, atau status.
 - Akses dari group (id berawalan `group:`): detik-epoch saat role atau group terakhir berubah. Naik bila role, permission, atau group berubah, dan tidak berubah selama tidak ada perubahan. Mengubah urutan role atau label juga menaikkannya.
 - Jangan membandingkan `version` antar `id` yang berbeda. Orang yang berpindah dari exception ke group, atau sebaliknya, mendapat `id` baru dengan nilai `version` dari skala lain. Bandingkan hanya bila `id` sama.
 

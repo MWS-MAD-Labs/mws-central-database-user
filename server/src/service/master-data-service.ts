@@ -19,6 +19,10 @@ export const UnitService = createSimpleMasterDataService({
       label: "grade(s)",
       count: (id) => prismaClient.grade.count({ where: { unit_id: id } }),
     },
+    {
+      label: "application access row(s) managing it",
+      count: (id) => prismaClient.applicationEntitlement.count({ where: { scope_unit_ids: { has: id } } }),
+    },
   ],
 });
 

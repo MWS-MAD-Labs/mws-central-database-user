@@ -106,6 +106,43 @@ describe('ExceptionAddPage', () => {
     expect(await screen.findByText('App page')).toBeVisible()
   })
 
+  it('sends the units the new role manages, and leaves them out when none are picked', async () => {
+    const fetchMock = createFetchRouter(routes([
+      { path: /^\/api\/admin\/units/, response: () => jsonResponse({ data: [{ id: 'unit-1', name: 'MAD Lab' }, { id: 'unit-2', name: 'Elementary' }, { id: 'unit-9', name: 'Unknown / Legacy' }] }) },
+      { path: /^\/api\/admin\/(job-positions|job-levels|buildings)/, response: () => jsonResponse({ data: [] }) },
+      {
+        path: '/api/admin/application-entitlements/bulk',
+        method: 'POST',
+        response: () => jsonResponse({ data: { total_count: 1, success_count: 1, failed_count: 0, items: [] } }),
+      },
+    ]))
+    globalThis.fetch = fetchMock
+    const { user } = renderPage()
+    await screen.findByText('Add Exception to exima')
+
+    const picker = await screen.findByRole('group', { name: 'Units Managed' })
+    expect(screen.getByText('None picked: only their own unit.')).toBeVisible()
+    expect(within(picker).queryByText('Unknown / Legacy')).not.toBeInTheDocument()
+    await user.click(await within(picker).findByRole('switch', { name: 'Elementary' }))
+    await user.click(within(picker).getByRole('switch', { name: 'MAD Lab' }))
+
+    await user.click(screen.getByRole('button', { name: 'Select a role' }))
+    await user.click(screen.getByRole('option', { name: /ADMIN/ }))
+    await user.click(await screen.findByLabelText('Select Alpha Person'))
+    await user.click(screen.getByRole('button', { name: 'Add Exception' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([callUrl, options]) =>
+        callUrl === '/api/admin/application-entitlements/bulk' && options.method === 'POST')
+      expect(JSON.parse(call[1].body)).toEqual({
+        person_ids: ['person-2'],
+        application_id: 'exima',
+        role: 'ADMIN',
+        scope_unit_ids: ['unit-2', 'unit-1'],
+      })
+    })
+  })
+
   it('blocks the checked people instead of giving them another role', async () => {
     const fetchMock = createFetchRouter(routes([
       {
