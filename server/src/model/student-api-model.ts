@@ -111,8 +111,16 @@ export type SpecialEducationStudentResponse = {
   need_types: SpecialNeedType[];
   learning_support_summary: string | null;
   accommodations: string | null;
+  // What the IEP shows about the student. Address and phone are the primary parent's.
+  birth_date: string;
+  address: string | null;
+  phone: string | null;
+  // The people of the unit that sign an IEP; null when the unit has no one in that position.
+  team: { principal: IepTeamPerson | null; se_head: IepTeamPerson | null };
   updated_at: string;
 };
+
+export type IepTeamPerson = { person_id: string; full_name: string };
 
 // A parent or guardian a Central student has an email for. Phone and address stay in Central.
 export type GuardianContactResponse = {
