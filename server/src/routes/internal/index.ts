@@ -14,6 +14,7 @@ import { classTeacherAssignmentApiRouter } from "./class-teacher-assignment-api-
 import { studentSupportAssignmentApiRouter } from "./student-support-assignment-api-router";
 import type { ApiClientVariables } from "../../type/hono-context";
 import { applicationCatalogApiRouter, applicationEntitlementApiRouter, applicationPermissionApiRouter, applicationTaxonomyApiRouter } from "./application-entitlement-api-router";
+import { organizationUnitApiRouter } from "./organization-unit-api-router";
 
 export const internalRouter = new Hono<{ Variables: ApiClientVariables }>();
 
@@ -22,6 +23,7 @@ internalRouter.use("*", apiClientAuthMiddleware);
 internalRouter.use("*", internalLimiterMiddleware);
 
 internalRouter.route("/employees", employeeApiRouter);
+internalRouter.route("/organization-units", organizationUnitApiRouter);
 internalRouter.route("/students", studentApiRouter);
 internalRouter.route("/interns", internApiRouter);
 internalRouter.route("/persons", personApiRouter);

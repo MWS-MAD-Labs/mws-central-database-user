@@ -18,20 +18,48 @@ const DEPARTMENT_UNIT = "DEV_PROOFPOINT_DEPARTMENT";
 const BUILDING = "DEV_PROOFPOINT_BUILDING";
 
 const roleFixtures = [
-  { role: "ADMIN", rank: 0, unit: GLOBAL_UNIT },
-  { role: "DIRECTOR", rank: 1, unit: GLOBAL_UNIT },
-  { role: "MANAGER", rank: 2, unit: DEPARTMENT_UNIT },
-  { role: "SUPERVISOR", rank: 3, unit: DEPARTMENT_UNIT },
-  { role: "STAFF", rank: 4, unit: DEPARTMENT_UNIT },
+  { role: "ADMIN", rank: 0, unit: GLOBAL_UNIT, capabilities: ["admin"] },
+  { role: "ADMIN_MANAGER", rank: 1, unit: DEPARTMENT_UNIT, capabilities: ["admin", "manager"] },
+  { role: "DIRECTOR", rank: 2, unit: GLOBAL_UNIT, capabilities: ["director"] },
+  { role: "MANAGER", rank: 3, unit: DEPARTMENT_UNIT, capabilities: ["manager"] },
+  { role: "SUPERVISOR", rank: 4, unit: DEPARTMENT_UNIT, capabilities: ["supervisor"] },
+  { role: "STAFF", rank: 5, unit: DEPARTMENT_UNIT, capabilities: ["staff"] },
 ] as const;
 
 const permissions = [
   { key: "proofpoint.access", requires: [] },
   { key: "proofpoint.admin", requires: ["proofpoint.access"] },
   { key: "proofpoint.director", requires: ["proofpoint.access"] },
-  { key: "proofpoint.manager", requires: ["proofpoint.access"] },
-  { key: "proofpoint.supervisor", requires: ["proofpoint.access"] },
-  { key: "proofpoint.staff", requires: ["proofpoint.access"] },
+  {
+    key: "proofpoint.manager",
+    requires: ["proofpoint.access"],
+    unit_assignment: {
+      scope: "unit",
+      label: "Managers",
+      mode: "explicit",
+      exclusive_group: "proofpoint.department_role",
+    },
+  },
+  {
+    key: "proofpoint.supervisor",
+    requires: ["proofpoint.access"],
+    unit_assignment: {
+      scope: "unit",
+      label: "Supervisors",
+      mode: "explicit",
+      exclusive_group: "proofpoint.department_role",
+    },
+  },
+  {
+    key: "proofpoint.staff",
+    requires: ["proofpoint.access"],
+    unit_assignment: {
+      scope: "unit",
+      label: "Staff",
+      mode: "derived_home_unit",
+      exclusive_group: "proofpoint.department_role",
+    },
+  },
 ] as const;
 
 function assertLocalDevelopmentDatabase() {
@@ -126,6 +154,7 @@ async function main() {
         where: { application_id_key: { application_id: APPLICATION_ID, key: permission.key } },
         update: {
           requires: [...permission.requires],
+          unit_assignment: "unit_assignment" in permission ? permission.unit_assignment : undefined,
           source: ApplicationPermissionSource.MANIFEST,
           deprecated_at: null,
           synced_at: new Date(),
@@ -135,6 +164,7 @@ async function main() {
           key: permission.key,
           description: `ProofPoint permission ${permission.key}`,
           requires: [...permission.requires],
+          unit_assignment: "unit_assignment" in permission ? permission.unit_assignment : undefined,
           source: ApplicationPermissionSource.MANIFEST,
           synced_at: new Date(),
         },
@@ -142,7 +172,7 @@ async function main() {
     }
 
     for (const fixture of roleFixtures) {
-      const rolePermissions = ["proofpoint.access", `proofpoint.${fixture.role.toLowerCase()}`];
+      const rolePermissions = ["proofpoint.access", ...fixture.capabilities.map((item) => `proofpoint.${item}`)];
       await tx.applicationRole.upsert({
         where: { application_id_key: { application_id: APPLICATION_ID, key: fixture.role } },
         update: {
@@ -261,7 +291,7 @@ async function main() {
         },
       });
 
-      const rolePermissions = ["proofpoint.access", `proofpoint.${fixture.role.toLowerCase()}`];
+      const rolePermissions = ["proofpoint.access", ...fixture.capabilities.map((item) => `proofpoint.${item}`)];
       const existingEntitlement = await tx.applicationEntitlement.findUnique({
         where: { person_id_application_id: { person_id: person.id, application_id: APPLICATION_ID } },
       });

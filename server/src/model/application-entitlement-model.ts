@@ -136,6 +136,7 @@ export type ApplicationCandidate = {
   full_name: string;
   email: string;
   unit: string;
+  unit_id?: string | null;
   job_position: string;
   job_level: string;
   employment_type: string;
@@ -334,7 +335,7 @@ export type ApplicationAccessRow = {
 };
 
 export type ApplicationEntitlementListItem = ApplicationEntitlementResponse & {
-  person: { full_name: string; email: string; unit: string | null };
+  person: { full_name: string; email: string; unit_id: string | null; unit: string | null };
 };
 
 export type ApplicationRoleResponse = {

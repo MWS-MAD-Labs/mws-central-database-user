@@ -212,6 +212,19 @@ export const applicationAccessApi = {
     return response.data
   },
 
+  async getUnitAssignments(applicationId) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/unit-assignments`)
+    return response.data
+  },
+
+  async replaceUnitAssignments(applicationId, payload) {
+    const response = await apiRequest(`${ACCESS}/apps/${applicationId}/unit-assignments`, {
+      method: 'PUT',
+      body: payload,
+    })
+    return response.data
+  },
+
   // Group rules and people in one paged list.
   async listAccess(params = {}) {
     const query = compactSearchParams(params).toString()

@@ -35,6 +35,7 @@ import { titleCase } from "../utils/roleLabel.js";
 import { appHomeUrl, sameParentDomain } from "../utils/sessionDomain.js";
 import { computeDateRange } from "../../../lib/dateRange.js";
 import { canManageApplications } from "../utils/canManageApplications.js";
+import { DepartmentAssignmentsTab } from "../components/DepartmentAssignmentsTab.jsx";
 
 const CARD_STATUS_LABEL = { active: "Active", maintenance: "Maintenance", coming_soon: "Coming Soon", new: "New" };
 
@@ -111,6 +112,11 @@ export function AppDetailPage() {
     queryFn: () => applicationAccessApi.getApplication(applicationId),
     enabled: superAdmin,
   });
+  const unitAssignmentsQuery = useQuery({
+    queryKey: ["application-access", applicationId, "unit-assignments"],
+    queryFn: () => applicationAccessApi.getUnitAssignments(applicationId),
+    enabled: superAdmin,
+  });
   const roles = (useApplicationRoles().data || []).filter((role) => role.application_id === applicationId);
   const hasActiveRole = roles.some((role) => role.is_active);
   const mgmt = useApplicationManagement(applicationId, setupQuery.data);
@@ -146,9 +152,11 @@ export function AppDetailPage() {
   // An application on the shared session whose address is not under the Hub's parent domain.
   const sharedHere = app.launch_mode === "sso" && app.uses_hub && !setup.hub && app.session_mode === "shared";
   const differentDomain = sharedHere && sameParentDomain(setup.hub_address, app.launch_url) === false;
+  const hasUnitAssignments = (unitAssignmentsQuery.data?.responsibilities?.length || 0) > 0;
 
   const tabs = [
     { id: "access", label: "Access" },
+    ...(hasUnitAssignments ? [{ id: "department-assignments", label: "Department Assignments" }] : []),
     { id: "roles", label: "Roles" },
     ...(link ? [] : [{ id: "permissions", label: "Permissions" }]),
     ...(unfinished ? [] : [{ id: "overview", label: "Overview" }]),
@@ -308,7 +316,7 @@ export function AppDetailPage() {
 
       <Tabs label="Application" tabs={tabs} active={active} onChange={(id) => setParams({ tab: id })} />
 
-      {active === "access" || active === "roles" || active === "permissions" ? (
+      {active === "access" || active === "roles" || active === "permissions" || active === "department-assignments" ? (
         <>
           {active === "access" ? (
             <Stats
@@ -320,7 +328,11 @@ export function AppDetailPage() {
               ]}
             />
           ) : null}
-          <AppAccessSection applicationId={applicationId} detail={detailQuery.data} roles={roles} tab={active} canAddGroup={hasActiveRole} retired={retired} />
+          {active === "department-assignments" ? (
+            <DepartmentAssignmentsTab applicationId={applicationId} retired={retired} />
+          ) : (
+            <AppAccessSection applicationId={applicationId} detail={detailQuery.data} roles={roles} tab={active} canAddGroup={hasActiveRole} retired={retired} hasUnitAssignments={hasUnitAssignments} />
+          )}
         </>
       ) : (
       <section className="rounded-2xl border border-(--mws-line) bg-white p-5">

@@ -72,6 +72,7 @@ Contoh benar: `work-order.create`, `work-order.read-all`, `iep.submit`, `facilit
 ### AS-9 Keanggotaan kontekstual
 - Hak seperti "PIC yang ditugaskan pada work order ini" adalah syarat tambahan di dalam handler. Ia MUST NOT menggantikan permission di gerbang route.
 - Bentuk: gerbang `be-*` atau aksi di route, lalu cek keanggotaan di handler.
+- Keanggotaan Unit khusus aplikasi yang dikelola admin MUST disimpan di Central sebagai assignment aplikasi, orang, Unit, dan permission. Aplikasi penerima boleh menyimpan proyeksi lokal hanya untuk menjalankan workflow lama; layar dan API lokalnya MUST hanya-baca sesuai AS-1.
 
 ### AS-10 Menerima entitlement
 - Sumber: `GET /api/internal/application-entitlements/lookup`, batch lookup Central untuk agregator seperti Hub, atau token SSO dari Hub. Aturan di bawah diterapkan satu kali oleh `createAccessResolver` (`mws-central-auth/access`); aplikasi memakainya, tidak menulis ulang.

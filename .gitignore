@@ -9,3 +9,5 @@ graphify-out/
 .env.*
 server/.env
 client/.env
+Plan.md
+

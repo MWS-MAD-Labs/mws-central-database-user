@@ -532,6 +532,15 @@ export class ApplicationPermissionValidation {
           key: permissionKey,
           description: z.string().trim().max(200, "Description is too long").optional(),
           requires: z.array(permissionKey).max(50, "Too many required permissions").optional(),
+          unit_assignment: z
+            .object({
+              scope: z.literal("unit"),
+              label: z.string().trim().min(1).max(80),
+              mode: z.enum(["explicit", "derived_home_unit"]),
+              exclusive_group: permissionKey.optional(),
+            })
+            .strict()
+            .optional(),
         }),
       )
       .min(1, "Send at least one permission")

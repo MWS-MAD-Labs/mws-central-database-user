@@ -444,6 +444,8 @@ model MasterUnit {
 
   admin_student_view_units  AdminUserStudentViewUnit[]
   admin_employee_view_units AdminUserEmployeeViewUnit[]
+  application_unit_assignments ApplicationUnitAssignment[]
+  application_unit_assignment_sets ApplicationUnitAssignmentSet[]
 
   @@map("master_units")
 }
@@ -769,6 +771,7 @@ model Person {
   adminUser AdminUser?
 
   application_entitlements ApplicationEntitlement[]
+  application_unit_assignments ApplicationUnitAssignment[]
 
   @@map("persons")
 }
@@ -1787,6 +1790,37 @@ model ApplicationEntitlement {
   @@map("application_entitlements")
 }
 
+// App permission granted to one person only within one organization unit.
+// The unit remains MasterUnit; this is an assignment, not another department model.
+model ApplicationUnitAssignment {
+  id             String     @id @default(cuid())
+  application_id String
+  person_id      String
+  person         Person     @relation(fields: [person_id], references: [id], onDelete: Cascade)
+  unit_id        String
+  unit           MasterUnit @relation(fields: [unit_id], references: [id], onDelete: Restrict)
+  permission_key String
+  created_at     DateTime   @default(now())
+  updated_at     DateTime   @updatedAt
+
+  @@unique([application_id, person_id, unit_id, permission_key])
+  @@index([application_id, unit_id, permission_key])
+  @@map("application_unit_assignments")
+}
+
+// Marks one unit role as explicitly managed, including when it has no assignees.
+model ApplicationUnitAssignmentSet {
+  application_id String
+  unit_id        String
+  unit           MasterUnit @relation(fields: [unit_id], references: [id], onDelete: Cascade)
+  permission_key String
+  created_at     DateTime   @default(now())
+  updated_at     DateTime   @updatedAt
+
+  @@id([application_id, unit_id, permission_key])
+  @@map("application_unit_assignment_sets")
+}
+
 // Group access: everyone in the audience who matches the unit, job position and
 // job level filters (empty means all) gets default_role_key without a
 // per-person row. The most specific matching rule wins, and a person's own
@@ -2003,6 +2037,8 @@ model ApplicationPermission {
   description    String?
   // Permissions that must come with this one, for example manage needs read. Roles are checked against it.
   requires       String[]                    @default([])
+  // Optional app-owned rules for granting this permission within an organization unit.
+  unit_assignment Json?
   source         ApplicationPermissionSource @default(MANUAL)
   // Dropped from the application's manifest. Roles that already carry it keep it, new roles cannot pick it.
   deprecated_at  DateTime?

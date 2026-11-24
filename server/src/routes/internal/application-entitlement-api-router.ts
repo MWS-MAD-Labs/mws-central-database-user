@@ -33,6 +33,12 @@ applicationEntitlementApiRouter.get(
 );
 
 applicationEntitlementApiRouter.get(
+  "/unit-assignments",
+  requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
+  (c) => ApplicationEntitlementApiController.unitAssignments(c),
+);
+
+applicationEntitlementApiRouter.get(
   "/applications",
   requireScope(API_SCOPES.APPLICATION_ENTITLEMENTS_READ),
   (c) => ApplicationEntitlementApiController.applications(c),

@@ -13,23 +13,24 @@ Mulai `mws-central-auth` 0.13.0 ada satu implementasi bersama (`definePermission
 | Learnspace, Daily, Exima | Sebagian: perintah sinkron/cek permission (`runPermissionsCli`) dan `mws-access doctor` dari kit (branch `feat/access-kit` di tiap repo, menunggu library di-push). Penyelesai entitlement dan manifest `definePermissions` masih salinan sendiri |
 | Hub, MTSS v2 | Belum (punya salinan sendiri untuk sinkron dan entitlement) |
 | Woko | Ya: `definePermissions`, `runPermissionsCli`, `mws-access check` (di CI), dan `createAccessResolver` lewat login Hub (`AUTH_MODE=hub`, belum dicoba di staging) |
+| ProofPoint | Belum: manifest, sinkron permission, dan resolver entitlement masih implementasi lokal |
 
 ## Ringkasan
 
-| Aturan | Hub | Learnspace | Daily | Exima | MTSS v2 | Woko |
-| --- | --- | --- | --- | --- | --- | --- |
-| AS-1 Kepemilikan (tanpa role/akses lokal) | Ya | Sebagian | ? | Sebagian | ? | Sebagian (mode `hub`: ya, layar hanya-baca; mode `google` lama masih ada) |
-| AS-2 Hanya permission | Ya | Sebagian | ? | Tidak | ? | Ya |
-| AS-3 Format key | Ya | Tidak | ? | Ya | ? | Ya |
-| AS-4 Manifest dan sinkron | Ya | Ya | Ya | Ya | ? | Ya |
-| AS-5 Role hidup di Central | Ya | Ya | ? | Sebagian | ? | Ya (mode `hub`) |
-| AS-6 Gerbang tiap route | ? | ? | ? | ? | ? | Ya |
-| AS-8 Scope data | - | Ya | ? | ? | ? | Sebagian |
-| AS-10 Menerima entitlement | Ya | Ya | Ya | Ya | ? | Ya (mode `hub`) |
-| AS-11 Kesegaran 60 detik | ? | Sebagian | Tidak | Ya | ? | Ya (sesi: 60 detik; daftar orang: interval sinkron 5 menit) |
-| AS-12 Admin pertama dan mode uji | ? | ? | ? | ? | ? | Sebagian (mode `hub`: admin dari Central; aturan pengguna Google pertama masih ada di mode `google`) |
-| AS-13 Role bawaan lewat preset | ? | Ya | ? | ? | ? | Ya |
-| AS-15 Tes kesesuaian | Tidak | Tidak | Tidak | Sebagian | Tidak | Sebagian (dijalankan sekali dengan helper, belum jadi tes tetap) |
+| Aturan | Hub | Learnspace | Daily | Exima | MTSS v2 | Woko | ProofPoint |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| AS-1 Kepemilikan (tanpa role/akses lokal) | Ya | Sebagian | ? | Sebagian | ? | Sebagian (mode `hub`: ya, layar hanya-baca; mode `google` lama masih ada) | Ya pada mode Hub (directory lokal hanya-baca; tabel lokal hanya projection workflow) |
+| AS-2 Hanya permission | Ya | Sebagian | ? | Tidak | ? | Ya | Sebagian (entitlement dibaca dari permission, lalu diproyeksikan ke role legacy) |
+| AS-3 Format key | Ya | Tidak | ? | Ya | ? | Ya | Sebagian (`proofpoint.access` masih key lama untuk membuka aplikasi) |
+| AS-4 Manifest dan sinkron | Ya | Ya | Ya | Ya | ? | Ya | Ya (implementasi lokal) |
+| AS-5 Role hidup di Central | Ya | Ya | ? | Sebagian | ? | Ya (mode `hub`) | Ya (nama role tidak menentukan capability) |
+| AS-6 Gerbang tiap route | ? | ? | ? | ? | ? | Ya | Belum diperiksa |
+| AS-8 Scope data | - | Ya | ? | ? | ? | Sebagian | Ya (assignment Unit explicit diproyeksikan ke membership department) |
+| AS-10 Menerima entitlement | Ya | Ya | Ya | Ya | ? | Ya (mode `hub`) | Ya (mode `hub`) |
+| AS-11 Kesegaran 60 detik | ? | Sebagian | Tidak | Ya | ? | Ya (sesi: 60 detik; daftar orang: interval sinkron 5 menit) | Ya (lookup 30 detik; directory polling 60 detik) |
+| AS-12 Admin pertama dan mode uji | ? | ? | ? | ? | ? | Sebagian (mode `hub`: admin dari Central; aturan pengguna Google pertama masih ada di mode `google`) | Sebagian (mode Hub sesuai; mode login lokal tetap tersedia) |
+| AS-13 Role bawaan lewat preset | ? | Ya | ? | ? | ? | Ya | Ya |
+| AS-15 Tes kesesuaian | Tidak | Tidak | Tidak | Sebagian | Tidak | Sebagian (dijalankan sekali dengan helper, belum jadi tes tetap) | Sebagian (manifest, composite permission, Hub session, dan projection diuji) |
 
 ## Catatan per aplikasi
 
@@ -67,6 +68,13 @@ Mulai `mws-central-auth` 0.13.0 ada satu implementasi bersama (`definePermission
 - Mode `google` dan mode uji tetap ada sebagai jalan mundur; AS-1 dan AS-12 penuh setelah mode `hub` terbukti dan mode `google` dicabut.
 - `mws-access check` (dari `access.config.json`) berjalan di CI pull request Woko: manifest, preset, typo key, nama role, dan 74 route ditolak untuk orang tanpa permission. Hasil terakhir 0 masalah, 0 peringatan. Woko menjadi aplikasi acuan untuk bentuk berkas: `packages/domain/src/permissions.ts` (definisi), `apps/api/src/scripts/permissions-cli.ts` (tiga baris), `apps/api/src/scripts/access-probe.ts` (probe), `access.config.json`, `role-presets.json`.
 - Sisa: coba di staging, cabut mode `google`, pasang tes kesesuaian pustaka.
+
+### ProofPoint
+- Role aplikasi dan assignment department dikelola terpisah. Seseorang dapat tetap Admin global sambil menjadi Manager atau Supervisor di Unit tertentu.
+- Manager dan Supervisor dikelola dari tab Department Assignments di Central. Staff diturunkan dari home Unit dan tidak dapat diedit sebagai assignment manual. Hasilnya diproyeksikan ke `department_role_memberships` agar workflow lama tetap berjalan.
+- Unit yang belum pernah dikelola memakai fallback lama untuk rollout bertahap. Setelah satu daftar role disimpan, termasuk daftar kosong, daftar Central itu menjadi sumber kebenaran untuk kombinasi Unit dan role tersebut.
+- `role-presets.json` tetap menjadi role aplikasi awal. Nama role tidak menentukan assignment department.
+- Sisa AS-2: route lama masih membaca role projection. Migrasikan gerbang ke permission langsung sebelum menyatakan sesuai penuh.
 
 ### Central (panel admin)
 - Panel admin Central memakai `AdminRole` dan flag `can_*` sendiri. Itu bukan aplikasi penerima dan di luar cakupan v1.0. Bila nanti panel admin dipindah ke model ini, catat di sini.

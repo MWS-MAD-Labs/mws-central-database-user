@@ -92,6 +92,22 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
+    path: "/api/internal/organization-units",
+    scope: API_SCOPES.EMPLOYEES_READ,
+    title: "List organization units",
+    group: "Employees",
+    purpose: "Lists every organization unit, including units that do not currently have an active employee.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/organization-units/version",
+    scope: API_SCOPES.EMPLOYEES_READ,
+    title: "Has the organization unit directory changed",
+    group: "Employees",
+    purpose: "Gives a short key that changes when a unit is added, renamed or removed.",
+  },
+  {
+    method: "GET",
     path: "/api/internal/employees/photo?person_id=person-id",
     scope: API_SCOPES.EMPLOYEES_READ,
     title: "Employee photo",
