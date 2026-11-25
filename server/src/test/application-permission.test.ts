@@ -68,7 +68,7 @@ describe("application permission catalog", () => {
     const body = await (await TestRequest.get(`${PERMISSIONS}?application_id=${appId}`, accessToken)).json();
     expect(body.data.has_manifest).toBe(false);
     expect(body.data.permissions).toEqual([
-      { key: "tab.a", description: "Opens tab A", requires: [], source: "MANUAL", deprecated: false, standard_key: true, role_count: 0 },
+      { key: "tab.a", description: "Opens tab A", requires: [], unit_assignment: null, source: "MANUAL", deprecated: false, standard_key: true, role_count: 0 },
     ]);
     expect(await prismaClient.auditLog.count({ where: { action: AuditAction.APPLICATION_PERMISSION_CREATE } })).toBeGreaterThan(0);
 
@@ -280,7 +280,7 @@ describe("application permission catalog", () => {
       await sync(token, appId, [{ key: "a.1", description: "One" }]);
       const own = await TestRequest.get(`/api/internal/application-permissions/${appId}`, undefined, { Authorization: `Bearer ${token}` });
       expect((await own.json()).data).toEqual([
-        { key: "a.1", description: "One", requires: [], source: "MANIFEST", deprecated: false, standard_key: true },
+        { key: "a.1", description: "One", requires: [], unit_assignment: null, source: "MANIFEST", deprecated: false, standard_key: true },
       ]);
 
       const other = await publisher("other2");

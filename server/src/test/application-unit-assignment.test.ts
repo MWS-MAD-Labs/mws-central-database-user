@@ -60,7 +60,6 @@ describe("application unit assignments", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(master.unit.id, {
       id: `test-unit-admin-${randomBytes(3).toString("hex")}`,
       email: `test_unit_admin_${randomBytes(3).toString("hex")}@millennia21.id`,
-      plain: true,
     });
 
     const endpoint = `/api/admin/application-access/apps/${appId}/unit-assignments`;

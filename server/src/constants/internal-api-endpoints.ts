@@ -266,6 +266,15 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     note: "Leave out application_id, or write me, to mean the application this token was made for.",
   },
   {
+    method: "GET",
+    path: "/api/internal/application-entitlements/unit-assignments?application_id={application_id}",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Application unit responsibility assignments",
+    group: "Application Access",
+    purpose: "Lists the people assigned to application responsibilities in each organization unit, including explicitly managed empty assignments.",
+    note: "Leave out application_id, or write me, to mean the application this token was made for.",
+  },
+  {
     method: "PUT",
     path: "/api/internal/application-permissions/{application_id}",
     scope: API_SCOPES.APPLICATION_PERMISSIONS_WRITE,
