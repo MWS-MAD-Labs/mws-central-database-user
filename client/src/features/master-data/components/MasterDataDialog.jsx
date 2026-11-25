@@ -25,6 +25,7 @@ export function MasterDataDialog({
 }) {
   const [values, setValues] = useState(() => ({
     name: dialog.record?.name || '',
+    parentUnitId: dialog.record?.parent_id || '',
     flagValues: (resource.flags ?? []).reduce(
       (acc, flag) => ({
         ...acc,
@@ -51,7 +52,7 @@ export function MasterDataDialog({
   const unitsQuery = useQuery({
     queryKey: ['master-data-units-for-select'],
     queryFn: () => unitsApi.list({ size: 100 }),
-    enabled: Boolean(resource.unitScope) && !resource.academicUnitsOnly,
+    enabled: Boolean(resource.unitScope || resource.unitHierarchy) && !resource.academicUnitsOnly,
   })
   const gradeUnitsQuery = useQuery({
     queryKey: ['master-data', 'grades', 'all'],
@@ -66,6 +67,24 @@ export function MasterDataDialog({
     value: unit.id,
     label: unit.name,
   }))
+  const hierarchyUnits = unitsQuery.data?.data || []
+  const blockedParentIds = new Set()
+  if (resource.unitHierarchy && dialog.record?.id) {
+    blockedParentIds.add(dialog.record.id)
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const unit of hierarchyUnits) {
+        if (unit.parent_id && blockedParentIds.has(unit.parent_id) && !blockedParentIds.has(unit.id)) {
+          blockedParentIds.add(unit.id)
+          changed = true
+        }
+      }
+    }
+  }
+  const parentUnitOptions = hierarchyUnits
+    .filter((unit) => !blockedParentIds.has(unit.id))
+    .map((unit) => ({ value: unit.id, label: unit.name }))
   const academicUnitIds = new Set(
     distinctGradeUnits(gradeUnitsQuery.data?.data || []).map((unit) => unit.id),
   )
@@ -149,6 +168,7 @@ export function MasterDataDialog({
     if (missing.length > 0) return
     const payload = cleanPayload({
       name: trimmedOrUndefined(values.name),
+      ...(resource.unitHierarchy ? { parent_id: values.parentUnitId || null } : {}),
       ...values.flagValues,
       ...(resource.unitScope
         ? { unit_ids: values.allUnits ? [] : values.unitIds }
@@ -224,6 +244,20 @@ export function MasterDataDialog({
             }
           />
         </Field>
+
+        {resource.unitHierarchy ? (
+          <Field
+            label="Parent Unit"
+            hint="Leave empty for a top-level Unit. A parent Manager can cover its child Units."
+          >
+            <SearchableSelect
+              value={values.parentUnitId}
+              onChange={(parentUnitId) => setValues((current) => ({ ...current, parentUnitId }))}
+              options={[{ value: '', label: 'No parent (top level)' }, ...parentUnitOptions]}
+              searchableThreshold={6}
+            />
+          </Field>
+        ) : null}
 
         {(resource.flags ?? []).map((flag) => (
           <CheckboxField

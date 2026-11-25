@@ -24,6 +24,7 @@ export type ApplicationPermissionResponse = {
     label: string;
     mode: "explicit" | "derived_home_unit";
     exclusive_group?: string;
+    include_descendants?: boolean;
   } | null;
   source: "MANIFEST" | "MANUAL";
   deprecated: boolean;

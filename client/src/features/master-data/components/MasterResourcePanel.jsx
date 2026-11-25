@@ -69,7 +69,7 @@ export function MasterResourcePanel({ resource }) {
   const unitsQuery = useQuery({
     queryKey: ["master-data", "filter-units"],
     queryFn: () => unitsApi.list({ size: 100 }),
-    enabled: Boolean(resource.unitScope),
+    enabled: Boolean(resource.unitScope || resource.unitHierarchy),
   });
 
   const createMutation = useMutation({
@@ -212,6 +212,7 @@ export function MasterResourcePanel({ resource }) {
               </th>
             ))}
             {resource.unitScope ? <th className="px-4 py-3">Unit</th> : null}
+            {resource.unitHierarchy ? <th className="px-4 py-3">Parent Unit</th> : null}
             {resource.positionCapacity ? (
               <th className="px-4 py-3">Active Holder Limit</th>
             ) : null}
@@ -232,6 +233,7 @@ export function MasterResourcePanel({ resource }) {
               3 +
               (resource.flags?.length ?? 0) +
               (resource.unitScope ? 1 : 0) +
+              (resource.unitHierarchy ? 1 : 0) +
               (resource.positionCapacity ? 1 : 0)
             }
             label={resource.itemLabel}
@@ -264,6 +266,11 @@ export function MasterResourcePanel({ resource }) {
                   {resource.unitScope ? (
                     <td className="px-4 py-3 text-(--mws-muted)">
                       <UnitScopeValue item={item} />
+                    </td>
+                  ) : null}
+                  {resource.unitHierarchy ? (
+                    <td className="px-4 py-3 text-(--mws-muted)">
+                      {(unitsQuery.data?.data || []).find((unit) => unit.id === item.parent_id)?.name || 'Top level'}
                     </td>
                   ) : null}
                   {resource.positionCapacity ? (

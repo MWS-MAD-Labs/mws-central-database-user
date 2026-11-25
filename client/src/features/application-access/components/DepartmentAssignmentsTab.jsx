@@ -64,6 +64,21 @@ function personName(person) {
   return person.full_name || person.email;
 }
 
+function unitPath(unit, units) {
+  const byId = new Map(units.map((item) => [item.id, item]));
+  const names = [unit.name];
+  const visited = new Set([unit.id]);
+  let parentId = unit.parent_id;
+  while (parentId && !visited.has(parentId)) {
+    visited.add(parentId);
+    const parent = byId.get(parentId);
+    if (!parent) break;
+    names.unshift(parent.name);
+    parentId = parent.parent_id;
+  }
+  return names.join(" / ");
+}
+
 export function DepartmentAssignmentsTab({ applicationId, retired = false }) {
   const queryClient = useQueryClient();
   const [selectedUnitId, setSelectedUnitId] = useState(null);
@@ -89,7 +104,7 @@ export function DepartmentAssignmentsTab({ applicationId, retired = false }) {
   const candidates = useMemo(() => candidatesQuery.data || [], [candidatesQuery.data]);
   const filteredUnits = useMemo(() => {
     const needle = unitSearch.trim().toLowerCase();
-    return units.filter((unit) => !needle || unit.name.toLowerCase().includes(needle));
+    return units.filter((unit) => !needle || unitPath(unit, units).toLowerCase().includes(needle));
   }, [unitSearch, units]);
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId) || units[0] || null;
 
@@ -208,7 +223,7 @@ export function DepartmentAssignmentsTab({ applicationId, retired = false }) {
                     className={`flex w-full min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--mws-burgundy) ${active ? "border-(--mws-burgundy) bg-(--mws-soft)" : "border-transparent hover:border-(--mws-line) hover:bg-(--mws-soft)"}`}
                   >
                     <Building2 size={17} className="shrink-0 text-(--mws-burgundy)" />
-                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-(--mws-charcoal)">{unit.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-(--mws-charcoal)">{unitPath(unit, units)}</span>
                     <span className="shrink-0 text-xs tabular-nums text-(--mws-muted)">{counts.join(" · ")}</span>
                   </button>
                 );
@@ -223,7 +238,7 @@ export function DepartmentAssignmentsTab({ applicationId, retired = false }) {
                   <p className="text-sm text-(--mws-muted)">Master Unit / ProofPoint Department</p>
                   <h3 className="mt-1 flex items-center gap-2 font-display text-2xl font-bold text-(--mws-charcoal)">
                     <Building2 size={21} className="text-(--mws-burgundy)" />
-                    {selectedUnit.name}
+                    {unitPath(selectedUnit, units)}
                   </h3>
                 </div>
                 <div className="space-y-5 p-5">
@@ -239,6 +254,7 @@ export function DepartmentAssignmentsTab({ applicationId, retired = false }) {
                       people={selectedRoles[responsibility.key]}
                       disabled={retired || responsibility.mode !== "explicit"}
                       derived={responsibility.mode === "derived_home_unit"}
+                      includesDescendants={responsibility.include_descendants}
                       onManage={() => manage(selectedUnit, responsibility)}
                     />
                   ))}
@@ -313,7 +329,7 @@ function Stat({ label, value }) {
   );
 }
 
-function RolePanel({ title, people, disabled, derived = false, onManage }) {
+function RolePanel({ title, people, disabled, derived = false, includesDescendants = false, onManage }) {
   return (
     <section className="rounded-xl border border-(--mws-line) px-4 py-4">
       <div className="flex items-center justify-between gap-3">
@@ -328,6 +344,9 @@ function RolePanel({ title, people, disabled, derived = false, onManage }) {
           </Button>
         ) : derived ? <span className="text-xs font-medium text-(--mws-muted)">From home Unit</span> : null}
       </div>
+      {includesDescendants ? (
+        <p className="mt-2 text-xs text-(--mws-muted)">Assignments on this Unit also apply to all child Units.</p>
+      ) : null}
       {people.length ? (
         <div className="mt-3 divide-y divide-(--mws-line)">
           {people.map((person) => (

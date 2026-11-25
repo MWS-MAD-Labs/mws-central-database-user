@@ -3,6 +3,7 @@ import type { AuditValue } from "./audit-log-model";
 export type SimpleMasterDataEntity = {
   id: string;
   name: string;
+  parent_id?: string | null;
   // Only lists whose rows are referred to by a fixed key have one.
   key?: string | null;
   created_at: Date;
@@ -15,11 +16,13 @@ export type SimpleMasterDataSortField =
 
 export type CreateSimpleMasterDataRequest = {
   name: string;
+  parent_id?: string | null;
 };
 
 export type UpdateSimpleMasterDataRequest = {
   id: string;
   name?: string;
+  parent_id?: string | null;
 };
 
 export type GetSimpleMasterDataRequest = {
@@ -42,6 +45,7 @@ export type SimpleMasterDataResponse = {
   id: string;
   key?: string;
   name: string;
+  parent_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -53,6 +57,7 @@ export function toSimpleMasterDataResponse(
     id: entity.id,
     ...(entity.key ? { key: entity.key } : {}),
     name: entity.name,
+    ...(entity.parent_id !== undefined ? { parent_id: entity.parent_id } : {}),
     created_at: entity.created_at.toISOString(),
     updated_at: entity.updated_at.toISOString(),
   };
@@ -61,5 +66,9 @@ export function toSimpleMasterDataResponse(
 export function toSimpleMasterDataAuditSnapshot(
   entity: SimpleMasterDataEntity,
 ): AuditValue {
-  return entity.key ? { name: entity.name, key: entity.key } : { name: entity.name };
+  return {
+    name: entity.name,
+    ...(entity.key ? { key: entity.key } : {}),
+    ...(entity.parent_id !== undefined ? { parent_id: entity.parent_id } : {}),
+  };
 }

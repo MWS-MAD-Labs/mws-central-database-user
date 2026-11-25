@@ -418,8 +418,12 @@ enum ImportStatus {
 model MasterUnit {
   id         String   @id @default(cuid())
   name       String   @unique
+  parent_id  String?
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+
+  parent   MasterUnit?  @relation("MasterUnitHierarchy", fields: [parent_id], references: [id], onDelete: Restrict)
+  children MasterUnit[] @relation("MasterUnitHierarchy")
 
   employees Employee[]
   interns   Intern[]
@@ -446,6 +450,8 @@ model MasterUnit {
   admin_employee_view_units AdminUserEmployeeViewUnit[]
   application_unit_assignments ApplicationUnitAssignment[]
   application_unit_assignment_sets ApplicationUnitAssignmentSet[]
+
+  @@index([parent_id])
 
   @@map("master_units")
 }

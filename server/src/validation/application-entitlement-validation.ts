@@ -538,6 +538,7 @@ export class ApplicationPermissionValidation {
               label: z.string().trim().min(1).max(80),
               mode: z.enum(["explicit", "derived_home_unit"]),
               exclusive_group: permissionKey.optional(),
+              include_descendants: z.boolean().optional(),
             })
             .strict()
             .optional(),

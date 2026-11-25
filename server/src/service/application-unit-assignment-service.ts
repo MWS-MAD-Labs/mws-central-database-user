@@ -10,6 +10,7 @@ type UnitAssignmentMetadata = {
   label: string;
   mode: "explicit" | "derived_home_unit";
   exclusive_group?: string;
+  include_descendants?: boolean;
 };
 
 function unitAssignmentMetadata(value: unknown): UnitAssignmentMetadata | null {
@@ -25,6 +26,7 @@ function unitAssignmentMetadata(value: unknown): UnitAssignmentMetadata | null {
     label: row.label,
     mode: row.mode,
     ...(typeof row.exclusive_group === "string" ? { exclusive_group: row.exclusive_group } : {}),
+    ...(typeof row.include_descendants === "boolean" ? { include_descendants: row.include_descendants } : {}),
   };
 }
 
@@ -46,7 +48,7 @@ export class ApplicationUnitAssignmentService {
     const [units, assignments, assignmentSets, permissionRows, activePersonIds] = await Promise.all([
       prismaClient.masterUnit.findMany({
         where: { name: { not: "Unknown / Legacy" } },
-        select: { id: true, name: true },
+        select: { id: true, name: true, parent_id: true },
         orderBy: { name: "asc" },
       }),
       prismaClient.applicationUnitAssignment.findMany({

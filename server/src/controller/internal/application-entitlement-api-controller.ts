@@ -130,6 +130,7 @@ export class ApplicationEntitlementApiController {
           label: string;
           mode: "explicit" | "derived_home_unit";
           exclusive_group?: string;
+          include_descendants?: boolean;
         };
       }[];
       confirm_removals?: boolean;

@@ -5,6 +5,7 @@ import { SIMPLE_MASTER_DATA_SORT_FIELDS } from "../model/simple-master-data-mode
 export class SimpleMasterDataValidation {
   static readonly CREATE = z.object({
     name: z.string().min(1, "Name is required").max(LIMITS.MASTER_NAME_MAX, `Name can have up to ${LIMITS.MASTER_NAME_MAX} characters`),
+    parent_id: z.string().min(1, "Parent Unit is required").nullable().optional(),
   });
 
   static readonly UPDATE = z.object({
@@ -14,6 +15,7 @@ export class SimpleMasterDataValidation {
       .min(1, "Name is required")
       .max(LIMITS.MASTER_NAME_MAX, `Name can have up to ${LIMITS.MASTER_NAME_MAX} characters`)
       .optional(),
+    parent_id: z.string().min(1, "Parent Unit is required").nullable().optional(),
   });
 
   static readonly DELETE = z.object({
