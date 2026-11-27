@@ -1332,6 +1332,49 @@ describe("Student internal API", () => {
       expect(body.data[0].has_professional_report).toBeUndefined();
     });
 
+    it("carries the birth date, the primary parent's address and phone, and the principal and SE coordinator of the unit", async () => {
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [SPECIAL_EDUCATION_SCOPE] });
+      await prismaClient.grade.update({ where: { id: gradeId }, data: { unit_id: unitId } });
+      const positionNamed = async (name: string) => {
+        const found = await prismaClient.masterJobPosition.findUnique({ where: { name } });
+        return found ?? prismaClient.masterJobPosition.create({ data: { name } });
+      };
+      const principalPosition = await positionNamed("Principal");
+      const coordinatorPosition = await positionNamed("SE Coordinator");
+      const principal = await EmployeeTest.create({ email: "test_stuapi_se_principal@millennia21.id", unitId, jobPositionId: principalPosition.id, jobLevelId, buildingId });
+      const coordinator = await EmployeeTest.create({ email: "test_stuapi_se_coordinator@millennia21.id", unitId, jobPositionId: coordinatorPosition.id, jobLevelId, buildingId });
+      const eligible = await StudentTest.create({ email: "special_education_profile@millennia21.id", nis: "9500495", status: StudentStatus.ACTIVE, currentGradeId: gradeId, joinGradeId: gradeId, joinAcademicYearId: academicYearId, currentClassId: classId, sn: true });
+      await prismaClient.studentSpecialNeedsProfile.create({ data: { student_id: eligible.student!.id, needs: { create: { need_type: "OTHER", description: "Reads below grade level." } } } });
+      await prismaClient.parentGuardian.create({ data: { student_id: eligible.student!.id, type: "FATHER", full_name: "Test Father", phone: "0811111", address: "Father street" } });
+      await prismaClient.parentGuardian.create({ data: { student_id: eligible.student!.id, type: "MOTHER", full_name: "Test Mother", phone: "0822222", address: "Mother street", is_primary: true } });
+      try {
+        const response = await TestRequest.get("/api/internal/students/special-education", undefined, authHeader(token));
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data[0]).toMatchObject({
+          birth_date: eligible.birth_date.toISOString(),
+          address: "Mother street",
+          phone: "0822222",
+          team: { principal: { person_id: principal.id, full_name: principal.full_name }, se_head: { person_id: coordinator.id, full_name: coordinator.full_name } },
+        });
+        expect(body.data[0].father_name).toBeUndefined();
+      } finally {
+        await EmployeeTest.delete();
+        await prismaClient.masterJobPosition.deleteMany({ where: { name: { in: ["Principal", "SE Coordinator"] }, employees: { none: {} } } }).catch(() => undefined);
+      }
+    });
+
+    it("gives no address, phone or team where there is none", async () => {
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [SPECIAL_EDUCATION_SCOPE] });
+      const eligible = await StudentTest.create({ email: "special_education_bare@millennia21.id", nis: "9500494", status: StudentStatus.ACTIVE, currentGradeId: gradeId, joinGradeId: gradeId, joinAcademicYearId: academicYearId, currentClassId: classId, sn: true });
+      await prismaClient.studentSpecialNeedsProfile.create({ data: { student_id: eligible.student!.id, needs: { create: { need_type: "OTHER", description: "Reads below grade level." } } } });
+
+      const body = await (await TestRequest.get("/api/internal/students/special-education", undefined, authHeader(token))).json();
+
+      expect(body.data[0]).toMatchObject({ address: null, phone: null, team: { principal: null, se_head: null } });
+    });
+
     it("leaves out a profiled student whose class is not active", async () => {
       const { token } = await ApiClientTest.createWithToken({ scopeNames: [SPECIAL_EDUCATION_SCOPE] });
       const closed = await ClassTest.create({ gradeId, academicYearId, status: ClassStatus.INACTIVE, name: "TEST_Class_closed_se" });

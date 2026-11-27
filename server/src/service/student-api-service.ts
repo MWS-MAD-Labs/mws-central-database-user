@@ -4,12 +4,15 @@ import {
   AuditSource,
   ClassStatus,
   ConsentType,
+  EmployeeStatus,
   EnrollmentStatus,
+  ParentType,
   PersonType,
   StudentStatus,
   type Prisma,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
+import { IEP_TEAM_POSITIONS } from "../constants/iep-team-positions";
 import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import { paginate, type Pageable } from "../model/page-model";
@@ -33,6 +36,7 @@ import {
   type StudentRosterExportRequest,
   type StudentRosterExportRow,
   type StudentSupportContactsResponse,
+  type IepTeamPerson,
   type SpecialEducationStudentResponse,
   type GuardianContactResponse,
 } from "../model/student-api-model";
@@ -75,7 +79,9 @@ export class StudentApiService {
           current_class: true,
           special_needs_profile: { include: { needs: true } },
         },
-      }).then((students) => students.map((student) => ({
+      }).then(async (students) => {
+        const contacts = await StudentApiService.profileOf(students);
+        return students.map((student) => ({
         id: student.id,
         person_id: student.person_id,
         nis: student.nis,
@@ -89,8 +95,10 @@ export class StudentApiService {
         need_types: student.special_needs_profile!.needs.map((need) => need.need_type),
         learning_support_summary: student.special_needs_profile?.learning_support_summary ?? null,
         accommodations: student.special_needs_profile?.accommodations ?? null,
+        ...contacts.get(student.id)!,
         updated_at: student.updated_at.toISOString(),
-      }))),
+      }));
+      }),
     });
     await AuditService.record({
       action: AuditAction.API_ACCESS,
@@ -102,6 +110,51 @@ export class StudentApiService {
       user_agent: _context.user_agent,
     });
     return response;
+  }
+
+  // Birth date, the primary parent's address and phone, and the principal and SE coordinator of the unit of the grade.
+  // Parents and employees are read once for the whole page.
+  private static async profileOf(
+    students: { id: string; person: { birth_date: Date }; current_grade: { unit_id: string } }[],
+  ): Promise<Map<string, Pick<SpecialEducationStudentResponse, "birth_date" | "address" | "phone" | "team">>> {
+    const parents = await prismaClient.parentGuardian.findMany({
+      where: { student_id: { in: students.map((student) => student.id) }, deleted_at: null },
+      orderBy: { created_at: "asc" },
+    });
+    const units = [...new Set(students.map((student) => student.current_grade.unit_id))];
+    const staff = await prismaClient.employee.findMany({
+      where: {
+        unit_id: { in: units },
+        status: EmployeeStatus.ACTIVE,
+        job_position: { name: { in: Object.values(IEP_TEAM_POSITIONS) } },
+      },
+      select: { unit_id: true, person: { select: { id: true, full_name: true } }, job_position: { select: { name: true } } },
+      orderBy: { person: { full_name: "asc" } },
+    });
+    const personIn = (unitId: string, position: string): IepTeamPerson | null => {
+      const found = staff.find((entry) => entry.unit_id === unitId && entry.job_position.name === position);
+      return found ? { person_id: found.person.id, full_name: found.person.full_name } : null;
+    };
+    return new Map(
+      students.map((student) => {
+        const own = parents.filter((parent) => parent.student_id === student.id);
+        // The primary parent, else the father, else the mother.
+        const parent = own.find((entry) => entry.is_primary) ?? own.find((entry) => entry.type === ParentType.FATHER) ?? own.find((entry) => entry.type === ParentType.MOTHER) ?? null;
+        const unitId = student.current_grade.unit_id;
+        return [
+          student.id,
+          {
+            birth_date: student.person.birth_date.toISOString(),
+            address: parent?.address ?? null,
+            phone: parent?.phone ?? parent?.legacy_phone ?? null,
+            team: {
+              principal: personIn(unitId, IEP_TEAM_POSITIONS.principal),
+              se_head: personIn(unitId, IEP_TEAM_POSITIONS.se_head),
+            },
+          },
+        ];
+      }),
+    );
   }
 
   // The parents and guardians of active students that have an email, so another app can send them a code.
