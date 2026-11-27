@@ -19,7 +19,7 @@ const GROUP_PAGE_SIZE = 10;
 
 // The access, roles and permissions of one application, one tab at a time. The groups come from `detail`, the roles
 // from the page that already loaded them.
-export function AppAccessSection({ applicationId, detail, roles, tab, canAddGroup = true, retired = false }) {
+export function AppAccessSection({ applicationId, detail, roles, tab, canAddGroup = true, retired = false, hasUnitAssignments = false }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -65,13 +65,21 @@ export function AppAccessSection({ applicationId, detail, roles, tab, canAddGrou
   return (
     <>
       {activeTab === "access" ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-(--mws-line) bg-white px-5 py-3 text-sm">
-          <span className="font-semibold text-(--mws-charcoal)">Organization ID</span>
-          {detail.organization_id ? (
-            <CopyableId value={detail.organization_id} />
-          ) : (
-            <span className="text-(--mws-muted)">Created automatically with the first group or role.</span>
-          )}
+        <div className="space-y-3">
+          {hasUnitAssignments ? (
+            <div role="note" className="rounded-2xl border border-[#d8b45b] bg-[#fff8e8] px-5 py-3 text-sm text-[#745716]">
+              <p className="font-semibold">Department responsibility is managed separately.</p>
+              <p>Use Department Assignments for Unit-scoped responsibilities. Roles here control application access.</p>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-(--mws-line) bg-white px-5 py-3 text-sm">
+            <span className="font-semibold text-(--mws-charcoal)">Organization ID</span>
+            {detail.organization_id ? (
+              <CopyableId value={detail.organization_id} />
+            ) : (
+              <span className="text-(--mws-muted)">Created automatically with the first group or role.</span>
+            )}
+          </div>
         </div>
       ) : null}
 

@@ -1104,6 +1104,8 @@ export class ApplicationOnboardingService {
     }
 
     await prismaClient.$transaction(async (tx) => {
+      await tx.applicationUnitAssignment.deleteMany({ where: { application_id: applicationId } });
+      await tx.applicationUnitAssignmentSet.deleteMany({ where: { application_id: applicationId } });
       await tx.applicationEntitlement.deleteMany({ where: { application_id: applicationId } });
       await tx.applicationAccessRule.deleteMany({ where: { application_id: applicationId } });
       await tx.applicationRole.deleteMany({ where: { application_id: applicationId } });

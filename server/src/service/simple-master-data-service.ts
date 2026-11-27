@@ -41,10 +41,10 @@ export type SimpleMasterDataDelegate = {
     orderBy: Record<string, unknown>;
   }) => Promise<SimpleMasterDataEntity[]>;
   count: (args: { where: Record<string, unknown> }) => Promise<number>;
-  create: (args: { data: { name: string; key?: string } }) => Promise<SimpleMasterDataEntity>;
+  create: (args: { data: { name: string; key?: string; parent_id?: string | null } }) => Promise<SimpleMasterDataEntity>;
   update: (args: {
     where: { id: string };
-    data: { name?: string };
+    data: { name?: string; parent_id?: string | null };
   }) => Promise<SimpleMasterDataEntity>;
   delete: (args: { where: { id: string } }) => Promise<SimpleMasterDataEntity>;
 };
@@ -64,12 +64,28 @@ export type SimpleMasterDataServiceConfig = {
   keyFrom?: (name: string) => string;
   // Runs in the transaction of a rename, for what keeps a copy of the name.
   afterRename?: (tx: Prisma.TransactionClient, entity: SimpleMasterDataEntity, previous: SimpleMasterDataEntity) => Promise<void>;
+  hierarchical?: boolean;
 };
 
 export function createSimpleMasterDataService(
   config: SimpleMasterDataServiceConfig,
 ) {
-  const { entityLabel, entityType, delegate, referenceChecks, keyFrom, afterRename } = config;
+  const { entityLabel, entityType, delegate, referenceChecks, keyFrom, afterRename, hierarchical = false } = config;
+
+  async function requireParent(parentId: string | null | undefined, ownId?: string) {
+    if (!hierarchical || parentId === undefined || parentId === null) return;
+    if (parentId === ownId) throw new ResponseError(400, `A ${entityLabel} cannot be its own parent`);
+    let currentId: string | null = parentId;
+    const visited = new Set<string>();
+    while (currentId) {
+      if (currentId === ownId) throw new ResponseError(400, `A ${entityLabel} hierarchy cannot contain a cycle`);
+      if (visited.has(currentId)) throw new ResponseError(400, `The existing ${entityLabel} hierarchy contains a cycle`);
+      visited.add(currentId);
+      const current = await delegate(prismaClient).findUnique({ where: { id: currentId } });
+      if (!current) throw new ResponseError(400, `Parent ${capitalize(entityLabel)} does not exist`);
+      currentId = current.parent_id ?? null;
+    }
+  }
   function rethrowAsFriendlyConflict(error: unknown): never {
     const fields = getUniqueConstraintFields(error);
     if (fields?.includes("name")) {
@@ -109,6 +125,8 @@ export function createSimpleMasterDataService(
         );
       }
 
+      await requireParent(createRequest.parent_id);
+
       let key: string | undefined;
       if (keyFrom) {
         key = keyFrom(createRequest.name);
@@ -128,7 +146,11 @@ export function createSimpleMasterDataService(
       try {
         entity = await prismaClient.$transaction(async (tx) => {
           const newEntity = await delegate(tx).create({
-            data: key ? { name: createRequest.name, key } : { name: createRequest.name },
+            data: {
+              name: createRequest.name,
+              ...(key ? { key } : {}),
+              ...(hierarchical ? { parent_id: createRequest.parent_id ?? null } : {}),
+            },
           });
 
           await AuditService.record(
@@ -190,12 +212,20 @@ export function createSimpleMasterDataService(
         }
       }
 
+
+      await requireParent(updateRequest.parent_id, updateRequest.id);
+
       let entity;
       try {
         entity = await prismaClient.$transaction(async (tx) => {
           const updatedEntity = await delegate(tx).update({
             where: { id: updateRequest.id },
-            data: { name: updateRequest.name },
+            data: {
+              name: updateRequest.name,
+              ...(hierarchical && updateRequest.parent_id !== undefined
+                ? { parent_id: updateRequest.parent_id }
+                : {}),
+            },
           });
           if (afterRename && updatedEntity.name !== existing.name) await afterRename(tx, updatedEntity, existing);
 

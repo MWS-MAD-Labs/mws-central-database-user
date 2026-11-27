@@ -32,6 +32,7 @@ import {
 import type { AdminVariables } from "../../type/hono-context";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 import { getIntegrationEnvironment } from "../../utils/integration-environment";
+import { ApplicationUnitAssignmentService } from "../../service/application-unit-assignment-service";
 
 // "a,b,c" in a query string becomes ["a", "b", "c"].
 function listQuery(value: string | undefined): string[] | undefined {
@@ -267,6 +268,28 @@ export class ApplicationAccessRuleController {
 }
 
 export class ApplicationAccessController {
+  static async unitAssignments(c: Context<{ Variables: AdminVariables }>) {
+    return c.json({
+      data: await ApplicationUnitAssignmentService.list(c.var.admin, requireApplicationId(c)),
+    });
+  }
+
+  static async replaceUnitAssignments(c: Context<{ Variables: AdminVariables }>) {
+    const body = (await c.req.json()) as {
+      unit_id: string;
+      permission_key: string;
+      person_ids: string[];
+    };
+    return c.json({
+      data: await ApplicationUnitAssignmentService.replace(
+        c.var.admin,
+        requireApplicationId(c),
+        body,
+        getAuditRequestContext(c),
+      ),
+    });
+  }
+
   static async context(c: Context<{ Variables: AdminVariables }>) {
     if (c.var.admin.role !== "SUPER_ADMIN") {
       throw new ResponseError(403, "Forbidden: Only Super Admin can manage applications");

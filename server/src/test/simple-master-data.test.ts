@@ -626,6 +626,39 @@ describe("DELETE /api/admin/units - reference checks", () => {
     expect(body.errors).toContain("still referenced by");
     expect(body.errors).toContain("admin user(s)");
   });
+
+  it("should reject deletion while an application access row manages the unit", async () => {
+    const masterData = await MasterDataTest.create();
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetUnit = await prismaClient.masterUnit.create({
+      data: { name: "TEST_TargetUnit3" },
+    });
+    const person = await EmployeeTest.create({
+      email: "test_emp_scope_unit_ref@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    await prismaClient.applicationEntitlement.create({
+      data: {
+        person_id: person.id,
+        application_id: "proofpoint",
+        organization_id: "test_scope_unit_org",
+        role: "MANAGER",
+        scope_unit_ids: [targetUnit.id],
+      },
+    });
+
+    const response = await TestRequest.delete(
+      `/api/admin/units/${targetUnit.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("application access row(s) managing it");
+  });
 });
 
 describe("DELETE /api/admin/job-positions - reference checks", () => {

@@ -13,6 +13,8 @@ export type ApplicationEntitlementResponse = {
   organization_id: string;
   role: string;
   permissions: string[];
+  // Units the role reaches in the app (AS-8). Empty means the person's own unit.
+  scope_unit_ids: string[];
   version: number;
   is_active: boolean;
   granted_at: string;
@@ -37,12 +39,14 @@ export type GrantApplicationEntitlementRequest = {
   role: string;
   // Optional: the registry role decides them. When sent they must match.
   permissions?: string[];
+  scope_unit_ids?: string[];
 };
 
 export type UpdateApplicationEntitlementRequest = {
   id: string;
   role?: string;
   permissions?: string[];
+  scope_unit_ids?: string[];
 };
 
 export type RevokeApplicationEntitlementRequest = { id: string };
@@ -62,6 +66,7 @@ export type BulkGrantApplicationEntitlementRequest = {
   person_ids: string[];
   application_id: string;
   role?: string;
+  scope_unit_ids?: string[];
   // Block the people instead of giving them a role.
   blocked?: boolean;
 };
@@ -131,6 +136,7 @@ export type ApplicationCandidate = {
   full_name: string;
   email: string;
   unit: string;
+  unit_id?: string | null;
   job_position: string;
   job_level: string;
   employment_type: string;
@@ -239,6 +245,7 @@ export type ApplicationExceptionRow = {
   employment_type: string | null;
   role: string;
   permissions: string[];
+  scope_units: { id: string; name: string }[];
   is_active: boolean;
   granted_at: string;
 };
@@ -328,7 +335,7 @@ export type ApplicationAccessRow = {
 };
 
 export type ApplicationEntitlementListItem = ApplicationEntitlementResponse & {
-  person: { full_name: string; email: string; unit: string | null };
+  person: { full_name: string; email: string; unit_id: string | null; unit: string | null };
 };
 
 export type ApplicationRoleResponse = {
@@ -421,6 +428,7 @@ export function toApplicationEntitlementResponse(
     organization_id: entitlement.organization_id,
     role: entitlement.role,
     permissions: entitlement.permissions,
+    scope_unit_ids: entitlement.scope_unit_ids,
     version: entitlement.version,
     is_active: entitlement.is_active,
     granted_at: entitlement.granted_at.toISOString(),

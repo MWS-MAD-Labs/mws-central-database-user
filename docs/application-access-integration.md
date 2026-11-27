@@ -57,6 +57,7 @@ Respons 200:
     "organization_id": "org_exima_ab12cd",
     "role": "STORE_ADMIN",
     "permissions": ["store.use", "app.admin"],
+    "scope_unit_ids": ["<unitId>"],
     "version": 3,
     "is_active": true,
     "granted_at": "...",
@@ -68,9 +69,74 @@ Respons 200:
 
 `is_default` hanya ada bila aksesnya berasal dari group. 404 berarti orang itu tidak punya akses aktif (tidak tercakup group, atau diblokir).
 
+`scope_unit_ids` adalah unit yang dijangkau role orang itu, dipilih admin di exception (lihat AS-8). Kosong berarti unit orang itu sendiri. Akses dari group selalu kosong. Cocokkan dengan `unit_id` di `/api/internal/employees`, bukan nama unit.
+
+Permission yang mempunyai `unit_assignment` tidak dikirim sebagai permission global pada entitlement. Assignment Unit menjadi satu-satunya sumber permission scoped tersebut. Karena itu seorang Admin global dapat sekaligus menjadi Manager hanya pada MAD Lab tanpa membuat role gabungan atau memperluas Manager ke seluruh organisasi.
+
+Aplikasi mendeklarasikan responsibility Unit di manifest permission:
+
+```json
+{
+  "key": "proofpoint.manager",
+  "description": "Manage ProofPoint work within selected Units",
+  "requires": ["proofpoint.access"],
+  "unit_assignment": {
+    "scope": "unit",
+    "label": "Managers",
+    "mode": "explicit",
+    "exclusive_group": "proofpoint.department_role"
+  }
+}
+```
+
+`mode: explicit` dapat diubah admin dari tab Department Assignments. `mode: derived_home_unit` hanya ditampilkan dan dihitung dari Unit employee. Permission dalam `exclusive_group` yang sama saling menggantikan untuk orang dan Unit yang sama.
+
+## Directory unit organisasi
+
+Aplikasi yang menyimpan proyeksi struktur organisasi membaca semua unit lewat
+`GET /api/internal/organization-units` dengan scope `employees:read`. Daftar ini
+tetap memuat unit yang belum mempunyai karyawan aktif. Gunakan id sebagai identitas
+tetap; nama boleh berubah.
+
+`GET /api/internal/organization-units/version` mengembalikan `{ key, total }`.
+Key berubah ketika unit ditambah, diganti nama, atau dihapus, sehingga aplikasi
+tidak perlu membaca ulang seluruh daftar pada setiap polling.
+
+## Assignment role per Unit
+
+Aplikasi yang mempunyai role kontekstual membaca
+`GET /api/internal/application-entitlements/unit-assignments?application_id=<id>`
+dengan scope `application_entitlements:read`.
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "person_id": "<personId>",
+      "unit_id": "<unitId>",
+      "permission_key": "proofpoint.manager"
+    }
+  ],
+  "managed": [
+    {
+      "unit_id": "<unitId>",
+      "permission_key": "proofpoint.manager"
+    }
+  ]
+}
+```
+
+`data` hanya berisi assignment efektif milik orang yang masih mempunyai akses aktif ke aplikasi. `managed` menandai daftar Unit dan permission
+yang sudah dikelola eksplisit, termasuk daftar kosong. Bila satu pasangan ada di
+`managed`, aplikasi MUST memperlakukan `data` sebagai daftar lengkap untuk
+pasangan itu dan tidak menghidupkan kembali fallback lokal.
+
+Assignment yang kehilangan application access atau permission manifest tetap disimpan untuk audit, tetapi tidak muncul pada directory efektif. Jika access diberikan kembali dan manifest masih valid, assignment kembali efektif.
+
 ## Arti `version`
 
-- Akses dari exception (id berupa uuid): penghitung kecil yang naik tiap perubahan role, permission, atau status.
+- Akses dari exception (id berupa uuid): penghitung kecil yang naik tiap perubahan role, permission, unit, atau status.
 - Akses dari group (id berawalan `group:`): detik-epoch saat role atau group terakhir berubah. Naik bila role, permission, atau group berubah, dan tidak berubah selama tidak ada perubahan. Mengubah urutan role atau label juga menaikkannya.
 - Jangan membandingkan `version` antar `id` yang berbeda. Orang yang berpindah dari exception ke group, atau sebaliknya, mendapat `id` baru dengan nilai `version` dari skala lain. Bandingkan hanya bila `id` sama.
 

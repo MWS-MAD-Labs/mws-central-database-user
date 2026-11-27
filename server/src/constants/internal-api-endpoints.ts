@@ -92,6 +92,22 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   },
   {
     method: "GET",
+    path: "/api/internal/organization-units",
+    scope: API_SCOPES.EMPLOYEES_READ,
+    title: "List organization units",
+    group: "Employees",
+    purpose: "Lists every organization unit, including units that do not currently have an active employee.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/organization-units/version",
+    scope: API_SCOPES.EMPLOYEES_READ,
+    title: "Has the organization unit directory changed",
+    group: "Employees",
+    purpose: "Gives a short key that changes when a unit is added, renamed or removed.",
+  },
+  {
+    method: "GET",
     path: "/api/internal/employees/photo?person_id=person-id",
     scope: API_SCOPES.EMPLOYEES_READ,
     title: "Employee photo",
@@ -247,6 +263,15 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     title: "Has the list of people changed",
     group: "Application Access",
     purpose: "Gives a short key that changes only when the people, names, emails or roles of an application change, so an app syncs only when it must.",
+    note: "Leave out application_id, or write me, to mean the application this token was made for.",
+  },
+  {
+    method: "GET",
+    path: "/api/internal/application-entitlements/unit-assignments?application_id={application_id}",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    title: "Application unit responsibility assignments",
+    group: "Application Access",
+    purpose: "Lists the people assigned to application responsibilities in each organization unit, including explicitly managed empty assignments.",
     note: "Leave out application_id, or write me, to mean the application this token was made for.",
   },
   {

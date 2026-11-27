@@ -20,6 +20,13 @@ const applicationId = z
 
 const tidy = (value: string) => value.replace(/\s+/g, " ").trim();
 
+// Units a person's role reaches (AS-8). Left out means unchanged, empty means their own unit.
+const scopeUnitIds = z
+  .array(z.string().trim().min(1, "Unit ID is required"))
+  .max(100, "Too many units")
+  .refine((values) => new Set(values).size === values.length, "Units must be unique")
+  .optional();
+
 // An address as typed in the form: no spaces, http only for local ones, a sane length.
 const optionalUrl = (label: string) =>
   z
@@ -158,6 +165,7 @@ export class ApplicationEntitlementValidation {
     application_id: applicationId,
     role: roleKey,
     permissions: permissions.optional(),
+    scope_unit_ids: scopeUnitIds,
   });
 
   static readonly BULK_GRANT = z
@@ -169,6 +177,7 @@ export class ApplicationEntitlementValidation {
         .refine((values) => new Set(values).size === values.length, "People must be unique"),
       application_id: applicationId,
       role: roleKey.optional(),
+      scope_unit_ids: scopeUnitIds,
       // Shuts the person out of the application instead of giving them a role.
       blocked: z.boolean().optional(),
     })
@@ -179,10 +188,12 @@ export class ApplicationEntitlementValidation {
       id: nonemptyId("Entitlement ID"),
       role: roleKey.optional(),
       permissions: permissions.optional(),
+      scope_unit_ids: scopeUnitIds,
     })
-    .refine((value) => value.role !== undefined || value.permissions !== undefined, {
-      message: "Role or permissions is required",
-    });
+    .refine(
+      (value) => value.role !== undefined || value.permissions !== undefined || value.scope_unit_ids !== undefined,
+      { message: "Role, permissions or units is required" },
+    );
 
   static readonly REVOKE = z.object({ id: nonemptyId("Entitlement ID") });
 
@@ -521,6 +532,16 @@ export class ApplicationPermissionValidation {
           key: permissionKey,
           description: z.string().trim().max(200, "Description is too long").optional(),
           requires: z.array(permissionKey).max(50, "Too many required permissions").optional(),
+          unit_assignment: z
+            .object({
+              scope: z.literal("unit"),
+              label: z.string().trim().min(1).max(80),
+              mode: z.enum(["explicit", "derived_home_unit"]),
+              exclusive_group: permissionKey.optional(),
+              include_descendants: z.boolean().optional(),
+            })
+            .strict()
+            .optional(),
         }),
       )
       .min(1, "Send at least one permission")

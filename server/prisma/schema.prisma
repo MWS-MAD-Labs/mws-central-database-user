@@ -418,8 +418,12 @@ enum ImportStatus {
 model MasterUnit {
   id         String   @id @default(cuid())
   name       String   @unique
+  parent_id  String?
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+
+  parent   MasterUnit?  @relation("MasterUnitHierarchy", fields: [parent_id], references: [id], onDelete: Restrict)
+  children MasterUnit[] @relation("MasterUnitHierarchy")
 
   employees Employee[]
   interns   Intern[]
@@ -444,6 +448,10 @@ model MasterUnit {
 
   admin_student_view_units  AdminUserStudentViewUnit[]
   admin_employee_view_units AdminUserEmployeeViewUnit[]
+  application_unit_assignments ApplicationUnitAssignment[]
+  application_unit_assignment_sets ApplicationUnitAssignmentSet[]
+
+  @@index([parent_id])
 
   @@map("master_units")
 }
@@ -769,6 +777,7 @@ model Person {
   adminUser AdminUser?
 
   application_entitlements ApplicationEntitlement[]
+  application_unit_assignments ApplicationUnitAssignment[]
 
   @@map("persons")
 }
@@ -1792,6 +1801,8 @@ model ApplicationEntitlement {
   organization_id String
   role            String
   permissions     String[] @default([])
+  // Units this person's role reaches in the app (AS-8). Empty means their own unit.
+  scope_unit_ids  String[] @default([])
   version         Int      @default(1)
   is_active       Boolean  @default(true)
   granted_at      DateTime @default(now())
@@ -1800,6 +1811,37 @@ model ApplicationEntitlement {
   @@unique([person_id, application_id])
   @@index([application_id, organization_id, is_active])
   @@map("application_entitlements")
+}
+
+// App permission granted to one person only within one organization unit.
+// The unit remains MasterUnit; this is an assignment, not another department model.
+model ApplicationUnitAssignment {
+  id             String     @id @default(cuid())
+  application_id String
+  person_id      String
+  person         Person     @relation(fields: [person_id], references: [id], onDelete: Cascade)
+  unit_id        String
+  unit           MasterUnit @relation(fields: [unit_id], references: [id], onDelete: Restrict)
+  permission_key String
+  created_at     DateTime   @default(now())
+  updated_at     DateTime   @updatedAt
+
+  @@unique([application_id, person_id, unit_id, permission_key])
+  @@index([application_id, unit_id, permission_key])
+  @@map("application_unit_assignments")
+}
+
+// Marks one unit role as explicitly managed, including when it has no assignees.
+model ApplicationUnitAssignmentSet {
+  application_id String
+  unit_id        String
+  unit           MasterUnit @relation(fields: [unit_id], references: [id], onDelete: Cascade)
+  permission_key String
+  created_at     DateTime   @default(now())
+  updated_at     DateTime   @updatedAt
+
+  @@id([application_id, unit_id, permission_key])
+  @@map("application_unit_assignment_sets")
 }
 
 // Group access: everyone in the audience who matches the unit, job position and
@@ -2018,6 +2060,8 @@ model ApplicationPermission {
   description    String?
   // Permissions that must come with this one, for example manage needs read. Roles are checked against it.
   requires       String[]                    @default([])
+  // Optional app-owned rules for granting this permission within an organization unit.
+  unit_assignment Json?
   source         ApplicationPermissionSource @default(MANUAL)
   // Dropped from the application's manifest. Roles that already carry it keep it, new roles cannot pick it.
   deprecated_at  DateTime?

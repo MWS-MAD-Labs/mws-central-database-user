@@ -3,6 +3,7 @@ import {
   ApplicationPermissionSource,
   AuditAction,
   AuditSource,
+  Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
 import { ResponseError } from "../error/response-error";
@@ -18,6 +19,13 @@ export type ApplicationPermissionResponse = {
   key: string;
   description: string | null;
   requires: string[];
+  unit_assignment: {
+    scope: "unit";
+    label: string;
+    mode: "explicit" | "derived_home_unit";
+    exclusive_group?: string;
+    include_descendants?: boolean;
+  } | null;
   source: "MANIFEST" | "MANUAL";
   deprecated: boolean;
   // False for a key registered before the standard format; it keeps working until the application renames it.
@@ -201,6 +209,7 @@ export class ApplicationPermissionService {
         key: row.key,
         description: row.description,
         requires: row.requires,
+        unit_assignment: row.unit_assignment as ApplicationPermissionResponse["unit_assignment"],
         source: row.source,
         deprecated: Boolean(row.deprecated_at),
         standard_key: isStandardPermissionKey(row.key),
@@ -252,7 +261,7 @@ export class ApplicationPermissionService {
       );
       return saved;
     });
-    return { key: created.key, description: created.description, requires: [], source: created.source, deprecated: false, standard_key: true, role_count: 0 };
+    return { key: created.key, description: created.description, requires: [], unit_assignment: null, source: created.source, deprecated: false, standard_key: true, role_count: 0 };
   }
 
   // An application publishes what its code understands. The client has to be the one made for it.
@@ -260,7 +269,12 @@ export class ApplicationPermissionService {
     client: Pick<ApiClientVariables, "clientId">,
     request: {
       application_id: string;
-      permissions: { key: string; description?: string; requires?: string[] }[];
+      permissions: {
+        key: string;
+        description?: string;
+        requires?: string[];
+        unit_assignment?: NonNullable<ApplicationPermissionResponse["unit_assignment"]>;
+      }[];
       confirm_removals?: boolean;
     },
     context: AuditRequestContext = {},
@@ -291,6 +305,7 @@ export class ApplicationPermissionService {
               key: row.key,
               description: row.description ?? null,
               requires: row.requires ?? [],
+              unit_assignment: row.unit_assignment,
               source: ApplicationPermissionSource.MANIFEST,
               synced_at: now,
             },
@@ -302,6 +317,7 @@ export class ApplicationPermissionService {
             data: {
               description: row.description ?? current.description,
               requires: row.requires ?? [],
+              unit_assignment: row.unit_assignment ?? Prisma.DbNull,
               source: ApplicationPermissionSource.MANIFEST,
               deprecated_at: null,
               synced_at: now,
@@ -373,6 +389,7 @@ export class ApplicationPermissionService {
       key: row.key,
       description: row.description,
       requires: row.requires,
+      unit_assignment: row.unit_assignment as ApplicationPermissionResponse["unit_assignment"],
       source: row.source,
       deprecated: Boolean(row.deprecated_at),
       standard_key: isStandardPermissionKey(row.key),

@@ -7,6 +7,7 @@ export const UnitService = createSimpleMasterDataService({
   entityLabel: "unit",
   entityType: "MasterUnit",
   delegate: (client) => client.masterUnit,
+  hierarchical: true,
   referenceChecks: [
     {
       label: "employee(s)",
@@ -19,6 +20,14 @@ export const UnitService = createSimpleMasterDataService({
     {
       label: "grade(s)",
       count: (id) => prismaClient.grade.count({ where: { unit_id: id } }),
+    },
+    {
+      label: "application access row(s) managing it",
+      count: (id) => prismaClient.applicationEntitlement.count({ where: { scope_unit_ids: { has: id } } }),
+    },
+    {
+      label: "child unit(s)",
+      count: (id) => prismaClient.masterUnit.count({ where: { parent_id: id } }),
     },
   ],
 });

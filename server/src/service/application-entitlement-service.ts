@@ -127,6 +127,7 @@ function auditSnapshot(entitlement: ApplicationEntitlement) {
     organization_id: entitlement.organization_id,
     role: entitlement.role,
     permissions: entitlement.permissions,
+    scope_unit_ids: entitlement.scope_unit_ids,
     version: entitlement.version,
     is_active: entitlement.is_active,
   };
@@ -143,6 +144,35 @@ export function clearActiveSnapshotsForTest() {
 // Retiring or restoring an application changes who has access at once, so its cached list goes.
 export function clearActiveSnapshot(applicationId: string) {
   activeSnapshots.delete(applicationId);
+}
+
+async function unitScopedPermissionKeys(applicationIds: string[]): Promise<Map<string, Set<string>>> {
+  const rows = await prismaClient.applicationPermission.findMany({
+    where: {
+      application_id: { in: applicationIds },
+      deprecated_at: null,
+      unit_assignment: { not: Prisma.DbNull },
+    },
+    select: { application_id: true, key: true },
+  });
+  const result = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const keys = result.get(row.application_id) ?? new Set<string>();
+    keys.add(row.key);
+    result.set(row.application_id, keys);
+  }
+  return result;
+}
+
+function withoutScopedPermissions(
+  entitlement: ApplicationEntitlementResponse,
+  scoped: ReadonlySet<string> | undefined,
+): ApplicationEntitlementResponse {
+  if (!scoped?.size) return entitlement;
+  return {
+    ...entitlement,
+    permissions: entitlement.permissions.filter((permission) => !scoped.has(permission)),
+  };
 }
 
 // A retired application gives nobody access.
@@ -250,6 +280,18 @@ async function findExceptionPerson(
   };
 }
 
+// Checks the units a role should reach. undefined leaves them as they are.
+async function resolveScopeUnits(
+  unitIds: string[] | undefined,
+  kind: "EMPLOYEE" | "INTERN" | "STUDENT",
+): Promise<string[] | undefined> {
+  if (unitIds === undefined || unitIds.length === 0) return unitIds;
+  if (kind === "STUDENT") throw new ResponseError(400, "Units can only be set for employees and interns");
+  const found = await prismaClient.masterUnit.count({ where: { id: { in: unitIds } } });
+  if (found !== unitIds.length) throw new ResponseError(400, "One or more units do not exist");
+  return unitIds;
+}
+
 async function resolveBaselineEntitlement(
   personId: string | undefined,
   applicationId: string | undefined,
@@ -289,6 +331,7 @@ async function resolveBaselineEntitlement(
     organization_id: rule.organization_id,
     role: role.key,
     permissions: role.permissions,
+    scope_unit_ids: [],
     // No counter exists for group access, so the version is the second the role or
     // group last changed: it only goes up, and stays put while nothing changes.
     version: Math.floor(changedAt.getTime() / 1000),
@@ -365,8 +408,10 @@ export class ApplicationEntitlementService {
       user_agent: context.user_agent,
     });
 
-    if (entitlement) return toApplicationEntitlementResponse(entitlement);
-    if (baseline) return baseline;
+    const lookupApplicationId = lookup.application_id as string;
+    const scoped = (await unitScopedPermissionKeys([lookupApplicationId])).get(lookupApplicationId);
+    if (entitlement) return withoutScopedPermissions(toApplicationEntitlementResponse(entitlement), scoped);
+    if (baseline) return withoutScopedPermissions(baseline, scoped);
     throw new ResponseError(404, "Active application entitlement not found");
   }
 
@@ -468,6 +513,7 @@ export class ApplicationEntitlementService {
         organization_id: rule.organization_id,
         role: role.key,
         permissions: role.permissions,
+        scope_unit_ids: [],
         version: Math.floor(changedAt.getTime() / 1000),
         is_active: true,
         granted_at: rule.created_at.toISOString(),
@@ -494,7 +540,10 @@ export class ApplicationEntitlementService {
       user_agent: context.user_agent,
     });
 
-    return entitlements;
+    const scopedByApplication = await unitScopedPermissionKeys(input.application_ids);
+    return entitlements.map((entitlement) =>
+      withoutScopedPermissions(entitlement, scopedByApplication.get(entitlement.application_id)),
+    );
   }
 
   static async grant(
@@ -519,6 +568,7 @@ export class ApplicationEntitlementService {
       grant.permissions,
       person.kind,
     );
+    const scopeUnitIds = (await resolveScopeUnits(grant.scope_unit_ids, person.kind)) ?? [];
 
     await assertPersonException(
       grant.application_id,
@@ -547,6 +597,7 @@ export class ApplicationEntitlementService {
             data: {
               role: grant.role,
               permissions: rolePermissions,
+              scope_unit_ids: scopeUnitIds,
               organization_id: organizationId,
               is_active: true,
               version: { increment: 1 },
@@ -560,6 +611,7 @@ export class ApplicationEntitlementService {
               organization_id: organizationId,
               role: grant.role,
               permissions: rolePermissions,
+              scope_unit_ids: scopeUnitIds,
             },
           });
 
@@ -686,6 +738,7 @@ export class ApplicationEntitlementService {
                 person_id: personId,
                 application_id: input.application_id,
                 role: input.role as string,
+                scope_unit_ids: input.scope_unit_ids,
               },
               context,
             );
@@ -734,6 +787,7 @@ export class ApplicationEntitlementService {
       update.permissions,
       holder?.kind ?? "EMPLOYEE",
     );
+    const nextScopeUnitIds = await resolveScopeUnits(update.scope_unit_ids, holder?.kind ?? "EMPLOYEE");
 
     const entitlement = await prismaClient.$transaction(async (tx) => {
       const saved = await tx.applicationEntitlement.update({
@@ -741,6 +795,7 @@ export class ApplicationEntitlementService {
         data: {
           role: nextRole,
           permissions: nextPermissions,
+          ...(nextScopeUnitIds !== undefined ? { scope_unit_ids: nextScopeUnitIds } : {}),
           version: { increment: 1 },
         },
       });
@@ -910,9 +965,31 @@ export class ApplicationEntitlementService {
   private static async activeSnapshot(applicationId: string): Promise<ActiveSnapshot> {
     const cached = activeSnapshots.get(applicationId);
     if (cached && Date.now() - cached.at < ACTIVE_SNAPSHOT_MS) return cached.snapshot;
-    const items = (await isApplicationRetired(applicationId))
+    const rawItems = (await isApplicationRetired(applicationId))
       ? []
       : await ApplicationEntitlementService.computeActive(applicationId);
+    const [unitAssignments, unitAssignmentSets, scopedPermissions] = await Promise.all([
+      prismaClient.applicationUnitAssignment.findMany({
+        where: { application_id: applicationId },
+        select: { person_id: true, unit_id: true, permission_key: true, updated_at: true },
+        orderBy: [{ person_id: "asc" }, { unit_id: "asc" }, { permission_key: "asc" }],
+      }),
+      prismaClient.applicationUnitAssignmentSet.findMany({
+        where: { application_id: applicationId },
+        select: { unit_id: true, permission_key: true, updated_at: true },
+        orderBy: [{ unit_id: "asc" }, { permission_key: "asc" }],
+      }),
+      prismaClient.applicationPermission.findMany({
+        where: { application_id: applicationId, deprecated_at: null, unit_assignment: { not: Prisma.DbNull } },
+        select: { key: true, unit_assignment: true, updated_at: true },
+        orderBy: { key: "asc" },
+      }),
+    ]);
+    const scopedPermissionKeys = new Set(scopedPermissions.map((permission) => permission.key));
+    const items = rawItems.map((item) => ({
+      ...item,
+      permissions: item.permissions.filter((permission) => !scopedPermissionKeys.has(permission)),
+    }));
     // The key moves only when something the satellite keeps about a person moves.
     const key = createHash("sha256")
       .update(
@@ -923,9 +1000,28 @@ export class ApplicationEntitlementService {
             item.person.email,
             item.role,
             [...item.permissions].sort(),
+            [...item.scope_unit_ids].sort(),
             item.version,
             item.organization_id,
-          ]),
+          ])
+            .concat(unitAssignments.map((item) => [
+              item.person_id,
+              item.unit_id,
+              item.permission_key,
+              item.updated_at.toISOString(),
+            ]))
+            .concat(unitAssignmentSets.map((item) => [
+              "managed",
+              item.unit_id,
+              item.permission_key,
+              item.updated_at.toISOString(),
+            ]))
+            .concat(scopedPermissions.map((item) => [
+              "permission",
+              item.key,
+              JSON.stringify(item.unit_assignment),
+              item.updated_at.toISOString(),
+            ])),
         ),
       )
       .digest("hex")
@@ -973,11 +1069,24 @@ export class ApplicationEntitlementService {
       },
       orderBy: [{ full_name: "asc" }, { id: "asc" }],
     });
+    const unitIdOf = (person: (typeof people)[number]): string | null =>
+      person.employee?.unit_id ?? person.intern?.unit_id ?? person.student?.current_grade?.unit_id ?? null;
+    const units = await prismaClient.masterUnit.findMany({
+      where: { id: { in: [...new Set(people.map(unitIdOf).filter((id): id is string => Boolean(id)))] } },
+      select: { id: true, name: true },
+    });
+    const unitNameById = new Map(units.map((unit) => [unit.id, unit.name]));
 
     const items: ApplicationEntitlementListItem[] = [];
     for (const person of people) {
       const own = explicitByPerson.get(person.id);
-      const base = { full_name: person.full_name, email: person.email, unit: null };
+      const unitId = unitIdOf(person);
+      const base = {
+        full_name: person.full_name,
+        email: person.email,
+        unit_id: unitId,
+        unit: unitId ? unitNameById.get(unitId) ?? null : null,
+      };
       if (own) {
         if (own.is_active) items.push({ ...toApplicationEntitlementResponse(own), person: base });
         continue;
@@ -995,6 +1104,7 @@ export class ApplicationEntitlementService {
         organization_id: groupRule?.organization_id ?? "",
         role: role.key,
         permissions: role.permissions,
+        scope_unit_ids: [],
         version: Math.floor(changedAt.getTime() / 1000),
         is_active: true,
         granted_at: (groupRule?.created_at ?? role.created_at).toISOString(),
@@ -1010,6 +1120,11 @@ export class ApplicationEntitlementService {
     if (!applicationId) throw new ResponseError(400, "Query parameter 'application_id' is required");
     const { items, key } = await ApplicationEntitlementService.activeSnapshot(applicationId);
     return { key, total: items.length };
+  }
+
+  static async activePersonIds(applicationId: string): Promise<Set<string>> {
+    const { items } = await ApplicationEntitlementService.activeSnapshot(applicationId);
+    return new Set(items.map((item) => item.person_id));
   }
 
   static async listActive(
@@ -1075,7 +1190,7 @@ export class ApplicationEntitlementService {
               select: {
                 full_name: true,
                 email: true,
-                employee: { select: { unit: { select: { name: true } } } },
+                employee: { select: { unit_id: true, unit: { select: { name: true } } } },
               },
             },
           },
@@ -1088,6 +1203,7 @@ export class ApplicationEntitlementService {
           person: {
             full_name: row.person.full_name,
             email: row.person.email,
+            unit_id: row.person.employee?.unit_id ?? null,
             unit: row.person.employee?.unit.name ?? null,
           },
         }));
@@ -2548,7 +2664,13 @@ export class ApplicationAccessService {
           Number(right.row.is_active) - Number(left.row.is_active) ||
           left.row.person.full_name.localeCompare(right.row.person.full_name),
       );
-    const rows: ApplicationExceptionRow[] = matching.slice((page - 1) * size, page * size).map(({ row }) => ({
+    const pageRows = matching.slice((page - 1) * size, page * size);
+    const scopeUnits = await prismaClient.masterUnit.findMany({
+      where: { id: { in: [...new Set(pageRows.flatMap(({ row }) => row.scope_unit_ids))] } },
+      select: { id: true, name: true },
+    });
+    const unitName = new Map(scopeUnits.map((unit) => [unit.id, unit.name]));
+    const rows: ApplicationExceptionRow[] = pageRows.map(({ row }) => ({
       id: row.id,
       person_id: row.person_id,
       kind: row.person.person_type === PersonType.STUDENT ? "STUDENT" : row.person.person_type === PersonType.INTERN ? "INTERN" : "EMPLOYEE",
@@ -2563,6 +2685,10 @@ export class ApplicationAccessService {
       employment_type: row.person.employee?.employment_type ?? null,
       role: row.role,
       permissions: row.permissions,
+      scope_units: row.scope_unit_ids.flatMap((id) => {
+        const name = unitName.get(id);
+        return name ? [{ id, name }] : [];
+      }),
       is_active: row.is_active,
       granted_at: row.granted_at.toISOString(),
     }));
@@ -2856,6 +2982,7 @@ export class ApplicationAccessService {
             full_name: employee.person.full_name,
             email: employee.person.email,
             unit: employee.unit.name,
+            unit_id: employee.unit_id,
             job_position: employee.job_position.name,
             job_level: employee.job_level.name,
             employment_type: employee.employment_type,

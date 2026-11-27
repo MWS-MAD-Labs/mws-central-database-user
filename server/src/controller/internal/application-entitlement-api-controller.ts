@@ -6,8 +6,26 @@ import { ApplicationPermissionService, resolveApplicationId } from "../../servic
 import { ApplicationAccessService, ApplicationEntitlementService } from "../../service/application-entitlement-service";
 import type { ApiClientVariables } from "../../type/hono-context";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
+import { ApplicationUnitAssignmentService } from "../../service/application-unit-assignment-service";
 
 export class ApplicationEntitlementApiController {
+  static async unitAssignments(c: Context<{ Variables: ApiClientVariables }>) {
+    const applicationId = await resolveApplicationId(c.var.clientId, c.req.query("application_id"));
+    const { assignments, managedSets } = await ApplicationUnitAssignmentService.listActive(applicationId);
+    return c.json({
+      success: true,
+      data: assignments.map((row) => ({
+        person_id: row.person_id,
+        unit_id: row.unit_id,
+        permission_key: row.permission_key,
+      })),
+      managed: managedSets.map((set) => ({
+        unit_id: set.unit_id,
+        permission_key: set.permission_key,
+      })),
+    });
+  }
+
   static async lookup(c: Context<{ Variables: ApiClientVariables }>) {
     const personId = c.req.query("person_id");
     if (!personId) throw new ResponseError(400, "Query parameter 'person_id' is required");
@@ -103,7 +121,18 @@ export class ApplicationEntitlementApiController {
 
   static async syncPermissions(c: Context<{ Variables: ApiClientVariables }>) {
     const body = (await c.req.json()) as {
-      permissions?: { key: string; description?: string; requires?: string[] }[];
+      permissions?: {
+        key: string;
+        description?: string;
+        requires?: string[];
+        unit_assignment?: {
+          scope: "unit";
+          label: string;
+          mode: "explicit" | "derived_home_unit";
+          exclusive_group?: string;
+          include_descendants?: boolean;
+        };
+      }[];
       confirm_removals?: boolean;
     };
     const response = await ApplicationPermissionService.sync(

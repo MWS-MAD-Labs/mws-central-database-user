@@ -38,6 +38,8 @@ const resources = [
     icon: Building2,
     api: unitsApi,
     itemLabel: 'units',
+    unitHierarchy: true,
+    description: 'Units form the organization structure used by connected applications. Child Units inherit their parent context.',
   },
   {
     id: 'job-positions',

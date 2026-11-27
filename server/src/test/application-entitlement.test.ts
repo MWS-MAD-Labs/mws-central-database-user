@@ -9,6 +9,7 @@ import {
   EmployeeTest,
   TestRequest,
 } from "./test-utils";
+import { clearActiveSnapshotsForTest } from "../service/application-entitlement-service";
 
 const BASELINE_MARKER = "test_baseline_org";
 const STAFF_PERMISSIONS = ["credentials.read", "pos.catalog.read", "store.use"];
@@ -614,5 +615,73 @@ describe("application entitlements", () => {
       accessToken,
     )).json();
     expect(searched.data).toHaveLength(0);
+  });
+
+  it("keeps the units a role reaches, sends them to the app, and moves the version key", async () => {
+    const person = await createEmployee();
+    const { accessToken } = await createSuperAdmin();
+    const otherUnit = await prismaClient.masterUnit.create({ data: { name: `TEST_ENTITLEMENT_SCOPE_${fixtureKey}` } });
+    try {
+      const { token } = await createApiClient([API_SCOPES.APPLICATION_ENTITLEMENTS_READ]);
+      const auth = { Authorization: `Bearer ${token}` };
+      const versionKey = async () => {
+        clearActiveSnapshotsForTest();
+        const response = await TestRequest.get("/api/internal/application-entitlements/version?application_id=exima", undefined, auth);
+        return (await response.json()).data.key as string;
+      };
+
+      const grant = await TestRequest.post(
+        "/api/admin/application-entitlements",
+        { person_id: person.id, application_id: "exima", role: "STAFF", scope_unit_ids: [masterData.unit.id, otherUnit.id] },
+        accessToken,
+      );
+      const granted = await responseData(grant);
+      expect(grant.status).toBe(200);
+      expect(granted.scope_unit_ids).toEqual([masterData.unit.id, otherUnit.id]);
+
+      const lookup = await TestRequest.get(
+        `/api/internal/application-entitlements/lookup?person_id=${person.id}&application_id=exima`,
+        undefined,
+        auth,
+      );
+      expect((await lookup.json()).data.scope_unit_ids).toEqual([masterData.unit.id, otherUnit.id]);
+
+      const before = await versionKey();
+      const update = await TestRequest.patch(
+        `/api/admin/application-entitlements/${granted.id}`,
+        { scope_unit_ids: [otherUnit.id] },
+        accessToken,
+      );
+      const updated = (await update.json()).data;
+      expect(update.status).toBe(200);
+      expect(updated.role).toBe("STAFF");
+      expect(updated.scope_unit_ids).toEqual([otherUnit.id]);
+      expect(updated.version).toBe(2);
+      expect(await versionKey()).not.toBe(before);
+
+      // A role change alone leaves the units as they are.
+      const roleOnly = await TestRequest.patch(`/api/admin/application-entitlements/${granted.id}`, { role: "CASHIER" }, accessToken);
+      expect((await roleOnly.json()).data.scope_unit_ids).toEqual([otherUnit.id]);
+
+      const cleared = await TestRequest.patch(`/api/admin/application-entitlements/${granted.id}`, { scope_unit_ids: [] }, accessToken);
+      expect((await cleared.json()).data.scope_unit_ids).toEqual([]);
+
+      const unknown = await TestRequest.patch(
+        `/api/admin/application-entitlements/${granted.id}`,
+        { scope_unit_ids: ["no-such-unit"] },
+        accessToken,
+      );
+      expect(unknown.status).toBe(400);
+
+      const duplicate = await TestRequest.patch(
+        `/api/admin/application-entitlements/${granted.id}`,
+        { scope_unit_ids: [otherUnit.id, otherUnit.id] },
+        accessToken,
+      );
+      expect(duplicate.status).toBe(400);
+    } finally {
+      await prismaClient.applicationEntitlement.deleteMany({ where: { person_id: person.id } });
+      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
+    }
   });
 });
