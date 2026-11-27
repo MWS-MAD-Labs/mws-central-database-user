@@ -118,6 +118,7 @@ export type ClassResponse = {
   subject_teachers: {
     id: string;
     subject: string | null;
+    subject_id: string | null;
     workforce_member: WorkforceMemberResponse;
   }[];
   status: ClassStatus;
@@ -188,6 +189,7 @@ export function toClassResponse(
       .map((assignment) => ({
         id: assignment.id,
         subject: assignment.subject,
+        subject_id: assignment.subject_id,
         workforce_member: toWorkforceMemberResponse(assignment),
       })),
     status: klass.status,
@@ -217,6 +219,7 @@ export type AssignClassTeacherRequest = {
   intern_id?: string;
   role: ClassTeacherRole;
   subject?: string;
+  subject_id?: string;
   start_date?: string;
 };
 
@@ -324,6 +327,7 @@ export type ClassTeacherAssignmentResponse = {
   unit_name: string | null;
   role: ClassTeacherRole;
   subject: string | null;
+  subject_id: string | null;
   start_date: string;
   end_date: string | null;
 };
@@ -368,6 +372,7 @@ export function toClassTeacherAssignmentResponse(
     unit_name: assignment.employee?.unit?.name ?? assignment.intern?.unit?.name ?? null,
     role: assignment.role,
     subject: assignment.subject,
+    subject_id: assignment.subject_id,
     start_date: assignment.start_date.toISOString(),
     end_date: assignment.end_date ? assignment.end_date.toISOString() : null,
   };
@@ -398,6 +403,7 @@ export type EmployeeTeachingAssignmentResponse = {
   grade: string;
   role: ClassTeacherRole;
   subject: string | null;
+  subject_id: string | null;
   start_date: string;
   end_date: string | null;
 };
@@ -415,6 +421,7 @@ export function toEmployeeTeachingAssignmentResponse(
     grade: assignment.class.grade.name,
     role: assignment.role,
     subject: assignment.subject,
+    subject_id: assignment.subject_id,
     start_date: assignment.start_date.toISOString(),
     end_date: assignment.end_date ? assignment.end_date.toISOString() : null,
   };

@@ -35,6 +35,9 @@ describe("Class Teacher Assignment API (internal)", () => {
     await prismaClient.class.deleteMany({
       where: { name: { startsWith: "TEST_API_CLASS_" } },
     });
+    await prismaClient.masterSubject.deleteMany({
+      where: { key: { startsWith: "test-" } },
+    });
     await prismaClient.grade.deleteMany({
       where: { name: { startsWith: "TEST_API_GRADE_" } },
     });
@@ -281,5 +284,94 @@ describe("Class Teacher Assignment API (internal)", () => {
     expect(oldAssignment.end_date).not.toBeNull();
     expect(newAssignment.employee_id).toBeNull();
     expect(newAssignment.subject).toBe("Art");
+  });
+
+  describe("subjects", () => {
+    async function subjectTeacherSetup() {
+      const masterData = await MasterDataTest.create();
+      await prismaClient.masterJobPosition.update({
+        where: { id: masterData.position.id },
+        data: { is_teaching_position: true, is_subject_teacher_position: true },
+      });
+      await prismaClient.masterJobLevel.update({ where: { id: masterData.level.id }, data: { is_teaching_role: true } });
+      const person = await EmployeeTest.create({
+        email: "test_class_api_subject@millennia21.id",
+        employeeId: "99.99.SUB1",
+        unitId: masterData.unit.id,
+        jobPositionId: masterData.position.id,
+        jobLevelId: masterData.level.id,
+        buildingId: masterData.building.id,
+      });
+      const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+      return { masterData, person, accessToken };
+    }
+
+    async function syncRows(classIds: string[]) {
+      const { token } = await ApiClientTest.createWithToken({ scopeNames: [READ_SCOPE] });
+      const response = await TestRequest.get("/api/internal/class-teacher-assignments?size=100", undefined, authHeader(token));
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      return body.data.filter((item: { class_id: string }) => classIds.includes(item.class_id)) as { class_id: string; subject: string; subject_id: string | null; subject_name: string | null }[];
+    }
+
+    it("gives a subject written as text a subject of its own, the same one however it is spaced or cased, and sends its id and name", async () => {
+      const { masterData, person, accessToken } = await subjectTeacherSetup();
+      const first = await createClass(masterData.unit.id);
+      const second = await createClass(masterData.unit.id);
+      const assign = (classId: string, subject: string) =>
+        TestRequest.post(`/api/admin/classes/${classId}/teachers`, { employee_id: person.employee!.id, role: ClassTeacherRole.SUBJECT_TEACHER, subject }, accessToken);
+
+      expect((await assign(first.id, "TEST_Art")).status).toBe(200);
+      expect((await assign(second.id, "  test_ART ")).status).toBe(200);
+
+      const rows = await syncRows([first.id, second.id]);
+      expect(rows).toHaveLength(2);
+      expect(rows[0]!.subject_id).not.toBeNull();
+      expect(rows[0]!.subject_id).toBe(rows[1]!.subject_id);
+      expect(rows.map((row) => row.subject_name)).toEqual(["TEST_Art", "TEST_Art"]);
+      expect(await prismaClient.masterSubject.count({ where: { key: "test-art" } })).toBe(1);
+    });
+
+    it("keeps the id of a subject when it is renamed, and shows the new name everywhere", async () => {
+      const { masterData, person, accessToken } = await subjectTeacherSetup();
+      const klass = await createClass(masterData.unit.id);
+      await TestRequest.post(`/api/admin/classes/${klass.id}/teachers`, { employee_id: person.employee!.id, role: ClassTeacherRole.SUBJECT_TEACHER, subject: "TEST_Math" }, accessToken);
+      const before = (await syncRows([klass.id]))[0]!;
+
+      const renamed = await TestRequest.patch(`/api/admin/subjects/${before.subject_id}`, { name: "TEST_Mathematics" }, accessToken);
+
+      expect(renamed.status).toBe(200);
+      const after = (await syncRows([klass.id]))[0]!;
+      expect(after.subject_id).toBe(before.subject_id);
+      expect(after.subject_name).toBe("TEST_Mathematics");
+      expect(after.subject).toBe("TEST_Mathematics");
+      // The key it was made with does not change, and a similar name is not another subject.
+      expect((await prismaClient.masterSubject.findUniqueOrThrow({ where: { id: before.subject_id! } })).key).toBe("test-math");
+    });
+
+    it("takes a subject chosen from the list, and refuses one that is not there", async () => {
+      const { masterData, person, accessToken } = await subjectTeacherSetup();
+      const klass = await createClass(masterData.unit.id);
+      const subject = await prismaClient.masterSubject.create({ data: { key: "test-music", name: "TEST_Music" } });
+      const assign = (body: Record<string, unknown>) => TestRequest.post(`/api/admin/classes/${klass.id}/teachers`, { employee_id: person.employee!.id, role: ClassTeacherRole.SUBJECT_TEACHER, ...body }, accessToken);
+
+      expect((await assign({ subject_id: "no-such-subject" })).status).toBe(400);
+      expect((await assign({ subject_id: subject.id })).status).toBe(200);
+      expect((await assign({ subject_id: subject.id })).status).toBe(400);
+
+      const [row] = await syncRows([klass.id]);
+      expect(row).toMatchObject({ subject_id: subject.id, subject_name: "TEST_Music" });
+    });
+
+    it("sends the name with no id for an assignment written before subjects were rows", async () => {
+      const masterData = await MasterDataTest.create();
+      const klass = await createClass(masterData.unit.id);
+      const person = await EmployeeTest.create({ email: "test_class_api_legacy@millennia21.id", employeeId: "99.99.LEG1", unitId: masterData.unit.id, jobPositionId: masterData.position.id, jobLevelId: masterData.level.id, buildingId: masterData.building.id });
+      await prismaClient.classTeacherAssignment.create({ data: { class_id: klass.id, start_date: new Date(), employee_id: person.employee!.id, role: ClassTeacherRole.SUBJECT_TEACHER, subject: "TEST_Legacy" } });
+
+      const [row] = await syncRows([klass.id]);
+
+      expect(row).toMatchObject({ subject: "TEST_Legacy", subject_id: null, subject_name: "TEST_Legacy" });
+    });
   });
 });

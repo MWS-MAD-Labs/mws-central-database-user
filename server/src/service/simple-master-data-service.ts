@@ -62,12 +62,14 @@ export type SimpleMasterDataServiceConfig = {
   referenceChecks: ReferenceCheck[];
   // For lists that other data refers to by a key. The key is made from the name once and never changes.
   keyFrom?: (name: string) => string;
+  // Runs in the transaction of a rename, for what keeps a copy of the name.
+  afterRename?: (tx: Prisma.TransactionClient, entity: SimpleMasterDataEntity, previous: SimpleMasterDataEntity) => Promise<void>;
 };
 
 export function createSimpleMasterDataService(
   config: SimpleMasterDataServiceConfig,
 ) {
-  const { entityLabel, entityType, delegate, referenceChecks, keyFrom } = config;
+  const { entityLabel, entityType, delegate, referenceChecks, keyFrom, afterRename } = config;
   function rethrowAsFriendlyConflict(error: unknown): never {
     const fields = getUniqueConstraintFields(error);
     if (fields?.includes("name")) {
@@ -195,6 +197,7 @@ export function createSimpleMasterDataService(
             where: { id: updateRequest.id },
             data: { name: updateRequest.name },
           });
+          if (afterRename && updatedEntity.name !== existing.name) await afterRename(tx, updatedEntity, existing);
 
           await AuditService.record(
             {

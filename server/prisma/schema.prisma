@@ -812,16 +812,16 @@ model Student {
   updated_at                        DateTime         @updatedAt
   deleted_at                        DateTime?
 
-  parents             ParentGuardian[]
-  enrollments         StudentClassEnrollment[]
-  consents            ConsentRecord[]
-  health              HealthRecord?
-  health_notes        HealthNote[]
+  parents               ParentGuardian[]
+  enrollments           StudentClassEnrollment[]
+  consents              ConsentRecord[]
+  health                HealthRecord?
+  health_notes          HealthNote[]
   special_needs_profile StudentSpecialNeedsProfile?
-  pc                  PassionConnectionActivity[]
-  vaccine_records     VaccineRecord[]
-  support_assignments StudentSupportAssignment[]
-  mutation_history    StudentMutationHistory[]
+  pc                    PassionConnectionActivity[]
+  vaccine_records       VaccineRecord[]
+  support_assignments   StudentSupportAssignment[]
+  mutation_history      StudentMutationHistory[]
 
   @@map("students")
 }
@@ -1376,17 +1376,17 @@ model HealthRecord {
 
 // One profile per Special Needs student, filled when the flag is set. Free text is sensitive.
 model StudentSpecialNeedsProfile {
-  id                       String           @id @default(cuid())
-  student_id               String           @unique
-  student                  Student          @relation(fields: [student_id], references: [id])
+  id                       String               @id @default(cuid())
+  student_id               String               @unique
+  student                  Student              @relation(fields: [student_id], references: [id])
   needs                    StudentSpecialNeed[]
-  learning_support_summary String?          @db.VarChar(500)
-  accommodations           String?          @db.VarChar(1000)
-  has_professional_report  Boolean          @default(false)
-  report_date              DateTime?        @db.Date
-  identified_date          DateTime?        @db.Date
-  created_at               DateTime         @default(now())
-  updated_at               DateTime         @updatedAt
+  learning_support_summary String?              @db.VarChar(500)
+  accommodations           String?              @db.VarChar(1000)
+  has_professional_report  Boolean              @default(false)
+  report_date              DateTime?            @db.Date
+  identified_date          DateTime?            @db.Date
+  created_at               DateTime             @default(now())
+  updated_at               DateTime             @updatedAt
   deleted_at               DateTime?
 
   @@map("student_special_needs_profiles")
@@ -1590,24 +1590,41 @@ enum ClassTeacherRole {
   SUBJECT_TEACHER
 }
 
+// A subject taught in classes. Class teacher assignments point at a row, so renaming it renames it everywhere and the apps that sync
+// assignments (Learnspace) keep the same subject. The key is made from the name when it is created and never changes.
+model MasterSubject {
+  id          String                   @id @default(cuid())
+  key         String                   @unique
+  name        String                   @unique
+  assignments ClassTeacherAssignment[]
+  created_at  DateTime                 @default(now())
+  updated_at  DateTime                 @updatedAt
+
+  @@map("master_subjects")
+}
+
 model ClassTeacherAssignment {
-  id          String           @id @default(cuid())
-  class_id    String
-  class       Class            @relation(fields: [class_id], references: [id], onDelete: Cascade)
-  employee_id String?
-  employee    Employee?        @relation(fields: [employee_id], references: [id])
-  intern_id   String?
-  intern      Intern?          @relation(fields: [intern_id], references: [id], onDelete: Restrict)
-  role        ClassTeacherRole @default(HOMEROOM)
+  id             String           @id @default(cuid())
+  class_id       String
+  class          Class            @relation(fields: [class_id], references: [id], onDelete: Cascade)
+  employee_id    String?
+  employee       Employee?        @relation(fields: [employee_id], references: [id])
+  intern_id      String?
+  intern         Intern?          @relation(fields: [intern_id], references: [id], onDelete: Restrict)
+  role           ClassTeacherRole @default(HOMEROOM)
   // Homeroom roles are capped per employee and academic year in application code.
   // Subject-teacher assignments have no per-employee cap.
-  subject     String?
-  start_date  DateTime
-  end_date    DateTime?
-  created_at  DateTime         @default(now())
+  // The name of the subject at the time of the last change, kept so readers of the old field keep working. `subject_id` is the subject.
+  subject        String?
+  subject_id     String?
+  master_subject MasterSubject?   @relation(fields: [subject_id], references: [id], onDelete: Restrict)
+  start_date     DateTime
+  end_date       DateTime?
+  created_at     DateTime         @default(now())
   // Marks mistaken assignments; end_date closes valid assignments.
-  deleted_at  DateTime?
+  deleted_at     DateTime?
 
+  @@index([subject_id])
   @@map("class_teacher_assignments")
 }
 
