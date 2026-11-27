@@ -82,6 +82,8 @@ export class ClassValidation {
       .min(1, "Subject cannot be an empty string")
       .max(100, "Subject is too long")
       .optional(),
+    // A subject chosen from the list of subjects; `subject` is the way to write one that is not in it yet.
+    subject_id: z.string().min(1, "Subject ID cannot be empty").optional(),
     start_date: z.iso
       .datetime("Start date must be a valid ISO-8601 datetime string")
       .optional(),

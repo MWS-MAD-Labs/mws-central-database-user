@@ -9,6 +9,7 @@ export type ClassTeacherAssignmentWithRelations = {
   id: string;
   role: ClassTeacherRole;
   subject: string | null;
+  subject_id: string | null;
   class: {
     id: string;
     name: string;
@@ -63,7 +64,10 @@ export type ClassTeacherAssignmentResponse = {
   academic_year_start_date: string;
   academic_year_end_date: string | null;
   role: ClassTeacherRole;
+  // The subject by name, as before. `subject_id` is the subject and stays when it is renamed; `subject_name` is its name now.
   subject: string | null;
+  subject_id: string | null;
+  subject_name: string | null;
   workforce_member: ClassTeacherWorkforceMemberResponse;
   // Compatibility fields for existing employee-only consumers.
   employee_id: string | null;
@@ -114,6 +118,8 @@ export function toClassTeacherAssignmentResponse(
     academic_year_end_date: assignment.class.academic_year.end_date ? new Date(assignment.class.academic_year.end_date).toISOString().slice(0, 10) : null,
     role: assignment.role,
     subject: assignment.subject,
+    subject_id: assignment.subject_id,
+    subject_name: assignment.subject,
     workforce_member: workforceMember,
     employee_id: assignment.employee?.id ?? null,
     employee_email: assignment.employee?.person.email ?? null,

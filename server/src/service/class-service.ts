@@ -67,6 +67,7 @@ import {
   isUnitWritable,
 } from "../utils/admin-permissions";
 import { lockInternWorkforce } from "../utils/intern-workforce-lock";
+import { resolveAssignmentSubject } from "./class-subject-resolution";
 
 // New classes require capacity; updates may raise or clear it.
 const DEFAULT_CLASS_CAPACITY = 30;
@@ -1561,13 +1562,15 @@ export class ClassService {
           assignRequest.role,
         );
       }
+      // The subject chosen from the list, or written and found or made by its key.
+      const subject = await resolveAssignmentSubject(tx, assignRequest);
       const duplicate = await tx.classTeacherAssignment.findFirst({
         where: {
           class_id: assignRequest.class_id,
           employee_id: assignRequest.employee_id,
           intern_id: assignRequest.intern_id,
           role: assignRequest.role,
-          subject: assignRequest.subject ?? null,
+          subject_id: subject?.id ?? null,
           end_date: null,
           deleted_at: null,
         },
@@ -1584,7 +1587,8 @@ export class ClassService {
           employee_id: assignRequest.employee_id,
           intern_id: assignRequest.intern_id,
           role: assignRequest.role,
-          subject: assignRequest.subject,
+          subject: subject?.name ?? null,
+          subject_id: subject?.id ?? null,
           start_date: startDate,
         },
       });
@@ -2014,7 +2018,7 @@ export class ClassService {
               employee_id: existing.employee_id,
               intern_id: existing.intern_id,
               role: existing.role,
-              subject: existing.subject,
+              subject_id: existing.subject_id,
               end_date: null,
               deleted_at: null,
             },
@@ -2033,6 +2037,7 @@ export class ClassService {
               intern_id: existing.intern_id,
               role: existing.role,
               subject: existing.subject,
+              subject_id: existing.subject_id,
               start_date: targetStartDate,
             },
           });

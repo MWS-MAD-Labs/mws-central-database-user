@@ -155,7 +155,7 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     scope: API_SCOPES.CLASS_TEACHER_ASSIGNMENTS_READ,
     title: "Classes a teacher is assigned to",
     group: "Classes and Teachers",
-    purpose: "Shows which classes a teacher is currently assigned to, as homeroom or subject teacher.",
+    purpose: "Shows which classes a teacher is currently assigned to, as homeroom or subject teacher. A subject teacher row has the subject by `subject_id`, which stays when the subject is renamed, with its name in `subject_name`.",
   },
   {
     method: "GET",

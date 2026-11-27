@@ -1,5 +1,6 @@
 import { prismaClient } from "../lib/prisma";
 import { slugifyApplicationId } from "../utils/application-id";
+import { subjectKey } from "../utils/subject-key";
 import { createSimpleMasterDataService, type SimpleMasterDataDelegate } from "./simple-master-data-service";
 
 export const UnitService = createSimpleMasterDataService({
@@ -48,6 +49,24 @@ export const MajorService = createSimpleMasterDataService({
   entityType: "MasterMajor",
   delegate: (client) => client.masterMajor,
   referenceChecks: [],
+});
+
+// A subject taught in classes. Teacher assignments point at a row by id, so a rename is seen by everyone who reads the assignments as the same
+// subject renamed. The assignments keep a copy of the name, which a rename refreshes in the same transaction. A subject in use cannot be deleted.
+export const SubjectService = createSimpleMasterDataService({
+  entityLabel: "subject",
+  entityType: "MasterSubject",
+  delegate: (client) => client.masterSubject as unknown as SimpleMasterDataDelegate,
+  keyFrom: subjectKey,
+  referenceChecks: [
+    {
+      label: "class teacher assignment(s)",
+      count: (id) => prismaClient.classTeacherAssignment.count({ where: { subject_id: id } }),
+    },
+  ],
+  afterRename: async (tx, entity) => {
+    await tx.classTeacherAssignment.updateMany({ where: { subject_id: entity.id }, data: { subject: entity.name } });
+  },
 });
 
 // What kind of tool an application is, and which product space it belongs to. Applications refer to a row by

@@ -66,6 +66,7 @@ export const buildingsApi = makeMasterDataApi('/api/admin/buildings')
 export const pcActivitiesApi = makeMasterDataApi('/api/admin/pc-activities-master')
 export const institutionsApi = makeMasterDataApi('/api/admin/institutions')
 export const majorsApi = makeMasterDataApi('/api/admin/majors')
+export const subjectsApi = makeMasterDataApi('/api/admin/subjects')
 export const applicationScopesApi = makeMasterDataApi('/api/admin/application-scopes')
 export const applicationCategoriesApi = makeMasterDataApi('/api/admin/application-categories')
 

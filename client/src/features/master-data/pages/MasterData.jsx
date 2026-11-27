@@ -20,6 +20,7 @@ import {
   jobPositionsApi,
   majorsApi,
   pcActivitiesApi,
+  subjectsApi,
   unitsApi,
 } from '../api/masterDataApi.js'
 import { SupportCaseloadCard } from '../components/SupportCaseloadCard.jsx'
@@ -125,6 +126,15 @@ const majorResource = {
   itemLabel: 'majors',
 }
 
+const subjectResource = {
+  id: 'subjects',
+  label: 'Subjects',
+  singular: 'Subject',
+  icon: GraduationCap,
+  api: subjectsApi,
+  itemLabel: 'subjects',
+}
+
 const scopeResource = {
   id: 'application-scopes',
   label: 'Scopes',
@@ -182,6 +192,7 @@ function EmploymentTab({ section, onSection }) {
 // Master data about students and classes: the PC Activities list and the Special Ed caseload limit.
 const ACADEMIC_SECTIONS = [
   { id: 'pc-activities', label: 'PC Activities' },
+  { id: 'subjects', label: 'Subjects' },
   { id: 'special-ed-caseload', label: 'Special Ed Caseload' },
   { id: 'google-accounts', label: 'Google Accounts' },
 ]
@@ -193,6 +204,8 @@ function AcademicTab({ section, onSection }) {
       <Tabs label="Academic master data" tabs={ACADEMIC_SECTIONS} active={active} onChange={onSection} />
       {active === 'special-ed-caseload' ? (
         <SupportCaseloadCard />
+      ) : active === 'subjects' ? (
+        <MasterResourcePanel resource={subjectResource} />
       ) : active === 'google-accounts' ? (
         <GoogleAccountsCard kind="students" />
       ) : (
