@@ -16,7 +16,6 @@ import {
   DateField,
   Field,
   SearchableSelect,
-  TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import { DenseTable, denseCellClass, denseRowClass } from "../../../components/ui/DenseTable.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
@@ -714,19 +713,14 @@ export function TeacherAssignmentsSection({
                 label="Subject"
                 hint={picked.size > 1 ? "One subject for everyone picked. Pre-filled from the first one's job position." : "Pre-filled from the teacher's job position. Edit if it doesn't fit."}
               >
-                <TextInput
-                  list="class-subject-options"
-                  placeholder="e.g. Visual Arts"
+                <SearchableSelect
+                  creatable
                   value={form.subject}
-                  onChange={(event) =>
-                    setForm({ ...form, subject: event.target.value })
-                  }
+                  onChange={(value) => setForm({ ...form, subject: value })}
+                  options={(subjectsQuery.data?.data ?? []).map((subject) => ({ value: subject.name, label: subject.name }))}
+                  placeholder="Select Subject"
+                  searchPlaceholder="Search or add a subject"
                 />
-                <datalist id="class-subject-options">
-                  {(subjectsQuery.data?.data ?? []).map((subject) => (
-                    <option key={subject.id} value={subject.name} />
-                  ))}
-                </datalist>
               </Field>
             ) : null}
             <Field
