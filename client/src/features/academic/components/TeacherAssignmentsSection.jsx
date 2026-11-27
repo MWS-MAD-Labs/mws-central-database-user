@@ -29,6 +29,7 @@ import { useDebouncedValue } from "../../../hooks/useDebouncedValue.js";
 import { dateInputFromIso, isoFromDateInput } from "../../../lib/form.js";
 import { formatDate, formatStatus } from "../../../lib/format.js";
 import { classTeacherRoles, classesApi } from "../api/academicApi.js";
+import { subjectsApi } from "../../master-data/api/masterDataApi.js";
 import {
   candidateName as nameOf,
   candidateType,
@@ -127,6 +128,12 @@ export function TeacherAssignmentsSection({
   // Starts on the first day of the academic year until a later day is picked, also when the class was still loading.
   const startDate = form.start_date || dateInputFromIso(academicYearStartDate);
 
+  // The subjects there are; writing one that is not in the list adds it.
+  const subjectsQuery = useQuery({
+    queryKey: ["subjects", "options"],
+    queryFn: () => subjectsApi.list({ size: 100 }),
+    staleTime: 60_000,
+  });
   const candidatesQuery = useQuery({
     queryKey: [
       "classes",
@@ -708,12 +715,18 @@ export function TeacherAssignmentsSection({
                 hint={picked.size > 1 ? "One subject for everyone picked. Pre-filled from the first one's job position." : "Pre-filled from the teacher's job position. Edit if it doesn't fit."}
               >
                 <TextInput
+                  list="class-subject-options"
                   placeholder="e.g. Visual Arts"
                   value={form.subject}
                   onChange={(event) =>
                     setForm({ ...form, subject: event.target.value })
                   }
                 />
+                <datalist id="class-subject-options">
+                  {(subjectsQuery.data?.data ?? []).map((subject) => (
+                    <option key={subject.id} value={subject.name} />
+                  ))}
+                </datalist>
               </Field>
             ) : null}
             <Field
